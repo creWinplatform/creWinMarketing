@@ -1,0 +1,45 @@
+# ── dependencies ──────────────────────────────────────────────────────────────
+/node_modules
+/.pnp
+.pnp.js
+
+# ── testing ───────────────────────────────────────────────────────────────────
+/coverage
+
+# ── Next.js ───────────────────────────────────────────────────────────────────
+/.next/
+/out/
+
+# ── production build ──────────────────────────────────────────────────────────
+/build
+
+# ── environment variables (NEVER commit real secrets) ─────────────────────────
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ── runtime data (OAuth tokens, state — NEVER commit) ─────────────────────────
+/data/social-tokens.json
+/data/oauth-state.json
+/data/*.json
+
+# ── misc ──────────────────────────────────────────────────────────────────────
+.DS_Store
+*.pem
+Thumbs.db
+
+# ── debug logs ────────────────────────────────────────────────────────────────
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ── Vercel ────────────────────────────────────────────────────────────────────
+.vercel
+
+# ── TypeScript ────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts

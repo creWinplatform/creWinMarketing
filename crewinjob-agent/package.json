@@ -1,0 +1,22 @@
+{
+  "name": "crewinjob-marketing-agent",
+  "version": "1.0.0",
+  "description": "crewinjob.com için otomatik sosyal medya içerik ajansı",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "axios": "^1.15.2",
+    "cheerio": "^1.0.0",
+    "date-fns": "^3.0.0",
+    "dotenv": "^17.4.2",
+    "exceljs": "^3.4.0",
+    "fs-extra": "^11.2.0",
+    "googleapis": "^171.4.0",
+    "node-cron": "^4.2.1",
+    "node-fetch": "^3.3.2"
+  }
+}

@@ -1,0 +1,47 @@
+# ── Node modules ──────────────────────────────────────────────────────────────
+node_modules/
+**/node_modules/
+
+# ── Environment variables — NEVER commit real credentials ─────────────────────
+.env
+.env.local
+.env.*.local
+crewinjob-web/.env.local
+crewinjob-agent/.env
+
+# ── Next.js build output ──────────────────────────────────────────────────────
+crewinjob-web/.next/
+crewinjob-web/out/
+crewinjob-web/build/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.pem
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+
+# ── TypeScript ────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+crewinjob-web/next-env.d.ts
+
+# ── Runtime data (OAuth tokens, scheduled posts — NEVER commit) ───────────────
+crewinjob-web/data/social-tokens.json
+crewinjob-web/data/oauth-state.json
+crewinjob-web/data/scheduled-posts.json
+crewinjob-web/data/*.json
+
+# ── Chrome extension (local only, no secrets inside) ─────────────────────────
+# crewin-linkedin-extension/   ← açık bırak, commit edilebilir
+
+# ── Vercel ────────────────────────────────────────────────────────────────────
+.vercel

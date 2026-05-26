@@ -1,0 +1,61 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-https://marketing.crewin.org}
+    image: crewinjob-marketing:latest
+    container_name: crewinjob-marketing
+    restart: unless-stopped
+    ports:
+      - "3333:3333"
+    environment:
+      NODE_ENV: production
+      PORT: 3333
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      # Twitter
+      TWITTER_API_KEY: ${TWITTER_API_KEY}
+      TWITTER_API_SECRET: ${TWITTER_API_SECRET}
+      TWITTER_ACCESS_TOKEN_V1: ${TWITTER_ACCESS_TOKEN_V1}
+      TWITTER_ACCESS_TOKEN_SECRET: ${TWITTER_ACCESS_TOKEN_SECRET}
+      TWITTER_CLIENT_ID: ${TWITTER_CLIENT_ID}
+      TWITTER_ACCESS_TOKEN: ${TWITTER_ACCESS_TOKEN}
+      TWITTER_REFRESH_TOKEN: ${TWITTER_REFRESH_TOKEN}
+      TWITTER_USERNAME: ${TWITTER_USERNAME}
+      # LinkedIn
+      LINKEDIN_ACCESS_TOKEN: ${LINKEDIN_ACCESS_TOKEN}
+      LINKEDIN_USER_ID: ${LINKEDIN_USER_ID}
+      LINKEDIN_ORGANIZATION_ID: ${LINKEDIN_ORGANIZATION_ID}
+      LINKEDIN_CLIENT_ID: ${LINKEDIN_CLIENT_ID}
+      LINKEDIN_CLIENT_SECRET: ${LINKEDIN_CLIENT_SECRET}
+      # Facebook
+      FACEBOOK_PAGE_ACCESS_TOKEN: ${FACEBOOK_PAGE_ACCESS_TOKEN}
+      FACEBOOK_PAGE_ID: ${FACEBOOK_PAGE_ID}
+      FACEBOOK_APP_ID: ${FACEBOOK_APP_ID}
+      FACEBOOK_APP_SECRET: ${FACEBOOK_APP_SECRET}
+      # Instagram
+      INSTAGRAM_ACCESS_TOKEN: ${INSTAGRAM_ACCESS_TOKEN}
+      INSTAGRAM_IG_USER_ID: ${INSTAGRAM_IG_USER_ID}
+      IMGBB_API_KEY: ${IMGBB_API_KEY}
+      # Crewin API
+      CREWINJOB_API_URL: ${CREWINJOB_API_URL:-https://api.crewin.org}
+      CREWINJOB_API_USERNAME: ${CREWINJOB_API_USERNAME}
+      CREWINJOB_API_PASSWORD: ${CREWINJOB_API_PASSWORD}
+      CREWINJOB_API_KEY: ${CREWINJOB_API_KEY}
+    volumes:
+      # OAuth token'ları kalıcı olarak sakla (container yeniden başlasa bile kaybolmaz)
+      - crewinjob_data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3333/api/social/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  crewinjob_data:
+    driver: local
