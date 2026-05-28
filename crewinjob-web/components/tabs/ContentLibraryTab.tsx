@@ -40,22 +40,22 @@ export default function ContentLibraryTab() {
   const [editValue,    setEditValue]    = useState('');
 
   useEffect(() => {
-    setItems(getHistory());
+    getHistory().then(setItems).catch(() => {});
     try {
       const savedLogo = localStorage.getItem(LOGO_KEY);
       if (savedLogo) setLogoBase64(savedLogo);
     } catch { /* ignore */ }
   }, []);
 
-  const reload = () => setItems(getHistory());
+  const reload = () => { getHistory().then(setItems).catch(() => {}); };
 
-  const handleDelete = (id: string) => {
-    setItems(deleteFromHistory(id));
+  const handleDelete = async (id: string) => {
+    setItems(await deleteFromHistory(id));
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (!confirm('Tüm içerik geçmişini silmek istiyor musun? Bu işlem geri alınamaz.')) return;
-    clearHistory();
+    await clearHistory();
     setItems([]);
   };
 
@@ -78,10 +78,10 @@ export default function ContentLibraryTab() {
     setEditValue(item.content);
   };
 
-  const saveEdit = (id: string) => {
-    updateHistoryContent(id, editValue);
+  const saveEdit = async (id: string) => {
+    await updateHistoryContent(id, editValue);
     setEditingId(null);
-    setItems(getHistory());
+    reload();
   };
 
   const handleGenerateImage = async (item: HistoryItem) => {
@@ -107,8 +107,8 @@ export default function ContentLibraryTab() {
       const headline  = (data.headline as string) || 'The Right Job\nThe Right Talent';
       const finalB64  = await compositePostImage(mime, rawB64, logoBase64, headline, item.platform);
 
-      attachImageToItem(item.id, finalB64, 'image/png');
-      setItems(getHistory());
+      await attachImageToItem(item.id, finalB64, 'image/png');
+      reload();
     } catch (e: unknown) {
       setGenError(e instanceof Error ? e.message : 'Görsel oluşturulamadı');
       setTimeout(() => setGenError(null), 4000);

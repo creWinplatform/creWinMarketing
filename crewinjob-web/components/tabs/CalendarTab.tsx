@@ -51,7 +51,7 @@ export default function CalendarTab() {
     setCurrentYear(now.getFullYear());
     setCurrentMonth(now.getMonth());
     setAddDate(formatDateKey(now.getFullYear(), now.getMonth(), now.getDate()));
-    setEvents(getEvents());
+    getEvents().then(setEvents).catch(() => {});
   }, []);
 
   const navigateMonth = (dir: -1 | 1) => {
@@ -70,9 +70,9 @@ export default function CalendarTab() {
     return d === 0 ? 6 : d - 1;
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     if (!addContent.trim() || !addDate) return;
-    const updated = addEvent({
+    const updated = await addEvent({
       date: addDate,
       platform: addPlatform,
       content: addContent,
@@ -85,12 +85,12 @@ export default function CalendarTab() {
     logActivity('calendar_added', 'Takvime içerik eklendi', `${addPlatform} · ${addDate}`);
   };
 
-  const handleDelete = (id: string) => {
-    setEvents(removeEvent(id));
+  const handleDelete = async (id: string) => {
+    setEvents(await removeEvent(id));
   };
 
-  const handleToggle = (id: string) => {
-    setEvents(togglePublished(id));
+  const handleToggle = async (id: string) => {
+    setEvents(await togglePublished(id));
   };
 
   const runScheduler = async () => {
@@ -110,11 +110,11 @@ export default function CalendarTab() {
       // Başarılı gönderilenleri yayınlandı olarak işaretle
       if (data.results) {
         let updated = [...events];
-        data.results.forEach((r: { eventId: string; success: boolean }) => {
+        for (const r of (data.results as { eventId: string; success: boolean }[])) {
           if (r.success) {
-            updated = togglePublished(r.eventId);
+            updated = await togglePublished(r.eventId);
           }
-        });
+        }
         setEvents(updated);
       }
     } catch (e: unknown) {

@@ -1,53 +1,42 @@
-const CALENDAR_KEY = 'crewinjob_calendar';
+/**
+ * İçerik takvimi — sunucu taraflı JSON (data/calendar.json)
+ * Tüm fonksiyonlar async; /api/data/calendar ile iletişim kurar.
+ */
 
 export interface CalendarEvent {
-  id: string;
-  date: string; // YYYY-MM-DD
-  platform: string;
-  content: string;
-  language: string;
+  id:        string;
+  date:      string;
+  platform:  string;
+  content:   string;
+  language:  string;
   published: boolean;
   createdAt: number;
 }
 
-export function getEvents(): CalendarEvent[] {
+const BASE = '/api/data/calendar';
+
+export async function getEvents(): Promise<CalendarEvent[]> {
   try {
-    const raw = localStorage.getItem(CALENDAR_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as CalendarEvent[];
-  } catch {
-    return [];
-  }
+    const res = await fetch(BASE, { cache: 'no-store' });
+    return await res.json() as CalendarEvent[];
+  } catch { return []; }
 }
 
-export function addEvent(e: Omit<CalendarEvent, 'id' | 'createdAt'>): CalendarEvent[] {
-  const existing = getEvents();
-  const newEvent: CalendarEvent = {
-    ...e,
-    id: `cal_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    createdAt: Date.now(),
-  };
-  const updated = [...existing, newEvent];
-  try {
-    localStorage.setItem(CALENDAR_KEY, JSON.stringify(updated));
-  } catch { /* ignore */ }
-  return updated;
+export async function addEvent(e: Omit<CalendarEvent, 'id' | 'createdAt'>): Promise<CalendarEvent[]> {
+  const res = await fetch(BASE, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(e),
+  });
+  return await res.json() as CalendarEvent[];
 }
 
-export function removeEvent(id: string): CalendarEvent[] {
-  const updated = getEvents().filter(ev => ev.id !== id);
-  try {
-    localStorage.setItem(CALENDAR_KEY, JSON.stringify(updated));
-  } catch { /* ignore */ }
-  return updated;
+export async function removeEvent(id: string): Promise<CalendarEvent[]> {
+  const res = await fetch(`${BASE}?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  return await res.json() as CalendarEvent[];
 }
 
-export function togglePublished(id: string): CalendarEvent[] {
-  const updated = getEvents().map(ev =>
-    ev.id === id ? { ...ev, published: !ev.published } : ev
-  );
-  try {
-    localStorage.setItem(CALENDAR_KEY, JSON.stringify(updated));
-  } catch { /* ignore */ }
-  return updated;
+export async function togglePublished(id: string): Promise<CalendarEvent[]> {
+  const res = await fetch(`${BASE}?id=${encodeURIComponent(id)}&action=toggle`, { method: 'PATCH' });
+  return await res.json() as CalendarEvent[];
 }

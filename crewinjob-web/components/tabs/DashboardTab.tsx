@@ -70,10 +70,10 @@ export default function DashboardTab() {
   const [data,    setData]    = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // localStorage geçmişleri (client-side only)
+  // Sunucu taraflı geçmişler
   const [contentCount, setContentCount] = useState(0);
   const [postCount,    setPostCount]    = useState(0);
-  const [recentPosts,  setRecentPosts]  = useState<ReturnType<typeof getPostHistory>>([]);
+  const [recentPosts,  setRecentPosts]  = useState<Awaited<ReturnType<typeof getPostHistory>>>([]);
   const [platformDist, setPlatformDist] = useState<Record<string, number>>({});
 
   useEffect(() => {
@@ -84,18 +84,18 @@ export default function DashboardTab() {
       .catch(() => setData({ error: 'Veri alınamadı' }))
       .finally(() => setLoading(false));
 
-    // localStorage verisi
-    const ch = getContentHistory();
-    const ph = getPostHistory();
-    setContentCount(ch.length);
-    setPostCount(ph.length);
-    setRecentPosts(ph.slice(0, 5));
+    // Sunucu taraflı geçmişler
+    Promise.all([getContentHistory(), getPostHistory()]).then(([ch, ph]) => {
+      setContentCount(ch.length);
+      setPostCount(ph.length);
+      setRecentPosts(ph.slice(0, 5));
 
-    // Platform dağılımı
-    const dist: Record<string, number> = {};
-    [...ph].forEach(p => { dist[p.platform] = (dist[p.platform] || 0) + 1; });
-    [...ch].forEach(p => { dist[p.platform] = (dist[p.platform] || 0) + 1; });
-    setPlatformDist(dist);
+      // Platform dağılımı
+      const dist: Record<string, number> = {};
+      ph.forEach(p => { dist[p.platform] = (dist[p.platform] || 0) + 1; });
+      ch.forEach(p => { dist[p.platform] = (dist[p.platform] || 0) + 1; });
+      setPlatformDist(dist);
+    }).catch(() => {});
   }, []);
 
   const refresh = () => {

@@ -18,7 +18,9 @@ export default function PostHistory({ onClose }: Props) {
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshAll, setRefreshAll] = useState(false);
 
-  const reload = useCallback(() => setItems(getHistory()), []);
+  const reload = useCallback(() => {
+    getHistory().then(setItems).catch(() => {});
+  }, []);
   useEffect(() => { reload(); }, [reload]);
 
   const fetchStats = useCallback(async (item: PostHistoryItem): Promise<PostMetrics | null> => {
@@ -45,7 +47,7 @@ export default function PostHistory({ onClose }: Props) {
   const refreshOne = async (item: PostHistoryItem) => {
     setRefreshing(item.id);
     const m = await fetchStats(item);
-    if (m) updateMetrics(item.id, m);
+    if (m) await updateMetrics(item.id, m);
     reload();
     setRefreshing(null);
   };
@@ -54,21 +56,21 @@ export default function PostHistory({ onClose }: Props) {
     setRefreshAll(true);
     await Promise.all(items.map(async (item) => {
       const m = await fetchStats(item);
-      if (m) updateMetrics(item.id, m);
+      if (m) await updateMetrics(item.id, m);
     }));
     reload();
     setRefreshAll(false);
   };
 
-  const handleRemove = (id: string) => {
+  const handleRemove = async (id: string) => {
     if (!confirm('Bu paylaşımı geçmişten kaldırmak istediğine emin misin?')) return;
-    removePost(id);
+    await removePost(id);
     reload();
   };
 
-  const handleClearAll = () => {
+  const handleClearAll = async () => {
     if (!confirm('TÜM paylaşım geçmişini silmek istediğine emin misin? Bu işlem geri alınamaz.')) return;
-    clearHistory();
+    await clearHistory();
     reload();
   };
 

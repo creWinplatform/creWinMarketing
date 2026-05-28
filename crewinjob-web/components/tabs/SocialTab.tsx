@@ -169,7 +169,7 @@ export default function SocialTab() {
   }, [platform]);
 
   useEffect(() => {
-    setHistory(getHistory());
+    getHistory().then(setHistory).catch(() => {});
     setTemplates(getTemplates());
     const now = new Date();
     setCalDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
@@ -200,8 +200,8 @@ export default function SocialTab() {
       setOutput(data.content);
       logActivity('content_generated', `${platform.charAt(0).toUpperCase() + platform.slice(1)} içeriği üretildi`, `${data.content.length} karakter · ${language.toUpperCase()}`);
       // Save to history
-      const updated = saveToHistory({ platform, language, content: data.content, prompt: customPrompt });
-      setHistory(updated);
+      saveToHistory({ platform, language, content: data.content, prompt: customPrompt })
+        .then(setHistory).catch(() => {});
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Hata oluştu');
     } finally {
@@ -258,8 +258,8 @@ export default function SocialTab() {
   const useVariant = (content: string) => {
     setOutput(content);
     setVariantMode(false);
-    const updated = saveToHistory({ platform, language, content, prompt: customPrompt });
-    setHistory(updated);
+    saveToHistory({ platform, language, content, prompt: customPrompt })
+      .then(setHistory).catch(() => {});
   };
 
   // ── Feature C: All Platforms ──────────────────────────────────────────────
@@ -326,7 +326,7 @@ export default function SocialTab() {
   // ── Feature D: Add to Calendar ────────────────────────────────────────────
   const saveToCalendar = () => {
     if (!output || !calDate) return;
-    addEvent({ date: calDate, platform, content: output, language, published: false });
+    void addEvent({ date: calDate, platform, content: output, language, published: false });
     setCalSaved(true);
     setShowCalForm(false);
     setTimeout(() => setCalSaved(false), 3000);
@@ -364,12 +364,11 @@ export default function SocialTab() {
   };
 
   const handleDeleteHistory = (id: string) => {
-    setHistory(deleteFromHistory(id));
+    deleteFromHistory(id).then(setHistory).catch(() => {});
   };
 
   const handleClearHistory = () => {
-    clearHistory();
-    setHistory([]);
+    clearHistory().then(() => setHistory([])).catch(() => {});
   };
 
   return (
