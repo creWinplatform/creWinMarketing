@@ -132,13 +132,16 @@ async function postLinkedIn(content: string, imageData?: string): Promise<PostRe
           authorUrn = firstOrg; // zaten "urn:li:organization:xxx" formatında
           console.log('[LinkedIn] Şirket sayfasına post:', authorUrn);
         } else {
-          authorUrn = userId.startsWith('urn:') ? userId : `urn:li:person:${userId}`;
+          const uid = userId ?? '';
+          authorUrn = uid.startsWith('urn:') ? uid : `urn:li:person:${uid}`;
         }
       } else {
-        authorUrn = userId.startsWith('urn:') ? userId : `urn:li:person:${userId}`;
+        const uid = userId ?? '';
+        authorUrn = uid.startsWith('urn:') ? uid : `urn:li:person:${uid}`;
       }
     } catch {
-      authorUrn = userId.startsWith('urn:') ? userId : `urn:li:person:${userId}`;
+      const uid = userId ?? '';
+      authorUrn = uid.startsWith('urn:') ? uid : `urn:li:person:${uid}`;
     }
   }
   const headers   = {
