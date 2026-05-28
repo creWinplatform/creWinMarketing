@@ -1,4 +1,7 @@
-/** Activity Log — localStorage tabanlı son 50 eylem kaydı */
+/**
+ * Aktivite günlüğü — sunucu taraflı JSON (data/activity-log.json)
+ * logActivity fire-and-forget çağrılabilir (await gerekmez).
+ */
 
 export type ActivityType =
   | 'content_generated'
@@ -11,50 +14,33 @@ export type ActivityType =
   | 'kpi_generated';
 
 export interface ActivityEntry {
-  id:        string;
-  type:      ActivityType;
-  label:     string;      // kısa açıklama (ör. "Instagram içeriği üretildi")
-  detail?:   string;      // opsiyonel ek bilgi (platform, karakter sayısı, vb.)
-  ts:        number;      // Date.now()
+  id:      string;
+  type:    ActivityType;
+  label:   string;
+  detail?: string;
+  ts:      number;
 }
 
-const STORAGE_KEY = 'crewinjob_activity_log';
-const MAX_ENTRIES = 50;
+const BASE = '/api/data/activity-log';
 
-export function logActivity(
-  type: ActivityType,
-  label: string,
-  detail?: string,
-): ActivityEntry[] {
-  const entry: ActivityEntry = {
-    id:     `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    type,
-    label,
-    detail,
-    ts: Date.now(),
-  };
+/** Fire-and-forget — await gerekmiyor */
+export function logActivity(type: ActivityType, label: string, detail?: string): void {
+  fetch(BASE, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ type, label, detail }),
+  }).catch(() => { /* ignore */ });
+}
+
+export async function getActivityLog(): Promise<ActivityEntry[]> {
   try {
-    const raw     = localStorage.getItem(STORAGE_KEY);
-    const current: ActivityEntry[] = raw ? JSON.parse(raw) : [];
-    const updated = [entry, ...current].slice(0, MAX_ENTRIES);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    return updated;
-  } catch {
-    return [entry];
-  }
+    const res = await fetch(BASE, { cache: 'no-store' });
+    return await res.json() as ActivityEntry[];
+  } catch { return []; }
 }
 
-export function getActivityLog(): ActivityEntry[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-export function clearActivityLog(): void {
-  try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+export async function clearActivityLog(): Promise<void> {
+  await fetch(BASE, { method: 'DELETE' });
 }
 
 /** Eylem tipi → ikon + renk */

@@ -56,7 +56,7 @@ export default function OutputPanel({
   useEffect(() => {
     if (!autoSaveHistory || !content || content === lastSavedRef.current) return;
     lastSavedRef.current = content;
-    saveToHistory({
+    void saveToHistory({
       platform,
       language: autoSaveHistory.language || 'en',
       content,
@@ -149,7 +149,7 @@ export default function OutputPanel({
 
       setImageData(finalB64);
       setImageMime('image/png');
-      attachImageToLatest(finalB64, 'image/png');
+      void attachImageToLatest(finalB64, 'image/png');
       logActivity('image_generated', `${platform} için görsel üretildi`, `${contentType} · PNG`);
     } catch (e: unknown) {
       setImageError(e instanceof Error ? e.message : 'Görsel oluşturulamadı');

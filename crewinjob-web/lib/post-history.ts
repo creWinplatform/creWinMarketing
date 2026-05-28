@@ -1,6 +1,7 @@
-// Lokal paylaşım geçmişi — localStorage tabanlı, kullanıcı tarayıcısında saklanır
-
-const STORAGE_KEY = 'crewinjob_post_history';
+/**
+ * Paylaşım geçmişi — sunucu taraflı JSON (data/post-history.json)
+ * Tüm fonksiyonlar async; /api/data/post-history ile iletişim kurar.
+ */
 
 export interface PostMetrics {
   likes?:    number;
@@ -11,63 +12,48 @@ export interface PostMetrics {
 }
 
 export interface PostHistoryItem {
-  id:           string;          // benzersiz kayıt ID
-  platform:     string;          // twitter / linkedin / facebook / instagram
-  postId:       string;          // platform post ID
-  postUrl?:     string;          // direkt link
-  content:      string;          // paylaşılan metin
-  thumbnail?:   string;          // küçük görsel (PNG base64) - opsiyonel
-  publishedAt:  number;          // Date.now()
-  metrics?:     PostMetrics;     // son alınan metrikler
+  id:          string;
+  platform:    string;
+  postId:      string;
+  postUrl?:    string;
+  content:     string;
+  thumbnail?:  string;
+  publishedAt: number;
+  metrics?:    PostMetrics;
 }
 
-export function getHistory(): PostHistoryItem[] {
-  if (typeof window === 'undefined') return [];
+const BASE = '/api/data/post-history';
+
+export async function getHistory(): Promise<PostHistoryItem[]> {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw) as PostHistoryItem[];
-  } catch {
-    return [];
-  }
+    const res = await fetch(BASE, { cache: 'no-store' });
+    return await res.json() as PostHistoryItem[];
+  } catch { return []; }
 }
 
-export function saveHistory(items: PostHistoryItem[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    // En fazla son 100 kayıt — localStorage sınırını aşmamak için
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, 100)));
-  } catch (e) {
-    console.warn('[PostHistory] Kaydedilemedi:', e);
-  }
+export async function addPost(item: Omit<PostHistoryItem, 'id'>): Promise<PostHistoryItem> {
+  const res = await fetch(BASE, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(item),
+  });
+  return await res.json() as PostHistoryItem;
 }
 
-export function addPost(item: Omit<PostHistoryItem, 'id'>): PostHistoryItem {
-  const newItem: PostHistoryItem = {
-    ...item,
-    id: `${item.platform}_${item.postId}_${Date.now()}`,
-  };
-  const list = [newItem, ...getHistory()];
-  saveHistory(list);
-  return newItem;
+export async function updateMetrics(id: string, metrics: PostMetrics): Promise<void> {
+  await fetch(`${BASE}?id=${encodeURIComponent(id)}`, {
+    method:  'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ metrics }),
+  });
 }
 
-export function updateMetrics(id: string, metrics: PostMetrics): void {
-  const list = getHistory();
-  const idx  = list.findIndex(p => p.id === id);
-  if (idx >= 0) {
-    list[idx].metrics = metrics;
-    saveHistory(list);
-  }
+export async function removePost(id: string): Promise<void> {
+  await fetch(`${BASE}?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-export function removePost(id: string): void {
-  saveHistory(getHistory().filter(p => p.id !== id));
-}
-
-export function clearHistory(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEY);
+export async function clearHistory(): Promise<void> {
+  await fetch(BASE, { method: 'DELETE' });
 }
 
 /** Görselin küçük thumbnail'ini üret (256px max kenar, JPEG) */
@@ -75,11 +61,11 @@ export async function makeThumbnail(imageData: string, imageMime: string): Promi
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 256;
+      const MAX   = 256;
       const scale = Math.min(1, MAX / Math.max(img.width, img.height));
-      const w = Math.round(img.width * scale);
-      const h = Math.round(img.height * scale);
-      const cv = document.createElement('canvas');
+      const w     = Math.round(img.width  * scale);
+      const h     = Math.round(img.height * scale);
+      const cv    = document.createElement('canvas');
       cv.width = w; cv.height = h;
       cv.getContext('2d')!.drawImage(img, 0, 0, w, h);
       resolve(cv.toDataURL('image/jpeg', 0.7).split(',')[1]);

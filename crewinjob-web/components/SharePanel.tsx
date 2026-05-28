@@ -472,7 +472,7 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
         if (r.success && r.url) {
           // URL'den postId çıkar
           const postId = extractPostId(r.platform, r.url) || r.url;
-          addPost({
+          void addPost({
             platform:    r.platform,
             postId,
             postUrl:     r.url,

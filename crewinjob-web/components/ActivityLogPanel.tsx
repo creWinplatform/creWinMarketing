@@ -22,16 +22,13 @@ export default function ActivityLogPanel() {
   const [open,    setOpen]    = useState(false);
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
 
-  const reload = useCallback(() => setEntries(getActivityLog()), []);
+  const reload = useCallback(() => {
+    getActivityLog().then(setEntries).catch(() => {});
+  }, []);
 
-  // Açıldığında + storage değişimlerinde yenile
+  // Açıldığında yenile (artık localStorage event'i yok — sunucu taraflı)
   useEffect(() => {
     reload();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'crewinjob_activity_log') reload();
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
   }, [reload]);
 
   // Panel açıkken otomatik yenile (15 sn)
@@ -43,8 +40,7 @@ export default function ActivityLogPanel() {
   }, [open, reload]);
 
   const handleClear = () => {
-    clearActivityLog();
-    setEntries([]);
+    clearActivityLog().then(() => setEntries([])).catch(() => {});
   };
 
   const unread = entries.length;

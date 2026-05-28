@@ -11,6 +11,10 @@ const PASSWORD =  process.env.CREWINJOB_API_PASSWORD || '';
 var _tokenCache  = { token: null, expiresAt: 0 };
 var _loginPromise = null; // mutex — paralel login yarışını önler
 
+// ── Data cache (90 sn TTL) — her istekte 9 API çağrısı yapılmasını önler ──────
+var _dataCache        = { data: null, expiresAt: 0 };
+var _dataFetchPromise = null; // mutex — eş zamanlı isteklerde tek çağrı
+
 // ── ABP Framework login ───────────────────────────────────────────────────────
 async function login() {
   var res = await fetch(BASE + '/api/TokenAuth/Authenticate', {
@@ -162,8 +166,21 @@ async function getLastCompanies(count) {
   return { companies: companies, source: 'api', fetchedAt: new Date().toISOString() };
 }
 
-/** Tüm istatistikler — /api/stats, /api/dashboard */
+/** Tüm istatistikler — /api/stats, /api/dashboard
+ *  90 saniyelik bellek cache'i ile tekrar eden isteklerde API çağrısı atlanır. */
 async function fetchAllData() {
+  // Cache hit → hemen dön
+  if (_dataCache.data && Date.now() < _dataCache.expiresAt) {
+    return _dataCache.data;
+  }
+  // Eş zamanlı istek varsa onu bekle — çift çağrı yapma
+  if (_dataFetchPromise) return await _dataFetchPromise;
+
+  _dataFetchPromise = _fetchAllDataFresh().finally(function() { _dataFetchPromise = null; });
+  return await _dataFetchPromise;
+}
+
+async function _fetchAllDataFresh() {
   var results = await Promise.allSettled([
     callApi('GemiAdamiGenel/GetTotalCountOfGemiAdamiGenel', {}),                           // [0]
     callApi('GemiAdamiGenel/GetGemiAdamiGenelWhoRegisteredInLastSevenDays', {}),           // [1]
@@ -214,7 +231,7 @@ async function fetchAllData() {
     source: 'api',
   };
 
-  return {
+  var result = {
     seafarers:  seafarers,
     jobs:       jobs,
     incomplete: { total: seafarers.incompleteProfiles, segments: [], source: 'api' },
@@ -229,6 +246,11 @@ async function fetchAllData() {
     },
     newJobs: [],
   };
+
+  // Cache'e yaz — 90 sn boyunca API tekrar çağrılmaz
+  _dataCache.data      = result;
+  _dataCache.expiresAt = Date.now() + 90_000;
+  return result;
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
