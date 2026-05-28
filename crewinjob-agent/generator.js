@@ -128,7 +128,7 @@ async function generateContent(platform, contentType, data, model) {
   const prompt = promptFn(data, contentType);
 
   const response = await client.messages.create({
-    model: model || 'gemini-2.5-flash',
+    model: model || 'gemini-2.5-flash-lite',
     max_tokens: 2000,
     system: `Sen crewinjob.com için çalışan deneyimli bir dijital pazarlama uzmanısın.
 Denizcilik sektörünü iyi bilirsin. Ürettiğin içerikler özgün, platform'a özgü ve yüksek engagement'lı olur.
@@ -337,7 +337,7 @@ Write the post now:`;
     : '';
 
   const response = await client.messages.create({
-    model:      model || 'gemini-2.5-flash',
+    model:      model || 'gemini-2.5-flash-lite',
     max_tokens: 2000,
     system: `You are a social media copywriter for CrewinJob, a maritime recruitment platform connecting seafarers with shipping companies worldwide.
 You write clean, engaging, ready-to-post social media content with appropriate hashtags.

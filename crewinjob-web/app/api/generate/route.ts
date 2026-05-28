@@ -3,13 +3,24 @@ import os from 'os';
 import path from 'path';
 import { agentModule } from '@/lib/agent-bridge';
 
+// Process-level cache — api.js'deki cache ile aynı TTL (90 sn)
+// api.js'in require cache'i atlandığında bile bu devreye girer
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _cachedData: any = null;
+let _cacheExpiry = 0;
+
 export async function POST(request: NextRequest) {
   const body = await request.json();
   const { type, textModel, ...params } = body;
 
   try {
     const api = agentModule('modules/api.js');
-    const data = await api.fetchAllData();
+    // Process-level cache: 90 sn boyunca api.crewin.org çağrısı tekrar yapılmaz
+    if (!_cachedData || Date.now() > _cacheExpiry) {
+      _cachedData  = await api.fetchAllData();
+      _cacheExpiry = Date.now() + 90_000;
+    }
+    const data = _cachedData;
     let content: string;
 
     switch (type) {

@@ -3,10 +3,10 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Yedek model sırası — hepsi API listesinde mevcut ve yeni kullanıcılara açık
+// Yedek model sırası — hata durumunda sırayla denenir
 const MODEL_FALLBACKS = [
-  'gemini-2.5-flash',       // birincil — bazen 503
-  'gemini-2.5-flash-lite',  // kararlı yedek (Temmuz 2025)
+  'gemini-2.5-flash-lite',  // birincil — hızlı ve kararlı
+  'gemini-2.5-flash',       // ikincil — daha güçlü ama bazen 503
   'gemini-2.0-flash-lite',  // son yedek
 ];
 
@@ -42,8 +42,8 @@ async function generateWithRetry(prompt, preferredModel) {
       const retry = shouldRetry(err);
       const isLast = i === models.length - 1;
       if (retry && !isLast) {
-        console.warn(`[ai-client] ${modelName} hata (${err.message?.slice(0, 60)}) — ${MODEL_FALLBACKS[i + 1]} deneniyor...`);
-        await sleep(1500);
+        console.warn(`[ai-client] ${modelName} hata (${err.message?.slice(0, 60)}) — ${models[i + 1]} deneniyor...`);
+        await sleep(500); // 1500ms → 500ms: daha hızlı fallback
         continue;
       }
       break;
