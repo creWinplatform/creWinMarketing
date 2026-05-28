@@ -30,6 +30,7 @@ export default function OutputPanel({
   autoSaveHistory,
 }: Props) {
   const [copied,       setCopied]       = useState(false);
+  const [imgCopied,    setImgCopied]    = useState(false);
   const [imageData,    setImageData]    = useState('');
   const [imageMime,    setImageMime]    = useState('image/jpeg');
   const [imageLoading, setImageLoading] = useState(false);
@@ -512,23 +513,45 @@ export default function OutputPanel({
                 </button>
                 <button
                   onClick={async () => {
-                    try {
-                      // Clipboard API sadece image/png destekler — canvas ile dönüştür
-                      const img = new Image();
-                      img.src = `data:${imageMime};base64,${imageData}`;
-                      await new Promise(r => { img.onload = r; });
-                      const cv = document.createElement('canvas');
-                      cv.width = img.width; cv.height = img.height;
-                      cv.getContext('2d')!.drawImage(img, 0, 0);
-                      cv.toBlob(async (pngBlob) => {
-                        if (!pngBlob) return;
-                        await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
-                      }, 'image/png');
-                    } catch { /* tarayıcı izin vermedi */ }
+                    // HTTPS bağlamında Clipboard API dene; HTTP'de (üretim sunucu)
+                    // otomatik olarak indirme yoluna geç
+                    const isSecure = typeof window !== 'undefined' &&
+                      (window.isSecureContext || location.protocol === 'https:' || location.hostname === 'localhost');
+
+                    if (isSecure && navigator.clipboard?.write) {
+                      try {
+                        const img = new Image();
+                        img.src = `data:${imageMime};base64,${imageData}`;
+                        await new Promise(r => { img.onload = r; });
+                        const cv = document.createElement('canvas');
+                        cv.width = img.width; cv.height = img.height;
+                        cv.getContext('2d')!.drawImage(img, 0, 0);
+                        await new Promise<void>((res, rej) => {
+                          cv.toBlob(async (blob) => {
+                            if (!blob) { rej(new Error('blob null')); return; }
+                            try {
+                              await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                              res();
+                            } catch (e) { rej(e); }
+                          }, 'image/png');
+                        });
+                        setImgCopied(true);
+                        setTimeout(() => setImgCopied(false), 2500);
+                        return;
+                      } catch { /* güvenli bağlam ama izin yok → indir */ }
+                    }
+
+                    // HTTP veya izin yoksa: otomatik indir
+                    const link = document.createElement('a');
+                    link.href     = `data:image/png;base64,${imageData}`;
+                    link.download = `crewinjob_${platform}_${Date.now()}.png`;
+                    link.click();
+                    setImgCopied(true);
+                    setTimeout(() => setImgCopied(false), 2500);
                   }}
                   className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
                 >
-                  📋 Kopyala
+                  {imgCopied ? '✅ Tamam!' : '📋 Kopyala'}
                 </button>
               </div>
             </div>

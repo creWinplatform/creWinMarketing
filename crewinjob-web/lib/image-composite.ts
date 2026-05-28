@@ -104,7 +104,8 @@ export async function compositePostImage(
       ctx.shadowOffsetX  = 0;
       ctx.shadowOffsetY  = 4;
 
-      const maxTW = W * 0.58;
+      // Metin genişliği: logo için sağda yer bırak (%52 yerine eski %58 düzeltildi)
+      const maxTW = W * 0.52;
       const rawLines = headline.split('\n');
       const wrappedLines: string[] = [];
       for (const raw of rawLines) {
@@ -122,7 +123,9 @@ export async function compositePostImage(
 
       const lineH      = Math.round(fontSize * 1.20);
       const textStartY = contentTop + Math.round(fontSize * 1.25);
-      wrappedLines.forEach((line, i) => ctx.fillText(line, pad, textStartY + i * lineH));
+      // Maksimum 4 satır — alt çubukla çakışmayı önler
+      const visibleLines = wrappedLines.slice(0, 4);
+      visibleLines.forEach((line, i) => ctx.fillText(line, pad, textStartY + i * lineH));
       ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; ctx.shadowColor = 'transparent';
 
       const barH = Math.round(H * 0.100);
@@ -148,13 +151,15 @@ export async function compositePostImage(
       if (logoBase64) {
         const logo = new Image();
         logo.onload = () => {
-          const logoH    = Math.round(barH * 2.0);
-          const logoW    = Math.min(Math.round((logo.width / logo.height) * logoH), Math.round(W * 0.26));
+          // Logo yüksekliği: barH'nin 1.7 katı (eski 2.0'dan küçültüldü)
+          const logoH    = Math.round(barH * 1.7);
+          const logoW    = Math.min(Math.round((logo.width / logo.height) * logoH), Math.round(W * 0.22));
           const pillPadX = Math.round(logoW * 0.14);
           const pillPadY = Math.round(logoH * 0.12);
           const pillW    = logoW + pillPadX * 2;
           const pillH    = logoH + pillPadY * 2;
-          const pillX    = Math.round((W - pillW) / 2);
+          // Logo sağa hizalandı — sol metin ile çakışmaz
+          const pillX    = W - pillW - pad;
           const pillY    = barY - Math.round((pillH - barH) / 2) - Math.round(barH * 0.05);
           const pillR    = Math.round(Math.min(pillW, pillH) * 0.12);
 
