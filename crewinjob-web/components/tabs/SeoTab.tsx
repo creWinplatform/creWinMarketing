@@ -41,14 +41,38 @@ export default function SeoTab() {
   const [seedKeyword, setSeedKeyword] = useState('seafarer jobs');
   const [intent,      setIntent]      = useState('all');
 
-  const [output,     setOutput]     = useState('');
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState('');
+  const [output,        setOutput]        = useState('');
+  const [loading,       setLoading]       = useState(false);
+  const [error,         setError]         = useState('');
+  const [publishing,    setPublishing]    = useState(false);
+  const [publishResult, setPublishResult] = useState<{
+    success?: boolean; blogId?: number; title?: string; imageUrl?: string; error?: string;
+  } | null>(null);
+
+  const publishBlog = async () => {
+    if (!output) return;
+    setPublishing(true);
+    setPublishResult(null);
+    try {
+      const res  = await fetch('/api/blog/publish', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ content: output }),
+      });
+      const data = await res.json() as { success?: boolean; blogId?: number; title?: string; imageUrl?: string; error?: string };
+      setPublishResult(data);
+    } catch (e: unknown) {
+      setPublishResult({ error: e instanceof Error ? e.message : 'Bağlantı hatası' });
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const generate = async () => {
     setLoading(true);
     setError('');
     setOutput('');
+    setPublishResult(null);
     try {
       let body: Record<string, unknown> = { language, textModel: getTextModel() };
 
@@ -225,6 +249,57 @@ export default function SeoTab() {
           {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
           {buttonLabel()}
         </button>
+
+        {/* Blog yayınla butonu — yalnızca blog sekmesinde ve içerik üretilmişse */}
+        {subTab === 'blog' && output && (
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={publishBlog}
+              disabled={publishing}
+              className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+            >
+              {publishing
+                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Yayınlanıyor...</>
+                : '🚀 Blogu Yayınla'}
+            </button>
+            {publishing && (
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                Görsel üretiliyor, ImgBB&apos;ye yükleniyor ve blog API&apos;ye gönderiliyor...
+              </p>
+            )}
+
+            {/* Sonuç kartı */}
+            {publishResult && (
+              <div className={`rounded-xl border p-3 text-xs ${
+                publishResult.success
+                  ? 'border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
+                  : 'border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20'
+              }`}>
+                {publishResult.success ? (
+                  <div className="flex flex-col gap-1.5">
+                    <p className="font-semibold text-green-700 dark:text-green-300">✅ Blog yayınlandı!</p>
+                    <p className="text-slate-600 dark:text-slate-300 line-clamp-2">📝 {publishResult.title}</p>
+                    {publishResult.imageUrl && (
+                      <a
+                        href={publishResult.imageUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-ocean hover:underline truncate"
+                      >
+                        🖼️ Görsel URL
+                      </a>
+                    )}
+                    {publishResult.blogId ? (
+                      <p className="text-slate-400 dark:text-slate-500">Blog ID: {publishResult.blogId}</p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="text-red-600 dark:text-red-400">❌ {publishResult.error}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Sağ panel — output */}
