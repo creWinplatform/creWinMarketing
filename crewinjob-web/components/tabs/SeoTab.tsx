@@ -49,6 +49,9 @@ export default function SeoTab() {
     success?: boolean; blogId?: number; title?: string;
     imageFileName?: string; localImageUrl?: string; syncNote?: string; error?: string;
   } | null>(null);
+  // OutputPanel'den gelen görsel (üretilince otomatik yakalanır)
+  const [blogImageData, setBlogImageData] = useState('');
+  const [blogImageMime, setBlogImageMime] = useState('image/png');
 
   const publishBlog = async () => {
     if (!output) return;
@@ -58,7 +61,11 @@ export default function SeoTab() {
       const res  = await fetch('/api/blog/publish', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ content: output }),
+        body:    JSON.stringify({
+          content:   output,
+          // OutputPanel'de üretilen görsel varsa gönder, yoksa sunucu otomatik üretir
+          ...(blogImageData ? { imageData: blogImageData, imageMime: blogImageMime } : {}),
+        }),
       });
       const data = await res.json() as typeof publishResult;
       setPublishResult(data);
@@ -95,6 +102,8 @@ export default function SeoTab() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setOutput(data.content);
+      // Yeni içerik üretilince önceki görsel + sonucu sıfırla
+      if (subTab === 'blog') { setBlogImageData(''); setBlogImageMime('image/png'); setPublishResult(null); }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Hata oluştu');
     } finally {
@@ -261,11 +270,19 @@ export default function SeoTab() {
             >
               {publishing
                 ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Yayınlanıyor...</>
-                : '🚀 Blogu Yayınla'}
+                : blogImageData
+                  ? '🚀 Görselli Yayınla'
+                  : '🚀 Blogu Yayınla (Görsel Otomatik)'}
             </button>
+            {/* Görsel durumu */}
+            {blogImageData && !publishing && (
+              <p className="text-[11px] text-green-600 dark:text-green-400 text-center flex items-center justify-center gap-1">
+                <span>✅</span> Görsel hazır — yayınlamada kullanılacak
+              </p>
+            )}
             {publishing && (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
-                Görsel üretiliyor, ImgBB&apos;ye yükleniyor ve blog API&apos;ye gönderiliyor...
+                {blogImageData ? 'Görsel kaydediliyor ve blog yayınlanıyor...' : 'Görsel üretiliyor ve blog yayınlanıyor...'}
               </p>
             )}
 
@@ -324,6 +341,7 @@ export default function SeoTab() {
           platform={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
           contentType={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
           autoSaveHistory={{ prompt: `SEO & Blog · ${subTab}`, language }}
+          onImageReady={subTab === 'blog' ? (data, mime) => { setBlogImageData(data); setBlogImageMime(mime); } : undefined}
         />
       </div>
     </div>

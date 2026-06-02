@@ -16,6 +16,8 @@ interface Props {
   contentType?: string;
   /** Dolu olduğunda içerik değişince otomatik İçerik Kütüphanesi'ne kaydeder */
   autoSaveHistory?: { prompt: string; language?: string };
+  /** Görsel üretilince çağrılır — üst bileşen görseli kullanabilir (ör. blog yayınlama) */
+  onImageReady?: (imageData: string, imageMime: string) => void;
 }
 
 const LOGO_KEY = 'crewinjob_brand_logo';
@@ -28,6 +30,7 @@ export default function OutputPanel({
   platform = 'instagram',
   contentType = 'ilan_ozeti',
   autoSaveHistory,
+  onImageReady,
 }: Props) {
   const [copied,       setCopied]       = useState(false);
   const [imgCopied,    setImgCopied]    = useState(false);
@@ -152,6 +155,8 @@ export default function OutputPanel({
       setImageMime('image/png');
       void attachImageToLatest(finalB64, 'image/png');
       logActivity('image_generated', `${platform} için görsel üretildi`, `${contentType} · PNG`);
+      // Üst bileşene bildir (ör. blog yayınlama butonu)
+      onImageReady?.(finalB64, 'image/png');
     } catch (e: unknown) {
       setImageError(e instanceof Error ? e.message : 'Görsel oluşturulamadı');
     } finally {
