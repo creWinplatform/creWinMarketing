@@ -87,6 +87,16 @@ export default function Home() {
           <ActivityLogPanel />
           <ThemeToggle />
           <ModelPicker />
+          <button
+            onClick={async () => {
+              await fetch('/api/auth/logout', { method: 'POST' });
+              window.location.href = '/login';
+            }}
+            className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-red-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
+            title="Çıkış Yap"
+          >
+            🚪 Çıkış
+          </button>
         </div>
       </header>
 
