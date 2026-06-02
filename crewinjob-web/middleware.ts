@@ -1,14 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getSessionFromRequest, COOKIE_NAME, SESSION_HOURS, createSessionToken } from '@/lib/auth';
+import { NextRequest, NextResponse }                              from 'next/server';
+import { getSessionFromRequest, createSessionToken, COOKIE_NAME, SESSION_HOURS } from '@/lib/auth';
 
-// Kimlik doğrulama gerektirmeyen yollar
-const PUBLIC_PATHS = [
-  '/login',
-  '/api/auth/login',
-  '/api/auth/logout',
-];
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/api/auth/logout'];
 
-// Statik varlıklar — kontrol etme
 function isStaticAsset(pathname: string): boolean {
   return (
     pathname.startsWith('/_next/') ||
@@ -19,31 +13,28 @@ function isStaticAsset(pathname: string): boolean {
   );
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Statik varlıklar ve public yollar → geç
   if (isStaticAsset(pathname)) return NextResponse.next();
   if (PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next();
   }
 
-  const username = getSessionFromRequest(req);
+  const username = await getSessionFromRequest(req);
 
   if (!username) {
-    // API isteği → 401
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Yetkisiz — lütfen giriş yapın' }, { status: 401 });
     }
-    // Sayfa isteği → login'e yönlendir
     const loginUrl = new URL('/login', req.url);
     loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Oturum geçerli — session yenile (sliding window)
+  // Oturum geçerli — sliding window yenile
   const res   = NextResponse.next();
-  const fresh = createSessionToken(username);
+  const fresh = await createSessionToken(username);
   res.cookies.set(COOKIE_NAME, fresh, {
     httpOnly: true,
     sameSite: 'strict',
@@ -55,13 +46,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Şunları atla:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
-  ],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };

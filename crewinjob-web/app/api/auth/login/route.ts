@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse }                          from 'next/server';
+import { NextRequest, NextResponse }                                             from 'next/server';
 import { validateCredentials, createSessionToken, COOKIE_NAME, SESSION_HOURS } from '@/lib/auth';
 
 export async function POST(req: NextRequest) {
@@ -9,12 +9,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (!validateCredentials(username, password)) {
-    // Brute-force'u yavaşlat
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 800)); // brute-force yavaşlatma
     return NextResponse.json({ error: 'Kullanıcı adı veya şifre hatalı' }, { status: 401 });
   }
 
-  const token = createSessionToken(username);
+  const token = await createSessionToken(username);
   const res   = NextResponse.json({ ok: true, username });
 
   res.cookies.set(COOKIE_NAME, token, {
