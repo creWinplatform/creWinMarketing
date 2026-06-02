@@ -1,9 +1,8 @@
 'use client';
 import { useState, FormEvent, Suspense } from 'react';
-import { useRouter, useSearchParams }    from 'next/navigation';
+import { useSearchParams }               from 'next/navigation';
 
 function LoginForm() {
-  const router       = useRouter();
   const searchParams = useSearchParams();
   const from         = searchParams.get('from') || '/';
 
@@ -32,8 +31,8 @@ function LoginForm() {
         setError(data.error || 'Giriş başarısız');
         return;
       }
-      router.push(from);
-      router.refresh();
+      // Tam sayfa yüklemesi — middleware cookie'yi kesin görür
+      window.location.href = from;
     } catch {
       setError('Sunucuya bağlanılamadı');
     } finally {
