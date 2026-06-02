@@ -46,7 +46,8 @@ export default function SeoTab() {
   const [error,         setError]         = useState('');
   const [publishing,    setPublishing]    = useState(false);
   const [publishResult, setPublishResult] = useState<{
-    success?: boolean; blogId?: number; title?: string; imageUrl?: string; error?: string;
+    success?: boolean; blogId?: number; title?: string;
+    imageFileName?: string; localImageUrl?: string; syncNote?: string; error?: string;
   } | null>(null);
 
   const publishBlog = async () => {
@@ -59,7 +60,7 @@ export default function SeoTab() {
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ content: output }),
       });
-      const data = await res.json() as { success?: boolean; blogId?: number; title?: string; imageUrl?: string; error?: string };
+      const data = await res.json() as typeof publishResult;
       setPublishResult(data);
     } catch (e: unknown) {
       setPublishResult({ error: e instanceof Error ? e.message : 'Bağlantı hatası' });
@@ -279,19 +280,24 @@ export default function SeoTab() {
                   <div className="flex flex-col gap-1.5">
                     <p className="font-semibold text-green-700 dark:text-green-300">✅ Blog yayınlandı!</p>
                     <p className="text-slate-600 dark:text-slate-300 line-clamp-2">📝 {publishResult.title}</p>
-                    {publishResult.imageUrl && (
+                    {publishResult.blogId ? (
+                      <p className="text-slate-400 dark:text-slate-500 text-[11px]">Blog ID: {publishResult.blogId}</p>
+                    ) : null}
+                    {publishResult.localImageUrl && (
                       <a
-                        href={publishResult.imageUrl}
+                        href={publishResult.localImageUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-ocean hover:underline truncate"
+                        className="text-ocean hover:underline text-[11px] truncate"
                       >
-                        🖼️ Görsel URL
+                        🖼️ {publishResult.imageFileName}
                       </a>
                     )}
-                    {publishResult.blogId ? (
-                      <p className="text-slate-400 dark:text-slate-500">Blog ID: {publishResult.blogId}</p>
-                    ) : null}
+                    {publishResult.syncNote && (
+                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-2 text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                        ℹ️ {publishResult.syncNote}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-red-600 dark:text-red-400">❌ {publishResult.error}</p>
