@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
+import { useLang } from '@/lib/lang';
 
 type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor';
 
@@ -23,14 +24,16 @@ const INTENT_TYPES = [
   { value: 'informational', label: '📚 Informational (How to, What is)' },
 ];
 
-const SUB_TABS: { id: SubTab; label: string; icon: string }[] = [
-  { id: 'blog',       label: 'Blog Makalesi',   icon: '📝' },
-  { id: 'seo',        label: 'İlan SEO',        icon: '🔍' },
-  { id: 'keyword',    label: 'Keyword Araştır', icon: '🎯' },
-  { id: 'competitor', label: 'Rakip Analizi',   icon: '⚔️' },
-];
-
 export default function SeoTab() {
+  const { lang } = useLang();
+
+  const SUB_TABS: { id: SubTab; label: string; icon: string }[] = [
+    { id: 'blog',       label: lang === 'tr' ? 'Blog Makalesi'   : 'Blog Article',        icon: '📝' },
+    { id: 'seo',        label: lang === 'tr' ? 'İlan SEO'        : 'Job SEO',             icon: '🔍' },
+    { id: 'keyword',    label: lang === 'tr' ? 'Keyword Araştır' : 'Keyword Research',    icon: '🎯' },
+    { id: 'competitor', label: lang === 'tr' ? 'Rakip Analizi'   : 'Competitor Analysis', icon: '⚔️' },
+  ];
+
   const [subTab,     setSubTab]     = useState<SubTab>('blog');
   const [blogTopic,  setBlogTopic]  = useState('');
   const [jobTitle,   setJobTitle]   = useState('Chief Officer');
@@ -112,13 +115,13 @@ export default function SeoTab() {
   };
 
   const buttonLabel = () => {
-    if (loading) return 'Üretiliyor...';
+    if (loading) return lang === 'tr' ? 'Üretiliyor...' : 'Generating...';
     const flag = language === 'tr' ? '🇹🇷' : '🇬🇧';
-    if (subTab === 'blog')        return `${flag} Makale Üret`;
-    if (subTab === 'seo')         return `${flag} SEO Meta Üret`;
-    if (subTab === 'keyword')     return `${flag} Keyword Listesi Üret`;
-    if (subTab === 'competitor')  return `${flag} Rakip Analizi Üret`;
-    return 'Üret';
+    if (subTab === 'blog')        return `${flag} ${lang === 'tr' ? 'Makale Üret'         : 'Generate Article'}`;
+    if (subTab === 'seo')         return `${flag} ${lang === 'tr' ? 'SEO Meta Üret'       : 'Generate SEO Meta'}`;
+    if (subTab === 'keyword')     return `${flag} ${lang === 'tr' ? 'Keyword Listesi Üret': 'Generate Keyword List'}`;
+    if (subTab === 'competitor')  return `${flag} ${lang === 'tr' ? 'Rakip Analizi Üret'  : 'Generate Competitor Analysis'}`;
+    return lang === 'tr' ? 'Üret' : 'Generate';
   };
 
   return (
@@ -127,10 +130,12 @@ export default function SeoTab() {
       <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1 flex items-center gap-2">
-            <span>🔎</span> SEO & İçerik Stratejisi
+            <span>🔎</span> {lang === 'tr' ? 'SEO & İçerik Stratejisi' : 'SEO & Content Strategy'}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
-            Blog, SEO meta, keyword araştırması ve rakip analizi.
+            {lang === 'tr'
+              ? 'Blog, SEO meta, keyword araştırması ve rakip analizi.'
+              : 'Blog, SEO meta, keyword research and competitor analysis.'}
           </p>
         </div>
 
@@ -155,27 +160,33 @@ export default function SeoTab() {
         {/* Blog form */}
         {subTab === 'blog' && (
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Blog Konusu</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {lang === 'tr' ? 'Blog Konusu' : 'Blog Topic'}
+            </label>
             <input
               type="text"
               value={blogTopic}
               onChange={e => setBlogTopic(e.target.value)}
-              placeholder="Örn: Seafarer CV Tips 2026 (boş = AI önerir)"
+              placeholder={lang === 'tr' ? 'Örn: Seafarer CV Tips 2026 (boş = AI önerir)' : 'e.g. Seafarer CV Tips 2026 (empty = AI suggests)'}
               className={selectClass}
             />
-            <p className="text-xs text-slate-500 dark:text-slate-400">Boş bırakırsanız en öncelikli konu otomatik seçilir.</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {lang === 'tr'
+                ? 'Boş bırakırsanız en öncelikli konu otomatik seçilir.'
+                : 'Leave empty to auto-select the highest priority topic.'}
+            </p>
           </div>
         )}
 
         {/* SEO Job form */}
         {subTab === 'seo' && (
           <>
-            <Field label="Pozisyon / Rütbe">
+            <Field label={lang === 'tr' ? 'Pozisyon / Rütbe' : 'Position / Rank'}>
               <select value={jobTitle} onChange={e => setJobTitle(e.target.value)} className={selectClass}>
                 {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
               </select>
             </Field>
-            <Field label="Gemi Tipi">
+            <Field label={lang === 'tr' ? 'Gemi Tipi' : 'Vessel Type'}>
               <select value={vesselType} onChange={e => setVesselType(e.target.value)} className={selectClass}>
                 {VESSEL_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
               </select>
@@ -186,7 +197,7 @@ export default function SeoTab() {
         {/* Keyword Research form */}
         {subTab === 'keyword' && (
           <>
-            <Field label="Tohum Keyword">
+            <Field label={lang === 'tr' ? 'Tohum Keyword' : 'Seed Keyword'}>
               <input
                 type="text"
                 value={seedKeyword}
@@ -195,7 +206,7 @@ export default function SeoTab() {
                 className={selectClass}
               />
               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                Bu keyword'den türetilen 30+ kelime + topic cluster + uzun kuyruk fırsatları üretilir.
+                Bu keyword&apos;den türetilen 30+ kelime + topic cluster + uzun kuyruk fırsatları üretilir.
               </p>
             </Field>
             <Field label="Search Intent">
@@ -223,7 +234,7 @@ export default function SeoTab() {
         )}
 
         {/* Dil */}
-        <Field label="İçerik Dili">
+        <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content Language'}>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -269,15 +280,15 @@ export default function SeoTab() {
               className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
             >
               {publishing
-                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Yayınlanıyor...</>
+                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}</>
                 : blogImageData
-                  ? '🚀 Görselli Yayınla'
-                  : '🚀 Blogu Yayınla (Görsel Otomatik)'}
+                  ? (lang === 'tr' ? '🚀 Görselli Yayınla' : '🚀 Publish with Image')
+                  : (lang === 'tr' ? '🚀 Blogu Yayınla (Görsel Otomatik)' : '🚀 Publish Blog (Auto Image)')}
             </button>
             {/* Görsel durumu */}
             {blogImageData && !publishing && (
               <p className="text-[11px] text-green-600 dark:text-green-400 text-center flex items-center justify-center gap-1">
-                <span>✅</span> Görsel hazır — yayınlamada kullanılacak
+                <span>✅</span> {lang === 'tr' ? 'Görsel hazır — yayınlamada kullanılacak' : 'Image ready — will be used in publish'}
               </p>
             )}
             {publishing && (
@@ -295,7 +306,9 @@ export default function SeoTab() {
               }`}>
                 {publishResult.success ? (
                   <div className="flex flex-col gap-1.5">
-                    <p className="font-semibold text-green-700 dark:text-green-300">✅ Blog yayınlandı!</p>
+                    <p className="font-semibold text-green-700 dark:text-green-300">
+                      ✅ {lang === 'tr' ? 'Blog yayınlandı!' : 'Blog published!'}
+                    </p>
                     <p className="text-slate-600 dark:text-slate-300 line-clamp-2">📝 {publishResult.title}</p>
                     {publishResult.blogId ? (
                       <p className="text-slate-400 dark:text-slate-500 text-[11px]">Blog ID: {publishResult.blogId}</p>
@@ -329,10 +342,10 @@ export default function SeoTab() {
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
           <span>📄</span>{' '}
-          {subTab === 'blog'       && 'Üretilen Blog Makalesi'}
-          {subTab === 'seo'        && 'Üretilen SEO Meta'}
-          {subTab === 'keyword'    && 'Keyword Araştırma Sonucu'}
-          {subTab === 'competitor' && 'Rakip Analizi Raporu'}
+          {subTab === 'blog'       && (lang === 'tr' ? 'Üretilen Blog Makalesi'    : 'Generated Blog Article')}
+          {subTab === 'seo'        && (lang === 'tr' ? 'Üretilen SEO Meta'         : 'Generated SEO Meta')}
+          {subTab === 'keyword'    && (lang === 'tr' ? 'Keyword Araştırma Sonucu'  : 'Keyword Research Result')}
+          {subTab === 'competitor' && (lang === 'tr' ? 'Rakip Analizi Raporu'      : 'Competitor Analysis Report')}
         </h3>
         <OutputPanel
           content={output}

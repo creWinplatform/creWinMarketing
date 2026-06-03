@@ -3,6 +3,7 @@ import { useState } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import { logActivity } from '@/lib/activity-log';
+import { useLang } from '@/lib/lang';
 import type { StatsResponse } from '@/lib/types';
 
 interface Props {
@@ -107,6 +108,7 @@ function exportCSV(output: string, kpis: { label: string; value: string }[]) {
 }
 
 export default function KpiTab({ stats }: Props) {
+  const { lang } = useLang();
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -124,21 +126,21 @@ export default function KpiTab({ stats }: Props) {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setOutput(data.content);
-      logActivity('kpi_generated', 'Haftalık KPI raporu üretildi', `${data.content.length} karakter`);
+      logActivity('kpi_generated', lang === 'tr' ? 'Haftalık KPI raporu üretildi' : 'Weekly KPI report generated', `${data.content.length} chars`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hata oluştu');
+      setError(e instanceof Error ? e.message : (lang === 'tr' ? 'Hata oluştu' : 'An error occurred'));
     } finally {
       setLoading(false);
     }
   };
 
   const kpis = stats ? [
-    { label: 'Toplam Seafarer',  value: stats.seafarers?.total?.toLocaleString('tr-TR') || '–',    icon: '👥', color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300' },
-    { label: 'Bu Hafta Yeni',    value: `+${stats.seafarers?.newThisWeek || 0}`,                    icon: '📈', color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 text-green-800 dark:text-green-300' },
-    { label: 'Aktif İlanlar',    value: stats.jobs?.active?.toString() || '–',                      icon: '📋', color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300' },
-    { label: 'Profil Tamamlama', value: `%${stats.seafarers?.profileCompletion || 0}`,              icon: '📊', color: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700 text-orange-800 dark:text-orange-300' },
-    { label: 'Yarım Profil',     value: stats.seafarers?.incompleteProfiles?.toLocaleString('tr-TR') || '–', icon: '⚠️', color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 text-red-800 dark:text-red-300' },
-    { label: 'Haftalık İlan',    value: `+${stats.jobs?.newThisWeek || 0}`,                         icon: '🆕', color: 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100' },
+    { label: lang === 'tr' ? 'Toplam Seafarer'  : 'Total Seafarers',       value: stats.seafarers?.total?.toLocaleString('tr-TR') || '–',    icon: '👥', color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300' },
+    { label: lang === 'tr' ? 'Bu Hafta Yeni'    : 'New This Week',         value: `+${stats.seafarers?.newThisWeek || 0}`,                    icon: '📈', color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 text-green-800 dark:text-green-300' },
+    { label: lang === 'tr' ? 'Aktif İlanlar'    : 'Active Jobs',           value: stats.jobs?.active?.toString() || '–',                      icon: '📋', color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300' },
+    { label: lang === 'tr' ? 'Profil Tamamlama' : 'Profile Completion',    value: `%${stats.seafarers?.profileCompletion || 0}`,              icon: '📊', color: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700 text-orange-800 dark:text-orange-300' },
+    { label: lang === 'tr' ? 'Yarım Profil'     : 'Incomplete Profiles',   value: stats.seafarers?.incompleteProfiles?.toLocaleString('tr-TR') || '–', icon: '⚠️', color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 text-red-800 dark:text-red-300' },
+    { label: lang === 'tr' ? 'Haftalık İlan'    : 'Weekly Jobs',           value: `+${stats.jobs?.newThisWeek || 0}`,                         icon: '🆕', color: 'bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-100' },
   ] : [];
 
   return (
@@ -146,22 +148,22 @@ export default function KpiTab({ stats }: Props) {
       <div className="lg:col-span-2 flex flex-col gap-5">
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
           <div>
-            <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">KPI & Haftalık Rapor</h2>
+            <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">{lang === 'tr' ? 'KPI & Haftalık Rapor' : 'KPI & Weekly Report'}</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm">
-              Mevcut platform verilerine göre AI destekli haftalık analiz üretin.
+              {lang === 'tr' ? 'Mevcut platform verilerine göre AI destekli haftalık analiz üretin.' : 'Generate AI-powered weekly analysis based on current platform data.'}
             </p>
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-700 rounded-lg p-3 text-xs text-slate-600 dark:text-slate-300 flex flex-col gap-1">
             <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-200">
-              <span>📋</span> Rapor kapsamı:
+              <span>📋</span> {lang === 'tr' ? 'Rapor kapsamı:' : 'Report scope:'}
             </div>
             <ul className="pl-4 flex flex-col gap-0.5 mt-1">
-              <li>• Seafarer büyüme analizi</li>
-              <li>• İlan performans özeti</li>
-              <li>• Retention risk değerlendirmesi</li>
-              <li>• Sosyal medya önerileri</li>
-              <li>• Bu haftanın öncelikleri</li>
+              <li>• {lang === 'tr' ? 'Seafarer büyüme analizi' : 'Seafarer growth analysis'}</li>
+              <li>• {lang === 'tr' ? 'İlan performans özeti' : 'Job performance summary'}</li>
+              <li>• {lang === 'tr' ? 'Retention risk değerlendirmesi' : 'Retention risk assessment'}</li>
+              <li>• {lang === 'tr' ? 'Sosyal medya önerileri' : 'Social media recommendations'}</li>
+              <li>• {lang === 'tr' ? 'Bu haftanın öncelikleri' : "This week's priorities"}</li>
             </ul>
           </div>
 
@@ -173,17 +175,17 @@ export default function KpiTab({ stats }: Props) {
             {loading ? (
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Rapor üretiliyor...
+                {lang === 'tr' ? 'Rapor üretiliyor...' : 'Generating report...'}
               </>
             ) : (
-              <>📊 Haftalık KPI Raporu Üret</>
+              <>📊 {lang === 'tr' ? 'Haftalık KPI Raporu Üret' : 'Generate Weekly KPI Report'}</>
             )}
           </button>
         </div>
 
         {kpis.length > 0 && (
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Anlık Metrikler</h3>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">{lang === 'tr' ? 'Anlık Metrikler' : 'Live Metrics'}</h3>
             <div className="grid grid-cols-2 gap-2">
               {kpis.map((kpi, i) => (
                 <div key={i} className={`rounded-lg border p-3 ${kpi.color}`}>

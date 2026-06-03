@@ -6,19 +6,21 @@ import {
   ACTIVITY_META,
   type ActivityEntry,
 } from '@/lib/activity-log';
+import { useLang } from '@/lib/lang';
 
-function timeAgo(ts: number): string {
+function timeAgo(ts: number, lang: 'tr' | 'en'): string {
   const diff = Date.now() - ts;
   const secs = Math.floor(diff / 1000);
-  if (secs < 60)  return `${secs}s önce`;
+  if (secs < 60)  return lang === 'tr' ? `${secs}s önce` : `${secs}s ago`;
   const mins = Math.floor(secs / 60);
-  if (mins < 60)  return `${mins}dk önce`;
+  if (mins < 60)  return lang === 'tr' ? `${mins}dk önce` : `${mins}min ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs  < 24)  return `${hrs}sa önce`;
-  return `${Math.floor(hrs / 24)}g önce`;
+  if (hrs  < 24)  return lang === 'tr' ? `${hrs}sa önce` : `${hrs}h ago`;
+  return lang === 'tr' ? `${Math.floor(hrs / 24)}g önce` : `${Math.floor(hrs / 24)}d ago`;
 }
 
 export default function ActivityLogPanel() {
+  const { lang } = useLang();
   const [open,    setOpen]    = useState(false);
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
 
@@ -51,10 +53,10 @@ export default function ActivityLogPanel() {
       <button
         onClick={() => { setOpen(v => !v); reload(); }}
         className="relative flex items-center gap-1.5 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors font-medium"
-        title="Aktivite Günlüğü"
+        title={lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity Log'}
       >
         <span>🕐</span>
-        <span className="hidden sm:inline">Aktivite</span>
+        <span className="hidden sm:inline">{lang === 'tr' ? 'Aktivite' : 'Activity'}</span>
         {unread > 0 && (
           <span className="absolute -top-1.5 -right-1.5 bg-ocean text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
             {unread > 9 ? '9+' : unread}
@@ -77,7 +79,9 @@ export default function ActivityLogPanel() {
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
               <div className="flex items-center gap-2">
                 <span className="text-base">🕐</span>
-                <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">Aktivite Günlüğü</h2>
+                <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
+                  {lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity Log'}
+                </h2>
                 {entries.length > 0 && (
                   <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">
                     {entries.length}
@@ -89,9 +93,9 @@ export default function ActivityLogPanel() {
                   <button
                     onClick={handleClear}
                     className="text-[11px] text-red-400 hover:text-red-600 transition-colors"
-                    title="Günlüğü temizle"
+                    title={lang === 'tr' ? 'Günlüğü temizle' : 'Clear log'}
                   >
-                    Temizle
+                    {lang === 'tr' ? 'Temizle' : 'Clear'}
                   </button>
                 )}
                 <button
@@ -108,7 +112,10 @@ export default function ActivityLogPanel() {
               {entries.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
                   <span className="text-4xl opacity-20">🕐</span>
-                  <p className="text-xs text-center">Henüz aktivite yok.<br />İçerik üret veya paylaş.</p>
+                  <p className="text-xs text-center">
+                    {lang === 'tr' ? 'Henüz aktivite yok.' : 'No activity yet.'}<br />
+                    {lang === 'tr' ? 'İçerik üret veya paylaş.' : 'Generate or share content.'}
+                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-700">
@@ -131,7 +138,7 @@ export default function ActivityLogPanel() {
                           )}
                         </div>
                         <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 mt-0.5">
-                          {timeAgo(entry.ts)}
+                          {timeAgo(entry.ts, lang)}
                         </span>
                       </div>
                     );
@@ -142,9 +149,11 @@ export default function ActivityLogPanel() {
 
             {/* footer */}
             <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
-              <span>Son {entries.length} / 50 kayıt</span>
+              <span>
+                {lang === 'tr' ? `Son ${entries.length} / 50 kayıt` : `Last ${entries.length} / 50 records`}
+              </span>
               <button onClick={reload} className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-                ↻ Yenile
+                ↻ {lang === 'tr' ? 'Yenile' : 'Refresh'}
               </button>
             </div>
           </div>

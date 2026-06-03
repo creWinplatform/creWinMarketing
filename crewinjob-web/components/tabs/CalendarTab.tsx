@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { getEvents, addEvent, removeEvent, togglePublished, CalendarEvent } from '@/lib/calendar-store';
 import { logActivity } from '@/lib/activity-log';
+import { useLang } from '@/lib/lang';
 
 const PLATFORM_ICONS: Record<string, string> = {
   instagram: '📸',
@@ -11,23 +12,25 @@ const PLATFORM_ICONS: Record<string, string> = {
   tiktok:    '🎵',
 };
 
-const DAYS_OF_WEEK = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+const DAYS_OF_WEEK_TR = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+const DAYS_OF_WEEK_EN = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function formatDateKey(year: number, month: number, day: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function timeAgo(ts: number): string {
+function timeAgo(ts: number, lang: 'tr' | 'en'): string {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'az önce';
-  if (mins < 60) return `${mins} dk önce`;
+  if (mins < 1) return lang === 'tr' ? 'az önce' : 'just now';
+  if (mins < 60) return lang === 'tr' ? `${mins} dk önce` : `${mins} min ago`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs} sa önce`;
-  return `${Math.floor(hrs / 24)} gün önce`;
+  if (hrs < 24) return lang === 'tr' ? `${hrs} sa önce` : `${hrs} h ago`;
+  return lang === 'tr' ? `${Math.floor(hrs / 24)} gün önce` : `${Math.floor(hrs / 24)} days ago`;
 }
 
 export default function CalendarTab() {
+  const { lang } = useLang();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [currentYear, setCurrentYear] = useState(0);
   const [currentMonth, setCurrentMonth] = useState(0);
@@ -118,7 +121,7 @@ export default function CalendarTab() {
         setEvents(updated);
       }
     } catch (e: unknown) {
-      setSchedResult({ published: 0, failed: 1, results: [], message: e instanceof Error ? e.message : 'Hata' });
+      setSchedResult({ published: 0, failed: 1, results: [], message: e instanceof Error ? e.message : 'Error' });
     } finally {
       setSchedLoading(false);
     }
@@ -135,16 +138,23 @@ export default function CalendarTab() {
     return formatDateKey(now.getFullYear(), now.getMonth(), now.getDate());
   })();
 
-  const MONTH_NAMES = [
+  const MONTH_NAMES_TR = [
     'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
     'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
   ];
+  const MONTH_NAMES_EN = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  const MONTH_NAMES = lang === 'tr' ? MONTH_NAMES_TR : MONTH_NAMES_EN;
+  const DAYS_OF_WEEK = lang === 'tr' ? DAYS_OF_WEEK_TR : DAYS_OF_WEEK_EN;
 
   if (currentYear === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
         <div className="w-6 h-6 border-2 border-slate-300 border-t-transparent rounded-full animate-spin mr-2" />
-        Takvim yükleniyor...
+        {lang === 'tr' ? 'Takvim yükleniyor...' : 'Loading calendar...'}
       </div>
     );
   }
@@ -232,14 +242,18 @@ export default function CalendarTab() {
               onClick={() => setShowAddForm(true)}
               className="w-full py-2 border-2 border-dashed border-ocean/30 hover:border-ocean/60 text-ocean text-sm font-medium rounded-xl transition-colors hover:bg-ocean/5"
             >
-              📌 Bugüne Ekle
+              📌 {lang === 'tr' ? 'Bugüne Ekle' : 'Add to Today'}
             </button>
           ) : (
             <div className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-700 rounded-xl p-4 border border-slate-200 dark:border-slate-600">
-              <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">📅 Takvime İçerik Ekle</h4>
+              <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                📅 {lang === 'tr' ? 'Takvime İçerik Ekle' : 'Add Content to Calendar'}
+              </h4>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">Tarih</label>
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                    {lang === 'tr' ? 'Tarih' : 'Date'}
+                  </label>
                   <input
                     type="date"
                     value={addDate}
@@ -248,7 +262,9 @@ export default function CalendarTab() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">Platform</label>
+                  <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                    {lang === 'tr' ? 'Platform' : 'Platform'}
+                  </label>
                   <select
                     value={addPlatform}
                     onChange={e => setAddPlatform(e.target.value)}
@@ -261,7 +277,9 @@ export default function CalendarTab() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">Dil</label>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                  {lang === 'tr' ? 'Dil' : 'Language'}
+                </label>
                 <div className="flex gap-2">
                   {(['tr', 'en'] as const).map(l => (
                     <button
@@ -277,11 +295,13 @@ export default function CalendarTab() {
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">İçerik</label>
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">
+                  {lang === 'tr' ? 'İçerik' : 'Content'}
+                </label>
                 <textarea
                   value={addContent}
                   onChange={e => setAddContent(e.target.value)}
-                  placeholder="İçeriği buraya yapıştır veya yaz..."
+                  placeholder={lang === 'tr' ? 'İçeriği buraya yapıştır veya yaz...' : 'Paste or type content here...'}
                   rows={3}
                   className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none bg-white dark:bg-slate-600 dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
@@ -291,14 +311,14 @@ export default function CalendarTab() {
                   onClick={() => setShowAddForm(false)}
                   className="flex-1 py-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
                 >
-                  İptal
+                  {lang === 'tr' ? 'İptal' : 'Cancel'}
                 </button>
                 <button
                   onClick={handleAddEvent}
                   disabled={!addContent.trim()}
                   className="flex-1 py-2 bg-ocean hover:bg-ocean-dark disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors"
                 >
-                  Ekle
+                  {lang === 'tr' ? 'Ekle' : 'Add'}
                 </button>
               </div>
             </div>
@@ -312,7 +332,7 @@ export default function CalendarTab() {
           <>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
-                📅 {new Date(selectedDay + 'T12:00:00').toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
+                📅 {new Date(selectedDay + 'T12:00:00').toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
               </h3>
               <button
                 onClick={() => setSelectedDay(null)}
@@ -323,7 +343,9 @@ export default function CalendarTab() {
             {selectedDayEvents.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-slate-400 gap-2">
                 <span className="text-3xl opacity-30">📭</span>
-                <p className="text-xs text-center">Bu gün için içerik yok</p>
+                <p className="text-xs text-center">
+                  {lang === 'tr' ? 'Bu gün için içerik yok' : 'No content for this day'}
+                </p>
                 <button
                   onClick={() => {
                     setAddDate(selectedDay);
@@ -331,7 +353,7 @@ export default function CalendarTab() {
                   }}
                   className="mt-1 text-xs text-ocean font-medium hover:underline"
                 >
-                  + Ekle
+                  + {lang === 'tr' ? 'Ekle' : 'Add'}
                 </button>
               </div>
             ) : (
@@ -346,14 +368,16 @@ export default function CalendarTab() {
                       <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize">{ev.platform}</span>
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">{ev.language === 'tr' ? '🇹🇷' : '🇬🇧'}</span>
                       {ev.published && (
-                        <span className="ml-auto text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full font-semibold">✓ Yayınlandı</span>
+                        <span className="ml-auto text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded-full font-semibold">
+                          ✓ {lang === 'tr' ? 'Yayınlandı' : 'Published'}
+                        </span>
                       )}
                     </div>
                     <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed line-clamp-3 mb-2">
                       {ev.content}
                     </p>
                     <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 mb-2">
-                      {timeAgo(ev.createdAt)}
+                      {timeAgo(ev.createdAt, lang)}
                     </div>
                     <div className="flex gap-1.5">
                       <button
@@ -364,7 +388,9 @@ export default function CalendarTab() {
                             : 'bg-green-600 text-white hover:bg-green-700'
                         }`}
                       >
-                        {ev.published ? '↩ Geri Al' : '✓ Yayınlandı İşaretle'}
+                        {ev.published
+                          ? (lang === 'tr' ? '↩ Geri Al' : '↩ Undo')
+                          : (lang === 'tr' ? '✓ Yayınlandı İşaretle' : '✓ Mark Published')}
                       </button>
                       <button
                         onClick={() => handleDelete(ev.id)}
@@ -383,35 +409,41 @@ export default function CalendarTab() {
             {/* Header */}
             <div className="flex flex-col items-center pt-4 text-slate-400 gap-1">
               <span className="text-4xl opacity-20">📅</span>
-              <p className="text-sm text-center text-slate-500 dark:text-slate-400 font-medium">İçerik Takvimi</p>
-              <p className="text-xs text-center text-slate-400 dark:text-slate-500">Bir güne tıkla ve o günün içeriklerini yönet</p>
+              <p className="text-sm text-center text-slate-500 dark:text-slate-400 font-medium">
+                {lang === 'tr' ? 'İçerik Takvimi' : 'Content Calendar'}
+              </p>
+              <p className="text-xs text-center text-slate-400 dark:text-slate-500">
+                {lang === 'tr' ? 'Bir güne tıkla ve o günün içeriklerini yönet' : 'Click a day to manage its content'}
+              </p>
             </div>
 
             {/* Stats */}
             <div className="w-full bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 flex flex-col gap-1.5">
               <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Toplam İçerik</span>
+                <span>{lang === 'tr' ? 'Toplam İçerik' : 'Total Content'}</span>
                 <span className="font-semibold text-slate-700 dark:text-slate-200">{events.length}</span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Yayınlanan</span>
+                <span>{lang === 'tr' ? 'Yayınlanan' : 'Published'}</span>
                 <span className="font-semibold text-green-600 dark:text-green-400">{events.filter(e => e.published).length}</span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>Bekleyen</span>
+                <span>{lang === 'tr' ? 'Bekleyen' : 'Pending'}</span>
                 <span className="font-semibold text-orange-500">{events.filter(e => !e.published).length}</span>
               </div>
               {(() => {
                 const todayPending = events.filter(e => e.date === todayKey && !e.published).length;
                 return todayPending > 0 ? (
                   <div className="flex items-center justify-between text-xs mt-0.5 pt-1.5 border-t border-slate-200 dark:border-slate-600">
-                    <span className="text-orange-500 font-medium">🕐 Bugün bekleyen</span>
+                    <span className="text-orange-500 font-medium">
+                      🕐 {lang === 'tr' ? 'Bugün bekleyen' : 'Pending today'}
+                    </span>
                     <span className="font-bold text-orange-500">{todayPending}</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 text-xs mt-0.5 pt-1.5 border-t border-slate-200 dark:border-slate-600 text-green-600 dark:text-green-400">
                     <span>✓</span>
-                    <span>Bugün için bekleyen yok</span>
+                    <span>{lang === 'tr' ? 'Bugün için bekleyen yok' : 'Nothing pending today'}</span>
                   </div>
                 );
               })()}
@@ -427,16 +459,18 @@ export default function CalendarTab() {
                 {schedLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Yayınlanıyor...
+                    {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}
                   </>
                 ) : (
                   <>
-                    🚀 Bugünü Otomatik Yayınla
+                    🚀 {lang === 'tr' ? 'Bugünü Otomatik Yayınla' : 'Auto-Publish Today'}
                   </>
                 )}
               </button>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                Bugünün bekleyen etkinlikleri sosyal medyaya gönderilir
+                {lang === 'tr'
+                  ? 'Bugünün bekleyen etkinlikleri sosyal medyaya gönderilir'
+                  : "Today's pending events will be sent to social media"}
               </p>
             </div>
 
@@ -454,9 +488,13 @@ export default function CalendarTab() {
                 ) : (
                   <>
                     <div className="flex items-center gap-3 mb-2 font-semibold">
-                      <span className="text-green-600 dark:text-green-400">✓ {schedResult.published} yayınlandı</span>
+                      <span className="text-green-600 dark:text-green-400">
+                        ✓ {schedResult.published} {lang === 'tr' ? 'yayınlandı' : 'published'}
+                      </span>
                       {schedResult.failed > 0 && (
-                        <span className="text-red-500">✗ {schedResult.failed} başarısız</span>
+                        <span className="text-red-500">
+                          ✗ {schedResult.failed} {lang === 'tr' ? 'başarısız' : 'failed'}
+                        </span>
                       )}
                     </div>
                     <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">

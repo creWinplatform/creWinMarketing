@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
+import { useLang } from '@/lib/lang';
 
 const TIKTOK_TYPES = [
   { value: 'problem_solution', label: '⚡ Problem → Çözüm (en etkili)' },
@@ -16,6 +17,7 @@ const PLATFORMS = ['instagram', 'facebook', 'twitter', 'linkedin'];
 type SubTab = 'registration' | 'tiktok';
 
 export default function GrowthTab() {
+  const { lang } = useLang();
   const [subTab,     setSubTab]     = useState<SubTab>('registration');
   const [platform,   setPlatform]   = useState('instagram');
   const [tiktokType, setTiktokType] = useState('problem_solution');
@@ -43,7 +45,7 @@ export default function GrowthTab() {
       if (data.error) throw new Error(data.error);
       setOutput(data.content);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hata oluştu');
+      setError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -53,13 +55,17 @@ export default function GrowthTab() {
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
         <div>
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">Seafarer Büyüme İçerikleri</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Kayıt odaklı içerik ve TikTok scriptleri üretin.</p>
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">
+            {lang === 'tr' ? 'Seafarer Büyüme İçerikleri' : 'Seafarer Growth Content'}
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            {lang === 'tr' ? 'Kayıt odaklı içerik ve TikTok scriptleri üretin.' : 'Generate registration-focused content and TikTok scripts.'}
+          </p>
         </div>
 
         <div className="flex gap-2">
           {([
-            { id: 'registration', label: '🎯 Kayıt İçerik' },
+            { id: 'registration', label: lang === 'tr' ? '🎯 Kayıt İçerik' : '🎯 Registration Content' },
             { id: 'tiktok', label: '🎵 TikTok Script' },
           ] as { id: SubTab; label: string }[]).map(t => (
             <button
@@ -78,7 +84,9 @@ export default function GrowthTab() {
 
         {subTab === 'registration' && (
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Platform</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {lang === 'tr' ? 'Platform' : 'Platform'}
+            </label>
             <select
               value={platform}
               onChange={e => setPlatform(e.target.value)}
@@ -89,14 +97,16 @@ export default function GrowthTab() {
               ))}
             </select>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              3 farklı ton: acı noktası, fayda, sosyal kanıt
+              {lang === 'tr' ? '3 farklı ton: acı noktası, fayda, sosyal kanıt' : '3 different tones: pain point, benefit, social proof'}
             </p>
           </div>
         )}
 
         {subTab === 'tiktok' && (
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Script Tipi</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {lang === 'tr' ? 'Script Tipi' : 'Script Type'}
+            </label>
             <select
               value={tiktokType}
               onChange={e => setTiktokType(e.target.value)}
@@ -107,14 +117,16 @@ export default function GrowthTab() {
               ))}
             </select>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              60 sn + 15 sn kısa versiyon + müzik önerisi
+              {lang === 'tr' ? '60 sn + 15 sn kısa versiyon + müzik önerisi' : '60 sec + 15 sec short version + music suggestion'}
             </p>
           </div>
         )}
 
-        {/* Dil seçimi */}
+        {/* Content language */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">İçerik Dili</label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            {lang === 'tr' ? 'İçerik Dili' : 'Content Language'}
+          </label>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -144,17 +156,17 @@ export default function GrowthTab() {
           {loading ? (
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Üretiliyor...
+              {lang === 'tr' ? 'Üretiliyor...' : 'Generating...'}
             </>
           ) : (
-            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} İçerik Üret</>
+            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} {lang === 'tr' ? 'İçerik Üret' : 'Generate Content'}</>
           )}
         </button>
       </div>
 
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
-          <span>📄</span> Üretilen İçerik
+          <span>📄</span> {lang === 'tr' ? 'Üretilen İçerik' : 'Generated Content'}
         </h3>
         <OutputPanel
           content={output}
@@ -162,7 +174,7 @@ export default function GrowthTab() {
           error={error}
           platform={subTab === 'tiktok' ? 'tiktok' : platform}
           contentType={subTab === 'tiktok' ? 'tiktok_cta' : 'registration'}
-          autoSaveHistory={{ prompt: `Seafarer Büyüme · ${subTab === 'tiktok' ? 'TikTok Script' : platform}`, language }}
+          autoSaveHistory={{ prompt: `Seafarer ${lang === 'tr' ? 'Büyüme' : 'Growth'} · ${subTab === 'tiktok' ? 'TikTok Script' : platform}`, language }}
         />
       </div>
     </div>

@@ -1,8 +1,10 @@
 'use client';
 import { useState, FormEvent, Suspense } from 'react';
 import { useSearchParams }               from 'next/navigation';
+import { useLang }                       from '@/lib/lang';
 
 function LoginForm() {
+  const { lang } = useLang();
   const searchParams = useSearchParams();
   const from         = searchParams.get('from') || '/';
 
@@ -15,7 +17,7 @@ function LoginForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) {
-      setError('Kullanıcı adı ve şifre gerekli');
+      setError(lang === 'tr' ? 'Kullanıcı adı ve şifre gerekli' : 'Username and password are required');
       return;
     }
     setLoading(true);
@@ -28,13 +30,12 @@ function LoginForm() {
       });
       const data = await res.json() as { ok?: boolean; error?: string };
       if (!res.ok || !data.ok) {
-        setError(data.error || 'Giriş başarısız');
+        setError(data.error || (lang === 'tr' ? 'Giriş başarısız' : 'Login failed'));
         return;
       }
-      // Tam sayfa yüklemesi — middleware cookie'yi kesin görür
       window.location.href = from;
     } catch {
-      setError('Sunucuya bağlanılamadı');
+      setError(lang === 'tr' ? 'Sunucuya bağlanılamadı' : 'Could not connect to server');
     } finally {
       setLoading(false);
     }
@@ -50,18 +51,18 @@ function LoginForm() {
             <span className="text-3xl">⚓</span>
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">CrewinJob</h1>
-          <p className="text-slate-400 text-sm mt-1">Marketing Agent — Yönetim Paneli</p>
+          <p className="text-slate-400 text-sm mt-1">{lang === 'tr' ? 'Marketing Agent — Yönetim Paneli' : 'Marketing Agent — Admin Panel'}</p>
         </div>
 
         {/* Kart */}
         <div className="bg-slate-800/80 backdrop-blur border border-slate-700 rounded-2xl shadow-2xl p-8">
-          <h2 className="text-lg font-semibold text-slate-100 mb-6 text-center">Giriş Yap</h2>
+          <h2 className="text-lg font-semibold text-slate-100 mb-6 text-center">{lang === 'tr' ? 'Giriş Yap' : 'Sign In'}</h2>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Kullanıcı adı */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
-                Kullanıcı Adı
+                {lang === 'tr' ? 'Kullanıcı Adı' : 'Username'}
               </label>
               <input
                 type="text"
@@ -69,7 +70,7 @@ function LoginForm() {
                 onChange={e => setUsername(e.target.value)}
                 autoComplete="username"
                 autoFocus
-                placeholder="kullanıcı adı"
+                placeholder={lang === 'tr' ? 'kullanıcı adı' : 'username'}
                 className="bg-slate-700/60 border border-slate-600 text-slate-100 placeholder:text-slate-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/60 focus:border-ocean/60 transition-colors"
               />
             </div>
@@ -77,7 +78,7 @@ function LoginForm() {
             {/* Şifre */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
-                Şifre
+                {lang === 'tr' ? 'Şifre' : 'Password'}
               </label>
               <div className="relative">
                 <input
@@ -116,10 +117,10 @@ function LoginForm() {
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Giriş yapılıyor...
+                  {lang === 'tr' ? 'Giriş yapılıyor...' : 'Signing in...'}
                 </>
               ) : (
-                '🔐 Giriş Yap'
+                `🔐 ${lang === 'tr' ? 'Giriş Yap' : 'Sign In'}`
               )}
             </button>
           </form>
@@ -127,7 +128,7 @@ function LoginForm() {
 
         {/* Alt bilgi */}
         <p className="text-center text-slate-600 text-xs mt-6">
-          crewinjob.com · Dahili Pazarlama Aracı
+          crewinjob.com · {lang === 'tr' ? 'Dahili Pazarlama Aracı' : 'Internal Marketing Tool'}
         </p>
       </div>
     </div>

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
+import { useLang } from '@/lib/lang';
 
 type SubTab = 'facebook' | 'google' | 'instagram' | 'linkedin';
 
@@ -94,6 +95,7 @@ const PLATFORM_TABS: { id: SubTab; label: string; color: string; bg: string }[] 
 ];
 
 export default function AdsTab() {
+  const { lang } = useLang();
   const [subTab,    setSubTab]    = useState<SubTab>('facebook');
   const [language,  setLanguage]  = useState<'tr' | 'en'>('en');
   const [output,    setOutput]    = useState('');
@@ -183,19 +185,19 @@ export default function AdsTab() {
       if (data.error) throw new Error(data.error);
       setOutput(data.content);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hata oluştu');
+      setError(e instanceof Error ? e.message : (lang === 'tr' ? 'Hata oluştu' : 'An error occurred'));
     } finally {
       setLoading(false);
     }
   };
 
   const generateLabel = () => {
-    if (loading) return 'Kampanya planı hazırlanıyor...';
+    if (loading) return lang === 'tr' ? 'Kampanya planı hazırlanıyor...' : 'Preparing campaign plan...';
     const labels: Record<SubTab, string> = {
-      facebook:  '📘 Facebook Kampanyası Üret',
-      google:    '🔍 Google Kampanyası Üret',
-      instagram: '📸 Instagram Kampanyası Üret',
-      linkedin:  '💼 LinkedIn Kampanyası Üret',
+      facebook:  `📘 ${lang === 'tr' ? 'Facebook Kampanyası Üret' : 'Generate Facebook Campaign'}`,
+      google:    `🔍 ${lang === 'tr' ? 'Google Kampanyası Üret'   : 'Generate Google Campaign'}`,
+      instagram: `📸 ${lang === 'tr' ? 'Instagram Kampanyası Üret': 'Generate Instagram Campaign'}`,
+      linkedin:  `💼 ${lang === 'tr' ? 'LinkedIn Kampanyası Üret' : 'Generate LinkedIn Campaign'}`,
     };
     return labels[subTab];
   };
@@ -207,10 +209,12 @@ export default function AdsTab() {
 
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1 flex items-center gap-2">
-            <span>📣</span> Reklam Kampanyası
+            <span>📣</span> {lang === 'tr' ? 'Reklam Kampanyası' : 'Ad Campaign'}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
-            Facebook, Google, Instagram & LinkedIn kampanya planı + reklam metinleri otomatik üretir.
+            {lang === 'tr'
+              ? 'Facebook, Google, Instagram & LinkedIn kampanya planı + reklam metinleri otomatik üretir.'
+              : 'Automatically generates Facebook, Google, Instagram & LinkedIn campaign plans + ad copy.'}
           </p>
         </div>
 

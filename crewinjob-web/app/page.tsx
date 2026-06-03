@@ -15,22 +15,28 @@ import ThemeToggle from '@/components/ThemeToggle';
 import ProfileFillRatePanel from '@/components/ProfileFillRatePanel';
 import BreakdownPanel from '@/components/BreakdownPanel';
 import ActivityLogPanel from '@/components/ActivityLogPanel';
+import { LangToggle, useLang } from '@/lib/lang';
 import type { StatsResponse } from '@/lib/types';
 
 type Tab = 'dashboard' | 'social' | 'library' | 'growth' | 'retention' | 'seo' | 'ads' | 'messaging' | 'kpi' | 'calendar';
 
-const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'dashboard', icon: '📈', label: 'Dashboard' },
-  { id: 'social',    icon: '📱', label: 'Sosyal Medya' },
-  { id: 'library',   icon: '🗂️', label: 'İçerik Kütüphanesi' },
-  { id: 'growth',    icon: '👥', label: 'Seafarer Büyüme' },
-  { id: 'retention', icon: '🔄', label: 'Retention' },
-  { id: 'seo',       icon: '🔍', label: 'SEO & Blog' },
-  { id: 'ads',       icon: '📣', label: 'Reklam' },
-  { id: 'messaging', icon: '💬', label: 'WA & Telegram' },
-  { id: 'kpi',       icon: '📊', label: 'KPI & Raporlar' },
-  { id: 'calendar',  icon: '📅', label: 'Takvim' },
-];
+const TAB_LABELS: Record<Tab, { tr: string; en: string }> = {
+  dashboard: { tr: 'Dashboard',           en: 'Dashboard' },
+  social:    { tr: 'Sosyal Medya',        en: 'Social Media' },
+  library:   { tr: 'İçerik Kütüphanesi', en: 'Content Library' },
+  growth:    { tr: 'Seafarer Büyüme',     en: 'Seafarer Growth' },
+  retention: { tr: 'Retention',           en: 'Retention' },
+  seo:       { tr: 'SEO & Blog',          en: 'SEO & Blog' },
+  ads:       { tr: 'Reklam',              en: 'Ads' },
+  messaging: { tr: 'WA & Telegram',       en: 'WA & Telegram' },
+  kpi:       { tr: 'KPI & Raporlar',      en: 'KPI & Reports' },
+  calendar:  { tr: 'Takvim',              en: 'Calendar' },
+};
+
+const TAB_ICONS: Record<Tab, string> = {
+  dashboard: '📈', social: '📱', library: '🗂️', growth: '👥',
+  retention: '🔄', seo: '🔍', ads: '📣', messaging: '💬', kpi: '📊', calendar: '📅',
+};
 
 function StatCard({ icon, value, label }: { icon: string; value: string; label: string }) {
   return (
@@ -46,6 +52,7 @@ function StatCard({ icon, value, label }: { icon: string; value: string; label: 
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const { lang } = useLang();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -85,6 +92,7 @@ export default function Home() {
             </span>
           )}
           <ActivityLogPanel />
+          <LangToggle />
           <ThemeToggle />
           <ModelPicker />
           <button
@@ -93,9 +101,9 @@ export default function Home() {
               window.location.href = '/login';
             }}
             className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-red-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-            title="Çıkış Yap"
+            title={lang === 'tr' ? 'Çıkış Yap' : 'Log Out'}
           >
-            🚪 Çıkış
+            🚪 {lang === 'tr' ? 'Çıkış' : 'Logout'}
           </button>
         </div>
       </header>
@@ -117,27 +125,27 @@ export default function Home() {
             <StatCard
               icon="🆕"
               value={`+${stats.seafarers?.newThisWeek?.toLocaleString('tr-TR') || 0}`}
-              label="Son 7 Gün Kayıt"
+              label={lang === 'tr' ? 'Son 7 Gün Kayıt' : 'Last 7 Days'}
             />
             <StatCard
               icon="📋"
               value={stats.jobs?.total?.toLocaleString('tr-TR') || '–'}
-              label="İlanlar"
+              label={lang === 'tr' ? 'İlanlar' : 'Jobs'}
             />
             <StatCard
               icon="🏢"
               value={stats.jobs?.companies?.toLocaleString('tr-TR') || '–'}
-              label={`Firmalar (+${stats.jobs?.newCompaniesThisWeek ?? 0} bu hafta)`}
+              label={lang === 'tr' ? `Firmalar (+${stats.jobs?.newCompaniesThisWeek ?? 0} bu hafta)` : `Companies (+${stats.jobs?.newCompaniesThisWeek ?? 0} this week)`}
             />
             <StatCard
               icon="📊"
               value={`%${stats.seafarers?.profileCompletion || 0}`}
-              label="Ort. Profil Doluluk"
+              label={lang === 'tr' ? 'Ort. Profil Doluluk' : 'Avg. Profile Completion'}
             />
             <StatCard
               icon="✅"
               value={stats.seafarers?.fillRateBuckets?.high?.toLocaleString('tr-TR') || '–'}
-              label="Profil %60+ (Tamamlanmış)"
+              label={lang === 'tr' ? 'Profil %60+ (Tamamlanmış)' : 'Profile 60%+ (Complete)'}
             />
           </div>
         ) : (
@@ -161,18 +169,18 @@ export default function Home() {
       {/* ── Tab Navigation ── */}
       <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
         <nav className="px-6 flex gap-0 overflow-x-auto">
-          {TABS.map(tab => (
+          {(Object.keys(TAB_LABELS) as Tab[]).map(id => (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              key={id}
+              onClick={() => setActiveTab(id)}
               className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-all ${
-                activeTab === tab.id
+                activeTab === id
                   ? 'border-ocean text-ocean'
                   : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
               }`}
             >
-              <span>{tab.icon}</span>
-              <span>{tab.label}</span>
+              <span>{TAB_ICONS[id]}</span>
+              <span>{TAB_LABELS[id][lang]}</span>
             </button>
           ))}
         </nav>

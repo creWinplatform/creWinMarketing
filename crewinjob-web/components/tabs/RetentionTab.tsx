@@ -3,16 +3,17 @@ import { useState } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import type { IncompleteSegment } from '@/lib/types';
+import { useLang } from '@/lib/lang';
 
-const FIELD_LABELS: Record<string, { label: string; urgency: string; why: string; color: string }> = {
-  seaService:     { label: '⚓ Deniz Hizmetleri', urgency: 'YÜKSEK', why: 'İşverenler en çok buna bakar', color: 'red' },
-  certificates:   { label: '📜 Sertifikalar',      urgency: 'YÜKSEK', why: 'Yasal zorunluluk + işe alım kriteri', color: 'red' },
-  photo:          { label: '🖼️ Profil Fotoğrafı',  urgency: 'ORTA',   why: 'Güven oranını artırır', color: 'yellow' },
-  documents:      { label: '📁 Belgeler',           urgency: 'ORTA',   why: 'Hızlı işe alım için şart', color: 'yellow' },
-  references:     { label: '🌟 Referanslar',        urgency: 'DÜŞÜK',  why: 'Rekabette öne geçirir', color: 'slate' },
-  profile_empty:  { label: '🚫 Boş Profil (%0)',    urgency: 'YÜKSEK', why: 'Hiç doldurmamış — en büyük kayıp segment', color: 'red' },
-  profile_low:    { label: '⚠️ Profil %0–30',       urgency: 'YÜKSEK', why: 'Çok eksik — iş bulması çok zor', color: 'red' },
-  profile_mid:    { label: '🔶 Profil %30–60',      urgency: 'ORTA',   why: 'Biraz daha doldurursa işe alınabilir', color: 'yellow' },
+const FIELD_LABELS: Record<string, { label: string; urgency_tr: string; urgency_en: string; why_tr: string; why_en: string; color: string }> = {
+  seaService:     { label: '⚓ Deniz Hizmetleri', urgency_tr: 'YÜKSEK', urgency_en: 'HIGH',   why_tr: 'İşverenler en çok buna bakar',              why_en: 'Employers look at this the most',           color: 'red' },
+  certificates:   { label: '📜 Sertifikalar',      urgency_tr: 'YÜKSEK', urgency_en: 'HIGH',   why_tr: 'Yasal zorunluluk + işe alım kriteri',       why_en: 'Legal requirement + hiring criterion',      color: 'red' },
+  photo:          { label: '🖼️ Profil Fotoğrafı',  urgency_tr: 'ORTA',   urgency_en: 'MEDIUM', why_tr: 'Güven oranını artırır',                     why_en: 'Increases trust rate',                      color: 'yellow' },
+  documents:      { label: '📁 Belgeler',           urgency_tr: 'ORTA',   urgency_en: 'MEDIUM', why_tr: 'Hızlı işe alım için şart',                  why_en: 'Required for fast hiring',                  color: 'yellow' },
+  references:     { label: '🌟 Referanslar',        urgency_tr: 'DÜŞÜK',  urgency_en: 'LOW',    why_tr: 'Rekabette öne geçirir',                     why_en: 'Gives competitive edge',                    color: 'slate' },
+  profile_empty:  { label: '🚫 Boş Profil (%0)',    urgency_tr: 'YÜKSEK', urgency_en: 'HIGH',   why_tr: 'Hiç doldurmamış — en büyük kayıp segment',  why_en: 'Never filled — biggest loss segment',       color: 'red' },
+  profile_low:    { label: '⚠️ Profil %0–30',       urgency_tr: 'YÜKSEK', urgency_en: 'HIGH',   why_tr: 'Çok eksik — iş bulması çok zor',            why_en: 'Very incomplete — very hard to find a job', color: 'red' },
+  profile_mid:    { label: '🔶 Profil %30–60',      urgency_tr: 'ORTA',   urgency_en: 'MEDIUM', why_tr: 'Biraz daha doldurursa işe alınabilir',      why_en: 'A bit more and can be hired',               color: 'yellow' },
 };
 
 interface Props {
@@ -20,6 +21,7 @@ interface Props {
 }
 
 export default function RetentionTab({ segments }: Props) {
+  const { lang } = useLang();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [language,      setLanguage]      = useState<'tr' | 'en'>('en');
   const [output,        setOutput]        = useState('');
@@ -42,7 +44,7 @@ export default function RetentionTab({ segments }: Props) {
       if (data.error) throw new Error(data.error);
       setOutput(data.content);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hata oluştu');
+      setError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -58,7 +60,7 @@ export default function RetentionTab({ segments }: Props) {
     };
     return (
       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[info.color] || colors.slate}`}>
-        {info.urgency}
+        {lang === 'tr' ? info.urgency_tr : info.urgency_en}
       </span>
     );
   };
@@ -67,17 +69,23 @@ export default function RetentionTab({ segments }: Props) {
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
       <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
         <div>
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">Retention İçerikleri</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Profili yarım bırakanlar için geri kazanma içerikleri.</p>
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">
+            {lang === 'tr' ? 'Retention İçerikleri' : 'Retention Content'}
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            {lang === 'tr' ? 'Profili yarım bırakanlar için geri kazanma içerikleri.' : 'Win-back content for users who left their profile incomplete.'}
+          </p>
         </div>
 
         {segs.length === 0 ? (
           <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 rounded-lg p-3">
-            Segment verileri yükleniyor...
+            {lang === 'tr' ? 'Segment verileri yükleniyor...' : 'Loading segment data...'}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Segment Seç</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              {lang === 'tr' ? 'Segment Seç' : 'Select Segment'}
+            </label>
             {segs.map((seg, i) => {
               const info = FIELD_LABELS[seg.missingField];
               return (
@@ -94,8 +102,10 @@ export default function RetentionTab({ segments }: Props) {
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
                       {info?.label || seg.missingField}
                     </span>
-                    {info?.why && (
-                      <span className="text-xs text-slate-500 dark:text-slate-400">{info.why}</span>
+                    {info && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        {lang === 'tr' ? info.why_tr : info.why_en}
+                      </span>
                     )}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0 ml-2">
@@ -108,9 +118,11 @@ export default function RetentionTab({ segments }: Props) {
           </div>
         )}
 
-        {/* Dil seçimi */}
+        {/* Content language */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">İçerik Dili</label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            {lang === 'tr' ? 'İçerik Dili' : 'Content Language'}
+          </label>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -140,17 +152,17 @@ export default function RetentionTab({ segments }: Props) {
           {loading ? (
             <>
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Üretiliyor...
+              {lang === 'tr' ? 'Üretiliyor...' : 'Generating...'}
             </>
           ) : (
-            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} Retention İçeriği Üret</>
+            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} {lang === 'tr' ? 'Retention İçeriği Üret' : 'Generate Retention Content'}</>
           )}
         </button>
       </div>
 
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
-          <span>📄</span> Üretilen İçerik
+          <span>📄</span> {lang === 'tr' ? 'Üretilen İçerik' : 'Generated Content'}
         </h3>
         <OutputPanel
           content={output}

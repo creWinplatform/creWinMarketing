@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import type { ScheduledPost } from '@/lib/scheduled-posts';
+import { useLang } from '@/lib/lang';
 
 const PLATFORM_ICONS: Record<string, string> = {
   twitter: '🐦', linkedin: '💼', facebook: '👥', instagram: '📸', tiktok: '🎵',
@@ -13,10 +14,6 @@ const STATUS_BADGE: Record<string, string> = {
   cancelled: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400',
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: '⏰ Bekliyor', published: '✅ Yayınlandı', failed: '❌ Başarısız', cancelled: '🚫 İptal',
-};
-
 interface Props {
   /** Hızlı planlama: dışarıdan içerik ve görsel geçilebilir */
   prefillContent?: string;
@@ -26,6 +23,15 @@ interface Props {
 }
 
 export default function SchedulePanel({ prefillContent, prefillImageData, prefillImageMime, onClose }: Props) {
+  const { lang } = useLang();
+
+  const STATUS_LABEL: Record<string, string> = {
+    pending:   lang === 'tr' ? '⏰ Bekliyor'    : '⏰ Pending',
+    published: lang === 'tr' ? '✅ Yayınlandı'  : '✅ Published',
+    failed:    lang === 'tr' ? '❌ Başarısız'   : '❌ Failed',
+    cancelled: lang === 'tr' ? '🚫 İptal'       : '🚫 Cancelled',
+  };
+
   const [posts,       setPosts]       = useState<ScheduledPost[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [publishing,  setPublishing]  = useState(false);
@@ -51,7 +57,9 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
   useEffect(() => { fetchPosts(); }, [fetchPosts]);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Bu zamanlanmış postu silmek istediğinizden emin misiniz?')) return;
+    if (!confirm(lang === 'tr'
+      ? 'Bu zamanlanmış postu silmek istediğinizden emin misiniz?'
+      : 'Are you sure you want to delete this scheduled post?')) return;
     await fetch(`/api/schedule/${id}`, { method: 'DELETE' });
     setPosts(prev => prev.filter(p => p.id !== id));
   };
@@ -78,9 +86,9 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
   };
 
   const handleSavePost = async () => {
-    if (!formContent.trim())    return alert('İçerik boş olamaz');
-    if (!formPlatforms.length)  return alert('En az bir platform seçin');
-    if (!formSchedule)          return alert('Zamanlama tarihi seçin');
+    if (!formContent.trim())    return alert(lang === 'tr' ? 'İçerik boş olamaz' : 'Content cannot be empty');
+    if (!formPlatforms.length)  return alert(lang === 'tr' ? 'En az bir platform seçin' : 'Select at least one platform');
+    if (!formSchedule)          return alert(lang === 'tr' ? 'Zamanlama tarihi seçin' : 'Select a schedule date');
 
     setSaving(true);
     try {
@@ -128,9 +136,11 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
           <div className="flex items-center gap-3">
             <span className="text-xl">📅</span>
             <div>
-              <h2 className="font-bold text-slate-800 dark:text-slate-100">İçerik Takvimi</h2>
+              <h2 className="font-bold text-slate-800 dark:text-slate-100">
+                {lang === 'tr' ? 'İçerik Takvimi' : 'Content Calendar'}
+              </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {pendingCount} bekliyor · {publishedCount} yayınlandı
+                {pendingCount} {lang === 'tr' ? 'bekliyor' : 'pending'} · {publishedCount} {lang === 'tr' ? 'yayınlandı' : 'published'}
               </p>
             </div>
           </div>
@@ -139,17 +149,19 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
               onClick={handlePublishNow}
               disabled={publishing || pendingCount === 0}
               className="text-xs bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg font-medium transition-colors flex items-center gap-1.5"
-              title="Zamanı gelmiş postları hemen yayınla"
+              title={lang === 'tr' ? 'Zamanı gelmiş postları hemen yayınla' : 'Publish due posts immediately'}
             >
               {publishing
-                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> Yayınlanıyor...</>
-                : <>▶ Şimdi Yayınla</>}
+                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}</>
+                : <>▶ {lang === 'tr' ? 'Şimdi Yayınla' : 'Publish Now'}</>}
             </button>
             <button
               onClick={() => setShowForm(v => !v)}
               className="text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
             >
-              {showForm ? '✕ İptal' : '+ Yeni Post'}
+              {showForm
+                ? `✕ ${lang === 'tr' ? 'İptal' : 'Cancel'}`
+                : `+ ${lang === 'tr' ? 'Yeni Post' : 'New Post'}`}
             </button>
             {onClose && (
               <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none ml-1">✕</button>
@@ -163,7 +175,12 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
             publishResult.published > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
           }`}>
             {publishResult.published > 0 ? '✅' : '⚠️'}
-            <span>{publishResult.published} post yayınlandı{publishResult.failed > 0 ? `, ${publishResult.failed} başarısız` : ''}</span>
+            <span>
+              {publishResult.published} {lang === 'tr' ? 'post yayınlandı' : 'post(s) published'}
+              {publishResult.failed > 0
+                ? `, ${publishResult.failed} ${lang === 'tr' ? 'başarısız' : 'failed'}`
+                : ''}
+            </span>
             <button onClick={() => setPublishResult(null)} className="ml-auto text-xs opacity-60 hover:opacity-100">✕</button>
           </div>
         )}
@@ -171,11 +188,15 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
         {/* Yeni post formu */}
         {showForm && (
           <div className="mx-6 mt-4 p-4 bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 flex flex-col gap-3">
-            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">📝 Yeni Zamanlanmış Post</p>
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              📝 {lang === 'tr' ? 'Yeni Zamanlanmış Post' : 'New Scheduled Post'}
+            </p>
 
             {/* Platform seçimi */}
             <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">Platform</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                {lang === 'tr' ? 'Platform' : 'Platform'}
+              </p>
               <div className="flex gap-2 flex-wrap">
                 {Object.entries(PLATFORM_ICONS).map(([p, icon]) => (
                   <button
@@ -195,21 +216,25 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
 
             {/* İçerik */}
             <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">İçerik</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                {lang === 'tr' ? 'İçerik' : 'Content'}
+              </p>
               <textarea
                 value={formContent}
                 onChange={e => setFormContent(e.target.value)}
                 rows={4}
-                placeholder="Paylaşılacak içeriği buraya yazın..."
+                placeholder={lang === 'tr' ? 'Paylaşılacak içeriği buraya yazın...' : 'Write the content to be shared here...'}
                 className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-ocean resize-none"
               />
-              <p className="text-[10px] text-slate-400 mt-0.5">{formContent.length} karakter</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">{formContent.length} {lang === 'tr' ? 'karakter' : 'characters'}</p>
             </div>
 
             {/* Tarih + Saat */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">Zamanlama (Tarih & Saat)</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                  {lang === 'tr' ? 'Zamanlama (Tarih & Saat)' : 'Publish Time (Date & Time)'}
+                </p>
                 <input
                   type="datetime-local"
                   min={minDateTime}
@@ -219,12 +244,14 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                 />
               </div>
               <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">Not (isteğe bağlı)</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                  {lang === 'tr' ? 'Not (isteğe bağlı)' : 'Note (optional)'}
+                </p>
                 <input
                   type="text"
                   value={formNote}
                   onChange={e => setFormNote(e.target.value)}
-                  placeholder="Kısa açıklama..."
+                  placeholder={lang === 'tr' ? 'Kısa açıklama...' : 'Short description...'}
                   className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-ocean"
                 />
               </div>
@@ -240,8 +267,8 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
               className="w-full text-sm bg-ocean hover:bg-ocean-dark disabled:opacity-60 text-white py-2.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
             >
               {saving
-                ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Kaydediliyor...</>
-                : '📅 Zamanlamayı Kaydet'}
+                ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Kaydediliyor...' : 'Saving...'}</>
+                : `📅 ${lang === 'tr' ? 'Zamanlamayı Kaydet' : 'Save Schedule'}`}
             </button>
           </div>
         )}
@@ -251,12 +278,16 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
           {loading ? (
             <div className="flex items-center justify-center py-12 text-slate-400 text-sm gap-2">
               <div className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
-              Yükleniyor...
+              {lang === 'tr' ? 'Yükleniyor...' : 'Loading...'}
             </div>
           ) : posts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
               <span className="text-4xl">📅</span>
-              <p className="text-sm text-center">Henüz zamanlanmış post yok.<br />Yukarıdaki <strong>+ Yeni Post</strong> butonunu kullanarak başlayın.</p>
+              <p className="text-sm text-center">
+                {lang === 'tr'
+                  ? <>Henüz zamanlanmış post yok.<br />Yukarıdaki <strong>+ Yeni Post</strong> butonunu kullanarak başlayın.</>
+                  : <>No scheduled posts yet.<br />Use the <strong>+ New Post</strong> button above to get started.</>}
+              </p>
             </div>
           ) : (
             posts.map(post => (
@@ -272,7 +303,9 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[post.status]}`}>
                       {STATUS_LABEL[post.status]}
                     </span>
-                    {post.imageData && <span className="text-[10px] text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">🖼️ Görsel</span>}
+                    {post.imageData && (
+                      <span className="text-[10px] text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">🖼️ Görsel</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -286,18 +319,18 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                         <button
                           onClick={() => handleCancel(post.id)}
                           className="text-[10px] text-amber-600 hover:text-amber-800 dark:hover:text-amber-400 font-medium px-1.5 py-0.5 rounded hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
-                        >İptal</button>
+                        >{lang === 'tr' ? 'İptal' : 'Cancel'}</button>
                         <button
                           onClick={() => handleDelete(post.id)}
                           className="text-[10px] text-red-500 hover:text-red-700 font-medium px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                        >Sil</button>
+                        >{lang === 'tr' ? 'Sil' : 'Delete'}</button>
                       </>
                     )}
                     {(post.status === 'cancelled' || post.status === 'failed') && (
                       <button
                         onClick={() => handleDelete(post.id)}
                         className="text-[10px] text-slate-400 hover:text-red-500 font-medium px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                      >Sil</button>
+                      >{lang === 'tr' ? 'Sil' : 'Delete'}</button>
                     )}
                   </div>
                 </div>
@@ -318,7 +351,7 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                     {post.results.map((r, i) => (
                       <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded ${r.success ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
                         {PLATFORM_ICONS[r.platform] || '📱'} {r.success ? '✅' : '❌'}
-                        {r.url && <> · <a href={r.url} target="_blank" rel="noopener noreferrer" className="underline">Görüntüle</a></>}
+                        {r.url && <> · <a href={r.url} target="_blank" rel="noopener noreferrer" className="underline">{lang === 'tr' ? 'Görüntüle' : 'View'}</a></>}
                       </span>
                     ))}
                   </div>
@@ -330,9 +363,11 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
 
         {/* Cron Setup Note */}
         <div className="mx-6 mb-6 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-700">
-          <p className="text-[10px] text-blue-700 dark:text-blue-300 font-semibold mb-1">⚙️ Otomatik Yayınlama (Cron)</p>
+          <p className="text-[10px] text-blue-700 dark:text-blue-300 font-semibold mb-1">⚙️ {lang === 'tr' ? 'Otomatik Yayınlama (Cron)' : 'Auto Publish (Cron)'}</p>
           <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-relaxed">
-            Zamanlanmış postları otomatik yayınlamak için VPS&apos;e cron job ekleyin:<br />
+            {lang === 'tr'
+              ? <>Zamanlanmış postları otomatik yayınlamak için VPS&apos;e cron job ekleyin:</>
+              : <>To auto-publish scheduled posts, add a cron job to your VPS:</>}<br />
             <code className="bg-blue-100 dark:bg-blue-800/40 px-1 rounded font-mono">
               0 * * * * curl -X POST {typeof window !== 'undefined' ? window.location.origin : 'https://marketing.crewin.org'}/api/schedule/publish
             </code>

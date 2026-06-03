@@ -7,6 +7,7 @@ import { saveToHistory, getHistory, deleteFromHistory, clearHistory, HistoryItem
 import { saveTemplate, getTemplates, deleteTemplate, PromptTemplate } from '@/lib/prompt-templates';
 import { addEvent } from '@/lib/calendar-store';
 import { logActivity } from '@/lib/activity-log';
+import { useLang } from '@/lib/lang';
 
 const PLATFORMS = [
   { value: 'instagram', label: '📸 Instagram' },
@@ -136,6 +137,7 @@ export default function SocialTab() {
   const [error,        setError]        = useState('');
   const [spinning,     setSpinning]     = useState(false);
   const [visibleSuggestions, setVisible] = useState<Suggestion[]>([]);
+  const { lang } = useLang();
 
   // Feature A: Content History
   const [history,       setHistory]      = useState<HistoryItem[]>([]);
@@ -203,7 +205,7 @@ export default function SocialTab() {
       saveToHistory({ platform, language, content: data.content, prompt: customPrompt })
         .then(setHistory).catch(() => {});
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hata oluştu');
+      setError(e instanceof Error ? e.message : (lang === 'tr' ? 'Hata oluştu' : 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -250,8 +252,8 @@ export default function SocialTab() {
       setVariants(results);
       logActivity('content_generated', `A/B test üretildi (${platform})`, `3 varyant · ${language.toUpperCase()}`);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Hata oluştu';
-      setVariants(TONE_META.map(t => ({ ...t, content: `Hata: ${msg}`, loading: false })));
+      const msg = e instanceof Error ? e.message : (lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
+      setVariants(TONE_META.map(t => ({ ...t, content: `${lang === 'tr' ? 'Hata' : 'Error'}: ${msg}`, loading: false })));
     }
   };
 
@@ -299,7 +301,7 @@ export default function SocialTab() {
           editValue: data.error ? '' : data.content,
         };
       } catch {
-        return { platform: p.value, content: '', loading: false, error: 'Hata oluştu', expanded: true, editing: false, editValue: '' };
+        return { platform: p.value, content: '', loading: false, error: lang === 'tr' ? 'Hata oluştu' : 'An error occurred', expanded: true, editing: false, editValue: '' };
       }
     });
 
@@ -383,13 +385,19 @@ export default function SocialTab() {
       {/* ── Sol panel ── */}
       <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
         <div>
-          <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">Sosyal Medya İçerik Üretici</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm">Platform seç, strateji belirle, AI ile üret.</p>
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">
+            {lang === 'tr' ? 'Sosyal Medya İçerik Üretici' : 'Social Media Content Generator'}
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm">
+            {lang === 'tr' ? 'Platform seç, strateji belirle, AI ile üret.' : 'Select platform, define strategy, generate with AI.'}
+          </p>
         </div>
 
         {/* Platform seçimi */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Platform</label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            {lang === 'tr' ? 'Platform' : 'Platform'}
+          </label>
           <div className="grid grid-cols-5 gap-1">
             {PLATFORMS.map(p => (
               <button
@@ -412,7 +420,9 @@ export default function SocialTab() {
 
         {/* Dil seçimi */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">İçerik Dili</label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            {lang === 'tr' ? 'İçerik Dili' : 'Content Language'}
+          </label>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -436,7 +446,9 @@ export default function SocialTab() {
 
         {/* Serbest prompt alanı */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Ne üretmek istiyorsun?</label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            {lang === 'tr' ? 'Ne üretmek istiyorsun?' : 'What do you want to generate?'}
+          </label>
           <textarea
             value={customPrompt}
             onChange={e => setCustomPrompt(e.target.value)}
@@ -444,7 +456,9 @@ export default function SocialTab() {
             rows={4}
             className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500 leading-relaxed"
           />
-          <p className="text-xs text-slate-400 dark:text-slate-500">Ne kadar detaylı yazarsan o kadar iyi sonuç alırsın.</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            {lang === 'tr' ? 'Ne kadar detaylı yazarsan o kadar iyi sonuç alırsın.' : 'The more detail you provide, the better results you get.'}
+          </p>
           {/* Feature F: Save template button */}
           {customPrompt.trim() && (
             <div>
@@ -462,7 +476,7 @@ export default function SocialTab() {
                     disabled={!tplName.trim()}
                     className="text-xs bg-ocean disabled:opacity-40 text-white px-2 py-1.5 rounded-lg font-medium hover:bg-ocean-dark transition-colors"
                   >
-                    Kaydet
+                    {lang === 'tr' ? 'Kaydet' : 'Save'}
                   </button>
                   <button
                     onClick={() => setShowSaveTpl(false)}
@@ -476,7 +490,7 @@ export default function SocialTab() {
                   onClick={() => setShowSaveTpl(true)}
                   className="text-xs text-slate-500 dark:text-slate-400 hover:text-ocean dark:hover:text-ocean border border-dashed border-slate-300 dark:border-slate-600 hover:border-ocean/50 px-3 py-1.5 rounded-lg transition-colors w-full"
                 >
-                  💾 Şablon Kaydet
+                  💾 {lang === 'tr' ? 'Şablon Kaydet' : 'Save Template'}
                 </button>
               )}
             </div>
@@ -490,9 +504,9 @@ export default function SocialTab() {
           className="w-full bg-ocean hover:bg-ocean-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
           {loading ? (
-            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Üretiliyor...</>
+            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Üretiliyor...' : 'Generating...'}</>
           ) : (
-            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} İçerik Üret</>
+            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} {lang === 'tr' ? 'İçerik Üret' : 'Generate Content'}</>
           )}
         </button>
 
@@ -503,7 +517,7 @@ export default function SocialTab() {
           title="3 farklı ton (Profesyonel / Duygusal / Samimi) paralelde üretilir, en iyi varyantı seç"
           className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
-          🧪 A/B Test (3 Ton)
+          🧪 {lang === 'tr' ? 'A/B Test (3 Ton)' : 'A/B Test (3 Tones)'}
         </button>
 
         {/* Feature C: All platforms button */}
@@ -512,7 +526,7 @@ export default function SocialTab() {
           disabled={loading || !customPrompt.trim()}
           className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
-          🌐 Tüm Platformlara
+          🌐 {lang === 'tr' ? 'Tüm Platformlara' : 'All Platforms'}
         </button>
       </div>
 
@@ -527,7 +541,7 @@ export default function SocialTab() {
                 stratPanel === 'strategy' ? 'bg-white dark:bg-slate-600 shadow-sm text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
-              🎯 Strateji
+              🎯 {lang === 'tr' ? 'Strateji' : 'Strategy'}
             </button>
             <button
               onClick={() => setStratPanel('templates')}
@@ -535,7 +549,7 @@ export default function SocialTab() {
                 stratPanel === 'templates' ? 'bg-white dark:bg-slate-600 shadow-sm text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
-              📁 Şablonlar
+              📁 {lang === 'tr' ? 'Şablonlar' : 'Templates'}
               {templates.length > 0 && (
                 <span className="bg-ocean text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
                   {templates.length}
@@ -551,7 +565,7 @@ export default function SocialTab() {
             >
               <span className={`inline-block transition-transform duration-500 ${spinning ? 'rotate-[360deg]' : ''}`}
                     style={{ transitionTimingFunction: 'ease-in-out' }}>🔄</span>
-              Yenile
+              {lang === 'tr' ? 'Yenile' : 'Refresh'}
             </button>
           )}
         </div>
@@ -641,7 +655,7 @@ export default function SocialTab() {
                       onClick={() => useTemplate(tpl)}
                       className="flex-1 text-xs bg-ocean text-white py-1.5 rounded-lg font-medium hover:bg-ocean-dark transition-colors"
                     >
-                      Kullan
+                      {lang === 'tr' ? 'Kullan' : 'Use'}
                     </button>
                     <button
                       onClick={() => handleDeleteTemplate(tpl.id)}
@@ -663,7 +677,7 @@ export default function SocialTab() {
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2 flex-1">
             <span>📄</span>
-            {variantMode ? 'A/B Varyantlar' : allPlatMode ? 'Tüm Platformlar' : 'Üretilen İçerik'}
+            {variantMode ? 'A/B Varyantlar' : allPlatMode ? (lang === 'tr' ? 'Tüm Platformlar' : 'All Platforms') : (lang === 'tr' ? 'Üretilen İçerik' : 'Generated Content')}
           </h3>
           <div className="flex gap-2">
             {/* Feature A: History toggle */}
@@ -677,7 +691,7 @@ export default function SocialTab() {
                   : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
-              📚 Geçmiş {history.length > 0 && <span className="bg-amber-600 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">{history.length}</span>}
+              📚 {lang === 'tr' ? 'Geçmiş' : 'History'} {history.length > 0 && <span className="bg-amber-600 text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center">{history.length}</span>}
             </button>
             {/* Feature D: Calendar add button */}
             {output && !variantMode && !allPlatMode && (
@@ -691,7 +705,9 @@ export default function SocialTab() {
                     : 'bg-slate-100 dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
                 }`}
               >
-                {calSaved ? '✅ Takvime Eklendi' : '📅 Takvime Ekle'}
+                {calSaved
+                  ? `✅ ${lang === 'tr' ? 'Takvime Eklendi!' : 'Added to Calendar!'}`
+                  : `📅 ${lang === 'tr' ? 'Takvime Ekle' : 'Add to Calendar'}`}
               </button>
             )}
           </div>
@@ -701,16 +717,20 @@ export default function SocialTab() {
         {showHistory && (
           <div className="mb-4 border border-amber-200 dark:border-amber-700 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700">
-              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">📚 İçerik Geçmişi</span>
+              <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
+                📚 {lang === 'tr' ? 'İçerik Geçmişi' : 'Content History'}
+              </span>
               <button
                 onClick={handleClearHistory}
                 className="text-[11px] text-red-500 hover:text-red-700 font-medium"
               >
-                🗑️ Tümünü Temizle
+                🗑️ {lang === 'tr' ? 'Geçmişi Temizle' : 'Clear History'}
               </button>
             </div>
             {history.length === 0 ? (
-              <div className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">Henüz geçmiş yok</div>
+              <div className="p-4 text-center text-xs text-slate-400 dark:text-slate-500">
+                {lang === 'tr' ? 'Şimdiye kadar içerik üretilmedi' : 'No content generated yet'}
+              </div>
             ) : (
               <div className="divide-y divide-amber-100 dark:divide-amber-900/30 max-h-52 overflow-y-auto">
                 {history.map(item => (
@@ -745,10 +765,14 @@ export default function SocialTab() {
         {/* Feature D: Calendar form */}
         {showCalForm && output && (
           <div className="mb-4 border border-ocean/30 rounded-xl p-3 bg-ocean/5 dark:bg-ocean/10">
-            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">📅 Takvime Ekle</p>
+            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">
+              📅 {lang === 'tr' ? 'Takvime Ekle Formu' : 'Add to Calendar Form'}
+            </p>
             <div className="flex gap-2 items-end">
               <div className="flex-1">
-                <label className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">Tarih</label>
+                <label className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">
+                  {lang === 'tr' ? 'Tarih' : 'Date'}
+                </label>
                 <input
                   type="date"
                   value={calDate}
@@ -760,13 +784,13 @@ export default function SocialTab() {
                 onClick={saveToCalendar}
                 className="bg-ocean hover:bg-ocean-dark text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
               >
-                Ekle
+                {lang === 'tr' ? 'Takvime Ekle' : 'Add to Calendar'}
               </button>
               <button
                 onClick={() => setShowCalForm(false)}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xs px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
-                ✕
+                {lang === 'tr' ? 'İptal' : 'Cancel'}
               </button>
             </div>
           </div>
@@ -782,15 +806,15 @@ export default function SocialTab() {
                   onClick={() => setVariantMode(false)}
                   className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1"
                 >
-                  ← Geri
+                  ← {lang === 'tr' ? 'Geri' : 'Back'}
                 </button>
                 <span className="text-xs text-slate-400 dark:text-slate-500">
-                  🧪 A/B Test — 3 farklı ton karşılaştırması
+                  🧪 {lang === 'tr' ? 'A/B Test — 3 farklı ton karşılaştırması' : 'A/B Test — 3 tone comparison'}
                 </span>
               </div>
               {variants.every(v => !v.loading) && (
                 <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
-                  ✓ Hazır
+                  ✓ {lang === 'tr' ? 'Hazır' : 'Ready'}
                 </span>
               )}
             </div>
@@ -809,25 +833,25 @@ export default function SocialTab() {
                   <div className="flex items-center gap-2">
                     <span className="text-base">{v.emoji}</span>
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{v.label}</span>
-                    {!v.loading && v.content && !v.content.startsWith('Hata') && (
+                    {!v.loading && v.content && !v.content.startsWith('Hata') && !v.content.startsWith('Error') && (
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                        {v.content.length} kar.
+                        {v.content.length} {lang === 'tr' ? 'kar.' : 'chars.'}
                       </span>
                     )}
                   </div>
-                  {!v.loading && v.content && !v.content.startsWith('Hata') && (
+                  {!v.loading && v.content && !v.content.startsWith('Hata') && !v.content.startsWith('Error') && (
                     <div className="flex gap-1.5">
                       <button
                         onClick={() => { navigator.clipboard.writeText(v.content); }}
                         className="text-[11px] bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-medium hover:border-ocean hover:text-ocean transition-colors"
                       >
-                        📋 Kopyala
+                        📋 {lang === 'tr' ? 'Kopyala' : 'Copy'}
                       </button>
                       <button
                         onClick={() => useVariant(v.content)}
                         className="text-[11px] bg-ocean text-white px-2.5 py-1 rounded-lg font-medium hover:bg-ocean-dark transition-colors"
                       >
-                        Bunu Kullan →
+                        {lang === 'tr' ? 'Bunu Kullan →' : 'Use This →'}
                       </button>
                     </div>
                   )}
@@ -838,9 +862,9 @@ export default function SocialTab() {
                   {v.loading ? (
                     <div className="flex items-center gap-2 py-5 justify-center text-slate-400">
                       <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-xs">Üretiliyor...</span>
+                      <span className="text-xs">{lang === 'tr' ? 'Üretiliyor...' : 'Generating...'}</span>
                     </div>
-                  ) : v.content.startsWith('Hata') ? (
+                  ) : v.content.startsWith('Hata') || v.content.startsWith('Error') ? (
                     <p className="text-xs text-red-500 py-2">{v.content}</p>
                   ) : (
                     <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap line-clamp-6">
@@ -854,7 +878,9 @@ export default function SocialTab() {
             {/* Bottom hint */}
             {variants.every(v => !v.loading) && (
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                💡 "Bunu Kullan" ile seçtiğin varyantı OutputPanel'e al, görsel üret ve paylaş.
+                💡 {lang === 'tr'
+                  ? '"Bunu Kullan" ile seçtiğin varyantı OutputPanel\'e al, görsel üret ve paylaş.'
+                  : 'Use "Use This" to send the selected variant to the OutputPanel, generate visuals and share.'}
               </p>
             )}
           </div>
@@ -868,9 +894,11 @@ export default function SocialTab() {
                 onClick={() => setAllPlatMode(false)}
                 className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1"
               >
-                ← Geri
+                ← {lang === 'tr' ? 'Geri' : 'Back'}
               </button>
-              <span className="text-xs text-slate-400 dark:text-slate-500">5 platform için içerik</span>
+              <span className="text-xs text-slate-400 dark:text-slate-500">
+                {lang === 'tr' ? 'Tüm platformlar için içerik üretiliyor...' : 'Generating content for all platforms...'}
+              </span>
             </div>
             {allPlatData.map((p, i) => (
               <div key={p.platform} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
@@ -882,8 +910,8 @@ export default function SocialTab() {
                     <span className="text-sm">{PLATFORM_ICONS[p.platform]}</span>
                     <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 capitalize">{p.platform}</span>
                     {p.loading && <div className="w-3 h-3 border-2 border-ocean border-t-transparent rounded-full animate-spin" />}
-                    {!p.loading && p.content && <span className="text-[10px] text-green-600 dark:text-green-400">✓ Hazır</span>}
-                    {!p.loading && p.error && <span className="text-[10px] text-red-500">✕ Hata</span>}
+                    {!p.loading && p.content && <span className="text-[10px] text-green-600 dark:text-green-400">✓ {lang === 'tr' ? 'Hazır' : 'Ready'}</span>}
+                    {!p.loading && p.error && <span className="text-[10px] text-red-500">✕ {lang === 'tr' ? 'Hata' : 'Error'}</span>}
                   </div>
                   <div className="flex items-center gap-2">
                     {!p.loading && p.content && (
@@ -892,19 +920,19 @@ export default function SocialTab() {
                           onClick={e => { e.stopPropagation(); copyAllPlat(p.editing ? p.editValue : p.content); }}
                           className="text-[10px] bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-medium hover:border-ocean hover:text-ocean transition-colors"
                         >
-                          📋 Kopyala
+                          📋 {lang === 'tr' ? 'Kopyala' : 'Copy'}
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); startEditAllPlat(i); }}
                           className="text-[10px] bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-medium hover:border-ocean hover:text-ocean transition-colors"
                         >
-                          ✏️ Düzenle
+                          ✏️ {lang === 'tr' ? 'Düzenle' : 'Edit'}
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); setSharePlatItem({ content: p.editing ? p.editValue : p.content, platform: p.platform }); }}
                           className="text-[10px] bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded font-medium transition-colors"
                         >
-                          📤 Paylaş
+                          📤 {lang === 'tr' ? 'Paylaş' : 'Share'}
                         </button>
                       </>
                     )}
@@ -916,7 +944,7 @@ export default function SocialTab() {
                     {p.loading ? (
                       <div className="flex items-center gap-2 py-4 justify-center text-slate-400">
                         <div className="w-4 h-4 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-                        <span className="text-xs">Üretiliyor...</span>
+                        <span className="text-xs">{lang === 'tr' ? 'İçerik Üretiliyor' : 'Generating Content'}</span>
                       </div>
                     ) : p.error ? (
                       <p className="text-xs text-red-500">{p.error}</p>
@@ -933,13 +961,13 @@ export default function SocialTab() {
                             onClick={() => saveEditAllPlat(i)}
                             className="flex-1 text-xs bg-ocean text-white py-1.5 rounded-lg font-medium hover:bg-ocean-dark transition-colors"
                           >
-                            Kaydet
+                            {lang === 'tr' ? 'Kaydet' : 'Save'}
                           </button>
                           <button
                             onClick={() => setAllPlatData(prev => prev.map((pp, ii) => ii === i ? { ...pp, editing: false } : pp))}
                             className="text-xs border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                           >
-                            İptal
+                            {lang === 'tr' ? 'İptal' : 'Cancel'}
                           </button>
                         </div>
                       </div>

@@ -7,6 +7,7 @@ import SchedulePanel from './SchedulePanel';
 import { attachImageToLatest, saveToHistory } from '@/lib/content-history';
 import { compositePostImage } from '@/lib/image-composite';
 import { logActivity } from '@/lib/activity-log';
+import { useLang } from '@/lib/lang';
 
 interface Props {
   content: string;
@@ -55,6 +56,8 @@ export default function OutputPanel({
   const logoInputRef    = useRef<HTMLInputElement>(null);
   const refInputRef     = useRef<HTMLInputElement>(null);
   const lastSavedRef    = useRef<string>('');   // autoSaveHistory: son kaydedilen içeriği takip et
+
+  const { lang } = useLang();
 
   // autoSaveHistory: content değişince İçerik Kütüphanesi'ne otomatik kaydet
   useEffect(() => {
@@ -194,7 +197,7 @@ export default function OutputPanel({
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
       <div className="w-10 h-10 border-4 border-ocean border-t-transparent rounded-full animate-spin" />
-      <p className="text-slate-500 text-sm animate-pulse">Gemini AI içerik üretiyor...</p>
+      <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Gemini AI içerik üretiyor...' : 'Gemini AI generating content...'}</p>
     </div>
   );
 
@@ -210,7 +213,11 @@ export default function OutputPanel({
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
           d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
-      <p className="text-sm text-center">Formu doldurun ve<br /><strong className="text-slate-500 dark:text-slate-400">İçerik Üret</strong> butonuna tıklayın.</p>
+      <p className="text-sm text-center">
+        {lang === 'tr'
+          ? <>{`Formu doldurun ve`}<br /><strong className="text-slate-500 dark:text-slate-400">İçerik Üret</strong>{` butonuna tıklayın.`}</>
+          : <>{`Fill in the form and click the`}<br /><strong className="text-slate-500 dark:text-slate-400">Generate Content</strong>{` button.`}</>}
+      </p>
     </div>
   );
 
@@ -240,7 +247,7 @@ export default function OutputPanel({
           <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{content.length.toLocaleString('tr-TR')} karakter</span>
           <div className="flex gap-2 flex-wrap">
             <button onClick={copy} className="flex items-center gap-1.5 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors font-medium">
-              {copied ? '✅ Kopyalandı!' : '📋 Kopyala'}
+              {copied ? (lang === 'tr' ? '✅ Kopyalandı!' : '✅ Copied!') : (lang === 'tr' ? '📋 Kopyala' : '📋 Copy')}
             </button>
             <button
               onClick={reviewContent}
@@ -249,28 +256,28 @@ export default function OutputPanel({
               title="AI ile içerik kalitesini değerlendir ve iyileştir"
             >
               {reviewing
-                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> Değerlendiriliyor...</>
-                : '⭐ Değerlendir'}
+                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Değerlendiriliyor...' : 'Reviewing...'}</>
+                : (lang === 'tr' ? '⭐ Değerlendir' : '⭐ Review')}
             </button>
             <button
               onClick={() => setShowSchedule(true)}
               className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
               title="İleride otomatik yayınlamak için zamanla"
             >
-              📅 Zamanla
+              {lang === 'tr' ? '📅 Zamanla' : '📅 Schedule'}
             </button>
             <button
               onClick={() => setShowHistory(true)}
               className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
               title="Paylaşım geçmişi ve metrikler"
             >
-              📊 Geçmiş
+              {lang === 'tr' ? '📊 Geçmiş' : '📊 History'}
             </button>
             <button
               onClick={() => setShowShare(true)}
               className="flex items-center gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
             >
-              📤 Paylaş
+              {lang === 'tr' ? '📤 Paylaş' : '📤 Share'}
             </button>
           </div>
         </div>
@@ -285,7 +292,7 @@ export default function OutputPanel({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg">⭐</span>
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">İçerik Değerlendirmesi</span>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? 'İçerik Değerlendirmesi' : 'Content Review'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-2xl font-black ${reviewResult.score >= 80 ? 'text-green-500' : reviewResult.score >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
@@ -320,7 +327,7 @@ export default function OutputPanel({
             {/* Güçlü / zayıf yanlar */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <p className="text-[10px] font-semibold text-green-600 dark:text-green-400 mb-1">✅ Güçlü Yanlar</p>
+                <p className="text-[10px] font-semibold text-green-600 dark:text-green-400 mb-1">✅ {lang === 'tr' ? 'Güçlü Yanlar' : 'Strengths'}</p>
                 <ul className="flex flex-col gap-0.5">
                   {reviewResult.strengths.map((s, i) => (
                     <li key={i} className="text-[11px] text-slate-600 dark:text-slate-300">• {s}</li>
@@ -328,7 +335,7 @@ export default function OutputPanel({
                 </ul>
               </div>
               <div>
-                <p className="text-[10px] font-semibold text-red-500 dark:text-red-400 mb-1">⚠️ Geliştirilebilir</p>
+                <p className="text-[10px] font-semibold text-red-500 dark:text-red-400 mb-1">⚠️ {lang === 'tr' ? 'Geliştirilebilir' : 'Improvements'}</p>
                 <ul className="flex flex-col gap-0.5">
                   {reviewResult.weaknesses.map((w, i) => (
                     <li key={i} className="text-[11px] text-slate-600 dark:text-slate-300">• {w}</li>
@@ -340,7 +347,7 @@ export default function OutputPanel({
             {/* İyileştirilmiş versiyon */}
             {reviewResult.improved && (
               <div>
-                <p className="text-[10px] font-semibold text-ocean mb-1">✨ AI ile İyileştirilmiş Versiyon</p>
+                <p className="text-[10px] font-semibold text-ocean mb-1">✨ {lang === 'tr' ? 'AI ile İyileştirilmiş Versiyon' : 'AI-Improved Version'}</p>
                 <pre className="bg-slate-900 text-slate-100 rounded-lg p-3 text-xs overflow-auto max-h-40 whitespace-pre-wrap font-mono leading-relaxed">
                   {reviewResult.improved}
                 </pre>
@@ -351,7 +358,7 @@ export default function OutputPanel({
                   }}
                   className="mt-2 w-full text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-2 rounded-lg font-medium transition-colors"
                 >
-                  📋 İyileştirilmiş Versiyonu Kopyala
+                  {lang === 'tr' ? '📋 İyileştirilmiş Versiyonu Kopyala' : '📋 Copy Improved Version'}
                 </button>
               </div>
             )}
@@ -360,7 +367,7 @@ export default function OutputPanel({
               onClick={() => setReviewResult(null)}
               className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-center"
             >
-              Kapat ✕
+              {lang === 'tr' ? 'Kapat ✕' : 'Close ✕'}
             </button>
           </div>
         )}
@@ -375,7 +382,7 @@ export default function OutputPanel({
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-base">🎨</span>
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Post Görseli</span>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? '🎨 Post Görseli' : '🎨 Post Image'}</span>
               <span className="text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 px-2 py-0.5 rounded-full">
                 {platform} · {contentType.replace(/_/g, ' ')}
               </span>
@@ -394,7 +401,7 @@ export default function OutputPanel({
               ) : (
                 <button onClick={() => logoInputRef.current?.click()}
                   className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-600 border border-dashed border-slate-300 dark:border-slate-500 hover:border-ocean hover:text-ocean text-slate-500 dark:text-slate-400 px-3 py-1.5 rounded-lg transition-colors">
-                  🏷️ Logo Yükle
+                  {lang === 'tr' ? '🏷️ Logo Yükle' : '🏷️ Upload Logo'}
                 </button>
               )}
 
@@ -409,14 +416,14 @@ export default function OutputPanel({
                       : 'bg-white dark:bg-slate-600 border-dashed border-slate-300 dark:border-slate-500 text-slate-500 dark:text-slate-400 hover:border-ocean hover:text-ocean'
                 }`}
               >
-                🖼️ Referans {refImages.length > 0 ? `(${refImages.length}/4)` : 'Ekle'}
+                🖼️ {lang === 'tr' ? 'Referans' : 'Reference'} {refImages.length > 0 ? `(${refImages.length}/4)` : (lang === 'tr' ? 'Ekle' : 'Add')}
               </button>
 
               {/* Görsel üret */}
               {!imageLoading && (
                 <button onClick={generateImage}
                   className="flex items-center gap-1.5 text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-1.5 rounded-lg transition-colors font-medium">
-                  {imageData ? '🔄 Yeniden Üret' : '✨ Görsel Oluştur'}
+                  {imageData ? (lang === 'tr' ? '🔄 Yeniden Üret' : '🔄 Regenerate') : (lang === 'tr' ? '✨ Görsel Oluştur' : '✨ Generate Image')}
                 </button>
               )}
             </div>
@@ -425,10 +432,10 @@ export default function OutputPanel({
           {/* Info satırı */}
           <p className="text-xs">
             {logoBase64
-              ? <span className="text-green-600 dark:text-green-400">✅ Logo yüklendi.</span>
-              : <span className="text-slate-400 dark:text-slate-500">💡 <strong>Logo Yükle</strong> → markanız her görsele eklenir.</span>}
+              ? <span className="text-green-600 dark:text-green-400">✅ {lang === 'tr' ? 'Logo yüklendi.' : 'Logo uploaded.'}</span>
+              : <span className="text-slate-400 dark:text-slate-500">💡 <strong>{lang === 'tr' ? 'Logo Yükle' : 'Upload Logo'}</strong> {lang === 'tr' ? '→ markanız her görsele eklenir.' : '→ your brand is added to every image.'}</span>}
             {refImages.length > 0 && (
-              <span className="text-purple-600 dark:text-purple-400 ml-2">✅ {refImages.length} referans post yüklendi — stil tutarlılığı için kullanılıyor.</span>
+              <span className="text-purple-600 dark:text-purple-400 ml-2">✅ {refImages.length} {lang === 'tr' ? 'referans post yüklendi — stil tutarlılığı için kullanılıyor.' : 'reference posts uploaded — used for style consistency.'}</span>
             )}
           </p>
 
@@ -437,8 +444,8 @@ export default function OutputPanel({
             <div className="bg-white dark:bg-slate-600 border border-purple-200 dark:border-purple-700 rounded-xl p-3 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">📌 Referans Postlar</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5">Daha önce paylaştığın postları yükle — AI aynı tarzda görsel üretir (maks. 4)</p>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">📌 {lang === 'tr' ? 'Referans Postlar' : 'Reference Posts'}</p>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5">{lang === 'tr' ? 'Daha önce paylaştığın postları yükle — AI aynı tarzda görsel üretir (maks. 4)' : 'Upload your previously shared posts — AI generates images in the same style (max 4)'}</p>
                 </div>
                 <input ref={refInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleRefUpload} />
                 {refImages.length < 4 && (
@@ -446,7 +453,7 @@ export default function OutputPanel({
                     onClick={() => refInputRef.current?.click()}
                     className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium flex items-center gap-1.5"
                   >
-                    + Görsel Ekle
+                    + {lang === 'tr' ? 'Görsel Ekle' : 'Add Image'}
                   </button>
                 )}
               </div>
@@ -457,7 +464,7 @@ export default function OutputPanel({
                   className="border-2 border-dashed border-purple-200 dark:border-purple-700 hover:border-purple-400 dark:hover:border-purple-500 rounded-xl p-6 flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500 hover:text-purple-600 transition-colors"
                 >
                   <span className="text-3xl">📂</span>
-                  <p className="text-xs text-center">Tıkla veya sürükle-bırak<br /><span className="text-[10px]">PNG, JPG, WEBP — maks. 4 görsel</span></p>
+                  <p className="text-xs text-center">{lang === 'tr' ? 'Tıkla veya sürükle-bırak' : 'Click or drag and drop'}<br /><span className="text-[10px]">{lang === 'tr' ? 'PNG, JPG, WEBP — maks. 4 görsel' : 'PNG, JPG, WEBP — max 4 images'}</span></p>
                 </button>
               ) : (
                 <div className="grid grid-cols-4 gap-2">
@@ -497,7 +504,7 @@ export default function OutputPanel({
           {imageLoading && (
             <div className="flex flex-col items-center justify-center h-52 gap-3">
               <div className="w-10 h-10 border-4 border-ocean border-t-transparent rounded-full animate-spin" />
-              <p className="text-slate-500 text-sm animate-pulse">Görsel üretiliyor...</p>
+              <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Görsel üretiliyor...' : 'Generating image...'}</p>
               <p className="text-slate-400 text-xs">Gemini arka planı oluşturuyor, brand katmanları ekleniyor</p>
             </div>
           )}
@@ -514,7 +521,7 @@ export default function OutputPanel({
               </div>
               <div className="flex gap-2">
                 <button onClick={downloadImage} className="flex-1 flex items-center justify-center gap-2 bg-navy hover:bg-navy-light text-white text-sm font-medium py-2.5 rounded-lg transition-colors">
-                  ⬇️ Görseli İndir
+                  {lang === 'tr' ? '⬇️ Görseli İndir' : '⬇️ Download Image'}
                 </button>
                 <button
                   onClick={async () => {
@@ -556,7 +563,7 @@ export default function OutputPanel({
                   }}
                   className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
                 >
-                  {imgCopied ? '✅ Tamam!' : '📋 Kopyala'}
+                  {imgCopied ? '✅ Tamam!' : (lang === 'tr' ? '📋 Kopyala' : '📋 Copy')}
                 </button>
               </div>
             </div>
@@ -564,7 +571,11 @@ export default function OutputPanel({
           {!imageData && !imageLoading && !imageError && (
             <div className="flex flex-col items-center justify-center h-32 gap-2 text-slate-400 dark:text-slate-500">
               <span className="text-3xl opacity-30">🖼️</span>
-              <p className="text-xs text-center">İçerik üretildikten sonra<br /><strong className="text-slate-500 dark:text-slate-400">Görsel Oluştur</strong> butonuna tıklayın.</p>
+              <p className="text-xs text-center">
+                {lang === 'tr'
+                  ? <>{`İçerik üretildikten sonra`}<br /><strong className="text-slate-500 dark:text-slate-400">Görsel Oluştur</strong>{` butonuna tıklayın.`}</>
+                  : <>{`After generating content, click the`}<br /><strong className="text-slate-500 dark:text-slate-400">Generate Image</strong>{` button.`}</>}
+              </p>
             </div>
           )}
         </div>

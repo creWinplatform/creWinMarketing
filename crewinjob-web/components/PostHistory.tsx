@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { getHistory, updateMetrics, removePost, clearHistory, type PostHistoryItem, type PostMetrics } from '@/lib/post-history';
+import { useLang } from '@/lib/lang';
 
 const PLATFORM_META: Record<string, { icon: string; label: string; color: string }> = {
   twitter:   { icon: '🐦', label: 'Twitter / X',   color: 'bg-slate-900 text-white'                },
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function PostHistory({ onClose }: Props) {
+  const { lang } = useLang();
   const [items,      setItems]      = useState<PostHistoryItem[]>([]);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshAll, setRefreshAll] = useState(false);
@@ -63,13 +65,13 @@ export default function PostHistory({ onClose }: Props) {
   };
 
   const handleRemove = async (id: string) => {
-    if (!confirm('Bu paylaşımı geçmişten kaldırmak istediğine emin misin?')) return;
+    if (!confirm(lang === 'tr' ? 'Bu paylaşımı geçmişten kaldırmak istediğine emin misin?' : 'Are you sure you want to remove this post from history?')) return;
     await removePost(id);
     reload();
   };
 
   const handleClearAll = async () => {
-    if (!confirm('TÜM paylaşım geçmişini silmek istediğine emin misin? Bu işlem geri alınamaz.')) return;
+    if (!confirm(lang === 'tr' ? 'TÜM paylaşım geçmişini silmek istediğine emin misin? Bu işlem geri alınamaz.' : 'Are you sure you want to delete ALL post history? This action cannot be undone.')) return;
     await clearHistory();
     reload();
   };
@@ -79,11 +81,11 @@ export default function PostHistory({ onClose }: Props) {
     const m = Math.floor(diff / 60000);
     const h = Math.floor(diff / 3600000);
     const d = Math.floor(diff / 86400000);
-    if (m < 1)  return 'az önce';
-    if (m < 60) return `${m} dakika önce`;
-    if (h < 24) return `${h} saat önce`;
-    if (d < 30) return `${d} gün önce`;
-    return new Date(ts).toLocaleDateString('tr-TR');
+    if (m < 1)  return lang === 'tr' ? 'az önce' : 'just now';
+    if (m < 60) return lang === 'tr' ? `${m} dakika önce` : `${m} minutes ago`;
+    if (h < 24) return lang === 'tr' ? `${h} saat önce` : `${h} hours ago`;
+    if (d < 30) return lang === 'tr' ? `${d} gün önce` : `${d} days ago`;
+    return new Date(ts).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US');
   };
 
   return (
@@ -94,8 +96,12 @@ export default function PostHistory({ onClose }: Props) {
           <div className="flex items-center gap-3">
             <span className="text-xl">📊</span>
             <div>
-              <h2 className="font-bold text-slate-800 dark:text-slate-100">Paylaşım Geçmişi & Metrikler</h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">{items.length} paylaşım · Beğeni, yorum, görüntüleme takibi</p>
+              <h2 className="font-bold text-slate-800 dark:text-slate-100">
+                {lang === 'tr' ? 'Paylaşım Geçmişi & Metrikler' : 'Post History & Metrics'}
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {items.length} {lang === 'tr' ? 'paylaşım' : 'posts'} · {lang === 'tr' ? 'Beğeni, yorum, görüntüleme takibi' : 'Like, comment, view tracking'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -106,13 +112,15 @@ export default function PostHistory({ onClose }: Props) {
                   disabled={refreshAll}
                   className="text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  {refreshAll ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> Yenileniyor...</> : '🔄 Tümünü Yenile'}
+                  {refreshAll
+                    ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yenileniyor...' : 'Refreshing...'}</>
+                    : `🔄 ${lang === 'tr' ? 'Tümünü Yenile' : 'Refresh All'}`}
                 </button>
                 <button
                   onClick={handleClearAll}
                   className="text-xs bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg font-medium transition-colors border border-red-200 dark:border-red-800"
                 >
-                  🗑️ Hepsini Sil
+                  🗑️ {lang === 'tr' ? 'Hepsini Sil' : 'Delete All'}
                 </button>
               </>
             )}
@@ -125,7 +133,11 @@ export default function PostHistory({ onClose }: Props) {
           {items.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-72 gap-3 text-slate-400 dark:text-slate-500">
               <span className="text-5xl opacity-30">📭</span>
-              <p className="text-sm text-center">Henüz paylaşım yok.<br />İlk postunuzu paylaşın, metrikleri burada görün.</p>
+              <p className="text-sm text-center">
+                {lang === 'tr'
+                  ? <>Henüz paylaşım yok.<br />İlk postunuzu paylaşın, metrikleri burada görün.</>
+                  : <>No posts yet.<br />Share your first post and see metrics here.</>}
+              </p>
             </div>
           ) : (
             <div className="grid gap-3">
@@ -151,7 +163,7 @@ export default function PostHistory({ onClose }: Props) {
                             rel="noopener noreferrer"
                             className="text-[11px] text-ocean hover:text-ocean-dark font-medium px-2 py-1 rounded hover:bg-ocean/10"
                           >
-                            Görüntüle ↗
+                            {lang === 'tr' ? 'Görüntüle ↗' : 'View ↗'}
                           </a>
                         )}
                         <button
@@ -159,12 +171,12 @@ export default function PostHistory({ onClose }: Props) {
                           disabled={refreshing === item.id}
                           className="text-[11px] bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 hover:border-ocean hover:text-ocean text-slate-600 dark:text-slate-300 px-2 py-1 rounded font-medium transition-colors disabled:opacity-50"
                         >
-                          {refreshing === item.id ? '⏳' : '🔄'} Yenile
+                          {refreshing === item.id ? '⏳' : '🔄'} {lang === 'tr' ? 'Yenile' : 'Refresh'}
                         </button>
                         <button
                           onClick={() => handleRemove(item.id)}
                           className="text-[11px] text-slate-400 hover:text-red-500 px-1"
-                          title="Geçmişten kaldır"
+                          title={lang === 'tr' ? 'Geçmişten kaldır' : 'Remove from history'}
                         >✕</button>
                       </div>
                     </div>
@@ -180,15 +192,15 @@ export default function PostHistory({ onClose }: Props) {
 
                     {/* Metrikler */}
                     <div className="grid grid-cols-4 gap-px bg-slate-200 dark:bg-slate-600 border-t border-slate-200 dark:border-slate-600">
-                      <Stat label="❤️ Beğeni"     value={m?.likes}     loading={!m} />
-                      <Stat label="💬 Yorum"      value={m?.comments}  loading={!m} />
-                      <Stat label="🔁 Paylaşım"   value={m?.shares}    loading={!m} />
-                      <Stat label="👁️ Görüntüleme" value={m?.views}     loading={!m} />
+                      <Stat label={lang === 'tr' ? '❤️ Beğeni'      : '❤️ Likes'}    value={m?.likes}    loading={!m} lang={lang} />
+                      <Stat label={lang === 'tr' ? '💬 Yorum'       : '💬 Comments'} value={m?.comments} loading={!m} lang={lang} />
+                      <Stat label={lang === 'tr' ? '🔁 Paylaşım'    : '🔁 Shares'}   value={m?.shares}   loading={!m} lang={lang} />
+                      <Stat label={lang === 'tr' ? '👁️ Görüntüleme' : '👁️ Views'}    value={m?.views}    loading={!m} lang={lang} />
                     </div>
 
                     {m && (
                       <p className={`text-[10px] text-center py-1 ${stale ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-700'}`}>
-                        Son güncelleme: {formatRelative(m.fetchedAt)} {stale && '— güncel olmayabilir, yenileyin'}
+                        {lang === 'tr' ? 'Son güncelleme:' : 'Last updated:'} {formatRelative(m.fetchedAt)}{stale ? (lang === 'tr' ? ' — güncel olmayabilir, yenileyin' : ' — may be outdated, refresh') : ''}
                       </p>
                     )}
                   </div>
@@ -202,12 +214,12 @@ export default function PostHistory({ onClose }: Props) {
   );
 }
 
-function Stat({ label, value, loading }: { label: string; value?: number; loading: boolean }) {
+function Stat({ label, value, loading, lang }: { label: string; value?: number; loading: boolean; lang: 'tr' | 'en' }) {
   return (
     <div className="bg-white dark:bg-slate-800 px-3 py-2 flex flex-col items-center justify-center">
       <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wide">{label}</span>
       <span className="text-base font-bold text-slate-700 dark:text-slate-200">
-        {loading ? <span className="text-slate-300">—</span> : (value ?? 0).toLocaleString('tr-TR')}
+        {loading ? <span className="text-slate-300">—</span> : (value ?? 0).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}
       </span>
     </div>
   );

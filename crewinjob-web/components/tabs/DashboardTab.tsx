@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { getHistory as getContentHistory } from '@/lib/content-history';
 import { getHistory as getPostHistory }    from '@/lib/post-history';
 import type { BreakdownItem, FillRateBuckets, SeafarerStats, JobStats } from '@/lib/types';
+import { useLang } from '@/lib/lang';
 
 // ─── API response type ────────────────────────────────────────────────────────
 interface DashboardData {
@@ -67,6 +68,8 @@ const PLATFORM_ICON: Record<string, string> = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardTab() {
+  const { lang } = useLang();
+
   const [data,    setData]    = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -130,24 +133,24 @@ export default function DashboardTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <span>📈</span> Genel Bakış
+            <span>📈</span> {lang === 'tr' ? 'Genel Bakış' : 'Overview'}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             {data?.isRealData ? (
-              <>● Gerçek API · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleString('tr-TR') : ''}</>
-            ) : '◐ Mock veri'}
+              <>{lang === 'tr' ? '● Gerçek API' : '● Real API'} · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleString('tr-TR') : ''}</>
+            ) : (lang === 'tr' ? '◐ Mock veri' : '◐ Mock data')}
           </p>
         </div>
         <button onClick={refresh}
           className="text-xs text-ocean hover:text-ocean-dark font-medium flex items-center gap-1 transition-colors">
-          🔄 Yenile
+          🔄 {lang === 'tr' ? 'Yenile' : 'Refresh'}
         </button>
       </div>
 
       {loading && (
         <div className="flex items-center gap-3 py-12 text-slate-400 text-sm">
           <div className="w-5 h-5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-          Dashboard verileri yükleniyor...
+          {lang === 'tr' ? 'Dashboard verileri yükleniyor...' : 'Loading dashboard data...'}
         </div>
       )}
 
@@ -164,7 +167,7 @@ export default function DashboardTab() {
             <Kart
               icon="👥" value={data.seafarers?.total?.toLocaleString('tr-TR') ?? '–'}
               label="Toplam Seafarer"
-              sub={`+${data.seafarers?.newThisWeek ?? 0} bu hafta`}
+              sub={`+${data.seafarers?.newThisWeek ?? 0} ${lang === 'tr' ? 'bu hafta' : 'this week'}`}
               color="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300"
             />
             <Kart
@@ -175,14 +178,14 @@ export default function DashboardTab() {
             />
             <Kart
               icon="✍️" value={contentCount.toString()}
-              label="Üretilen İçerik"
-              sub="Bu tarayıcıda"
+              label={lang === 'tr' ? 'Üretilen İçerik' : 'Generated Content'}
+              sub={lang === 'tr' ? 'Bu tarayıcıda' : 'This browser'}
               color="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300"
             />
             <Kart
               icon="📤" value={postCount.toString()}
-              label="Yayınlanan Post"
-              sub="Toplam platform"
+              label={lang === 'tr' ? 'Yayınlanan Post' : 'Shared Posts'}
+              sub={lang === 'tr' ? 'Toplam platform' : 'Total platforms'}
               color="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700 text-orange-800 dark:text-orange-300"
             />
           </div>
@@ -197,7 +200,7 @@ export default function DashboardTab() {
               {dailyReg.length > 0 && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <span>📅</span> Son 7 Gün — Günlük Kayıt
+                    <span>📅</span> {lang === 'tr' ? 'Son 7 Gün — Günlük Kayıt' : 'Last 7 Days — Daily Registrations'}
                   </h3>
                   <div className="flex items-end gap-2 h-28">
                     {dailyReg.map((v, i) => {
@@ -224,7 +227,7 @@ export default function DashboardTab() {
               {buckets && totalUsers > 0 && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <span>📊</span> Profil Doluluk Dağılımı
+                    <span>📊</span> {lang === 'tr' ? 'Profil Doluluk Dağılımı' : 'Profile Fill Rate Distribution'}
                     <span className="ml-auto text-xs text-slate-400 font-normal">{totalUsers.toLocaleString('tr-TR')} seafarer</span>
                   </h3>
 
@@ -267,8 +270,10 @@ export default function DashboardTab() {
               {Object.keys(platformDist).length > 0 && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <span>📱</span> Platform Aktivite Dağılımı
-                    <span className="ml-auto text-xs text-slate-400 font-normal">İçerik + Yayın</span>
+                    <span>📱</span> {lang === 'tr' ? 'Platform Aktivite Dağılımı' : 'Platform Activity Distribution'}
+                    <span className="ml-auto text-xs text-slate-400 font-normal">
+                      {lang === 'tr' ? 'İçerik + Yayın' : 'Content + Posts'}
+                    </span>
                   </h3>
                   <div className="flex flex-col gap-2.5">
                     {Object.entries(platformDist)
@@ -283,7 +288,9 @@ export default function DashboardTab() {
                       ))}
                   </div>
                   {Object.keys(platformDist).length === 0 && (
-                    <p className="text-xs text-slate-400 text-center py-4">Henüz içerik üretilmedi</p>
+                    <p className="text-xs text-slate-400 text-center py-4">
+                      {lang === 'tr' ? 'Henüz içerik üretilmedi' : 'No content generated yet'}
+                    </p>
                   )}
                 </div>
               )}
@@ -296,7 +303,7 @@ export default function DashboardTab() {
               {topCountries.length > 0 && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                    <span>🌍</span> En Çok Seafarer — Ülke
+                    <span>🌍</span> {lang === 'tr' ? 'En Çok Seafarer — Ülke' : 'Top Seafarers — Country'}
                   </h3>
                   <div className="flex flex-col gap-2">
                     {topCountries.map((c, i) => (
@@ -318,7 +325,7 @@ export default function DashboardTab() {
               {topPositions.length > 0 && (
                 <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                   <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                    <span>⚓</span> En Çok Seafarer — Pozisyon
+                    <span>⚓</span> {lang === 'tr' ? 'En Çok Seafarer — Pozisyon' : 'Top Seafarers — Position'}
                   </h3>
                   <div className="flex flex-col gap-2">
                     {topPositions.map((p, i) => (
@@ -338,11 +345,11 @@ export default function DashboardTab() {
               {/* Son yayınlanan postlar */}
               <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                  <span>📤</span> Son Yayınlanan
+                  <span>📤</span> {lang === 'tr' ? 'Son Yayınlanan' : 'Recent Posts'}
                 </h3>
                 {recentPosts.length === 0 ? (
                   <div className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-                    Henüz yayınlanmış post yok
+                    {lang === 'tr' ? 'Henüz yayınlanmış post yok' : 'No posts yet'}
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -358,7 +365,7 @@ export default function DashboardTab() {
                             {p.postUrl && (
                               <a href={p.postUrl} target="_blank" rel="noopener noreferrer"
                                 className="text-[10px] text-ocean hover:underline">
-                                Görüntüle →
+                                {lang === 'tr' ? 'Görüntüle →' : 'View →'}
                               </a>
                             )}
                           </div>
