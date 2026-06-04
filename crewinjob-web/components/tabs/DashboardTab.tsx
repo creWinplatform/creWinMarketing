@@ -70,6 +70,8 @@ const PLATFORM_ICON: Record<string, string> = {
 export default function DashboardTab() {
   const { lang } = useLang();
 
+  const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
+
   const [data,    setData]    = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -84,7 +86,7 @@ export default function DashboardTab() {
     fetch('/api/dashboard')
       .then(r => r.json())
       .then(setData)
-      .catch(() => setData({ error: 'Veri alınamadı' }))
+      .catch(() => setData({ error: t('Veri alınamadı', 'Could not load data') }))
       .finally(() => setLoading(false));
 
     // Sunucu taraflı geçmişler
@@ -107,7 +109,7 @@ export default function DashboardTab() {
     fetch('/api/dashboard')
       .then(r => r.json())
       .then(setData)
-      .catch(() => setData({ error: 'Veri alınamadı' }))
+      .catch(() => setData({ error: t('Veri alınamadı', 'Could not load data') }))
       .finally(() => setLoading(false));
   };
 
@@ -117,7 +119,9 @@ export default function DashboardTab() {
 
   const dailyReg  = data?.dailyRegistrations ?? [];
   const maxDaily  = Math.max(...dailyReg, 1);
-  const DAY_LABEL = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+  const DAY_LABEL = lang === 'tr'
+    ? ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
+    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   const topCountries = data?.topCountries ?? [];
   const maxCountry   = topCountries[0]?.count || 1;
@@ -137,7 +141,7 @@ export default function DashboardTab() {
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             {data?.isRealData ? (
-              <>{lang === 'tr' ? '● Gerçek API' : '● Real API'} · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleString('tr-TR') : ''}</>
+              <>{lang === 'tr' ? '● Gerçek API' : '● Real API'} · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US') : ''}</>
             ) : (lang === 'tr' ? '◐ Mock veri' : '◐ Mock data')}
           </p>
         </div>
@@ -165,15 +169,15 @@ export default function DashboardTab() {
           {/* ── Üst stat kartları ── */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Kart
-              icon="👥" value={data.seafarers?.total?.toLocaleString('tr-TR') ?? '–'}
-              label="Toplam Seafarer"
-              sub={`+${data.seafarers?.newThisWeek ?? 0} ${lang === 'tr' ? 'bu hafta' : 'this week'}`}
+              icon="👥" value={data.seafarers?.total?.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US') ?? '–'}
+              label={t('Toplam Seafarer', 'Total Seafarers')}
+              sub={`+${data.seafarers?.newThisWeek ?? 0} ${t('bu hafta', 'this week')}`}
               color="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300"
             />
             <Kart
-              icon="📋" value={data.jobs?.total?.toLocaleString('tr-TR') ?? '–'}
-              label="Toplam İlan"
-              sub={`${data.jobs?.companies ?? 0} firma`}
+              icon="📋" value={data.jobs?.total?.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US') ?? '–'}
+              label={t('Toplam İlan', 'Total Jobs')}
+              sub={`${data.jobs?.companies ?? 0} ${t('firma', 'companies')}`}
               color="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300"
             />
             <Kart
@@ -243,7 +247,7 @@ export default function DashboardTab() {
                       if (pct === 0) return null;
                       return (
                         <div key={seg.key} className={`${seg.color} flex items-center justify-center`} style={{ width: `${pct}%` }}
-                          title={`${seg.label}: ${buckets[seg.key].toLocaleString('tr-TR')} kişi`}>
+                          title={`${seg.label}: ${buckets[seg.key].toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')} ${t('kişi', 'people')}`}>
                           {pct > 10 && <span className="text-[10px] font-bold text-white">%{pct.toFixed(0)}</span>}
                         </div>
                       );
@@ -252,14 +256,14 @@ export default function DashboardTab() {
 
                   <div className="grid grid-cols-4 gap-2">
                     {[
-                      { key: 'zero' as const, icon: '🚫', label: '%0 Boş',   color: 'text-red-600 dark:text-red-400' },
-                      { key: 'low'  as const, icon: '⚠️', label: '%0–30',    color: 'text-orange-500' },
-                      { key: 'mid'  as const, icon: '🔶', label: '%30–60',   color: 'text-amber-500' },
-                      { key: 'high' as const, icon: '✅', label: '%60+ Dolu', color: 'text-green-600 dark:text-green-400' },
+                      { key: 'zero' as const, icon: '🚫', labelTr: '%0 Boş',   labelEn: '%0 Empty', color: 'text-red-600 dark:text-red-400' },
+                      { key: 'low'  as const, icon: '⚠️', labelTr: '%0–30',    labelEn: '%0–30',    color: 'text-orange-500' },
+                      { key: 'mid'  as const, icon: '🔶', labelTr: '%30–60',   labelEn: '%30–60',   color: 'text-amber-500' },
+                      { key: 'high' as const, icon: '✅', labelTr: '%60+ Dolu', labelEn: '%60+ Full', color: 'text-green-600 dark:text-green-400' },
                     ].map(seg => (
                       <div key={seg.key} className="text-center">
-                        <div className={`text-base font-bold ${seg.color}`}>{buckets[seg.key].toLocaleString('tr-TR')}</div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">{seg.icon} {seg.label}</div>
+                        <div className={`text-base font-bold ${seg.color}`}>{buckets[seg.key].toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">{seg.icon} {lang === 'tr' ? seg.labelTr : seg.labelEn}</div>
                       </div>
                     ))}
                   </div>
@@ -360,7 +364,7 @@ export default function DashboardTab() {
                           <p className="text-xs text-slate-700 dark:text-slate-200 line-clamp-2 leading-relaxed">{p.content}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                              {new Date(p.publishedAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
+                              {new Date(p.publishedAt).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' })}
                             </span>
                             {p.postUrl && (
                               <a href={p.postUrl} target="_blank" rel="noopener noreferrer"

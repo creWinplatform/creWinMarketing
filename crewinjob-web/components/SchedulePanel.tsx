@@ -258,7 +258,9 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
             </div>
 
             {prefillImageData && (
-              <p className="text-xs text-green-600 dark:text-green-400">✅ Görsel eklenecek ({prefillImageMime || 'image/jpeg'})</p>
+              <p className="text-xs text-green-600 dark:text-green-400">
+                ✅ {lang === 'tr' ? 'Görsel eklenecek' : 'Image will be attached'} ({prefillImageMime || 'image/jpeg'})
+              </p>
             )}
 
             <button
@@ -304,12 +306,14 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                       {STATUS_LABEL[post.status]}
                     </span>
                     {post.imageData && (
-                      <span className="text-[10px] text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">🖼️ Görsel</span>
+                      <span className="text-[10px] text-blue-500 bg-blue-50 dark:bg-blue-900/20 px-1.5 py-0.5 rounded">
+                        🖼️ {lang === 'tr' ? 'Görsel' : 'Image'}
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {new Date(post.scheduledAt).toLocaleString('tr-TR', {
+                      {new Date(post.scheduledAt).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US', {
                         day: '2-digit', month: 'short', year: 'numeric',
                         hour: '2-digit', minute: '2-digit',
                       })}
