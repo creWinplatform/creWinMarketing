@@ -88,7 +88,9 @@ export default function Home() {
                   : 'bg-yellow-500/20 text-yellow-300'
               }`}
             >
-              {stats.isRealData ? '● Gerçek API (api.crewin.org)' : '◐ Mock Veri (token eksik)'}
+              {stats.isRealData
+                ? (lang === 'tr' ? '● Gerçek API (api.crewin.org)' : '● Real API (api.crewin.org)')
+                : (lang === 'tr' ? '◐ Mock Veri (token eksik)' : '◐ Mock Data (token missing)')}
             </span>
           )}
           <ActivityLogPanel />

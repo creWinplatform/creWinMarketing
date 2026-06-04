@@ -10,9 +10,9 @@ interface Props {
   stats?: StatsResponse;
 }
 
-/** KPI raporunu PDF olarak yazdır (tarayıcı PDF kaydet diyaloğu açılır) */
-function exportPDF(output: string, kpis: { label: string; value: string; icon: string }[]) {
-  const date = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+function exportPDF(output: string, kpis: { label: string; value: string; icon: string }[], lang: 'tr' | 'en') {
+  const locale = lang === 'tr' ? 'tr-TR' : 'en-US';
+  const date = new Date().toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
   const metricsRows = kpis.map(k =>
     `<tr><td>${k.icon} ${k.label}</td><td><strong>${k.value}</strong></td></tr>`
   ).join('');
@@ -25,11 +25,23 @@ function exportPDF(output: string, kpis: { label: string; value: string; icon: s
     .replace(/\n\n/g, '</p><p>')
     .replace(/^(?!<[hul])(.+)$/gm, '<p>$1</p>');
 
+  const labels = {
+    title:       lang === 'tr' ? 'KPI & Haftalık Performans Raporu'    : 'KPI & Weekly Performance Report',
+    badge:       lang === 'tr' ? 'HAFTALIK RAPOR'                      : 'WEEKLY REPORT',
+    metrics:     lang === 'tr' ? '📊 Anlık Metrikler'                  : '📊 Live Metrics',
+    metric:      lang === 'tr' ? 'Metrik'                              : 'Metric',
+    value:       lang === 'tr' ? 'Değer'                               : 'Value',
+    noMetrics:   lang === 'tr' ? 'Metrik verisi yok'                   : 'No metric data',
+    analysis:    lang === 'tr' ? '📋 Haftalık Analiz'                  : '📋 Weekly Analysis',
+    noReport:    lang === 'tr' ? 'Henüz rapor üretilmedi.'             : 'No report generated yet.',
+    generated:   lang === 'tr' ? 'Üretim'                              : 'Generated',
+  };
+
   const html = `<!DOCTYPE html>
-<html lang="tr">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8"/>
-  <title>crewinjob KPI Raporu — ${date}</title>
+  <title>crewinjob KPI — ${date}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#1e293b;padding:32px;max-width:800px;margin:auto}
@@ -53,26 +65,26 @@ function exportPDF(output: string, kpis: { label: string; value: string; icon: s
   <header>
     <div>
       <h1>⚓ crewinjob Marketing Agent</h1>
-      <p style="font-size:11px;color:#64748b;margin-top:2px">KPI & Haftalık Performans Raporu</p>
+      <p style="font-size:11px;color:#64748b;margin-top:2px">${labels.title}</p>
     </div>
     <div style="text-align:right">
-      <div class="badge">HAFTALIK RAPOR</div>
+      <div class="badge">${labels.badge}</div>
       <div style="font-size:11px;color:#64748b;margin-top:4px">${date}</div>
     </div>
   </header>
 
-  <h2>📊 Anlık Metrikler</h2>
+  <h2>${labels.metrics}</h2>
   <table>
-    <thead><tr><th>Metrik</th><th>Değer</th></tr></thead>
-    <tbody>${metricsRows || '<tr><td colspan="2" style="color:#94a3b8">Metrik verisi yok</td></tr>'}</tbody>
+    <thead><tr><th>${labels.metric}</th><th>${labels.value}</th></tr></thead>
+    <tbody>${metricsRows || `<tr><td colspan="2" style="color:#94a3b8">${labels.noMetrics}</td></tr>`}</tbody>
   </table>
 
-  <h2>📋 Haftalık Analiz</h2>
-  <div>${reportHtml || '<p style="color:#94a3b8">Henüz rapor üretilmedi.</p>'}</div>
+  <h2>${labels.analysis}</h2>
+  <div>${reportHtml || `<p style="color:#94a3b8">${labels.noReport}</p>`}</div>
 
   <footer>
     <span>crewinjob.com — The Right Job, The Right Talent</span>
-    <span>Üretim: ${new Date().toLocaleString('tr-TR')}</span>
+    <span>${labels.generated}: ${new Date().toLocaleString(locale)}</span>
   </footer>
   <script>window.onload=()=>{window.print();}</script>
 </body>
@@ -85,16 +97,15 @@ function exportPDF(output: string, kpis: { label: string; value: string; icon: s
   win.addEventListener('afterprint', () => URL.revokeObjectURL(url), { once: true });
 }
 
-/** KPI metriklerini + rapor metnini CSV olarak indir */
-function exportCSV(output: string, kpis: { label: string; value: string }[]) {
+function exportCSV(output: string, kpis: { label: string; value: string }[], lang: 'tr' | 'en') {
   const date = new Date().toISOString().slice(0, 10);
   const rows: string[][] = [
-    ['crewinjob KPI Raporu', date],
+    [lang === 'tr' ? 'crewinjob KPI Raporu' : 'crewinjob KPI Report', date],
     [],
-    ['Metrik', 'Değer'],
+    [lang === 'tr' ? 'Metrik' : 'Metric', lang === 'tr' ? 'Değer' : 'Value'],
     ...kpis.map(k => [k.label, k.value]),
     [],
-    ['Analiz Raporu'],
+    [lang === 'tr' ? 'Analiz Raporu' : 'Analysis Report'],
     [output.replace(/"/g, '""')],
   ];
   const csv = rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\r\n');
@@ -207,14 +218,14 @@ export default function KpiTab({ stats }: Props) {
           {output && !loading && (
             <div className="flex gap-2">
               <button
-                onClick={() => exportCSV(output, kpis)}
+                onClick={() => exportCSV(output, kpis, lang)}
                 className="flex items-center gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
                 title="Excel/CSV olarak indir"
               >
                 📊 CSV İndir
               </button>
               <button
-                onClick={() => exportPDF(output, kpis)}
+                onClick={() => exportPDF(output, kpis, lang)}
                 className="flex items-center gap-1.5 text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
                 title="PDF olarak kaydet (Yazdır → PDF Kaydet)"
               >
