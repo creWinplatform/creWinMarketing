@@ -9,63 +9,63 @@ type SubTab = 'whatsapp' | 'telegram_channel' | 'telegram_bot' | 'notify_wa' | '
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
 const WA_AUDIENCES = [
-  { value: 'seafarer_global', label: '🌍 Global Seafarers' },
-  { value: 'seafarer_tr',     label: '🇹🇷 Türk Gemi Adamları' },
-  { value: 'shipowner',       label: '🚢 Armatörler & Crew Manager' },
-  { value: 'cadet',           label: '🎓 Cadet & Genç Denizci' },
+  { value: 'seafarer_global', labelTr: '🌍 Global Seafarers',                  labelEn: '🌍 Global Seafarers' },
+  { value: 'seafarer_tr',     labelTr: '🇹🇷 Türk Gemi Adamları',               labelEn: '🇹🇷 Turkish Seafarers' },
+  { value: 'shipowner',       labelTr: '🚢 Armatörler & Crew Manager',          labelEn: '🚢 Shipowners & Crew Manager' },
+  { value: 'cadet',           labelTr: '🎓 Cadet & Genç Denizci',              labelEn: '🎓 Cadet & Young Seafarer' },
 ];
 
 const WA_OBJECTIVES = [
-  { value: 'registration',    label: '📝 Yeni Seafarer Kaydı' },
-  { value: 'job_apply',       label: '💼 İlan Başvurusu' },
-  { value: 'company_signup',  label: '🏢 Firma / Armatör Kaydı (B2B)' },
+  { value: 'registration',    labelTr: '📝 Yeni Seafarer Kaydı',               labelEn: '📝 New Seafarer Registration' },
+  { value: 'job_apply',       labelTr: '💼 İlan Başvurusu',                    labelEn: '💼 Job Application' },
+  { value: 'company_signup',  labelTr: '🏢 Firma / Armatör Kaydı (B2B)',       labelEn: '🏢 Company / Shipowner Signup (B2B)' },
 ];
 
 const WA_PLATFORMS = [
-  { value: 'facebook',   label: '📘 Facebook' },
-  { value: 'instagram',  label: '📸 Instagram' },
-  { value: 'both',       label: '📘📸 Her İkisi' },
+  { value: 'facebook',   labelTr: '📘 Facebook',           labelEn: '📘 Facebook' },
+  { value: 'instagram',  labelTr: '📸 Instagram',          labelEn: '📸 Instagram' },
+  { value: 'both',       labelTr: '📘📸 Her İkisi',         labelEn: '📘📸 Both' },
 ];
 
 // ── Telegram Kanal ────────────────────────────────────────────────────────────
 const TG_CONTENT_TYPES = [
-  { value: 'weekly_plan',      label: '📅 Haftalık İçerik Takvimi' },
-  { value: 'daily_post',       label: '📢 Günlük İlan Post Şablonları' },
-  { value: 'sponsored_post',   label: '🤝 Sponsorlu Post Şablonları' },
-  { value: 'channel_strategy', label: '🚀 Kanal Büyütme Stratejisi' },
-  { value: 'growth_plan',      label: '📈 90 Günlük Büyüme Planı' },
+  { value: 'weekly_plan',      labelTr: '📅 Haftalık İçerik Takvimi',           labelEn: '📅 Weekly Content Calendar' },
+  { value: 'daily_post',       labelTr: '📢 Günlük İlan Post Şablonları',       labelEn: '📢 Daily Job Post Templates' },
+  { value: 'sponsored_post',   labelTr: '🤝 Sponsorlu Post Şablonları',         labelEn: '🤝 Sponsored Post Templates' },
+  { value: 'channel_strategy', labelTr: '🚀 Kanal Büyütme Stratejisi',          labelEn: '🚀 Channel Growth Strategy' },
+  { value: 'growth_plan',      labelTr: '📈 90 Günlük Büyüme Planı',           labelEn: '📈 90-Day Growth Plan' },
 ];
 
 const TG_NICHES = [
-  { value: 'all',       label: '⚓ Tüm Seafarerlar' },
-  { value: 'officers',  label: '🎖️ Deck Officers' },
-  { value: 'engineers', label: '⚙️ Engine Officers' },
-  { value: 'cadets',    label: '🎓 Cadetler' },
-  { value: 'offshore',  label: '🛢️ Offshore' },
+  { value: 'all',       labelTr: '⚓ Tüm Seafarerlar',   labelEn: '⚓ All Seafarers' },
+  { value: 'officers',  labelTr: '🎖️ Deck Officers',    labelEn: '🎖️ Deck Officers' },
+  { value: 'engineers', labelTr: '⚙️ Engine Officers',  labelEn: '⚙️ Engine Officers' },
+  { value: 'cadets',    labelTr: '🎓 Cadetler',          labelEn: '🎓 Cadets' },
+  { value: 'offshore',  labelTr: '🛢️ Offshore',         labelEn: '🛢️ Offshore' },
 ];
 
 const TG_CHANNEL_LANGS = [
-  { value: 'multi', label: '🌍 Çok Dilli (EN ana)' },
-  { value: 'en',    label: '🇬🇧 English only' },
-  { value: 'tr',    label: '🇹🇷 Türkçe' },
-  { value: 'ph',    label: '🇵🇭 Filipino / Tagalog' },
+  { value: 'multi', labelTr: '🌍 Çok Dilli (EN ana)',   labelEn: '🌍 Multilingual (EN main)' },
+  { value: 'en',    labelTr: '🇬🇧 English only',        labelEn: '🇬🇧 English only' },
+  { value: 'tr',    labelTr: '🇹🇷 Türkçe',              labelEn: '🇹🇷 Turkish' },
+  { value: 'ph',    labelTr: '🇵🇭 Filipino / Tagalog', labelEn: '🇵🇭 Filipino / Tagalog' },
 ];
 
 // ── Telegram Bot ──────────────────────────────────────────────────────────────
 const BOT_TYPES = [
-  { value: 'registration', label: '📝 Kayıt Botu (Yeni Kullanıcı)' },
-  { value: 'job_search',   label: '🔍 İş Arama Botu' },
-  { value: 'company',      label: '🏢 Firma / B2B Lead Botu' },
-  { value: 'full',         label: '⚡ Tam Özellikli Bot (Hepsi)' },
+  { value: 'registration', labelTr: '📝 Kayıt Botu (Yeni Kullanıcı)',  labelEn: '📝 Registration Bot (New User)' },
+  { value: 'job_search',   labelTr: '🔍 İş Arama Botu',                labelEn: '🔍 Job Search Bot' },
+  { value: 'company',      labelTr: '🏢 Firma / B2B Lead Botu',        labelEn: '🏢 Company / B2B Lead Bot' },
+  { value: 'full',         labelTr: '⚡ Tam Özellikli Bot (Hepsi)',     labelEn: '⚡ Full-Featured Bot (All)' },
 ];
 
 const BOT_FEATURES = [
-  { value: 'job_search',  label: '🔍 İlan Arama' },
-  { value: 'cv_tips',     label: '📄 CV Tavsiyeleri' },
-  { value: 'salary_info', label: '💰 Maaş Rehberi' },
-  { value: 'alerts',      label: '🔔 Uyarı/Bildirim Sistemi' },
-  { value: 'stcw',        label: '📋 STCW Bilgisi' },
-  { value: 'multilang',   label: '🌍 Çok Dil Desteği' },
+  { value: 'job_search',  labelTr: '🔍 İlan Arama',            labelEn: '🔍 Job Search' },
+  { value: 'cv_tips',     labelTr: '📄 CV Tavsiyeleri',         labelEn: '📄 CV Tips' },
+  { value: 'salary_info', labelTr: '💰 Maaş Rehberi',          labelEn: '💰 Salary Guide' },
+  { value: 'alerts',      labelTr: '🔔 Uyarı/Bildirim Sistemi',labelEn: '🔔 Alert/Notification System' },
+  { value: 'stcw',        labelTr: '📋 STCW Bilgisi',          labelEn: '📋 STCW Info' },
+  { value: 'multilang',   labelTr: '🌍 Çok Dil Desteği',       labelEn: '🌍 Multi-Language Support' },
 ];
 
 export default function MessagingTab() {
@@ -290,13 +290,13 @@ export default function MessagingTab() {
 
             <Field label={lang === 'tr' ? 'Hedef Kitle' : 'Target Audience'}>
               <select value={waAudience} onChange={e => setWaAudience(e.target.value)} className={selectClass}>
-                {WA_AUDIENCES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+                {WA_AUDIENCES.map(a => <option key={a.value} value={a.value}>{lang === 'tr' ? a.labelTr : a.labelEn}</option>)}
               </select>
             </Field>
 
             <Field label={lang === 'tr' ? 'Kampanya Amacı' : 'Campaign Objective'}>
               <select value={waObjective} onChange={e => setWaObjective(e.target.value)} className={selectClass}>
-                {WA_OBJECTIVES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {WA_OBJECTIVES.map(o => <option key={o.value} value={o.value}>{lang === 'tr' ? o.labelTr : o.labelEn}</option>)}
               </select>
             </Field>
 
@@ -307,7 +307,7 @@ export default function MessagingTab() {
                     className={`text-xs py-2 px-2 rounded-lg font-medium transition-colors ${
                       waAdPlatform === p.value ? 'bg-green-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}>
-                    {p.label}
+                    {lang === 'tr' ? p.labelTr : p.labelEn}
                   </button>
                 ))}
               </div>
@@ -347,7 +347,7 @@ export default function MessagingTab() {
 
             <Field label={lang === 'tr' ? 'İçerik Tipi' : 'Content Type'}>
               <select value={tgContentType} onChange={e => setTgContentType(e.target.value)} className={selectClass}>
-                {TG_CONTENT_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                {TG_CONTENT_TYPES.map(c => <option key={c.value} value={c.value}>{lang === 'tr' ? c.labelTr : c.labelEn}</option>)}
               </select>
             </Field>
 
@@ -358,7 +358,7 @@ export default function MessagingTab() {
                     className={`text-xs py-2 px-2 rounded-lg font-medium transition-colors text-left ${
                       tgNiche === n.value ? 'bg-sky-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}>
-                    {n.label}
+                    {lang === 'tr' ? n.labelTr : n.labelEn}
                   </button>
                 ))}
               </div>
@@ -371,7 +371,7 @@ export default function MessagingTab() {
                     className={`text-xs py-2 px-2 rounded-lg font-medium transition-colors ${
                       tgChannelLang === l.value ? 'bg-sky-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}>
-                    {l.label}
+                    {lang === 'tr' ? l.labelTr : l.labelEn}
                   </button>
                 ))}
               </div>
@@ -402,7 +402,7 @@ export default function MessagingTab() {
 
             <Field label={lang === 'tr' ? 'Bot Tipi' : 'Bot Type'}>
               <select value={botType} onChange={e => setBotType(e.target.value)} className={selectClass}>
-                {BOT_TYPES.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                {BOT_TYPES.map(b => <option key={b.value} value={b.value}>{lang === 'tr' ? b.labelTr : b.labelEn}</option>)}
               </select>
             </Field>
 
@@ -421,7 +421,7 @@ export default function MessagingTab() {
                         ? 'bg-indigo-500 text-white'
                         : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}>
-                    {f.label}
+                    {lang === 'tr' ? f.labelTr : f.labelEn}
                   </button>
                 ))}
               </div>
@@ -569,7 +569,7 @@ export default function MessagingTab() {
                       : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50'
                   }`}>
                   <span className="text-base">{l.flag}</span>
-                  <span>{l.label}</span>
+                  <span>{lang === 'tr' ? l.labelTr : l.labelEn}</span>
                 </button>
               ))}
             </div>

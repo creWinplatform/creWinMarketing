@@ -1,7 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { useLang } from '@/lib/lang';
 
 export default function ThemeToggle() {
+  const { lang } = useLang();
   const [dark, setDark] = useState(true);
 
   useEffect(() => {
@@ -22,10 +24,10 @@ export default function ThemeToggle() {
     <button
       onClick={toggle}
       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all bg-white/10 hover:bg-white/20 text-white border border-white/20"
-      title={dark ? 'Açık moda geç' : 'Koyu moda geç'}
+      title={dark ? (lang === 'tr' ? 'Açık moda geç' : 'Switch to Light') : (lang === 'tr' ? 'Koyu moda geç' : 'Switch to Dark')}
     >
       {dark ? '☀️' : '🌙'}
-      <span className="hidden sm:inline">{dark ? 'Açık' : 'Koyu'}</span>
+      <span className="hidden sm:inline">{dark ? (lang === 'tr' ? 'Açık' : 'Light') : (lang === 'tr' ? 'Koyu' : 'Dark')}</span>
     </button>
   );
 }

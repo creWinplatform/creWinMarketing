@@ -5,11 +5,11 @@ import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
 
 const TIKTOK_TYPES = [
-  { value: 'problem_solution', label: '⚡ Problem → Çözüm (en etkili)' },
-  { value: 'day_in_life', label: '🌊 Denizci Günlüğü' },
-  { value: 'reveal', label: '🎭 "Bunu bilmiyorsan kayıp ediyorsun"' },
-  { value: 'stats_shock', label: '📊 İstatistik Şok' },
-  { value: 'testimonial', label: '🌟 Başarı Hikayesi' },
+  { value: 'problem_solution', labelTr: '⚡ Problem → Çözüm (en etkili)',             labelEn: '⚡ Problem → Solution (most effective)' },
+  { value: 'day_in_life',      labelTr: '🌊 Denizci Günlüğü',                          labelEn: '🌊 Day in the Life of a Seafarer' },
+  { value: 'reveal',           labelTr: '🎭 "Bunu bilmiyorsan kayıp ediyorsun"',        labelEn: '🎭 "If You Don\'t Know This, You\'re Missing Out"' },
+  { value: 'stats_shock',      labelTr: '📊 İstatistik Şok',                            labelEn: '📊 Stats Shock' },
+  { value: 'testimonial',      labelTr: '🌟 Başarı Hikayesi',                           labelEn: '🌟 Success Story' },
 ];
 
 const PLATFORMS = ['instagram', 'facebook', 'twitter', 'linkedin'];
@@ -113,7 +113,7 @@ export default function GrowthTab() {
               className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean"
             >
               {TIKTOK_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value}>{lang === 'tr' ? t.labelTr : t.labelEn}</option>
               ))}
             </select>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">

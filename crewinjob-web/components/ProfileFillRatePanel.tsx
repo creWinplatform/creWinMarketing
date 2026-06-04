@@ -1,55 +1,53 @@
 'use client';
 import type { FillRateBuckets } from '@/lib/types';
+import { useLang } from '@/lib/lang';
 
 interface Props {
   buckets: FillRateBuckets;
   average: number;
 }
 
-const SEGMENTS = [
-  {
-    key:   'zero' as const,
-    label: '%0 (Boş Profil)',
-    range: 'Hiç doldurmamış',
-    color: 'bg-red-500',
-    text:  'text-red-600 dark:text-red-400',
-    weight: 0,
-    icon:  '🚫',
-  },
-  {
-    key:   'low' as const,
-    label: '%0–30',
-    range: 'Çok eksik',
-    color: 'bg-orange-500',
-    text:  'text-orange-600 dark:text-orange-400',
-    weight: 15,
-    icon:  '⚠️',
-  },
-  {
-    key:   'mid' as const,
-    label: '%30–60',
-    range: 'Yarım dolu',
-    color: 'bg-amber-400',
-    text:  'text-amber-600 dark:text-amber-400',
-    weight: 45,
-    icon:  '🔶',
-  },
-  {
-    key:   'high' as const,
-    label: '%60+',
-    range: 'Profili dolu',
-    color: 'bg-green-500',
-    text:  'text-green-600 dark:text-green-400',
-    weight: 80,
-    icon:  '✅',
-  },
-];
-
 export default function ProfileFillRatePanel({ buckets, average }: Props) {
+  const { lang } = useLang();
   const total = buckets.zero + buckets.low + buckets.mid + buckets.high;
   if (total === 0) return null;
 
   const pct = (n: number) => total > 0 ? (n / total) * 100 : 0;
+
+  const SEGMENTS = [
+    {
+      key:   'zero' as const,
+      label: lang === 'tr' ? '%0 (Boş Profil)' : '%0 (Empty Profile)',
+      range: lang === 'tr' ? 'Hiç doldurmamış' : 'Never filled',
+      color: 'bg-red-500',
+      text:  'text-red-600 dark:text-red-400',
+      icon:  '🚫',
+    },
+    {
+      key:   'low' as const,
+      label: '%0–30',
+      range: lang === 'tr' ? 'Çok eksik' : 'Very incomplete',
+      color: 'bg-orange-500',
+      text:  'text-orange-600 dark:text-orange-400',
+      icon:  '⚠️',
+    },
+    {
+      key:   'mid' as const,
+      label: '%30–60',
+      range: lang === 'tr' ? 'Yarım dolu' : 'Half complete',
+      color: 'bg-amber-400',
+      text:  'text-amber-600 dark:text-amber-400',
+      icon:  '🔶',
+    },
+    {
+      key:   'high' as const,
+      label: '%60+',
+      range: lang === 'tr' ? 'Profili dolu' : 'Profile complete',
+      color: 'bg-green-500',
+      text:  'text-green-600 dark:text-green-400',
+      icon:  '✅',
+    },
+  ];
 
   return (
     <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4">
@@ -60,14 +58,14 @@ export default function ProfileFillRatePanel({ buckets, average }: Props) {
           <div className="flex items-center gap-2">
             <span className="text-lg">📊</span>
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Profil Doluluk Dağılımı
+              {lang === 'tr' ? 'Profil Doluluk Dağılımı' : 'Profile Completion Distribution'}
             </h3>
             <span className="text-xs text-slate-400 dark:text-slate-500">
-              {total.toLocaleString('tr-TR')} gemi adamı
+              {total.toLocaleString('tr-TR')} {lang === 'tr' ? 'gemi adamı' : 'seafarers'}
             </span>
           </div>
           <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5">
-            <span className="text-xs text-slate-500 dark:text-slate-400">Ortalama doluluk</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400">{lang === 'tr' ? 'Ortalama doluluk' : 'Avg. completion'}</span>
             <span className={`text-base font-bold ${
               average >= 60 ? 'text-green-600' :
               average >= 30 ? 'text-amber-500' :
@@ -88,7 +86,7 @@ export default function ProfileFillRatePanel({ buckets, average }: Props) {
                 key={seg.key}
                 className={`${seg.color} flex items-center justify-center transition-all hover:opacity-90`}
                 style={{ width: `${w}%` }}
-                title={`${seg.label}: ${buckets[seg.key].toLocaleString('tr-TR')} kişi (%${w.toFixed(1)})`}
+                title={`${seg.label}: ${buckets[seg.key].toLocaleString('tr-TR')} ${lang === 'tr' ? 'kişi' : 'people'} (%${w.toFixed(1)})`}
               >
                 {w > 8 && (
                   <span className="text-[10px] font-bold text-white drop-shadow">
@@ -134,8 +132,13 @@ export default function ProfileFillRatePanel({ buckets, average }: Props) {
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
             <span>💡</span>
             <span>
-              Kullanıcıların <strong>%{(((buckets.zero + buckets.low) / total) * 100).toFixed(0)}</strong>'i profilini %30'un altında doldurmuş.
-              {' '}<strong>Retention</strong> sekmesinden bu segmentlere yönelik kampanya başlat.
+              {lang === 'tr' ? (
+                <>Kullanıcıların <strong>%{(((buckets.zero + buckets.low) / total) * 100).toFixed(0)}</strong>&apos;i profilini %30&apos;un altında doldurmuş.
+                  {' '}<strong>Retention</strong> sekmesinden bu segmentlere yönelik kampanya başlat.</>
+              ) : (
+                <><strong>{(((buckets.zero + buckets.low) / total) * 100).toFixed(0)}%</strong> of users have filled their profile below 30%.
+                  {' '}Launch a campaign for these segments from the <strong>Retention</strong> tab.</>
+              )}
             </span>
           </div>
         )}

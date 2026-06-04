@@ -1,28 +1,30 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { useLang } from '@/lib/lang';
 
 export const TEXT_MODEL_KEY  = 'crewinjob_text_model';
 export const IMAGE_MODEL_KEY = 'crewinjob_image_model';
 
 export const TEXT_MODELS = [
-  { value: 'gemini-2.5-flash',           label: 'Gemini 2.5 Flash',           tag: '⭐ Önerilen' },
-  { value: 'gemini-2.5-pro',             label: 'Gemini 2.5 Pro',             tag: '🧠 En Güçlü' },
-  { value: 'gemini-2.5-flash-lite',      label: 'Gemini 2.5 Flash Lite',      tag: '⚡ En Hızlı' },
-  { value: 'gemini-3-flash-preview',     label: 'Gemini 3 Flash Preview',     tag: '🆕 Yeni' },
-  { value: 'gemini-3.1-pro-preview',     label: 'Gemini 3.1 Pro Preview',     tag: '🆕 En Yeni' },
-  { value: 'gemini-2.0-flash-lite',      label: 'Gemini 2.0 Flash Lite',      tag: '🔒 Kararlı' },
+  { value: 'gemini-2.5-flash',           label: 'Gemini 2.5 Flash',           tagTr: '⭐ Önerilen',     tagEn: '⭐ Recommended' },
+  { value: 'gemini-2.5-pro',             label: 'Gemini 2.5 Pro',             tagTr: '🧠 En Güçlü',    tagEn: '🧠 Most Powerful' },
+  { value: 'gemini-2.5-flash-lite',      label: 'Gemini 2.5 Flash Lite',      tagTr: '⚡ En Hızlı',   tagEn: '⚡ Fastest' },
+  { value: 'gemini-3-flash-preview',     label: 'Gemini 3 Flash Preview',     tagTr: '🆕 Yeni',        tagEn: '🆕 New' },
+  { value: 'gemini-3.1-pro-preview',     label: 'Gemini 3.1 Pro Preview',     tagTr: '🆕 En Yeni',     tagEn: '🆕 Latest' },
+  { value: 'gemini-2.0-flash-lite',      label: 'Gemini 2.0 Flash Lite',      tagTr: '🔒 Kararlı',     tagEn: '🔒 Stable' },
 ];
 
 export const IMAGE_MODELS = [
-  { value: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1 Flash Image', tag: '⭐ Önerilen' },
-  { value: 'gemini-2.5-flash-image',         label: 'Gemini 2.5 Flash Image', tag: '🔄 Alternatif' },
-  { value: 'gemini-3-pro-image-preview',     label: 'Gemini 3 Pro Image',     tag: '🎨 Yüksek Kalite' },
+  { value: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1 Flash Image', tagTr: '⭐ Önerilen',      tagEn: '⭐ Recommended' },
+  { value: 'gemini-2.5-flash-image',         label: 'Gemini 2.5 Flash Image', tagTr: '🔄 Alternatif',    tagEn: '🔄 Alternative' },
+  { value: 'gemini-3-pro-image-preview',     label: 'Gemini 3 Pro Image',     tagTr: '🎨 Yüksek Kalite', tagEn: '🎨 High Quality' },
 ];
 
 export function getTextModel()  { try { return localStorage.getItem(TEXT_MODEL_KEY)  || TEXT_MODELS[0].value;  } catch { return TEXT_MODELS[0].value;  } }
 export function getImageModel() { try { return localStorage.getItem(IMAGE_MODEL_KEY) || IMAGE_MODELS[0].value; } catch { return IMAGE_MODELS[0].value; } }
 
 export default function ModelPicker() {
+  const { lang } = useLang();
   const [open,       setOpen]       = useState(false);
   const [textModel,  setTextModel]  = useState(TEXT_MODELS[0].value);
   const [imageModel, setImageModel] = useState(IMAGE_MODELS[0].value);
@@ -60,7 +62,7 @@ export default function ModelPicker() {
       <button
         onClick={() => setOpen(o => !o)}
         className="flex items-center gap-2 text-xs bg-white/10 hover:bg-white/20 text-white/90 px-3 py-1.5 rounded-lg transition-colors border border-white/10"
-        title="Model seçimi"
+        title={lang === 'tr' ? 'Model seçimi' : 'Model selection'}
       >
         <span>⚙️</span>
         <span className="hidden sm:inline">{textLabel}</span>
@@ -72,15 +74,15 @@ export default function ModelPicker() {
       {open && (
         <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl z-50 overflow-hidden">
           <div className="bg-slate-50 dark:bg-slate-700 px-4 py-3 border-b border-slate-200 dark:border-slate-600">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">⚙️ Model Ayarları</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Seçimler tarayıcıda kaydedilir</p>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">⚙️ {lang === 'tr' ? 'Model Ayarları' : 'Model Settings'}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{lang === 'tr' ? 'Seçimler tarayıcıda kaydedilir' : 'Selections are saved in browser'}</p>
           </div>
 
           <div className="p-4 flex flex-col gap-4">
             {/* Metin Modeli */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                🤖 İçerik Üretimi (Metin)
+                🤖 {lang === 'tr' ? 'İçerik Üretimi (Metin)' : 'Content Generation (Text)'}
               </label>
               <div className="flex flex-col gap-1">
                 {TEXT_MODELS.map(m => (
@@ -98,7 +100,7 @@ export default function ModelPicker() {
                       textModel === m.value
                         ? 'bg-white/20 text-white'
                         : 'bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
-                    }`}>{m.tag}</span>
+                    }`}>{lang === 'tr' ? m.tagTr : m.tagEn}</span>
                   </button>
                 ))}
               </div>
@@ -109,7 +111,7 @@ export default function ModelPicker() {
             {/* Görsel Modeli */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                🎨 Görsel Üretimi
+                🎨 {lang === 'tr' ? 'Görsel Üretimi' : 'Image Generation'}
               </label>
               <div className="flex flex-col gap-1">
                 {IMAGE_MODELS.map(m => (
@@ -127,7 +129,7 @@ export default function ModelPicker() {
                       imageModel === m.value
                         ? 'bg-white/20 text-white'
                         : 'bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-400'
-                    }`}>{m.tag}</span>
+                    }`}>{lang === 'tr' ? m.tagTr : m.tagEn}</span>
                   </button>
                 ))}
               </div>
@@ -136,7 +138,7 @@ export default function ModelPicker() {
 
           <div className="bg-slate-50 dark:bg-slate-700 px-4 py-2.5 border-t border-slate-200 dark:border-slate-600">
             <p className="text-xs text-slate-400 dark:text-slate-500">
-              Aktif: <strong className="text-slate-600 dark:text-slate-300">{textLabel}</strong> · <strong className="text-slate-600 dark:text-slate-300">{imageLabel}</strong>
+              {lang === 'tr' ? 'Aktif' : 'Active'}: <strong className="text-slate-600 dark:text-slate-300">{textLabel}</strong> · <strong className="text-slate-600 dark:text-slate-300">{imageLabel}</strong>
             </p>
           </div>
         </div>
