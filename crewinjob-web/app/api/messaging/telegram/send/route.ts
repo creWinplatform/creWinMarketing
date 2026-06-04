@@ -9,18 +9,12 @@ function agentModule(relPath: string) {
 }
 
 interface SendBody {
-  /** 'channel' | 'single' | 'broadcast' */
-  mode:        'channel' | 'single' | 'broadcast';
-  /** Tek alıcı chat_id (mode=single) */
-  chatId?:     string | number;
-  /** Toplu alıcı chat_id listesi (mode=broadcast) */
-  chatIds?:    (string | number)[];
-  /** Mesaj metni */
-  text:        string;
-  /** 'HTML' | 'Markdown' | 'MarkdownV2' — varsayılan: 'HTML' */
-  parseMode?:  'HTML' | 'Markdown' | 'MarkdownV2';
-  /** Inline butonlar [[{ text, url? }]] (opsiyonel) */
-  buttons?:    { text: string; url?: string; callback_data?: string }[][];
+  mode:       'channel' | 'single' | 'broadcast';
+  chatId?:    string | number;
+  chatIds?:   (string | number)[];
+  text:       string;
+  parseMode?: 'HTML' | 'Markdown' | 'MarkdownV2';
+  buttons?:   { text: string; url?: string; callback_data?: string }[][];
 }
 
 export async function POST(request: NextRequest) {
@@ -29,25 +23,21 @@ export async function POST(request: NextRequest) {
     const { mode, chatId, chatIds, text, parseMode = 'HTML', buttons } = body;
 
     if (!text) {
-      return NextResponse.json({ error: '"text" zorunlu.' }, { status: 400 });
+      return NextResponse.json({ error: '"text" is required.' }, { status: 400 });
     }
 
     const send = agentModule('modules/messaging-send.js');
 
     if (mode === 'channel') {
       const result = buttons
-        ? await send.sendTelegramWithButtons(
-            process.env.TELEGRAM_CHANNEL_ID,
-            text,
-            buttons,
-          )
+        ? await send.sendTelegramWithButtons(process.env.TELEGRAM_CHANNEL_ID, text, buttons)
         : await send.sendToDefaultChannel(text, parseMode);
       return NextResponse.json(result);
     }
 
     if (mode === 'single') {
       if (!chatId) {
-        return NextResponse.json({ error: '"chatId" zorunlu.' }, { status: 400 });
+        return NextResponse.json({ error: '"chatId" is required.' }, { status: 400 });
       }
       const result = buttons
         ? await send.sendTelegramWithButtons(chatId, text, buttons)
@@ -57,18 +47,18 @@ export async function POST(request: NextRequest) {
 
     if (mode === 'broadcast') {
       if (!chatIds || chatIds.length === 0) {
-        return NextResponse.json({ error: '"chatIds" zorunlu.' }, { status: 400 });
+        return NextResponse.json({ error: '"chatIds" is required.' }, { status: 400 });
       }
       if (chatIds.length > 1000) {
-        return NextResponse.json({ error: 'Tek seferde max 1000 chat_id gönderilebilir.' }, { status: 400 });
+        return NextResponse.json({ error: 'Max 1000 chat_ids per request.' }, { status: 400 });
       }
       const result = await send.broadcastTelegram(chatIds, text, parseMode);
       return NextResponse.json(result);
     }
 
-    return NextResponse.json({ error: `Geçersiz mode: ${mode}` }, { status: 400 });
+    return NextResponse.json({ error: `Invalid mode: ${mode}` }, { status: 400 });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Bilinmeyen hata';
+    const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

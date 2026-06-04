@@ -12,7 +12,7 @@ export async function PATCH(
   const { id }  = await params;
   const patch   = await req.json();
   const updated = updatePost(id, patch);
-  if (!updated) return NextResponse.json({ error: 'Post bulunamadı' }, { status: 404 });
+  if (!updated) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
   return NextResponse.json(updated);
 }
 
