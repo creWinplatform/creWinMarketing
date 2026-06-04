@@ -5,6 +5,7 @@ import GrowthTab from '@/components/tabs/GrowthTab';
 import RetentionTab from '@/components/tabs/RetentionTab';
 import SeoTab from '@/components/tabs/SeoTab';
 import AdsTab from '@/components/tabs/AdsTab';
+import CampaignManagerTab from '@/components/tabs/CampaignManagerTab';
 import MessagingTab from '@/components/tabs/MessagingTab';
 import KpiTab from '@/components/tabs/KpiTab';
 import CalendarTab from '@/components/tabs/CalendarTab';
@@ -18,7 +19,7 @@ import ActivityLogPanel from '@/components/ActivityLogPanel';
 import { LangToggle, useLang } from '@/lib/lang';
 import type { StatsResponse } from '@/lib/types';
 
-type Tab = 'dashboard' | 'social' | 'library' | 'growth' | 'retention' | 'seo' | 'ads' | 'messaging' | 'kpi' | 'calendar';
+type Tab = 'dashboard' | 'social' | 'library' | 'growth' | 'retention' | 'seo' | 'ads' | 'campaigns' | 'messaging' | 'kpi' | 'calendar';
 
 const TAB_LABELS: Record<Tab, { tr: string; en: string }> = {
   dashboard: { tr: 'Dashboard',           en: 'Dashboard' },
@@ -27,7 +28,8 @@ const TAB_LABELS: Record<Tab, { tr: string; en: string }> = {
   growth:    { tr: 'Seafarer Büyüme',     en: 'Seafarer Growth' },
   retention: { tr: 'Retention',           en: 'Retention' },
   seo:       { tr: 'SEO & Blog',          en: 'SEO & Blog' },
-  ads:       { tr: 'Reklam',              en: 'Ads' },
+  ads:       { tr: 'Reklam İçeriği',      en: 'Ad Content' },
+  campaigns: { tr: 'Kampanyalar',         en: 'Campaigns' },
   messaging: { tr: 'WA & Telegram',       en: 'WA & Telegram' },
   kpi:       { tr: 'KPI & Raporlar',      en: 'KPI & Reports' },
   calendar:  { tr: 'Takvim',              en: 'Calendar' },
@@ -35,7 +37,7 @@ const TAB_LABELS: Record<Tab, { tr: string; en: string }> = {
 
 const TAB_ICONS: Record<Tab, string> = {
   dashboard: '📈', social: '📱', library: '🗂️', growth: '👥',
-  retention: '🔄', seo: '🔍', ads: '📣', messaging: '💬', kpi: '📊', calendar: '📅',
+  retention: '🔄', seo: '🔍', ads: '✍️', campaigns: '📣', messaging: '💬', kpi: '📊', calendar: '📅',
 };
 
 function StatCard({ icon, value, label }: { icon: string; value: string; label: string }) {
@@ -197,6 +199,7 @@ export default function Home() {
         {activeTab === 'retention' && <RetentionTab segments={stats?.incomplete?.segments} />}
         {activeTab === 'seo'       && <SeoTab />}
         {activeTab === 'ads'       && <AdsTab />}
+        {activeTab === 'campaigns' && <CampaignManagerTab />}
         {activeTab === 'messaging' && <MessagingTab />}
         {activeTab === 'kpi'       && <KpiTab stats={stats || undefined} />}
         {activeTab === 'calendar'  && <CalendarTab />}
