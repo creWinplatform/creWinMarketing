@@ -569,7 +569,7 @@ export default function MessagingTab() {
                       : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50'
                   }`}>
                   <span className="text-base">{l.flag}</span>
-                  <span>{lang === 'tr' ? l.labelTr : l.labelEn}</span>
+                  <span>{l.label}</span>
                 </button>
               ))}
             </div>
