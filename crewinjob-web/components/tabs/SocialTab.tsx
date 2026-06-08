@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import OutputPanel from '../OutputPanel';
 import SharePanel from '../SharePanel';
-import { getTextModel } from '../ModelPicker';
+import { getTextModel, getImageModel } from '../ModelPicker';
+import { compositePostImage } from '@/lib/image-composite';
 import { saveToHistory, getHistory, deleteFromHistory, clearHistory, HistoryItem } from '@/lib/content-history';
 import { saveTemplate, getTemplates, deleteTemplate, PromptTemplate } from '@/lib/prompt-templates';
 import { addEvent } from '@/lib/calendar-store';
@@ -119,14 +120,20 @@ interface Variant {
   loading: boolean;
 }
 
+const LOGO_KEY = 'crewinjob_brand_logo';
+
 interface PlatformContent {
-  platform:  string;
-  content:   string;
-  loading:   boolean;
-  error:     string;
-  expanded:  boolean;
-  editing:   boolean;
-  editValue: string;
+  platform:     string;
+  content:      string;
+  loading:      boolean;
+  error:        string;
+  expanded:     boolean;
+  editing:      boolean;
+  editValue:    string;
+  imageData?:   string;
+  imageMime?:   string;
+  imageLoading?: boolean;
+  imageError?:  string;
 }
 
 export default function SocialTab() {
@@ -149,7 +156,12 @@ export default function SocialTab() {
   const [allPlatMode, setAllPlatMode] = useState(false);
   const [allPlatData, setAllPlatData] = useState<PlatformContent[]>([]);
 
-  const [sharePlatItem, setSharePlatItem] = useState<{ content: string; platform: string } | null>(null);
+  const [sharePlatItem,    setSharePlatItem]    = useState<{ content: string; platform: string; imageData?: string; imageMime?: string } | null>(null);
+  const [logoBase64,       setLogoBase64]       = useState('');
+  const [allPlatImage,     setAllPlatImage]     = useState('');
+  const [allPlatImgLoading,setAllPlatImgLoading]= useState(false);
+  const [allPlatImgError,  setAllPlatImgError]  = useState('');
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [showCalForm, setShowCalForm] = useState(false);
   const [calDate,     setCalDate]     = useState('');
@@ -171,6 +183,7 @@ export default function SocialTab() {
     setTemplates(getTemplates());
     const now = new Date();
     setCalDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
+    try { const l = localStorage.getItem(LOGO_KEY); if (l) setLogoBase64(l); } catch { /* ignore */ }
   }, []);
 
   const handleRefresh = () => {
@@ -254,6 +267,8 @@ export default function SocialTab() {
     setVariantMode(false);
     setOutput('');
     setError('');
+    setAllPlatImage('');
+    setAllPlatImgError('');
 
     const initialData: PlatformContent[] = PLATFORMS.map(p => ({
       platform: p.value, content: '', loading: true, error: '', expanded: true, editing: false, editValue: '',
@@ -279,6 +294,91 @@ export default function SocialTab() {
 
     const results = await Promise.all(promises);
     setAllPlatData(results);
+  };
+
+  // Tüm platformlar için tek ortak görsel — varsayılan olarak instagram (1080x1080) üretilir
+  const generateSharedImage = async () => {
+    const firstContent = allPlatData.find(p => p.content)?.content || '';
+    if (!firstContent) return;
+    setAllPlatImgLoading(true);
+    setAllPlatImgError('');
+    setAllPlatImage('');
+    try {
+      const res = await fetch('/api/generate-image', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          platform:    'instagram',
+          contentType: 'ilan_ozeti',
+          textContent: firstContent,
+          imageModel:  getImageModel(),
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const mime     = (data.mimeType  as string) || 'image/jpeg';
+      const rawB64   = data.imageData  as string;
+      const headline = (data.headline as string) || 'The Right Job\nThe Right Talent';
+      // instagram boyutunda composite — kare format tüm platformlara uyar
+      const finalB64 = await compositePostImage(mime, rawB64, logoBase64, headline, 'instagram');
+      setAllPlatImage(finalB64);
+    } catch (e) {
+      setAllPlatImgError(e instanceof Error ? e.message : t('Görsel oluşturulamadı', 'Image generation failed'));
+    } finally {
+      setAllPlatImgLoading(false);
+    }
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const b64 = (ev.target?.result as string).split(',')[1];
+      setLogoBase64(b64);
+      try { localStorage.setItem(LOGO_KEY, b64); } catch { /* ignore */ }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeLogo = () => {
+    setLogoBase64('');
+    try { localStorage.removeItem(LOGO_KEY); } catch { /* ignore */ }
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  };
+
+  const downloadPlatformImage = async (plt: string) => {
+    if (!allPlatImage) return;
+    // Seçilen platform boyutuna uyarla
+    const firstContent = allPlatData.find(p => p.content)?.content || '';
+    try {
+      const res = await fetch('/api/generate-image', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          platform:    plt,
+          contentType: 'ilan_ozeti',
+          textContent: firstContent,
+          imageModel:  getImageModel(),
+        }),
+      });
+      const data = await res.json();
+      if (!data.error && data.imageData) {
+        const mime     = (data.mimeType as string) || 'image/jpeg';
+        const headline = (data.headline as string) || 'The Right Job\nThe Right Talent';
+        const finalB64 = await compositePostImage(mime, data.imageData as string, logoBase64, headline, plt);
+        const a = document.createElement('a');
+        a.href     = `data:image/png;base64,${finalB64}`;
+        a.download = `crewinjob_${plt}_${Date.now()}.png`;
+        a.click();
+        return;
+      }
+    } catch { /* fallback */ }
+    // Fallback: mevcut görseli indir
+    const a = document.createElement('a');
+    a.href     = `data:image/png;base64,${allPlatImage}`;
+    a.download = `crewinjob_${plt}_${Date.now()}.png`;
+    a.click();
   };
 
   const toggleAllPlatExpand = (idx: number) => {
@@ -345,7 +445,12 @@ export default function SocialTab() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-9 gap-6">
       {sharePlatItem && (
-        <SharePanel content={sharePlatItem.content} onClose={() => setSharePlatItem(null)} />
+        <SharePanel
+          content={sharePlatItem.content}
+          imageData={sharePlatItem.imageData}
+          imageMime={sharePlatItem.imageMime}
+          onClose={() => setSharePlatItem(null)}
+        />
       )}
 
       {/* ── Left panel ── */}
@@ -848,18 +953,134 @@ export default function SocialTab() {
 
         {/* All platforms mode */}
         {allPlatMode && (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 mb-1">
+          <div className="flex flex-col gap-4">
+            {/* Üst bar: geri + logo durumu */}
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <button
                 onClick={() => setAllPlatMode(false)}
                 className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1"
               >
                 ← {t('Geri', 'Back')}
               </button>
-              <span className="text-xs text-slate-400 dark:text-slate-500">
-                {t('Tüm platformlar için içerik üretiliyor...', 'Generating content for all platforms...')}
-              </span>
+              {/* Logo durumu + yükleme */}
+              <div className="flex items-center gap-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleLogoUpload}
+                />
+                {logoBase64 ? (
+                  <div className="flex items-center gap-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg px-2.5 py-1.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`data:image/png;base64,${logoBase64}`} alt="Logo" className="h-6 w-auto max-w-[80px] object-contain" />
+                    <span className="text-[10px] text-green-700 dark:text-green-400 font-medium">✓ Logo</span>
+                    <button
+                      onClick={() => logoInputRef.current?.click()}
+                      className="text-[10px] text-slate-400 hover:text-ocean transition-colors"
+                      title={t('Logo değiştir', 'Change logo')}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={removeLogo}
+                      className="text-[10px] text-slate-300 hover:text-red-500 transition-colors"
+                      title={t('Logo kaldır', 'Remove logo')}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => logoInputRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 rounded-lg px-3 py-1.5 transition-colors font-medium"
+                  >
+                    🏷️ {t('Logo Yükle', 'Upload Logo')}
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Tek ortak görsel alanı */}
+            <div className="border border-purple-200 dark:border-purple-700 rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-purple-50 dark:bg-purple-900/20 border-b border-purple-200 dark:border-purple-700">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">🎨</span>
+                  <span className="text-xs font-semibold text-purple-800 dark:text-purple-300">
+                    {t('Paylaşım Görseli', 'Post Image')}
+                  </span>
+                  <span className="text-[10px] text-purple-500 dark:text-purple-400">
+                    {t('— tüm platformlar için tek görsel', '— one image for all platforms')}
+                  </span>
+                </div>
+                <button
+                  onClick={generateSharedImage}
+                  disabled={allPlatImgLoading || allPlatData.every(p => p.loading || !p.content)}
+                  className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+                >
+                  {allPlatImgLoading
+                    ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t('Üretiliyor...', 'Generating...')}</>
+                    : allPlatImage ? `🔄 ${t('Yeniden Üret', 'Regenerate')}` : `✨ ${t('Görsel Üret', 'Generate Image')}`}
+                </button>
+              </div>
+
+              <div className="p-3">
+                {allPlatImgLoading && (
+                  <div className="flex flex-col items-center justify-center py-8 gap-2 text-slate-400">
+                    <div className="w-8 h-8 border-4 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-xs animate-pulse">{t('Görsel üretiliyor...', 'Generating image...')}</p>
+                  </div>
+                )}
+                {allPlatImgError && !allPlatImgLoading && (
+                  <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2">
+                    ❌ {allPlatImgError}
+                  </p>
+                )}
+                {allPlatImage && !allPlatImgLoading && (
+                  <div className="flex flex-col gap-3">
+                    {/* Görsel önizleme */}
+                    <div className="rounded-xl overflow-hidden bg-slate-950 shadow-lg">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`data:image/png;base64,${allPlatImage}`}
+                        alt="Post görseli"
+                        className="w-full object-contain"
+                        style={{ maxHeight: '320px' }}
+                      />
+                    </div>
+                    {/* Platform bazlı indirme butonları */}
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                        ⬇️ {t('Platform boyutunda indir:', 'Download in platform size:')}
+                      </p>
+                      <div className="grid grid-cols-5 gap-1.5">
+                        {PLATFORMS.map(p => (
+                          <button
+                            key={p.value}
+                            onClick={() => void downloadPlatformImage(p.value)}
+                            className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/30 hover:text-purple-700 dark:hover:text-purple-300 text-slate-600 dark:text-slate-300 transition-colors"
+                          >
+                            <span className="text-base">{p.label.split(' ')[0]}</span>
+                            <span className="text-[9px] font-medium leading-tight text-center">{p.label.split(' ').slice(1).join(' ')}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!allPlatImage && !allPlatImgLoading && !allPlatImgError && (
+                  <div className="flex flex-col items-center justify-center py-6 gap-2 text-slate-400">
+                    <span className="text-3xl opacity-20">🖼️</span>
+                    <p className="text-xs text-center text-slate-400 dark:text-slate-500">
+                      {t('İçerik üretildikten sonra "Görsel Üret" butonuna tıklayın', 'Click "Generate Image" after content is ready')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Platform içerik kartları */}
             {allPlatData.map((p, i) => (
               <div key={p.platform} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
                 <button
@@ -889,7 +1110,7 @@ export default function SocialTab() {
                           ✏️ {t('Düzenle', 'Edit')}
                         </button>
                         <button
-                          onClick={e => { e.stopPropagation(); setSharePlatItem({ content: p.editing ? p.editValue : p.content, platform: p.platform }); }}
+                          onClick={e => { e.stopPropagation(); setSharePlatItem({ content: p.editing ? p.editValue : p.content, platform: p.platform, imageData: allPlatImage || undefined, imageMime: allPlatImage ? 'image/png' : undefined }); }}
                           className="text-[10px] bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded font-medium transition-colors"
                         >
                           📤 {t('Paylaş', 'Share')}
@@ -917,10 +1138,7 @@ export default function SocialTab() {
                           className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100"
                         />
                         <div className="flex gap-2">
-                          <button
-                            onClick={() => saveEditAllPlat(i)}
-                            className="flex-1 text-xs bg-ocean text-white py-1.5 rounded-lg font-medium hover:bg-ocean-dark transition-colors"
-                          >
+                          <button onClick={() => saveEditAllPlat(i)} className="flex-1 text-xs bg-ocean text-white py-1.5 rounded-lg font-medium hover:bg-ocean-dark transition-colors">
                             {t('Kaydet', 'Save')}
                           </button>
                           <button
