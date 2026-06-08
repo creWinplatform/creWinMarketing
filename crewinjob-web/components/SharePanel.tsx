@@ -313,6 +313,9 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
   const [twToast,   setTwToast]  = useState<{ show: boolean; imageCopied: boolean; textCopied?: boolean; platform: 'twitter' | 'linkedin' }>({ show: false, imageCopied: false, platform: 'twitter' });
   // TikTok script kopyalama durumu
   const [tiktokCopied, setTiktokCopied] = useState(false);
+  // Manuel kopyalama durumu (içerik + görsel)
+  const [copiedText,  setCopiedText]  = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
   // Facebook / Instagram / TikTok hızlı paylaşım durumu
   const [quickPosting, setQuickPosting] = useState<string | null>(null);
   const [quickToast,   setQuickToast]   = useState<{ show: boolean; platform: string; success: boolean; message: string; url?: string } | null>(null);
@@ -326,6 +329,39 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
     } finally {
       setAdaptingImg(null);
     }
+  };
+
+  /** Görseli PNG olarak panoya kopyalar; başarısız olursa indirir */
+  const handleCopyImage = async () => {
+    if (!imageData) return;
+    try {
+      const mime = imageMime || 'image/jpeg';
+      const img = new Image();
+      img.src = `data:${mime};base64,${imageData}`;
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('load')); });
+      const cv = document.createElement('canvas');
+      cv.width = img.width; cv.height = img.height;
+      cv.getContext('2d')!.drawImage(img, 0, 0);
+      const blob = await new Promise<Blob | null>(r => cv.toBlob(r, 'image/png'));
+      if (blob) {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        setCopiedImage(true);
+        setTimeout(() => setCopiedImage(false), 3000);
+        return;
+      }
+    } catch { /* clipboard API başarısız — indir */ }
+    handleDownloadImage();
+  };
+
+  /** Görseli dosya olarak indirir */
+  const handleDownloadImage = () => {
+    if (!imageData) return;
+    const mime = imageMime || 'image/jpeg';
+    const ext  = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : 'png';
+    const link = document.createElement('a');
+    link.href     = `data:${mime};base64,${imageData}`;
+    link.download = `crewin-post.${ext}`;
+    link.click();
   };
 
   const handleTwitterQuickShare = async (text: string) => {
@@ -627,6 +663,84 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
         {/* ── STEP: select ── */}
         {step === 'select' && (
           <div className="p-6 flex flex-col gap-6">
+
+            {/* ── Manuel Kopyala — Her zaman görünür, platform bağlantısı gerekmez ── */}
+            <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 dark:from-slate-700/60 dark:to-blue-900/20 border border-slate-200 dark:border-slate-600 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-base">📋</span>
+                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  {lang === 'tr' ? 'İçeriği & Görseli Kopyala' : 'Copy Content & Image'}
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3 leading-relaxed">
+                {lang === 'tr'
+                  ? 'LinkedIn, Instagram veya diğer platformlara manuel yapıştırmak için içeriği ve görseli kopyalayın.'
+                  : 'Copy content and image to manually paste into LinkedIn, Instagram, or any platform.'}
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                {/* İçeriği Kopyala */}
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(editText);
+                      setCopiedText(true);
+                      setTimeout(() => setCopiedText(false), 3000);
+                    } catch { /* ignore */ }
+                  }}
+                  className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition-all ${
+                    copiedText
+                      ? 'bg-green-500 text-white scale-95'
+                      : 'bg-ocean hover:bg-ocean-dark text-white'
+                  }`}
+                >
+                  {copiedText
+                    ? (lang === 'tr' ? '✅ Kopyalandı!' : '✅ Copied!')
+                    : (lang === 'tr' ? '📋 İçeriği Kopyala' : '📋 Copy Content')}
+                </button>
+
+                {/* Görseli Kopyala / İndir */}
+                {imageData && (
+                  <>
+                    <button
+                      onClick={handleCopyImage}
+                      title={lang === 'tr'
+                        ? 'Görseli PNG olarak panoya kopyalar (desteklenmiyorsa indirir)'
+                        : 'Copies image as PNG to clipboard (downloads as fallback)'}
+                      className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition-all ${
+                        copiedImage
+                          ? 'bg-green-500 text-white scale-95'
+                          : 'bg-purple-600 hover:bg-purple-700 text-white'
+                      }`}
+                    >
+                      {copiedImage
+                        ? (lang === 'tr' ? '✅ Kopyalandı!' : '✅ Copied!')
+                        : (lang === 'tr' ? '🖼️ Görseli Kopyala' : '🖼️ Copy Image')}
+                    </button>
+                    <button
+                      onClick={handleDownloadImage}
+                      title={lang === 'tr' ? 'Görseli bilgisayarına indir' : 'Download image to your computer'}
+                      className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                    >
+                      ⬇️ {lang === 'tr' ? 'İndir' : 'Download'}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* LinkedIn adım adım kılavuz */}
+              {imageData && (
+                <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    💼 <strong className="text-slate-600 dark:text-slate-300">LinkedIn için:</strong>{' '}
+                    {lang === 'tr' ? (
+                      <>1️⃣ <em>İçeriği Kopyala</em> → 2️⃣ LinkedIn&apos;i aç → metin kutusuna <kbd className="bg-slate-200 dark:bg-slate-600 px-1 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → 3️⃣ <em>Görseli Kopyala</em> veya <em>İndir</em> → 🖼️ butonuyla görseli yükle → 4️⃣ <strong>Paylaş</strong></>
+                    ) : (
+                      <>1️⃣ <em>Copy Content</em> → 2️⃣ Open LinkedIn → paste <kbd className="bg-slate-200 dark:bg-slate-600 px-1 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → 3️⃣ <em>Copy Image</em> or <em>Download</em> → upload via 🖼️ button → 4️⃣ <strong>Post</strong></>
+                    )}
+                  </p>
+                </div>
+              )}
+            </div>
 
             {/* Platform listesi */}
             <div>
