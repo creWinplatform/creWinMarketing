@@ -161,6 +161,13 @@ export default function SocialTab() {
   const [allPlatImage,     setAllPlatImage]     = useState('');
   const [allPlatImgLoading,setAllPlatImgLoading]= useState(false);
   const [allPlatImgError,  setAllPlatImgError]  = useState('');
+  // Ham görsel (composite öncesi) — başlık değişince yeniden composite için cache
+  const [rawBg,            setRawBg]            = useState('');   // base64
+  const [rawBgMime,        setRawBgMime]        = useState('');   // e.g. image/jpeg
+  // Başlık düzenleme
+  const [customHeadline,   setCustomHeadline]   = useState('');
+  const [headlineSuggestions, setHeadlineSuggestions] = useState<string[]>([]);
+  const [headlineApplying, setHeadlineApplying] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const [showCalForm, setShowCalForm] = useState(false);
@@ -296,6 +303,19 @@ export default function SocialTab() {
     setAllPlatData(results);
   };
 
+  /** İçerikten 3 başlık önerisi üretir */
+  const extractSuggestions = (content: string, aiHeadline: string): string[] => {
+    const words = content
+      .replace(/[#*_]/g, '')           // hashtag/markdown temizle
+      .split(/\s+/)
+      .filter(w => w.length > 2)
+      .slice(0, 12);
+    const s1 = aiHeadline;
+    const s2 = words.slice(0, 3).join(' ') + '\n' + words.slice(3, 6).join(' ');
+    const s3 = words.slice(0, 5).join(' ');
+    return [s1, s2, s3].filter((s, i, arr) => s.trim() && arr.indexOf(s) === i);
+  };
+
   // Tüm platformlar için tek ortak görsel — varsayılan olarak instagram (1080x1080) üretilir
   const generateSharedImage = async () => {
     const firstContent = allPlatData.find(p => p.content)?.content || '';
@@ -303,6 +323,9 @@ export default function SocialTab() {
     setAllPlatImgLoading(true);
     setAllPlatImgError('');
     setAllPlatImage('');
+    setRawBg('');
+    setCustomHeadline('');
+    setHeadlineSuggestions([]);
     try {
       const res = await fetch('/api/generate-image', {
         method:  'POST',
@@ -318,7 +341,17 @@ export default function SocialTab() {
       if (data.error) throw new Error(data.error);
       const mime     = (data.mimeType  as string) || 'image/jpeg';
       const rawB64   = data.imageData  as string;
-      const headline = (data.headline as string) || 'The Right Job\nThe Right Talent';
+      const headline = (data.headline  as string) || 'The Right Job\nThe Right Talent';
+
+      // Ham görsel cache'le (başlık değişince yeniden composite yapmak için)
+      setRawBg(rawB64);
+      setRawBgMime(mime);
+
+      // Başlık önerilerini üret
+      const suggestions = extractSuggestions(firstContent, headline);
+      setHeadlineSuggestions(suggestions);
+      setCustomHeadline(headline);
+
       // instagram boyutunda composite — kare format tüm platformlara uyar
       const finalB64 = await compositePostImage(mime, rawB64, logoBase64, headline, 'instagram');
       setAllPlatImage(finalB64);
@@ -326,6 +359,18 @@ export default function SocialTab() {
       setAllPlatImgError(e instanceof Error ? e.message : t('Görsel oluşturulamadı', 'Image generation failed'));
     } finally {
       setAllPlatImgLoading(false);
+    }
+  };
+
+  /** Mevcut ham görseli yeni başlıkla yeniden composite eder (API çağrısı yok) */
+  const applyCustomHeadline = async () => {
+    if (!rawBg || !customHeadline.trim()) return;
+    setHeadlineApplying(true);
+    try {
+      const finalB64 = await compositePostImage(rawBgMime, rawBg, logoBase64, customHeadline, 'instagram');
+      setAllPlatImage(finalB64);
+    } finally {
+      setHeadlineApplying(false);
     }
   };
 
@@ -1049,6 +1094,61 @@ export default function SocialTab() {
                         style={{ maxHeight: '320px' }}
                       />
                     </div>
+
+                    {/* ── Başlık Düzenleyici ── */}
+                    {rawBg && (
+                      <div className="rounded-xl border border-purple-200 dark:border-purple-700 bg-purple-50/60 dark:bg-purple-900/20 p-3 flex flex-col gap-2">
+                        <p className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">
+                          ✏️ {t('Görsel Başlığı', 'Image Headline')}
+                        </p>
+
+                        {/* Öneri chip'leri */}
+                        {headlineSuggestions.length > 0 && (
+                          <div className="flex gap-1.5 flex-wrap">
+                            {headlineSuggestions.map((s, i) => (
+                              <button
+                                key={i}
+                                onClick={() => setCustomHeadline(s)}
+                                title={s}
+                                className={`text-[10px] px-2.5 py-1 rounded-lg border transition-all leading-tight max-w-[140px] text-left truncate ${
+                                  customHeadline === s
+                                    ? 'bg-purple-600 text-white border-purple-600 font-semibold'
+                                    : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-purple-400 hover:text-purple-600 dark:hover:text-purple-300'
+                                }`}
+                              >
+                                {i === 0 ? '🤖 ' : i === 1 ? '✦ ' : '◈ '}
+                                {s.replace(/\n/g, ' / ')}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Serbest metin girişi + Uygula */}
+                        <div className="flex gap-2 items-start">
+                          <textarea
+                            value={customHeadline}
+                            onChange={e => setCustomHeadline(e.target.value)}
+                            rows={2}
+                            placeholder={t('Başlık yazın... (satır sonu için Enter)', 'Type headline... (Enter for newline)')}
+                            className="flex-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none leading-relaxed"
+                          />
+                          <button
+                            onClick={applyCustomHeadline}
+                            disabled={headlineApplying || !customHeadline.trim()}
+                            className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-2 rounded-lg font-semibold transition-colors whitespace-nowrap"
+                          >
+                            {headlineApplying
+                              ? <span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" />
+                              : '✓'}
+                            {t('Uygula', 'Apply')}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-purple-500 dark:text-purple-400">
+                          {t('Başlık değişince "Uygula"ya bas — API çağrısı olmadan görsel anında güncellenir.', 'Press "Apply" after editing — image updates instantly without a new API call.')}
+                        </p>
+                      </div>
+                    )}
+
                     {/* Platform bazlı indirme butonları */}
                     <div className="flex flex-col gap-1.5">
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
