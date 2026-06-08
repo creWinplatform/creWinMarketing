@@ -151,22 +151,22 @@ export async function compositePostImage(
       if (logoBase64) {
         const logo = new Image();
         logo.onload = () => {
-          // Logo yüksekliği: barH'nin 1.7 katı (eski 2.0'dan küçültüldü)
-          const logoH    = Math.round(barH * 1.7);
-          const logoW    = Math.min(Math.round((logo.width / logo.height) * logoH), Math.round(W * 0.22));
-          const pillPadX = Math.round(logoW * 0.14);
-          const pillPadY = Math.round(logoH * 0.12);
+          // Logo yüksekliği: bar içine tam sığacak şekilde (taşma önlendi)
+          const logoH    = Math.round(barH * 0.72);
+          const logoW    = Math.min(Math.round((logo.width / logo.height) * logoH), Math.round(W * 0.20));
+          const pillPadX = Math.round(logoW * 0.18);
+          const pillPadY = Math.round(barH * 0.14);
           const pillW    = logoW + pillPadX * 2;
-          const pillH    = logoH + pillPadY * 2;
-          // Logo sağa hizalandı — sol metin ile çakışmaz
+          const pillH    = barH;   // pill yüksekliği = bar yüksekliği (tam içinde)
           const pillX    = W - pillW - pad;
-          const pillY    = barY - Math.round((pillH - barH) / 2) - Math.round(barH * 0.05);
+          const pillY    = barY;   // bar ile hizalı
           const pillR    = Math.round(Math.min(pillW, pillH) * 0.12);
 
-          ctx.shadowColor   = 'rgba(0,0,0,0.55)';
-          ctx.shadowBlur    = Math.round(pillH * 0.22);
-          ctx.shadowOffsetY = Math.round(pillH * 0.06);
-          ctx.fillStyle     = '#ffffff';
+          // Pill arka planı: koyu navy — hem beyaz hem renkli logolar üstünde görünür
+          ctx.shadowColor   = 'rgba(0,0,0,0.40)';
+          ctx.shadowBlur    = Math.round(pillH * 0.18);
+          ctx.shadowOffsetY = 0;
+          ctx.fillStyle     = 'rgba(4,8,20,0.90)';   // koyu navy pill
           ctx.beginPath();
           ctx.moveTo(pillX + pillR, pillY);
           ctx.lineTo(pillX + pillW - pillR, pillY);
@@ -180,8 +180,8 @@ export async function compositePostImage(
           ctx.closePath();
           ctx.fill();
           ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
-          ctx.strokeStyle = 'rgba(2,132,199,0.25)';
-          ctx.lineWidth   = Math.max(1, Math.round(pillH * 0.016));
+          ctx.strokeStyle = 'rgba(56,189,248,0.45)';  // açık mavi kenarlık
+          ctx.lineWidth   = Math.max(1, Math.round(pillH * 0.018));
           ctx.beginPath();
           ctx.moveTo(pillX + pillR, pillY);
           ctx.lineTo(pillX + pillW - pillR, pillY);
@@ -194,7 +194,9 @@ export async function compositePostImage(
           ctx.quadraticCurveTo(pillX, pillY, pillX + pillR, pillY);
           ctx.closePath();
           ctx.stroke();
-          ctx.drawImage(logo, pillX + pillPadX, pillY + pillPadY, logoW, logoH);
+          // Logo dikey ortala
+          const logoDrawY = pillY + Math.round((pillH - logoH) / 2);
+          ctx.drawImage(logo, pillX + pillPadX, logoDrawY, logoW, logoH);
           finalize();
         };
         logo.onerror = finalize;

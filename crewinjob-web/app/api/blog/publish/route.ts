@@ -4,62 +4,63 @@
  * Pipeline:
  *  1. Blog içeriğinden başlık + slug çıkar
  *  2. Görsel üret (veya gönderilen imageData'yı kullan)
- *  3. Görseli sunucuya kaydet: public/images/blog/<slug>.jpg
- *     → /images/blog/<slug>.jpg olarak servis edilir
- *  4. api.crewin.org token auth
- *  5. POST /api/services/app/Blog/CreateOrEdit  (imageUrl = "<slug>.jpg")
- *
- * Görsel crewinjob.com'da görünmesi için:
- *  - GET /api/blog/images  →  kayıtlı görsellerin listesi
- *  - GET /api/blog/images/[filename]  →  ikili dosya indir
- *  Bu görselleri crewinjob.com sunucusuna kopyalamanız yeterli.
+ *  3. Görseli sunucuya kaydet: public/images/blog/<slug>.png
+ *  4. POST /api/services/app/Blog/CreateOrEdit  (token gerekmez)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import fs   from 'fs';
 import path from 'path';
 
-const API_BASE = (process.env.CREWINJOB_API_URL || 'https://api.crewin.org').replace(/\/$/, '');
-const APP_URL  = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333').replace(/\/$/, '');
-
-// Görsellerin kaydedileceği klasör (Next.js statik dosya dizini)
+const API_BASE    = (process.env.CREWINJOB_API_URL || 'https://api.crewin.org').replace(/\/$/, '');
+const APP_URL     = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333').replace(/\/$/, '');
 const BLOG_IMG_DIR = path.join(process.cwd(), 'public', 'images', 'blog');
+
+// ── ABP Token (S3 upload için) ────────────────────────────────────────────────
+let _abpToken      = '';
+let _abpTokenExp   = 0;
+let _abpLoginLock: Promise<string> | null = null;
+
+async function getAbpToken(): Promise<string> {
+  const directKey = process.env.CREWINJOB_API_KEY || '';
+  if (directKey) return directKey;
+
+  const username = process.env.CREWINJOB_API_USERNAME || '';
+  const password = process.env.CREWINJOB_API_PASSWORD || '';
+  if (!username || !password) throw new Error('CREWINJOB_API_USERNAME / PASSWORD .env dosyasında tanımlı değil');
+
+  if (_abpToken && Date.now() < _abpTokenExp) return _abpToken;
+  if (_abpLoginLock) return _abpLoginLock;
+
+  _abpLoginLock = (async () => {
+    const res  = await fetch(`${API_BASE}/api/TokenAuth/Authenticate`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body:    JSON.stringify({ userNameOrEmailAddress: username, password }),
+      signal:  AbortSignal.timeout(12000),
+    });
+    if (!res.ok) throw new Error(`ABP login HTTP ${res.status}`);
+    const data: { result?: { accessToken?: string; expireInSeconds?: number } } = await res.json();
+    const result = data.result;
+    if (!result?.accessToken) throw new Error('ABP login: accessToken yok');
+    _abpToken    = result.accessToken;
+    _abpTokenExp = Date.now() + (result.expireInSeconds || 86400) * 1000 - 60000;
+    return _abpToken;
+  })().finally(() => { _abpLoginLock = null; });
+
+  return _abpLoginLock;
+}
 
 function ensureBlogImgDir() {
   fs.mkdirSync(BLOG_IMG_DIR, { recursive: true });
 }
 
-// ── Token cache ───────────────────────────────────────────────────────────────
-let _token:        string | null          = null;
-let _tokenExpiry   = 0;
-let _loginPromise: Promise<string> | null = null;
-
-async function getApiToken(): Promise<string> {
-  const apiKey = process.env.CREWINJOB_API_KEY;
-  if (apiKey) return apiKey;
-
-  if (_token && Date.now() < _tokenExpiry) return _token;
-  if (_loginPromise) return await _loginPromise;
-
-  _loginPromise = (async () => {
-    const res = await fetch(`${API_BASE}/api/TokenAuth/Authenticate`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body:    JSON.stringify({
-        userNameOrEmailAddress: process.env.CREWINJOB_API_USERNAME,
-        password:               process.env.CREWINJOB_API_PASSWORD,
-      }),
-      signal: AbortSignal.timeout(12000),
-    });
-    if (!res.ok) throw new Error(`Login HTTP ${res.status}`);
-    const data   = await res.json();
-    const result = data.result || data;
-    if (!result?.accessToken) throw new Error('accessToken bulunamadı');
-    _token       = result.accessToken as string;
-    _tokenExpiry = Date.now() + ((result.expireInSeconds as number) || 86400) * 1000 - 60_000;
-    return _token as string;
-  })().finally(() => { _loginPromise = null; });
-
-  return await _loginPromise;
+// ── Başlıktan noktalama temizle (URL slug için) ───────────────────────────────
+function cleanTitle(title: string): string {
+  return title
+    .replace(/[:\-–—!?,"'`;]/g, ' ')  // noktalama → boşluk
+    .replace(/\s+/g, ' ')              // çoklu boşluk → tek
+    .trim()
+    .slice(0, 120);
 }
 
 // ── Başlıktan URL-safe slug üret ──────────────────────────────────────────────
@@ -73,14 +74,106 @@ function toSlug(title: string): string {
     .slice(0, 50);
 }
 
-// ── H1 başlığını çıkar ────────────────────────────────────────────────────────
+// ── H1 başlığını çıkar ve temizle ─────────────────────────────────────────────
 function extractTitle(content: string): string {
   const h1 = content.match(/^#\s+(.+)$/m)
     ?? content.match(/^H1:\s*\[?(.+?)\]?\s*$/m)
     ?? content.match(/H1:\s*\[?([^\]\n]+)\]?/);
-  if (h1) return h1[1].trim().replace(/[\[\]]/g, '').slice(0, 120);
-  const first = content.split('\n').find(l => l.trim() && !l.startsWith('#'));
-  return first?.trim().slice(0, 80) || 'CrewinJob Blog';
+  const raw = h1
+    ? h1[1].trim().replace(/[\[\]]/g, '')
+    : (content.split('\n').find(l => l.trim() && !l.startsWith('#'))?.trim() || 'CrewinJob Blog');
+  return cleanTitle(raw);
+}
+
+// ── Sadece makale gövdesini çıkar (SEO metadata + sosyal medya bölümlerini at) ─
+function extractArticleBody(content: string): string {
+  let body = content;
+
+  // 1. "## MAKALE ..." satırından başla — ama o satırın kendisini at
+  const makaleMatch = body.match(/^##\s*MAKALE[^\n]*/im);
+  if (makaleMatch) {
+    const idx = body.indexOf(makaleMatch[0]);
+    body = body.slice(idx + makaleMatch[0].length).trim();
+  }
+
+  // 2. H1 satırını (başlık tekrarı) at — makale içeriği H2'den başlasın
+  body = body.replace(/^H1:\s*\[?[^\]\n]+\]?\s*/im, '').trim();
+  body = body.replace(/^#\s+[^\n]+\n/, '').trim();
+
+  // 3. "## SEO METADATA" ve sonrasını kes
+  const stopPatterns = [
+    /^##\s*(SEO\s*METADATA|META\s*DATA|METADATA)/im,
+    /^##\s*SOSYAL\s*MEDYA/im,
+    /^##\s*SOCIAL\s*MEDIA/im,
+    /^##\s*(✅\s*)?ONAY/im,
+    /^---+$/m,
+  ];
+  for (const pat of stopPatterns) {
+    const m = body.match(pat);
+    if (m) {
+      const idx = body.indexOf(m[0]);
+      if (idx > 100) body = body.slice(0, idx);
+    }
+  }
+
+  return body.trim();
+}
+
+// ── Görseli crewinjob S3'e yükle → public URL döner ──────────────────────────
+const S3_BUCKET   = 'crewisions3';
+const S3_SUBDIR   = 'crewinfile';
+const S3_BASE_URL = `https://${S3_BUCKET}.s3.amazonaws.com/${S3_SUBDIR}`;
+
+async function uploadToS3(base64: string, mime: string, filename: string): Promise<string | null> {
+  try {
+    const token  = await getAbpToken();
+    const buffer = Buffer.from(base64, 'base64');
+    const blob   = new Blob([buffer], { type: mime });
+    const form   = new FormData();
+    form.append('file', blob, filename);
+
+    const params = new URLSearchParams({
+      bucketName:           S3_BUCKET,
+      subDirectoryInBucket: S3_SUBDIR,
+      fileNameInS3:         filename,
+    });
+
+    const res = await fetch(
+      `${API_BASE}/api/services/app/FirmaGenel/sendMyFileToS3?${params}`,
+      {
+        method:  'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body:    form,
+        signal:  AbortSignal.timeout(30000),
+      },
+    );
+
+    if (!res.ok) { console.warn(`[blog/publish] S3 HTTP ${res.status}`); return null; }
+
+    const text = await res.text().then(t => t.trim());
+    console.log(`[blog/publish] S3 response: ${text.slice(0, 200)}`);
+
+    // ABP JSON response: { result: true, success: true, ... }
+    let isOk = false;
+    try {
+      const json = JSON.parse(text) as { result?: unknown; success?: boolean };
+      isOk = json.success === true || json.result === true || typeof json.result === 'string';
+    } catch {
+      // Düz metin yanıt
+      isOk = text === 'true' || text === '"true"' || text.startsWith('http');
+    }
+
+    if (isOk) {
+      const publicUrl = `${S3_BASE_URL}/${filename}`;
+      console.log(`[blog/publish] S3 OK: ${publicUrl}`);
+      return publicUrl;
+    }
+    console.warn('[blog/publish] S3 başarısız:', text);
+    return null;
+  } catch (e) {
+    console.warn('[blog/publish] S3 hata:', e);
+    return null;
+  }
 }
 
 // ── Markdown → HTML ───────────────────────────────────────────────────────────
@@ -107,7 +200,7 @@ function mdToHtml(md: string): string {
   return html.join('\n');
 }
 
-// ── Görseli sunucuya kaydet ───────────────────────────────────────────────────
+// ── Görseli yerel diske kaydet (yedek) ───────────────────────────────────────
 function saveImageLocally(base64: string, mime: string, slug: string): string {
   ensureBlogImgDir();
   const ext      = mime.includes('png') ? 'png' : 'jpg';
@@ -116,6 +209,34 @@ function saveImageLocally(base64: string, mime: string, slug: string): string {
   fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
   console.log(`[blog/publish] Görsel kaydedildi: ${filePath}`);
   return filename;
+}
+
+// ── Görseli imgbb'ye yükle → public URL döner ─────────────────────────────────
+async function uploadToImgbb(base64: string): Promise<string | null> {
+  const apiKey = process.env.IMGBB_API_KEY;
+  if (!apiKey) { console.warn('[blog/publish] IMGBB_API_KEY eksik'); return null; }
+
+  try {
+    const form = new URLSearchParams();
+    form.append('key',   apiKey);
+    form.append('image', base64);
+
+    const res  = await fetch('https://api.imgbb.com/1/upload', {
+      method: 'POST',
+      body:   form,
+      signal: AbortSignal.timeout(30000),
+    });
+    const json = await res.json() as { success?: boolean; data?: { url?: string; display_url?: string } };
+    if (json.success && json.data?.url) {
+      console.log(`[blog/publish] imgbb URL: ${json.data.url}`);
+      return json.data.url;
+    }
+    console.warn('[blog/publish] imgbb yükleme başarısız:', JSON.stringify(json));
+    return null;
+  } catch (e) {
+    console.warn('[blog/publish] imgbb hata:', e);
+    return null;
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -161,40 +282,39 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3. Görseli public/images/blog/ klasörüne kaydet
+  // 3. Görseli yükle: önce S3, başarısız olursa imgbb, son çare yerel
   let imageFileName = '';
   let localImageUrl = '';
+  let finalImageUrl: string | null = null;
+
   if (imgBase64) {
+    const ext        = imgMime.includes('png') ? 'png' : 'jpg';
+    const s3Filename = `${slug}-${Date.now()}.${ext}`;
+
+    // 3a. crewinjob S3 — dosya adını döner, site kendi prefix'ini ekler
+    const s3Name = await uploadToS3(imgBase64, imgMime, s3Filename);
+    if (s3Name) {
+      finalImageUrl = s3Name;
+    } else {
+      // 3b. S3 başarısız → imgbb tam URL
+      finalImageUrl = await uploadToImgbb(imgBase64);
+    }
+
+    // 3c. Yerel yedek
     imageFileName = saveImageLocally(imgBase64, imgMime, slug);
-    // Marketing agent üzerinden erişilebilir URL (monitoring/indirme için)
     localImageUrl = `${APP_URL}/images/blog/${imageFileName}`;
-    console.log(`[blog/publish] Görsel URL: ${localImageUrl}`);
   }
 
-  // 4. Markdown → HTML
-  const htmlContent = mdToHtml(content);
+  // 4. Sadece makale gövdesini al, sonra Markdown → HTML
+  const articleBody = extractArticleBody(content);
+  const htmlContent = mdToHtml(articleBody);
 
-  // 5. Token
-  let token: string;
-  try {
-    token = await getApiToken();
-  } catch (err) {
-    return NextResponse.json(
-      { error: `API token alınamadı: ${err instanceof Error ? err.message : String(err)}` },
-      { status: 500 },
-    );
-  }
-
-  // 6. Blog yayınla — imageUrl = sadece dosya adı (crewinjob.com pattern: "images/blog/" + imageUrl)
+  // 5. Blog yayınla
   const blogRes = await fetch(`${API_BASE}/api/services/app/Blog/CreateOrEdit`, {
     method:  'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      'Accept':        'application/json',
-      'Authorization': `Bearer ${token}`,
-    },
-    body:   JSON.stringify({ id: 0, title, content: htmlContent, imageUrl: imageFileName }),
-    signal: AbortSignal.timeout(15000),
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body:    JSON.stringify({ id: null, title, content: htmlContent, imageUrl: finalImageUrl }),
+    signal:  AbortSignal.timeout(15000),
   });
 
   if (!blogRes.ok) {
@@ -205,22 +325,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const blogData = await blogRes.json() as { result?: { id?: number }; id?: number };
-  const blogId   = blogData?.result?.id ?? blogData?.id ?? 0;
+  const blogData = await blogRes.json() as { result?: { id?: number }; id?: number; success?: boolean };
+  if (!blogData.success) {
+    return NextResponse.json({ error: 'Blog yayınlanamadı' }, { status: 500 });
+  }
+
+  const blogId = blogData?.result?.id ?? blogData?.id ?? 0;
 
   return NextResponse.json({
-    success:      true,
+    success: true,
     blogId,
     title,
-    imageFileName,            // sadece dosya adı — crewinjob.com'a kopyalanacak
-    localImageUrl,            // marketing agent üzerindeki URL
-    syncNote: imageFileName
-      ? `Görsel "${imageFileName}" marketing agent sunucusuna kaydedildi. crewinjob.com'da görünmesi için /images/blog/ klasörüne kopyalayın.`
-      : '',
+    imageUrl:     finalImageUrl,
+    imageFileName,
+    localImageUrl,
+    syncNote: finalImageUrl
+      ? `Görsel yüklendi: ${finalImageUrl}`
+      : imageFileName
+        ? `Görsel yerel kaydedildi: ${localImageUrl}`
+        : '',
   });
 }
 
-// GET — kayıtlı blog görsellerinin listesi (senkronizasyon için)
+// GET — kayıtlı blog görsellerinin listesi
 export async function GET() {
   try {
     ensureBlogImgDir();

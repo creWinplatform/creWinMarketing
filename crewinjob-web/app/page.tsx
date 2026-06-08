@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import SocialTab from '@/components/tabs/SocialTab';
 import GrowthTab from '@/components/tabs/GrowthTab';
 import RetentionTab from '@/components/tabs/RetentionTab';
@@ -71,10 +72,17 @@ export default function Home() {
       {/* ── Header ── */}
       <header className="bg-navy text-white px-6 py-4 flex items-center gap-3 shadow-lg">
         <div className="flex items-center gap-3">
-          <span className="text-2xl">⚓</span>
-          <div>
-            <h1 className="font-bold text-base leading-tight">crewinjob Marketing Agent</h1>
-            <p className="text-slate-400 text-xs">The Right Job, The Right Talent</p>
+          <Image
+            src="/crewin-logo.svg"
+            alt="Crewin Logo"
+            width={120}
+            height={32}
+            className="brightness-0 invert"
+            priority
+          />
+          <div className="border-l border-slate-600 pl-3">
+            <p className="text-slate-300 text-xs font-medium">Marketing Agent</p>
+            <p className="text-slate-500 text-[10px]">The Right Job, The Right Talent</p>
           </div>
         </div>
 
