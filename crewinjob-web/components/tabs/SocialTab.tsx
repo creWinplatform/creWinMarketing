@@ -394,32 +394,19 @@ export default function SocialTab() {
 
   const downloadPlatformImage = async (plt: string) => {
     if (!allPlatImage) return;
-    // Seçilen platform boyutuna uyarla
-    const firstContent = allPlatData.find(p => p.content)?.content || '';
-    try {
-      const res = await fetch('/api/generate-image', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          platform:    plt,
-          contentType: 'ilan_ozeti',
-          textContent: firstContent,
-          imageModel:  getImageModel(),
-        }),
-      });
-      const data = await res.json();
-      if (!data.error && data.imageData) {
-        const mime     = (data.mimeType as string) || 'image/jpeg';
-        const headline = (data.headline as string) || 'The Right Job\nThe Right Talent';
-        const finalB64 = await compositePostImage(mime, data.imageData as string, logoBase64, headline, plt);
+    // rawBg varsa: aynı arka plan + aktif başlık, sadece platform boyutuna composite et
+    if (rawBg) {
+      try {
+        const headline = customHeadline.trim() || 'The Right Job\nThe Right Talent';
+        const finalB64 = await compositePostImage(rawBgMime || 'image/jpeg', rawBg, logoBase64, headline, plt);
         const a = document.createElement('a');
         a.href     = `data:image/png;base64,${finalB64}`;
         a.download = `crewinjob_${plt}_${Date.now()}.png`;
         a.click();
         return;
-      }
-    } catch { /* fallback */ }
-    // Fallback: mevcut görseli indir
+      } catch { /* fallback */ }
+    }
+    // Fallback: gösterilen composite görseli olduğu gibi indir
     const a = document.createElement('a');
     a.href     = `data:image/png;base64,${allPlatImage}`;
     a.download = `crewinjob_${plt}_${Date.now()}.png`;
