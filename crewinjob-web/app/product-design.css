@@ -294,8 +294,8 @@ html { font-family:'Manrope Variable',Manrope,'Segoe UI',sans-serif; }
 .auth-entry { display:flex; align-items:center; justify-content:center; flex-direction:column; padding:50px 28px; }
 .auth-designed .auth-form-surface { border:none; background:none; border-radius:0; padding:0; max-width:350px; color:#242730; }
 .auth-designed .auth-form-surface h1 { font-size:30px; font-weight:750; }
-.auth-designed .auth-form-surface>p { font-size:13px; color:#768090; }
-.auth-designed .studio-eyebrow { color:#5f76b5; }
+.auth-designed .auth-form-surface>p { font-size:13px; color:var(--rz-muted,#626b5c); }
+.auth-designed .studio-eyebrow { color:var(--rz-lime-deep,#4f6f1f); }
 .auth-designed .studio-text-button { color:var(--studio-accent); }
 .auth-designed .studio-form-grid label { color:#596172; }
 .auth-designed .studio-form-grid input { background:#fff; border-color:#d9dfe9; color:#20252e; font-size:15px; min-height:48px; }

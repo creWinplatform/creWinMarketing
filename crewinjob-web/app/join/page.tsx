@@ -105,13 +105,15 @@ function Join() {
               Pilot çalışma alanları şu anda davetle açılıyor. Platform
               yöneticisinden tek kullanımlık bir davet bağlantısı isteyin.
             </p>
-            <a href="/login" className="studio-primary mt-5">
-              Mevcut hesabımla giriş yap
-              <ArrowRight size={16} />
-            </a>
-            <a className="studio-text-button mt-5" href="/welcome">
-              Ürün sayfasına dön
-            </a>
+            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
+              <a href="/login" className="studio-primary">
+                Mevcut hesabımla giriş yap
+                <ArrowRight size={16} />
+              </a>
+              <a className="studio-text-button" href="/welcome">
+                Ürün sayfasına dön
+              </a>
+            </div>
           </>
         ) : loading ? (
           <p role="status">Davet doğrulanıyor…</p>
