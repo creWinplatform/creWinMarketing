@@ -8,7 +8,9 @@ const PLATFORM_ICONS: Record<string, string> = {
 };
 
 const STATUS_BADGE: Record<string, string> = {
-  pending:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  pending:    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  publishing: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+  partial:    'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
   published: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
   failed:    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
   cancelled: 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400',
@@ -26,7 +28,9 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
   const { lang } = useLang();
 
   const STATUS_LABEL: Record<string, string> = {
-    pending:   lang === 'tr' ? '⏰ Bekliyor'    : '⏰ Pending',
+    pending:    lang === 'tr' ? '⏰ Bekliyor'    : '⏰ Pending',
+    publishing: lang === 'tr' ? '📤 Yayınlanıyor' : '📤 Publishing',
+    partial:    lang === 'tr' ? '⚠️ Kısmen yayınlandı' : '⚠️ Partially published',
     published: lang === 'tr' ? '✅ Yayınlandı'  : '✅ Published',
     failed:    lang === 'tr' ? '❌ Başarısız'   : '❌ Failed',
     cancelled: lang === 'tr' ? '🚫 İptal'       : '🚫 Cancelled',
@@ -35,7 +39,7 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
   const [posts,       setPosts]       = useState<ScheduledPost[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [publishing,  setPublishing]  = useState(false);
-  const [publishResult, setPublishResult] = useState<{ published: number; failed: number } | null>(null);
+  const [publishResult, setPublishResult] = useState<{ published: number; partial?: number; failed: number } | null>(null);
 
   // Yeni post formu
   const [showForm,      setShowForm]      = useState(!!prefillContent);
@@ -79,7 +83,8 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
     setPublishResult(null);
     try {
       const res  = await fetch('/api/schedule/publish', { method: 'POST' });
-      const data = await res.json() as { published: number; failed: number };
+      const data = await res.json() as { published: number; partial?: number; failed: number; error?: string };
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setPublishResult(data);
       await fetchPosts();
     } catch { /* ignore */ } finally { setPublishing(false); }
@@ -120,11 +125,14 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
   const togglePlatform = (p: string) =>
     setFormPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
 
-  // datetime-local minimum değeri: şu andan 5 dakika sonra
-  const minDateTime = new Date(Date.now() + 5 * 60 * 1000)
-    .toISOString().slice(0, 16);
+  // datetime-local minimum değeri: şu andan 5 dakika sonra — YEREL saatle
+  // (toISOString UTC verir; datetime-local yerel saat bekler → min İstanbul'da 3 saat geride kalıyordu)
+  const minDate     = new Date(Date.now() + 5 * 60 * 1000);
+  const pad2        = (n: number) => String(n).padStart(2, '0');
+  const minDateTime = `${minDate.getFullYear()}-${pad2(minDate.getMonth() + 1)}-${pad2(minDate.getDate())}T${pad2(minDate.getHours())}:${pad2(minDate.getMinutes())}`;
 
-  const pendingCount    = posts.filter(p => p.status === 'pending').length;
+  // Kısmen yayınlananlar da (başarısız platformlar) yeniden denenir
+  const pendingCount    = posts.filter(p => p.status === 'pending' || p.status === 'partial').length;
   const publishedCount  = posts.filter(p => p.status === 'published').length;
 
   return (
@@ -177,6 +185,9 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
             {publishResult.published > 0 ? '✅' : '⚠️'}
             <span>
               {publishResult.published} {lang === 'tr' ? 'post yayınlandı' : 'post(s) published'}
+              {(publishResult.partial ?? 0) > 0
+                ? `, ${publishResult.partial} ${lang === 'tr' ? 'kısmen (tekrar denenecek)' : 'partial (will retry)'}`
+                : ''}
               {publishResult.failed > 0
                 ? `, ${publishResult.failed} ${lang === 'tr' ? 'başarısız' : 'failed'}`
                 : ''}
@@ -330,7 +341,7 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                         >{lang === 'tr' ? 'Sil' : 'Delete'}</button>
                       </>
                     )}
-                    {(post.status === 'cancelled' || post.status === 'failed') && (
+                    {(post.status === 'cancelled' || post.status === 'failed' || post.status === 'partial') && (
                       <button
                         onClick={() => handleDelete(post.id)}
                         className="text-[10px] text-slate-400 hover:text-red-500 font-medium px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -370,10 +381,10 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
           <p className="text-[10px] text-blue-700 dark:text-blue-300 font-semibold mb-1">⚙️ {lang === 'tr' ? 'Otomatik Yayınlama (Cron)' : 'Auto Publish (Cron)'}</p>
           <p className="text-[10px] text-blue-600 dark:text-blue-400 leading-relaxed">
             {lang === 'tr'
-              ? <>Zamanlanmış postları otomatik yayınlamak için VPS&apos;e cron job ekleyin:</>
-              : <>To auto-publish scheduled posts, add a cron job to your VPS:</>}<br />
-            <code className="bg-blue-100 dark:bg-blue-800/40 px-1 rounded font-mono">
-              0 * * * * curl -X POST {typeof window !== 'undefined' ? window.location.origin : 'https://marketing.crewin.org'}/api/schedule/publish
+              ? <>Zamanlanmış postları otomatik yayınlamak için VPS&apos;e cron job ekleyin (yetki başlığı zorunlu — yoksa 401):</>
+              : <>To auto-publish scheduled posts, add a cron job to your VPS (auth header required — otherwise 401):</>}<br />
+            <code className="bg-blue-100 dark:bg-blue-800/40 px-1 rounded font-mono break-all">
+              0 * * * * curl -fsS -X POST -H &quot;Authorization: Bearer $CRON_SECRET&quot; {typeof window !== 'undefined' ? window.location.origin : 'https://marketing.crewin.org'}/api/schedule/publish
             </code>
           </p>
         </div>

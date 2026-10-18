@@ -1,38 +1,51 @@
 /**
  * POST /api/schedule/publish
  *
- * Zamanı gelmiş tüm pending postları otomatik yayınlar.
+ * Zamanı gelmiş tüm pending (ve kısmen yayınlanmış) postları otomatik yayınlar.
  * Bu endpoint cron ile tetiklenebilir (harici servis veya VPS cron).
+ * Middleware'de public'tir → yetki burada kontrol edilir: geçerli oturum VEYA CRON_SECRET başlığı.
  *
- * Vercel Cron örneği (vercel.json):
- *   { "crons": [{ "path": "/api/schedule/publish", "schedule": "0 * * * *" }] }
+ * VPS cron örneği (crontab -e) — başlık zorunlu, yoksa 401:
+ *   0 * * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" https://marketing.crewin.org/api/schedule/publish
  *
- * VPS cron örneği (crontab -e):
- *   0 * * * * curl -X POST https://marketing.crewin.org/api/schedule/publish
+ * Çift yayın koruması: zamanı gelen postlar kilit altında önce 'publishing' durumuna alınır;
+ * aynı anda çalışan cron + "Şimdi Yayınla" aynı postu iki kez göndermez.
+ * Kısmi başarı → 'partial' (yalnızca başarısız platformlar sonraki çalıştırmada yeniden denenir).
  */
 import { NextRequest, NextResponse }                from 'next/server';
-import { getDuePosts, updatePost, ScheduledPost }   from '@/lib/scheduled-posts';
+import { claimDuePosts, getDuePosts, updatePost, SCHEDULED_POSTS_LOCK, ScheduledPost } from '@/lib/scheduled-posts';
+import { publishToSocial, recordPublishedPosts }   from '@/lib/scheduled-posts-backend';
+import { getSessionFromRequest, hasValidCronSecret } from '@/lib/auth';
+import { withFileLock }                            from '@/lib/json-store';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333';
+export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
-// İsteğe bağlı secret — cron endpoint'ini korumak için
-const CRON_SECRET = process.env.CRON_SECRET;
+async function authorized(req: NextRequest): Promise<boolean> {
+  return hasValidCronSecret(req) || Boolean(await getSessionFromRequest(req));
+}
+
+type PostResults = NonNullable<ScheduledPost['results']>;
+
+/** Önceki denemelerin başarılı sonuçlarını korur, yeni denemenin sonuçlarıyla birleştirir. */
+function mergeResults(previous: PostResults, latest: PostResults): PostResults {
+  const byPlatform = new Map(previous.filter(r => r.success).map(r => [r.platform, r]));
+  for (const r of latest) byPlatform.set(r.platform, r);
+  return Array.from(byPlatform.values());
+}
 
 export async function POST(req: NextRequest) {
-  // Güvenlik: CRON_SECRET set edilmişse header kontrol et
-  if (CRON_SECRET) {
-    const auth = req.headers.get('authorization') || req.headers.get('x-cron-secret');
-    const provided = auth?.replace('Bearer ', '');
-    if (provided !== CRON_SECRET) {
-      return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
-    }
+  if (!(await authorized(req))) {
+    return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
   }
 
-  const duePosts = getDuePosts();
+  // Sahiplenme: kilit altında 'publishing' işaretle — ikinci çağrı aynı postları göremez
+  const duePosts = await withFileLock(SCHEDULED_POSTS_LOCK, () => claimDuePosts());
 
   if (duePosts.length === 0) {
     return NextResponse.json({
-      published: 0, failed: 0, skipped: 0,
+      published: 0, partial: 0, failed: 0, skipped: 0,
       message:   'Şu an için zamanlanmış bekleyen post yok.',
     });
   }
@@ -41,52 +54,74 @@ export async function POST(req: NextRequest) {
     postId:    string;
     platforms: string[];
     success:   boolean;
+    status:    ScheduledPost['status'];
     results?:  ScheduledPost['results'];
     error?:    string;
   }> = [];
 
   for (const post of duePosts) {
+    const previous = post.results || [];
+    // Kısmi yayında yalnızca henüz başarılı olmamış platformlar denenir
+    const alreadyDone = new Set(previous.filter(r => r.success).map(r => r.platform));
+    const platforms   = post.platforms.filter(p => !alreadyDone.has(p));
+
     try {
-      const res = await fetch(`${APP_URL}/api/social/post`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          platforms: post.platforms,
-          content:   post.content,
-          imageData: post.imageData,
-          imageMime: post.imageMime,
-        }),
+      const latest  = platforms.length
+        ? await publishToSocial({
+            platforms,
+            content:   post.content,
+            imageData: post.imageData,
+            imageMime: post.imageMime,
+            perPlatformContent: post.perPlatformContent,
+          }, 'schedule-runner')
+        : [];
+      const merged  = mergeResults(previous, latest);
+      const okCount = post.platforms.filter(p => merged.some(r => r.platform === p && r.success)).length;
+      const status: ScheduledPost['status'] =
+        okCount === post.platforms.length ? 'published' : okCount > 0 ? 'partial' : 'failed';
+
+      await withFileLock(SCHEDULED_POSTS_LOCK, () => updatePost(post.id, {
+        status,
+        publishedAt: okCount > 0 ? new Date().toISOString() : post.publishedAt,
+        results:     merged,
+      }));
+
+      // Başarılı yeni paylaşımlar paylaşım geçmişine (SharePanel ile aynı kayıt mantığı)
+      await recordPublishedPosts(latest, {
+        contentFor: p => post.perPlatformContent?.[p] || post.content,
+        imageData:  post.imageData,
+        campaignId: post.campaignId,
+        deliveryId: post.deliveryId,
+        actor:      'schedule-runner',
       });
 
-      const data        = await res.json();
-      const postResults = data.results as ScheduledPost['results'];
-      const allOk       = postResults?.every(r => r.success) ?? false;
-
-      // Post durumunu güncelle
-      updatePost(post.id, {
-        status:      allOk ? 'published' : 'failed',
-        publishedAt: new Date().toISOString(),
-        results:     postResults,
-      });
-
-      results.push({ postId: post.id, platforms: post.platforms, success: allOk, results: postResults });
+      results.push({ postId: post.id, platforms: post.platforms, success: status === 'published', status, results: merged });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Bilinmeyen hata';
-      updatePost(post.id, { status: 'failed', results: [{ platform: 'system', success: false, error: message }] });
-      results.push({ postId: post.id, platforms: post.platforms, success: false, error: message });
+      // Hiçbir platform denenemedi: önceki başarılar varsa partial (yeniden denenir), yoksa failed
+      const status: ScheduledPost['status'] = alreadyDone.size > 0 ? 'partial' : 'failed';
+      await withFileLock(SCHEDULED_POSTS_LOCK, () => updatePost(post.id, {
+        status,
+        results: [...previous.filter(r => r.success), { platform: 'system', success: false, error: message }],
+      }));
+      results.push({ postId: post.id, platforms: post.platforms, success: false, status, error: message });
     }
   }
 
-  const published = results.filter(r => r.success).length;
-  const failed    = results.filter(r => !r.success).length;
+  const published = results.filter(r => r.status === 'published').length;
+  const partial   = results.filter(r => r.status === 'partial').length;
+  const failed    = results.filter(r => r.status === 'failed').length;
 
-  console.log(`[Schedule Publish] ${published} yayınlandı, ${failed} başarısız — ${new Date().toISOString()}`);
+  console.log(`[Schedule Publish] ${published} yayınlandı, ${partial} kısmi, ${failed} başarısız — ${new Date().toISOString()}`);
 
-  return NextResponse.json({ published, failed, total: duePosts.length, results });
+  return NextResponse.json({ published, partial, failed, total: duePosts.length, results });
 }
 
 // GET — kaç pending post var (monitoring için)
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (!(await authorized(req))) {
+    return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
+  }
   const duePosts = getDuePosts();
   return NextResponse.json({
     duePosts:   duePosts.length,

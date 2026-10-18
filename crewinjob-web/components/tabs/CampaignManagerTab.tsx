@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useLang } from '@/lib/lang';
 import type {
   AdPlatform, AdPlatformStatus, AdCampaign, CampaignsResponse,
-  BudgetAllocation, CreateCampaignRequest,
+  BudgetAllocation, CreateCampaignRequest, CreateCampaignResponse,
 } from '@/lib/ads-types';
 import { META_OBJECTIVES, LINKEDIN_OBJECTIVES, GOOGLE_CAMPAIGN_TYPES } from '@/lib/ads-types';
 
@@ -28,9 +28,21 @@ function fmt(n: number | null | undefined) {
   if (n == null) return '–';
   return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 }
-function usd(n: number | null | undefined) {
+// Para birimi sabit USD değil — kampanyanın/hesabın para birimi (ADS_CURRENCY varsayılanı)
+function money(n: number | null | undefined, currency = 'USD', digits = 2) {
   if (n == null) return '–';
-  return `$${n.toFixed(2)}`;
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+  } catch {
+    return `${n.toFixed(digits)} ${currency}`;
+  }
+}
+
+// fetch + JSON; HTTP hatası yutulmaz, ok/status ile birlikte döner
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<{ ok: boolean; status: number; data: T }> {
+  const res  = await fetch(url, init);
+  const data = await res.json().catch(() => ({})) as T;
+  return { ok: res.ok, status: res.status, data };
 }
 function pct(n: number | null | undefined) {
   if (n == null) return '–';
@@ -40,7 +52,7 @@ function pct(n: number | null | undefined) {
 // ─── Sub-component: Campaign card ─────────────────────────────────────────────
 function CampaignCard({
   campaign, lang,
-  onPause, onResume, onDelete, isUpdating,
+  onPause, onResume, onDelete, isUpdating, readOnly,
 }: {
   campaign:   AdCampaign;
   lang:       'tr' | 'en';
@@ -48,6 +60,7 @@ function CampaignCard({
   onResume:   (id: string, platform: AdPlatform) => void;
   onDelete:   (id: string, platform: AdPlatform) => void;
   isUpdating: boolean;
+  readOnly:   boolean;   // demo verisi → işlem butonları gösterilmez
 }) {
   const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
   const ins = campaign.insights;
@@ -65,7 +78,7 @@ function CampaignCard({
             <span className="text-[10px] text-slate-400 dark:text-slate-500">{campaign.objective}</span>
             {campaign.budgetDaily && (
               <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                {usd(campaign.budgetDaily)}/{t('gün', 'day')}
+                {money(campaign.budgetDaily, campaign.currency)}/{t('gün', 'day')}
               </span>
             )}
             {campaign.startDate && (
@@ -75,7 +88,7 @@ function CampaignCard({
             )}
           </div>
         </div>
-        <div className="flex gap-1.5 shrink-0">
+        {!readOnly && <div className="flex gap-1.5 shrink-0">
           {campaign.status === 'ACTIVE' && (
             <button
               onClick={() => onPause(campaign.id, campaign.platform)}
@@ -97,7 +110,10 @@ function CampaignCard({
           {!['DELETED', 'ARCHIVED'].includes(campaign.status) && (
             <button
               onClick={() => {
-                if (confirm(t('Kampanya silinecek. Emin misiniz?', 'Delete campaign? Are you sure?')))
+                const message = campaign.platform === 'google'
+                  ? t('Google Ads kampanyası KALICI olarak kaldırılacak (geri alınamaz). Emin misiniz?', 'The Google Ads campaign will be PERMANENTLY removed (cannot be undone). Are you sure?')
+                  : t('Kampanya arşivlenecek. Emin misiniz?', 'The campaign will be archived. Are you sure?');
+                if (confirm(message))
                   onDelete(campaign.id, campaign.platform);
               }}
               disabled={isUpdating}
@@ -106,7 +122,7 @@ function CampaignCard({
               🗑️
             </button>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* Metrics */}
@@ -115,7 +131,7 @@ function CampaignCard({
           {[
             { label: t('Gösterim', 'Impressions'), value: fmt(ins.impressions) },
             { label: t('Tıklama',  'Clicks'),      value: fmt(ins.clicks) },
-            { label: t('Harcama',  'Spend'),        value: usd(ins.spend) },
+            { label: t('Harcama',  'Spend'),        value: money(ins.spend, campaign.currency) },
             { label: 'CTR',                         value: pct(ins.ctr) },
           ].map(m => (
             <div key={m.label} className="px-3 py-2.5 text-center">
@@ -136,10 +152,11 @@ function CampaignCard({
 
 // ─── Sub-component: Create campaign form ──────────────────────────────────────
 function CreateCampaignForm({
-  platform, lang, onSave, onCancel, saving,
+  platform, lang, onSave, onCancel, saving, currency,
 }: {
   platform: AdPlatform;
   lang:     'tr' | 'en';
+  currency: string;
   onSave:   (req: CreateCampaignRequest) => void;
   onCancel: () => void;
   saving:   boolean;
@@ -189,16 +206,16 @@ function CreateCampaignForm({
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Günlük Bütçe (USD)', 'Daily Budget (USD)')} *</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t(`Günlük Bütçe (${currency})`, `Daily Budget (${currency})`)} *</label>
           <div className="flex items-center gap-2">
             <input
               type="range" min={1} max={500} step={1} value={budgetDaily}
               onChange={e => setBudgetDaily(Number(e.target.value))}
               className="flex-1 accent-ocean"
             />
-            <span className="text-sm font-bold text-ocean w-16 text-right">${budgetDaily}</span>
+            <span className="text-sm font-bold text-ocean w-20 text-right">{money(budgetDaily, currency, 0)}</span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-0.5">≈ ${(budgetDaily * 30).toFixed(0)}/{t('ay', 'mo')}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">≈ {money(budgetDaily * 30, currency, 0)}/{t('ay', 'mo')}</p>
         </div>
 
         <div>
@@ -254,7 +271,10 @@ function CreateCampaignForm({
       </div>
 
       <p className="text-[10px] text-slate-400 dark:text-slate-500">
-        💡 {t(
+        💡 {platform === 'linkedin' ? t(
+          'LinkedIn kampanyası TASLAK olarak oluşturulur — teklif ve kreatifi LinkedIn Campaign Manager’da tamamlayıp yayına alın.',
+          'LinkedIn campaigns are created as DRAFT — finish bidding and creatives in LinkedIn Campaign Manager, then launch.',
+        ) : t(
           'Kampanya başlangıçta DURAKLATILMIŞ olarak oluşturulur — inceledikten sonra platformdan veya buradan aktifleştirin.',
           'Campaign is created as PAUSED — review it then activate from here or the platform dashboard.',
         )}
@@ -265,11 +285,12 @@ function CreateCampaignForm({
 
 // ─── Budget allocation widget ─────────────────────────────────────────────────
 function BudgetAllocator({
-  allocation, onChange, lang,
+  allocation, onChange, lang, currency,
 }: {
   allocation: BudgetAllocation;
   onChange:   (a: BudgetAllocation) => void;
   lang:       'tr' | 'en';
+  currency:   string;
 }) {
   const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
   const total = allocation.totalMonthlyUSD;
@@ -307,7 +328,7 @@ function BudgetAllocator({
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t('Toplam Aylık Bütçe', 'Total Monthly Budget')}</label>
-            <span className="text-base font-bold text-ocean">${total.toLocaleString()}</span>
+            <span className="text-base font-bold text-ocean">{money(total, currency, 0)}</span>
           </div>
           <input
             type="range" min={50} max={10000} step={50} value={total}
@@ -315,7 +336,7 @@ function BudgetAllocator({
             className="w-full accent-ocean"
           />
           <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-            <span>$50</span><span>$10,000</span>
+            <span>{money(50, currency, 0)}</span><span>{money(10000, currency, 0)}</span>
           </div>
         </div>
 
@@ -342,7 +363,7 @@ function BudgetAllocator({
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{s.label}</span>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 dark:text-slate-400">${s.usd}/{t('ay', 'mo')}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{money(s.usd, currency, 0)}/{t('ay', 'mo')}</span>
                 <span className="text-xs font-bold text-slate-700 dark:text-slate-200">%{s.val}</span>
               </div>
             </div>
@@ -355,8 +376,8 @@ function BudgetAllocator({
         ))}
 
         <p className="text-[11px] text-slate-400 dark:text-slate-500">
-          ≈ ${(total / 30).toFixed(0)}/{t('gün toplam', 'day total')} ·
-          Meta ${(metaUSD / 30).toFixed(0)} · LI ${(linkedinUSD / 30).toFixed(0)} · Google ${(googleUSD / 30).toFixed(0)}
+          ≈ {money(total / 30, currency, 0)}/{t('gün toplam', 'day total')} ·
+          Meta {money(metaUSD / 30, currency, 0)} · LI {money(linkedinUSD / 30, currency, 0)} · Google {money(googleUSD / 30, currency, 0)}
         </p>
       </div>
     </div>
@@ -380,6 +401,8 @@ export default function CampaignManagerTab() {
   const [saving,       setSaving]       = useState(false);
   const [updatingId,   setUpdatingId]   = useState<string | null>(null);
   const [saveSuccess,  setSaveSuccess]  = useState('');
+  const [actionError,  setActionError]  = useState('');
+  const [currencies,   setCurrencies]   = useState<Partial<Record<AdPlatform, string>>>({});
 
   const [budget, setBudget] = useState<BudgetAllocation>({
     totalMonthlyUSD: 500,
@@ -390,80 +413,129 @@ export default function CampaignManagerTab() {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetch('/api/ads/status').then(r => r.json() as Promise<AdPlatformStatus[]>),
-      fetch('/api/ads/meta/campaigns').then(r => r.json() as Promise<CampaignsResponse>),
-      fetch('/api/ads/linkedin/campaigns').then(r => r.json() as Promise<CampaignsResponse>),
-      fetch('/api/ads/google/campaigns').then(r => r.json() as Promise<CampaignsResponse>),
-    ]).then(([sts, meta, li, google]) => {
-      setStatuses(sts);
-      setCampaigns({ meta: meta.campaigns, linkedin: li.campaigns, google: google.campaigns });
-      setSources({ meta: meta.source, linkedin: li.source, google: google.source });
-      setErrors({ meta: meta.error || '', linkedin: li.error || '', google: google.error || '' });
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+      fetchJson<AdPlatformStatus[]>('/api/ads/status'),
+      Promise.all(PLATFORMS.map(p => fetchJson<CampaignsResponse>(`/api/ads/${p}/campaigns`))),
+    ]).then(([sts, lists]) => {
+      if (sts.ok && Array.isArray(sts.data)) setStatuses(sts.data);
+      const nextCampaigns = { meta: [], linkedin: [], google: [] } as Record<AdPlatform, AdCampaign[]>;
+      const nextSources   = { meta: 'mock', linkedin: 'mock', google: 'mock' } as Record<AdPlatform, 'api' | 'mock'>;
+      const nextErrors    = { meta: '', linkedin: '', google: '' } as Record<AdPlatform, string>;
+      const nextCurrency: Partial<Record<AdPlatform, string>> = {};
+      PLATFORMS.forEach((p, i) => {
+        const { ok, status, data } = lists[i];
+        nextCampaigns[p] = Array.isArray(data.campaigns) ? data.campaigns : [];
+        nextSources[p]   = data.mock || data.source === 'mock' ? 'mock' : 'api';
+        nextErrors[p]    = ok ? (data.error || '') : (data.error || `HTTP ${status}`);
+        if (data.currency) nextCurrency[p] = data.currency;
+      });
+      setCampaigns(nextCampaigns);
+      setSources(nextSources);
+      setErrors(nextErrors);
+      setCurrencies(nextCurrency);
+    }).catch((err: unknown) => {
+      setActionError(`${t('Reklam verileri yüklenemedi', 'Could not load ads data')}: ${err instanceof Error ? err.message : String(err)}`);
+    }).finally(() => setLoading(false));
+  }, []); // yalnızca ilk yüklemede (dil değişimi yeniden çekmez)
+
+  // Platform canlı mı? (status yanıtı yoksa liste kaynağına bak)
+  const isLive = (p: AdPlatform) => {
+    const st = statuses.find(s => s.platform === p);
+    return (st ? st.configured : true) && sources[p] === 'api';
+  };
+  const defaultCurrency = statuses.find(s => s.currency)?.currency || 'USD';
+  const currencyOf = (p: AdPlatform) => currencies[p] || defaultCurrency;
 
   // ── Create campaign ───────────────────────────────────────────────────────────
   const handleCreate = async (req: CreateCampaignRequest) => {
+    if (!isLive(req.platform)) return;   // demo modda oluşturma yok
     setSaving(true);
+    setActionError('');
     try {
-      const res  = await fetch(`/api/ads/${req.platform}/campaigns`, {
+      const { ok, status, data } = await fetchJson<Partial<CreateCampaignResponse>>(`/api/ads/${req.platform}/campaigns`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify(req),
       });
-      const data = await res.json() as { success: boolean; campaignId: string; error?: string };
-      if (!data.success) throw new Error(data.error || 'Failed');
+      if (!ok || !data.success) throw new Error(data.error || `HTTP ${status}`);
 
       // Refresh campaigns for this platform
-      const fresh = await fetch(`/api/ads/${req.platform}/campaigns`).then(r => r.json() as Promise<CampaignsResponse>);
-      setCampaigns(prev => ({ ...prev, [req.platform]: fresh.campaigns }));
+      const fresh = await fetchJson<CampaignsResponse>(`/api/ads/${req.platform}/campaigns`);
+      if (fresh.ok && Array.isArray(fresh.data.campaigns)) setCampaigns(prev => ({ ...prev, [req.platform]: fresh.data.campaigns }));
       setShowForm(false);
-      setSaveSuccess(t('Kampanya oluşturuldu! DURAKLATILMIŞ olarak başlatıldı.', 'Campaign created! Started as PAUSED.'));
+      setSaveSuccess(data.status === 'DRAFT'
+        ? t('Kampanya TASLAK olarak oluşturuldu — LinkedIn Campaign Manager’da tamamlayıp yayına alın.', 'Campaign created as DRAFT — finish it in LinkedIn Campaign Manager to launch.')
+        : t('Kampanya oluşturuldu! DURAKLATILMIŞ olarak başlatıldı.', 'Campaign created! Started as PAUSED.'));
       setTimeout(() => setSaveSuccess(''), 4000);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : t('Hata oluştu', 'An error occurred'));
+      setActionError(`${t('Kampanya oluşturulamadı', 'Campaign could not be created')}: ${err instanceof Error ? err.message : t('Hata oluştu', 'An error occurred')}`);
     } finally {
       setSaving(false);
     }
   };
 
   // ── Pause / Resume ────────────────────────────────────────────────────────────
+  // İyimser güncelleme: önce UI, hata olursa eski duruma geri alınır ve hata gösterilir
   const handleStatusChange = async (id: string, platform: AdPlatform, newStatus: 'ACTIVE' | 'PAUSED') => {
+    const previous = campaigns[platform].find(c => c.id === id)?.status;
     setUpdatingId(id);
+    setActionError('');
+    setCampaigns(prev => ({
+      ...prev,
+      [platform]: prev[platform].map(c => c.id === id ? { ...c, status: newStatus } : c),
+    }));
     try {
-      await fetch(`/api/ads/${platform}/campaign/${id}`, {
+      const { ok, status, data } = await fetchJson<{ success?: boolean; error?: string }>(`/api/ads/${platform}/campaign/${encodeURIComponent(id)}`, {
         method:  'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ status: newStatus }),
       });
-      setCampaigns(prev => ({
-        ...prev,
-        [platform]: prev[platform].map(c => c.id === id ? { ...c, status: newStatus } : c),
-      }));
-    } catch { /* ignore */ } finally { setUpdatingId(null); }
+      if (!ok || data.success === false) throw new Error(data.error || `HTTP ${status}`);
+    } catch (err: unknown) {
+      if (previous) {
+        setCampaigns(prev => ({
+          ...prev,
+          [platform]: prev[platform].map(c => c.id === id ? { ...c, status: previous } : c),
+        }));
+      }
+      setActionError(`${t('Kampanya durumu güncellenemedi', 'Campaign status could not be updated')}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally { setUpdatingId(null); }
   };
 
   // ── Delete ────────────────────────────────────────────────────────────────────
   const handleDelete = async (id: string, platform: AdPlatform) => {
+    const snapshot = campaigns[platform];
     setUpdatingId(id);
+    setActionError('');
+    setCampaigns(prev => ({
+      ...prev,
+      [platform]: prev[platform].filter(c => c.id !== id),
+    }));
     try {
-      await fetch(`/api/ads/${platform}/campaign/${id}`, { method: 'DELETE' });
-      setCampaigns(prev => ({
-        ...prev,
-        [platform]: prev[platform].filter(c => c.id !== id),
-      }));
-    } catch { /* ignore */ } finally { setUpdatingId(null); }
+      // Google'da kaldırma kalıcıdır → kullanıcı onayı (CampaignCard confirm) açık parametreyle iletilir
+      const query = platform === 'google' ? '?confirm=remove' : '';
+      const { ok, status, data } = await fetchJson<{ success?: boolean; error?: string }>(`/api/ads/${platform}/campaign/${encodeURIComponent(id)}${query}`, { method: 'DELETE' });
+      if (!ok || data.success === false) throw new Error(data.error || `HTTP ${status}`);
+    } catch (err: unknown) {
+      setCampaigns(prev => ({ ...prev, [platform]: snapshot }));
+      setActionError(`${t('Kampanya silinemedi/arşivlenemedi', 'Campaign could not be removed/archived')}: ${err instanceof Error ? err.message : String(err)}`);
+    } finally { setUpdatingId(null); }
   };
 
   // ── Aggregated stats ──────────────────────────────────────────────────────────
-  const allCampaigns = Object.values(campaigns).flat();
+  // Demo (yapılandırılmamış) platformların örnek kampanyaları toplamlara katılmaz
+  const allCampaigns = PLATFORMS.filter(p => sources[p] === 'api').flatMap(p => campaigns[p]);
   const totalSpend   = allCampaigns.reduce((s, c) => s + (c.insights?.spend || 0), 0);
+  const spendCurrencies = Array.from(new Set(allCampaigns.filter(c => c.insights).map(c => c.currency)));
+  const totalSpendText  = spendCurrencies.length > 1
+    ? `${totalSpend.toFixed(2)} (${t('karışık para birimi', 'mixed currencies')})`
+    : money(totalSpend, spendCurrencies[0] || defaultCurrency);
   const totalClicks  = allCampaigns.reduce((s, c) => s + (c.insights?.clicks || 0), 0);
   const totalImpr    = allCampaigns.reduce((s, c) => s + (c.insights?.impressions || 0), 0);
   const activeCamps  = allCampaigns.filter(c => c.status === 'ACTIVE').length;
 
   const activeTab = campaigns[activePlatform];
   const activeStatus = statuses.find(s => s.platform === activePlatform);
+  const activeLive = isLive(activePlatform);
 
   return (
     <div className="flex flex-col gap-6">
@@ -484,7 +556,7 @@ export default function CampaignManagerTab() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { icon: '📣', label: t('Aktif Kampanya', 'Active Campaigns'), value: String(activeCamps),               color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 text-green-800 dark:text-green-300' },
-          { icon: '💸', label: t('Toplam Harcama',  'Total Spend'),      value: usd(totalSpend),                   color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 text-red-800 dark:text-red-300' },
+          { icon: '💸', label: t('Toplam Harcama',  'Total Spend'),      value: totalSpendText,                    color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 text-red-800 dark:text-red-300' },
           { icon: '👁️', label: t('Gösterim',        'Impressions'),      value: fmt(totalImpr),                    color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300' },
           { icon: '🖱️', label: t('Tıklama',         'Clicks'),           value: fmt(totalClicks),                  color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300' },
         ].map(s => (
@@ -499,7 +571,7 @@ export default function CampaignManagerTab() {
       </div>
 
       {/* ── Budget allocator ── */}
-      <BudgetAllocator allocation={budget} onChange={setBudget} lang={lang} />
+      <BudgetAllocator allocation={budget} onChange={setBudget} lang={lang} currency={defaultCurrency} />
 
       {/* ── Platform status bar ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -558,6 +630,14 @@ export default function CampaignManagerTab() {
         </div>
       )}
 
+      {/* ── Action error (create / pause / delete) ── */}
+      {actionError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+          <span className="flex-1">❌ {actionError}</span>
+          <button onClick={() => setActionError('')} className="text-xs opacity-70 hover:opacity-100" aria-label={t('Kapat', 'Dismiss')}>✕</button>
+        </div>
+      )}
+
       {/* ── Error banner ── */}
       {errors[activePlatform] && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300">
@@ -566,13 +646,18 @@ export default function CampaignManagerTab() {
       )}
 
       {/* ── Mock data notice ── */}
-      {sources[activePlatform] === 'mock' && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-2.5 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
-          ◐ {t(
-            'Demo verisi gösteriliyor. Gerçek veri için .env.local\'a aşağıdaki API anahtarlarını ekleyin.',
-            'Showing demo data. Add the API keys below to .env.local for live data.',
-          )}
-          <span className="ml-auto font-mono">{activeStatus?.configured ? '' : getEnvHint(activePlatform)}</span>
+      {!activeLive && !errors[activePlatform] && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3 text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-1">
+          <p className="font-semibold text-sm">
+            🧪 {t('DEMO MODU — platform yapılandırılmamış', 'DEMO MODE — platform not configured')}
+          </p>
+          <p>
+            {t(
+              `${PLATFORM_META[activePlatform].label} bağlı değil. Aşağıdaki kampanyalar örnek veridir; kampanya oluşturma, duraklatma ve silme devre dışı. Canlı veri için .env.local'a eksik değişkenleri ekleyin.`,
+              `${PLATFORM_META[activePlatform].label} is not connected. The campaigns below are sample data; creating, pausing and deleting are disabled. Add the missing variables to .env.local for live data.`,
+            )}
+          </p>
+          <p className="font-mono">{t('Eksik', 'Missing')}: {(activeStatus?.missingEnv?.length ? activeStatus.missingEnv : getEnvHint(activePlatform)).join(', ')}</p>
         </div>
       )}
 
@@ -597,7 +682,9 @@ export default function CampaignManagerTab() {
             </h3>
             <button
               onClick={() => setShowForm(v => !v)}
-              className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
+              disabled={!activeLive}
+              title={activeLive ? undefined : t('Demo modunda kampanya oluşturulamaz', 'Campaigns cannot be created in demo mode')}
+              className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 showForm
                   ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                   : 'bg-ocean hover:bg-ocean-dark text-white'
@@ -607,13 +694,14 @@ export default function CampaignManagerTab() {
             </button>
           </div>
 
-          {showForm && (
+          {showForm && activeLive && (
             <CreateCampaignForm
               platform={activePlatform}
               lang={lang}
               onSave={handleCreate}
               onCancel={() => setShowForm(false)}
               saving={saving}
+              currency={currencyOf(activePlatform)}
             />
           )}
 
@@ -623,12 +711,14 @@ export default function CampaignManagerTab() {
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {t('Bu platformda henüz kampanya yok.', 'No campaigns on this platform yet.')}
               </p>
-              <button
-                onClick={() => setShowForm(true)}
-                className="text-xs text-ocean hover:underline font-medium"
-              >
-                ➕ {t('İlk kampanyayı oluştur →', 'Create first campaign →')}
-              </button>
+              {activeLive && (
+                <button
+                  onClick={() => setShowForm(true)}
+                  className="text-xs text-ocean hover:underline font-medium"
+                >
+                  ➕ {t('İlk kampanyayı oluştur →', 'Create first campaign →')}
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
@@ -641,6 +731,7 @@ export default function CampaignManagerTab() {
                   onResume={(id, plt) => handleStatusChange(id, plt, 'ACTIVE')}
                   onDelete={handleDelete}
                   isUpdating={updatingId === camp.id}
+                  readOnly={!activeLive}
                 />
               ))}
             </div>
@@ -657,7 +748,11 @@ export default function CampaignManagerTab() {
           <p className="text-slate-400 dark:text-slate-500"># ── Meta Ads (Facebook + Instagram) ──────────────────</p>
           <p>META_ADS_ACCESS_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;System User Token veya User Token&gt;</span></p>
           <p>META_ADS_ACCOUNT_ID=<span className="text-amber-600 dark:text-amber-400">act_&lt;Ad Account ID&gt;</span></p>
+          <p>META_GRAPH_VERSION=<span className="text-amber-600 dark:text-amber-400">v25.0 ({t('opsiyonel', 'optional')})</span></p>
+          <p>FACEBOOK_PAGE_ID=<span className="text-amber-600 dark:text-amber-400">&lt;{t('Lead Generation için sayfa ID', 'Page ID for Lead Generation')}&gt;</span></p>
           <p className="text-slate-400 dark:text-slate-500 mt-1"># ── LinkedIn Ads ──────────────────────────────────────</p>
+          <p>LINKEDIN_ACCESS_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;{t('rw_ads yetkili token', 'Token with rw_ads scope')}&gt;</span></p>
+          <p>LINKEDIN_API_VERSION=<span className="text-amber-600 dark:text-amber-400">202608 ({t('opsiyonel', 'optional')})</span></p>
           <p>LINKEDIN_ADS_ACCOUNT_ID=<span className="text-amber-600 dark:text-amber-400">&lt;Sponsored Account ID&gt;</span></p>
           <p className="text-slate-400 dark:text-slate-500 mt-1"># ── Google Ads ────────────────────────────────────────</p>
           <p>GOOGLE_ADS_DEVELOPER_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;Developer Token&gt;</span></p>
@@ -665,15 +760,19 @@ export default function CampaignManagerTab() {
           <p>GOOGLE_ADS_CLIENT_SECRET=<span className="text-amber-600 dark:text-amber-400">&lt;OAuth Client Secret&gt;</span></p>
           <p>GOOGLE_ADS_REFRESH_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;Refresh Token&gt;</span></p>
           <p>GOOGLE_ADS_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;Customer ID (no dashes)&gt;</span></p>
-          <p>GOOGLE_ADS_LOGIN_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;MCC ID (varsa)&gt;</span></p>
+          <p>GOOGLE_ADS_LOGIN_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;MCC ID ({t('varsa', 'if any')})&gt;</span></p>
+          <p>GOOGLE_ADS_API_VERSION=<span className="text-amber-600 dark:text-amber-400">v25 ({t('opsiyonel', 'optional')})</span></p>
+          <p className="text-slate-400 dark:text-slate-500 mt-1"># ── {t('Ortak', 'Common')} ─────────────────────────────────────────────</p>
+          <p>ADS_CURRENCY=<span className="text-amber-600 dark:text-amber-400">USD ({t('hesap para birimi okunamazsa', 'fallback if account currency is unavailable')})</span></p>
         </div>
       </div>
     </div>
   );
 }
 
-function getEnvHint(platform: AdPlatform): string {
-  if (platform === 'meta')     return 'META_ADS_ACCESS_TOKEN + META_ADS_ACCOUNT_ID';
-  if (platform === 'linkedin') return 'LINKEDIN_ADS_ACCOUNT_ID';
-  return 'GOOGLE_ADS_DEVELOPER_TOKEN + GOOGLE_ADS_CUSTOMER_ID + GOOGLE_ADS_REFRESH_TOKEN';
+// /api/ads/status yanıtı yoksa kullanılan yedek liste (status route'undaki zorunlu değişkenlerle aynı)
+function getEnvHint(platform: AdPlatform): string[] {
+  if (platform === 'meta')     return ['META_ADS_ACCESS_TOKEN', 'META_ADS_ACCOUNT_ID'];
+  if (platform === 'linkedin') return ['LINKEDIN_ACCESS_TOKEN', 'LINKEDIN_ADS_ACCOUNT_ID'];
+  return ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET', 'GOOGLE_ADS_REFRESH_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID'];
 }

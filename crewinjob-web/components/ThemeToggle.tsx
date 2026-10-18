@@ -1,14 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useLang } from '@/lib/lang';
+import { Sun,Moon } from 'lucide-react';
 
 export default function ThemeToggle() {
   const { lang } = useLang();
-  const [dark, setDark] = useState(true);
+  const [dark, setDark] = useState(false);
 
   useEffect(() => {
-    const stored = localStorage.getItem('crewinjob_theme');
-    const isDark = stored !== 'light';
+    let stored:string|null=null;
+    try{stored=localStorage.getItem('crewinjob_theme');}catch{}
+    const isDark = stored === 'dark';
     setDark(isDark);
     document.documentElement.classList.toggle('dark', isDark);
   }, []);
@@ -17,17 +19,18 @@ export default function ThemeToggle() {
     const next = !dark;
     setDark(next);
     document.documentElement.classList.toggle('dark', next);
-    localStorage.setItem('crewinjob_theme', next ? 'dark' : 'light');
+    try{localStorage.setItem('crewinjob_theme', next ? 'dark' : 'light');}catch{}
   };
 
   return (
     <button
       onClick={toggle}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all bg-white/10 hover:bg-white/20 text-white border border-white/20"
+      type="button"
+      className="icon-button"
+      aria-label={dark ? (lang === 'tr' ? 'Açık moda geç' : 'Switch to Light') : (lang === 'tr' ? 'Koyu moda geç' : 'Switch to Dark')}
       title={dark ? (lang === 'tr' ? 'Açık moda geç' : 'Switch to Light') : (lang === 'tr' ? 'Koyu moda geç' : 'Switch to Dark')}
     >
-      {dark ? '☀️' : '🌙'}
-      <span className="hidden sm:inline">{dark ? (lang === 'tr' ? 'Açık' : 'Light') : (lang === 'tr' ? 'Koyu' : 'Dark')}</span>
+      {dark ? <Sun size={18}/> : <Moon size={18}/>}
     </button>
   );
 }

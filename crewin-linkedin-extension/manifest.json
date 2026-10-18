@@ -7,7 +7,7 @@
   "host_permissions": ["https://www.linkedin.com/*"],
   "externally_connectable": {
     "matches": [
-      "http://localhost:3333/*",
+      "http://localhost:3033/*",
       "http://localhost/*",
       "https://*.crewin.org/*"
     ]

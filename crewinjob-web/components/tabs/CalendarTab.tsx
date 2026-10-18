@@ -103,7 +103,8 @@ export default function CalendarTab() {
       const res = await fetch('/api/scheduler/run', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ events }),
+        // Yalnızca yayınlanmamışlar gider ("bugün" sunucuda APP_TIMEZONE'a göre süzülür; görselli etkinlikler büyük olabilir)
+        body:    JSON.stringify({ events: events.filter(e => !e.published) }),
       });
       const data = await res.json();
       setSchedResult(data);

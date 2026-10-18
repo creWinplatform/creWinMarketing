@@ -5,6 +5,8 @@ const fs         = require('fs-extra');
 const path       = require('path');
 const client = require('../ai-client');
 
+const ctx = require('../context');
+
 // ─── Google Search Console verisi çek ────────────────────────────────────────
 async function fetchSearchConsoleData(credentials, siteUrl, days = 7) {
   try {
@@ -52,49 +54,90 @@ async function fetchSearchConsoleData(credentials, siteUrl, days = 7) {
       overall: overallRes.data.rows?.[0] || { clicks: 0, impressions: 0, ctr: 0, position: 0 },
       topQueries: queryRes.data.rows || [],
       topPages:   pageRes.data.rows  || [],
+      available: true,
       source: 'google_search_console',
     };
   } catch (err) {
     console.log(`  ⚠️  Google Search Console bağlanamadı: ${err.message}`);
-    return getMockSearchConsoleData(days);
+    return getUnavailableSearchConsoleData(days, err.message);
   }
 }
 
-// ─── Mock veri (API ayarlanmadan önce) ───────────────────────────────────────
-function getMockSearchConsoleData(days) {
+// ─── Web istemcisiyle GSC verisi (crewinjob-web/lib/gsc.ts createGscClient) ──
+// gscClient: { siteUrl, query(body) → { rows?, error? } }
+async function fetchSearchConsoleDataWithClient(gscClient, days = 7) {
+  try {
+    const endDate   = new Date().toISOString().slice(0, 10);
+    const startDate = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const [overall, queries, pages] = await Promise.all([
+      gscClient.query({ startDate, endDate, dimensions: [], rowLimit: 1 }),
+      gscClient.query({ startDate, endDate, dimensions: ['query'], rowLimit: 20 }),
+      gscClient.query({ startDate, endDate, dimensions: ['page'], rowLimit: 20 }),
+    ]);
+    const failed = [overall, queries, pages].find(r => !r || r.error);
+    if (failed) throw new Error(failed?.error?.message || 'GSC yanıtı geçersiz');
+    return {
+      period: `${startDate} — ${endDate}`,
+      overall: overall.rows?.[0] || { clicks: 0, impressions: 0, ctr: 0, position: 0 },
+      topQueries: queries.rows || [],
+      topPages:   pages.rows   || [],
+      available: true,
+      source: 'google_search_console',
+    };
+  } catch (err) {
+    console.log(`  ⚠️  Google Search Console verisi alınamadı: ${err.message}`);
+    return getUnavailableSearchConsoleData(days, err.message);
+  }
+}
+
+// ─── GSC verisi YOK (bağlı değil / hata) — uydurma sayı üretilmez ────────────
+function getUnavailableSearchConsoleData(days, reason) {
   return {
     period: `Son ${days} gün`,
-    overall: { clicks: 0, impressions: 0, ctr: 0, position: 0 },
+    overall: { clicks: null, impressions: null, ctr: null, position: null },
     topQueries: [],
     topPages:   [],
-    source: 'mock — Google Search Console henüz bağlı değil',
-    setupNote: 'Gerçek veri için GOOGLE_CREDENTIALS ve SITE_URL ayarlanmalı (.env dosyasına ekleyin)',
+    available: false,
+    source: 'Google Search Console verisi yok' + (reason ? ` (hata: ${String(reason).slice(0, 120)})` : ' (bağlı değil)'),
+    setupNote: 'Gerçek veri için web .env.local içinde GOOGLE_SERVICE_ACCOUNT_JSON ve GSC_SITE_URL tanımlanmalı',
   };
 }
 
 // ─── KPI verisini birleştir ───────────────────────────────────────────────────
+// jobData: api.fetchAllData() çıktısı (AllData) — seafarers/jobs alanları gerçek veridir.
+const NO_DATA = 'veri yok';
+
 async function collectKPIData(jobData, searchConsoleData) {
+  const stats     = jobData.stats || {};
+  const seafarers = jobData.seafarers || {};
+  const jobs      = jobData.jobs && !Array.isArray(jobData.jobs) ? jobData.jobs : {};
+  const gscOk     = searchConsoleData.available !== false;
+  const o         = searchConsoleData.overall || {};
+
   return {
     reportDate:    new Date().toLocaleString('tr-TR'),
     reportPeriod:  searchConsoleData.period,
 
     seafarerStats: {
-      total:       jobData.stats.seafarers,
-      newThisWeek: '~' + Math.floor(Math.random() * 200 + 50), // gerçek API ile değişecek
-      activeProfiles: 'API gerekli',
+      total:       stats.seafarers ?? NO_DATA,
+      newThisWeek: typeof seafarers.newThisWeek === 'number' ? seafarers.newThisWeek : NO_DATA,
+      activatedProfiles80: typeof seafarers.activatedSeafarers === 'number' ? seafarers.activatedSeafarers : NO_DATA,
     },
 
     jobStats: {
-      total:   jobData.stats.jobs,
-      newJobs: jobData.newJobs.length,
-      businesses: jobData.stats.businesses,
+      total:   stats.jobs ?? NO_DATA,
+      // Ilan/GetIlanWhoRegisteredInLastSevenDays yoksa null gelir → "veri yok"
+      newJobs: typeof jobs.newThisWeek === 'number' ? jobs.newThisWeek : NO_DATA,
+      businesses: stats.businesses ?? NO_DATA,
+      newCompaniesThisWeek: typeof jobs.newCompaniesThisWeek === 'number' ? jobs.newCompaniesThisWeek : NO_DATA,
     },
 
     seo: {
-      clicks:      searchConsoleData.overall.clicks,
-      impressions: searchConsoleData.overall.impressions,
-      ctr:         (searchConsoleData.overall.ctr * 100).toFixed(2) + '%',
-      avgPosition: searchConsoleData.overall.position?.toFixed(1) || 'N/A',
+      available:   gscOk,
+      clicks:      gscOk ? o.clicks : NO_DATA,
+      impressions: gscOk ? o.impressions : NO_DATA,
+      ctr:         gscOk && typeof o.ctr === 'number' ? (o.ctr * 100).toFixed(2) + '%' : NO_DATA,
+      avgPosition: gscOk && typeof o.position === 'number' ? o.position.toFixed(1) : NO_DATA,
       topQueries:  searchConsoleData.topQueries.slice(0, 10),
       topPages:    searchConsoleData.topPages.slice(0, 10),
     },
@@ -188,7 +231,9 @@ async function generateExcelReport(kpiData, outputDir) {
       ]);
     });
   } else {
-    querySheet.addRow(['Google Search Console henüz bağlı değil — .env dosyasına credentials ekleyin', '', '', '', '']);
+    querySheet.addRow([kpiData.seo.available === false
+      ? 'Google Search Console verisi yok — ' + kpiData.source
+      : 'Bu dönemde sorgu verisi yok', '', '', '', '']);
   }
 
   ['A','B','C','D','E'].forEach((col, i) => {
@@ -209,7 +254,9 @@ async function generateExcelReport(kpiData, outputDir) {
       ]);
     });
   } else {
-    pageSheet.addRow(['Google Search Console bağlandığında burada göreceksiniz', '', '', '', '']);
+    pageSheet.addRow([kpiData.seo.available === false
+      ? 'Google Search Console verisi yok — ' + kpiData.source
+      : 'Bu dönemde sayfa verisi yok', '', '', '', '']);
   }
 
   ['A','B','C','D','E'].forEach((col, i) => {
@@ -225,24 +272,71 @@ async function generateExcelReport(kpiData, outputDir) {
 }
 
 // ─── AI Analizi ile KPI yorumu ────────────────────────────────────────────────
-async function generateKPIAnalysis(kpiData) {
-  const prompt = `
-crewinjob.com haftalık KPI verileri:
+async function generateKPIAnalysis(kpiData, language = 'tr', model) {
+  const langRule = language === 'en'
+    ? `Write the ENTIRE response in English (translate the section headings above too). For uncertain or missing data ("veri yok" in the data) write "This data is not tracked yet" — do not guess.`
+    : `Tüm yanıt Türkçe olsun. Belirsiz veya eksik veri ("veri yok") için "Bu veri henüz izlenmiyor" de, tahmin yürütme.`;
+  const prompt = `Sen CrewinJob'un büyüme analistsin. CrewinJob, denizcilik sektörüne özel iki taraflı bir işgücü marketplace'idir: bir tarafta gemi insanları (seafarers), diğer tarafta gemi şirketleri (shipowners, ship managers, crewing agencies) bulunur.
 
+${ctx.analysisBlock({ full: true, playbook: true })}
+
+---
+
+## Bu Dönemin KPI Verileri
+\`\`\`json
 ${JSON.stringify(kpiData, null, 2)}
+\`\`\`
 
-Bu verileri analiz et ve şunları yaz:
-1. **Bu haftanın özeti** (2-3 cümle)
-2. **Dikkat gerektiren 3 metrik** ve nedeni
-3. **Gelecek hafta için 3 öneri**
-4. **LinkedIn paylaşımı** için kısa bir haftalık performans özeti (2 paragraf)
+---
 
-Türkçe ve profesyonel bir ton kullan.
+## Analiz Görevi
+
+Yukarıdaki metrics framework ve mevcut KPI verilerini birlikte değerlendirerek aşağıdaki analizi yaz:
+
+### 1. North Star Durumu (2-3 cümle)
+- Monthly Qualified Matches ve Ready-to-Hire / Active Company / Liquidity üçlüsü açısından bu dönemin genel tablosunu değerlendir.
+- Veride bu üçlüye dair bilgi yoksa hangi verilerin henüz izlenmediğini belirt ve bunu bir öncelik olarak işaretle.
+
+### 2. Metrik Sağlık Tablosu
+Ölçülebilen her metrik için tablo yaz:
+
+| Metrik | Mevcut | Hedef | Durum | Yorum |
+|--------|--------|-------|-------|-------|
+
+Durum: 🔴 (hedefin %80 altı) · 🟡 (%80–100) · 🟢 (%100 üstü) · ⚪ (veri yok)
+
+### 3. Darboğaz Teşhisi (2-3 cümle)
+- Bu dönem darboğaz **aday tarafında mı, şirket tarafında mı, eşleşme kalitesinde mi?**
+- Hangi veriye dayanarak bu sonuca vardığını belirt. Marketplace'te aynı anda iki tarafa yüklenilmez — tek bir darboğaz seç.
+
+### 4. Yükseltme Planı — 🔴 ve 🟡 metrikler için
+Her sorunlu metrik için playbook'tan uygun kaldıracı seçerek yaz:
+
+**[Metrik adı] — mevcut X, hedef Y**
+- **Neden düşük:** [teşhis, veriye dayalı]
+- **Seçilen kaldıraç:** [playbook'tan 1-2 tanesi, neden bu seçildi]
+- **İlk 7 gün:** [somut ilk adım]
+- **4 haftalık hedef:** [X'ten Y'ye — ölçülebilir]
+- **Doğrulama metriği:** [hangi sayıya bakılacak]
+
+En fazla 3 metriği ele al. Hepsini birden düzeltmeye çalışma.
+
+### 5. Kör Noktalar (2-3 madde)
+- Framework'te tanımlı olup henüz ölçülemeyen kritik metrikler. Her biri için somut öneri: hangi event eklenmeli (\`job_applied\`, \`candidate_shortlisted\` gibi), hangi API bağlanmalı.
+- Bu boşluklardan hangisi en çok karar körlüğü yaratıyor?
+
+### 6. Yatırımcı/Ortak Özeti (1 paragraf)
+- "15.000 kayıtlı gemi insanı var" değil, "Ready-to-Hire seafarers + Active hiring companies + Monthly Qualified Matches" perspektifinden bu dönemin hikayesini anlat. Rakam varsa kullan, yoksa hangi soruların hâlâ cevaplanamadığını belirt.
+
+### 7. LinkedIn Paylaşımı
+- Platform büyümesini veya önemli bir gelişmeyi öne çıkaran, profesyonel ve özgün 2 paragraflık LinkedIn gönderisi. Rakam kullan. Hashtag ekleme.
+
+${langRule}
 `;
 
   const response = await client.messages.create({
-    model: 'gemini-2.5-flash',
-    max_tokens: 1000,
+    model: model || 'gemini-2.5-flash',
+    max_tokens: 2500,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -250,17 +344,23 @@ Türkçe ve profesyonel bir ton kullan.
 }
 
 // ─── Tam haftalık rapor ───────────────────────────────────────────────────────
-async function generateWeeklyReport(jobData, outputDir, gscCredentials = null) {
+// jobData:        api.fetchAllData() çıktısı (AllData)
+// gscCredentials: (CLI) google-credentials.json içeriği — googleapis ile çekilir
+// options:        { gscClient, siteUrl, language: 'tr'|'en', model }
+//                 gscClient → web'in lib/gsc.ts createGscClient() istemcisi
+async function generateWeeklyReport(jobData, outputDir, gscCredentials = null, options = {}) {
   console.log('\n  📊 Haftalık KPI raporu oluşturuluyor...');
 
-  const searchData = gscCredentials
-    ? await fetchSearchConsoleData(gscCredentials, 'https://crewinjob.com')
-    : getMockSearchConsoleData(7);
+  const searchData = options.gscClient
+    ? await fetchSearchConsoleDataWithClient(options.gscClient, 7)
+    : gscCredentials
+      ? await fetchSearchConsoleData(gscCredentials, options.siteUrl || process.env.GSC_SITE_URL || 'https://crewinjob.com')
+      : getUnavailableSearchConsoleData(7);
 
-  const kpiData   = await collectKPIData(jobData, searchData);
+  const kpiData   = await collectKPIData(jobData || {}, searchData);
 
   console.log('  🤖 AI analizi yazılıyor...');
-  const analysis  = await generateKPIAnalysis(kpiData);
+  const analysis  = await generateKPIAnalysis(kpiData, options.language === 'en' ? 'en' : 'tr', options.model);
 
   console.log('  📊 Excel raporu oluşturuluyor...');
   const excelPath = await generateExcelReport(kpiData, outputDir);

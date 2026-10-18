@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { consumeOAuthState, setToken } from '@/lib/social-tokens';
+import { consumeOAuthState, graphFetch, graphUrl, setToken, twitterTokenRequest } from '@/lib/social-tokens';
+import { getSessionFromRequest } from '@/lib/auth';
+import { publicAppUrl } from '@/lib/internal-fetch';
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333';
+export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
+
+// connect route'undaki redirect_uri ile birebir aynı olmalı (token değişiminde tekrar gönderilir)
+const callbackUrl = (platform: string) => `${publicAppUrl()}/api/social/callback/${platform}`;
 
 export async function GET(
   req: NextRequest,
@@ -19,27 +26,28 @@ export async function GET(
   const stateData = consumeOAuthState(state);
   if (!stateData) return redirect('?social_error=Geçersiz+veya+süresi+dolmuş+state');
 
+  // State yalnızca başlatıldığı platformun callback'inde geçerli (FB diyaloğu IG için de kullanılır)
+  const expected = platform === 'facebook' ? ['facebook', 'instagram'] : [platform];
+  if (!expected.includes(stateData.platform)) return redirect('?social_error=State+platform+uyuşmuyor');
+
+  // Akışı başlatan oturumla aynı oturum olmalı (SameSite=Lax cookie callback'te gelir)
+  const sessionUser = await getSessionFromRequest(req);
+  if (stateData.user && stateData.user !== sessionUser) return redirect('?social_error=Oturum+uyuşmuyor');
+
   try {
     switch (platform) {
 
       case 'twitter': {
         const clientId = process.env.TWITTER_CLIENT_ID;
         if (!clientId) return redirect('?social_error=TWITTER_CLIENT_ID+tanımlı+değil');
-        const codeVerifier = stateData.codeVerifier!;
+        if (!stateData.codeVerifier) return redirect('?social_error=PKCE+doğrulayıcı+eksik');
 
-        const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
-          method: 'POST',
-          headers: {
-            'Content-Type':  'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${Buffer.from(`${clientId}:`).toString('base64')}`,
-          },
-          body: new URLSearchParams({
-            grant_type:    'authorization_code',
-            code,
-            redirect_uri:  `${APP_URL}/api/social/callback/twitter`,
-            code_verifier: codeVerifier,
-          }),
-        });
+        const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', twitterTokenRequest({
+          grant_type:    'authorization_code',
+          code,
+          redirect_uri:  callbackUrl('twitter'),
+          code_verifier: stateData.codeVerifier,
+        }));
         const tokenData = await tokenRes.json();
         if (!tokenRes.ok) throw new Error(tokenData.error_description || JSON.stringify(tokenData));
 
@@ -60,8 +68,9 @@ export async function GET(
       }
 
       case 'linkedin': {
-        const clientId     = process.env.LINKEDIN_CLIENT_ID!;
-        const clientSecret = process.env.LINKEDIN_CLIENT_SECRET!;
+        const clientId     = process.env.LINKEDIN_CLIENT_ID;
+        const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+        if (!clientId || !clientSecret) return redirect('?social_error=LINKEDIN_CLIENT_ID%2FSECRET+tanımlı+değil');
 
         const tokenRes = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
           method: 'POST',
@@ -69,7 +78,7 @@ export async function GET(
           body: new URLSearchParams({
             grant_type:    'authorization_code',
             code,
-            redirect_uri:  `${APP_URL}/api/social/callback/linkedin`,
+            redirect_uri:  callbackUrl('linkedin'),
             client_id:     clientId,
             client_secret: clientSecret,
           }),
@@ -93,6 +102,7 @@ export async function GET(
 
         setToken('linkedin', {
           accessToken:  tokenData.access_token,
+          refreshToken: tokenData.refresh_token,
           expiresAt:    tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : undefined,
           userId,
           displayName,
@@ -101,24 +111,39 @@ export async function GET(
       }
 
       case 'facebook': {
-        const appId     = process.env.FACEBOOK_APP_ID!;
-        const appSecret = process.env.FACEBOOK_APP_SECRET!;
+        const appId     = process.env.FACEBOOK_APP_ID;
+        const appSecret = process.env.FACEBOOK_APP_SECRET;
+        if (!appId || !appSecret) return redirect('?social_error=FACEBOOK_APP_ID%2FSECRET+tanımlı+değil');
 
-        // Kısa ömürlü → uzun ömürlü token
-        const shortRes = await fetch(
-          `https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${APP_URL}/api/social/callback/facebook&client_secret=${appSecret}&code=${code}`
-        );
+        // Kısa ömürlü → uzun ömürlü token. client_secret ve kod URL'ye değil POST gövdesine yazılır.
+        const shortRes = await fetch(graphUrl('oauth/access_token'), {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body:    new URLSearchParams({
+            client_id:     appId,
+            client_secret: appSecret,
+            redirect_uri:  callbackUrl('facebook'),
+            code,
+          }),
+        });
         const shortData = await shortRes.json();
         if (!shortRes.ok || shortData.error) throw new Error(shortData.error?.message || 'Token alınamadı');
 
-        const longRes = await fetch(
-          `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortData.access_token}`
-        );
+        const longRes = await fetch(graphUrl('oauth/access_token'), {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body:    new URLSearchParams({
+            grant_type:        'fb_exchange_token',
+            client_id:         appId,
+            client_secret:     appSecret,
+            fb_exchange_token: shortData.access_token,
+          }),
+        });
         const longData = await longRes.json();
         const userToken = longData.access_token || shortData.access_token;
 
         // Sayfaları al — ilk sayfayı varsayılan yap
-        const pagesRes  = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${userToken}`);
+        const pagesRes  = await graphFetch('me/accounts?fields=id,name,access_token', userToken);
         const pagesData = await pagesRes.json();
         const page      = pagesData.data?.[0];
 
@@ -131,7 +156,7 @@ export async function GET(
 
         // Instagram Business hesabı bağla (eğer varsa)
         if (page?.id) {
-          const igRes  = await fetch(`https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token || userToken}`);
+          const igRes  = await graphFetch(`${encodeURIComponent(page.id)}?fields=instagram_business_account`, page.access_token || userToken);
           const igData = await igRes.json();
           if (igData.instagram_business_account?.id) {
             setToken('instagram', {
@@ -155,5 +180,5 @@ export async function GET(
 }
 
 function redirect(query: string) {
-  return NextResponse.redirect(`${APP_URL}/${query}`);
+  return NextResponse.redirect(`${publicAppUrl()}/${query}`);
 }

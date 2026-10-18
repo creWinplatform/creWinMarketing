@@ -2,22 +2,40 @@
 // Tek bir yerde agentModule() ve tipli yardımcı fonksiyonlar.
 // Tüm route handler'lar bu modülü import eder — eval('require') dağılmaz.
 
+import fs from 'fs';
 import path from 'path';
 import type { AllData } from './types';
 
 // eval('require') → webpack'in statik analiz etmesini engeller
 const nativeRequire = eval('require') as NodeRequire;
 
-/** Proje kökündeki crewinjob-agent klasörüne göre modül yükler.
+// Dev modunda modülün en son yüklendiği andaki mtime'ı (globalThis: HMR'da kaybolmasın)
+const g = globalThis as typeof globalThis & { __crewinAgentMtimes?: Map<string, number> };
+const loadedMtimes: Map<string, number> = g.__crewinAgentMtimes ?? (g.__crewinAgentMtimes = new Map());
+
+/** crewinjob-agent klasörünün mutlak yolu. CREWINJOB_AGENT_DIR ile değiştirilebilir (Docker: /crewinjob-agent). */
+export function agentDir(): string {
+  return process.env.CREWINJOB_AGENT_DIR
+    ? path.resolve(process.env.CREWINJOB_AGENT_DIR)
+    : path.join(process.cwd(), '..', 'crewinjob-agent');
+}
+
+/** crewinjob-agent klasörüne göre modül yükler.
  *  T verilmezse any döner (orijinal davranış); typed kullanım için T belirt.
- *  Development modunda require cache'i temizlenerek her seferinde taze yüklenir. */
+ *  Development modunda dosya değiştiyse (mtime) require cache temizlenir; değişmediyse
+ *  modül-içi durum (API token cache, 90 sn veri cache) korunur. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function agentModule<T = any>(relPath: string): T {
-  const AGENT    = path.join(process.cwd(), '..', 'crewinjob-agent');
-  const fullPath = path.join(AGENT, relPath);
-  // Dev modunda: değişiklikler anında devreye girsin
+  const fullPath = path.join(agentDir(), relPath);
   if (process.env.NODE_ENV === 'development') {
-    try { delete nativeRequire.cache[nativeRequire.resolve(fullPath)]; } catch (_) {}
+    try {
+      const resolved = nativeRequire.resolve(fullPath);
+      const mtime    = fs.statSync(resolved).mtimeMs;
+      if (loadedMtimes.get(resolved) !== mtime) {
+        delete nativeRequire.cache[resolved];
+        loadedMtimes.set(resolved, mtime);
+      }
+    } catch (_) {}
   }
   return nativeRequire(fullPath) as T;
 }

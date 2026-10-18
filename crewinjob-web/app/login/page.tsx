@@ -1,154 +1,185 @@
 'use client';
-import { useState, FormEvent, Suspense } from 'react';
-import { useSearchParams }               from 'next/navigation';
-import { useLang }                       from '@/lib/lang';
-import Image                             from 'next/image';
-
+import { Suspense, useRef, useState, type FormEvent } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { ArrowRight, Eye, EyeOff, LoaderCircle } from 'lucide-react';
+import Brand from '@/components/platform/Brand';
+import { useLang } from '@/lib/lang';
 function LoginForm() {
-  const { lang } = useLang();
-  const searchParams = useSearchParams();
-  const from         = searchParams.get('from') || '/';
-
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState('');
-  const [showPass, setShowPass] = useState(false);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!username.trim() || !password.trim()) {
-      setError(lang === 'tr' ? 'Kullanıcı adı ve şifre gerekli' : 'Username and password are required');
-      return;
-    }
+  const { lang } = useLang(),
+    tr = lang === 'tr',
+    params = useSearchParams();
+  const [username, setUsername] = useState(''),
+    [password, setPassword] = useState(''),
+    [loading, setLoading] = useState(false),
+    [error, setError] = useState(''),
+    [show, setShow] = useState(false);
+  const usernameRef = useRef<HTMLInputElement>(null),
+    passwordRef = useRef<HTMLInputElement>(null);
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const res  = await fetch('/api/auth/login', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ username, password }),
-      });
-      const data = await res.json() as { ok?: boolean; error?: string };
-      if (!res.ok || !data.ok) {
-        setError(data.error || (lang === 'tr' ? 'Giriş başarısız' : 'Login failed'));
+      const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: usernameRef.current?.value.trim() || username.trim(),
+            password: passwordRef.current?.value || password,
+          }),
+          signal: AbortSignal.timeout(20000),
+        }),
+        data = await response.json();
+      if (!response.ok || !data.ok) {
+        setError(data.error || (tr ? 'Giriş başarısız.' : 'Sign in failed.'));
         return;
       }
-      window.location.href = from;
+      const from = params.get('from') || '/',
+        destination = new URL(from, window.location.origin);
+      window.location.href =
+        destination.origin === window.location.origin
+          ? destination.pathname + destination.search
+          : '/';
     } catch {
-      setError(lang === 'tr' ? 'Sunucuya bağlanılamadı' : 'Could not connect to server');
+      setError(
+        tr
+          ? 'Sunucuya bağlanılamadı. Tekrar deneyin.'
+          : 'Could not connect to the server. Try again.',
+      );
     } finally {
       setLoading(false);
     }
   };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm">
-
-        {/* Logo & başlık */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-5">
-            <Image
-              src="/crewin-logo.svg"
-              alt="Crewin Logo"
-              width={160}
-              height={44}
-              className="brightness-0 invert"
-              priority
-            />
-          </div>
-          <p className="text-slate-400 text-sm">{lang === 'tr' ? 'Marketing Agent — Yönetim Paneli' : 'Marketing Agent — Admin Panel'}</p>
-        </div>
-
-        {/* Kart */}
-        <div className="bg-slate-800/80 backdrop-blur border border-slate-700 rounded-2xl shadow-2xl p-8">
-          <h2 className="text-lg font-semibold text-slate-100 mb-6 text-center">{lang === 'tr' ? 'Giriş Yap' : 'Sign In'}</h2>
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {/* Kullanıcı adı */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
-                {lang === 'tr' ? 'Kullanıcı Adı' : 'Username'}
-              </label>
+    <main className="auth-page auth-designed auth-ryzevo" lang={lang}>
+      <aside className="auth-story"><a href="/welcome" aria-label="Ryzevo"><Brand inverse /></a><div className="ryz-auth-story-body"><span className="ryz-kicker">GROW WITH INTENT.</span><h2>{tr ? 'Bir sonraki iyi adım, buradan başlar.' : 'Your next good move starts here.'}</h2><p>{tr ? 'Fikirden içeriğe. Kampanyadan sonuca. Ekibinizle aynı yönde.' : 'From idea to content. From campaign to results. Moving together.'}</p><div className="ryz-auth-path"><span>01 / STRATEJİ</span><ArrowRight size={18} /><span>02 / ÜRETİM</span><ArrowRight size={18} /><span>03 / BÜYÜME</span></div></div><small>© {new Date().getFullYear()} Ryzevo · ryzevo.com</small></aside>
+      <div className="auth-entry">
+      <a className="auth-mobile-brand" href="/welcome" aria-label="Ryzevo"><Brand /></a>
+      <section className="auth-form-surface">
+        <p className="studio-eyebrow">
+          {tr ? 'ÇALIŞMA ALANINIZ' : 'YOUR WORKSPACE'}
+        </p>
+        <h1>{tr ? 'Tekrar hoş geldiniz' : 'Welcome back'}</h1>
+        <p>
+          {tr
+            ? 'Projelerinize ve ekibinizin çalışmalarına devam edin.'
+            : 'Continue with your projects and your team’s work.'}
+        </p>
+        {params.get('updated') === '1' && (
+          <p className="studio-success" role="status">
+            {tr
+              ? 'Şifreniz güncellendi. Yeniden giriş yapın.'
+              : 'Password updated. Please sign in again.'}
+          </p>
+        )}
+        <form onSubmit={submit}>
+          <div className="studio-form-grid">
+            <label className="studio-form-full" htmlFor="username">
+              {tr ? 'Kullanıcı adı' : 'Username'}
               <input
-                type="text"
+                id="username"
+                name="username"
+                required
+                maxLength={160}
+                ref={usernameRef}
                 value={username}
-                onChange={e => setUsername(e.target.value)}
+                onChange={(event) => setUsername(event.target.value)}
                 autoComplete="username"
                 autoFocus
-                placeholder={lang === 'tr' ? 'kullanıcı adı' : 'username'}
-                className="bg-slate-700/60 border border-slate-600 text-slate-100 placeholder:text-slate-500 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/60 focus:border-ocean/60 transition-colors"
               />
-            </div>
-
-            {/* Şifre */}
-            <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-slate-400 uppercase tracking-wide">
-                {lang === 'tr' ? 'Şifre' : 'Password'}
-              </label>
-              <div className="relative">
+            </label>
+            <div className="studio-form-full">
+              <label htmlFor="password">{tr ? 'Şifre' : 'Password'}</label>
+              <span className="auth-password">
                 <input
-                  type={showPass ? 'text' : 'password'}
+                  id="password"
+                  name="password"
+                  required
+                  maxLength={256}
+                  type={show ? 'text' : 'password'}
+                  ref={passwordRef}
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={(event) => setPassword(event.target.value)}
                   autoComplete="current-password"
-                  placeholder="••••••••"
-                  className="w-full bg-slate-700/60 border border-slate-600 text-slate-100 placeholder:text-slate-500 rounded-xl px-4 py-3 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/60 focus:border-ocean/60 transition-colors"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPass(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 transition-colors text-lg leading-none"
-                  tabIndex={-1}
+                  className="icon-button"
+                  title={
+                    show
+                      ? tr
+                        ? 'Şifreyi gizle'
+                        : 'Hide password'
+                      : tr
+                        ? 'Şifreyi göster'
+                        : 'Show password'
+                  }
+                  aria-label={
+                    show
+                      ? tr
+                        ? 'Şifreyi gizle'
+                        : 'Hide password'
+                      : tr
+                        ? 'Şifreyi göster'
+                        : 'Show password'
+                  }
+                  aria-pressed={show}
+                  aria-controls="password"
+                  onClick={() => setShow(!show)}
                 >
-                  {showPass ? '🙈' : '👁️'}
+                  {show ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
-              </div>
+              </span>
             </div>
-
-            {/* Hata mesajı */}
-            {error && (
-              <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-3 text-sm">
-                <span>⚠️</span>
-                <span>{error}</span>
-              </div>
-            )}
-
-            {/* Buton */}
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-ocean hover:bg-ocean-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 mt-2"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  {lang === 'tr' ? 'Giriş yapılıyor...' : 'Signing in...'}
-                </>
-              ) : (
-                `🔐 ${lang === 'tr' ? 'Giriş Yap' : 'Sign In'}`
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Alt bilgi */}
-        <p className="text-center text-slate-600 text-xs mt-6">
-          crewinjob.com · {lang === 'tr' ? 'Dahili Pazarlama Aracı' : 'Internal Marketing Tool'}
-        </p>
+          </div>
+          {error && (
+            <p className="studio-error" role="alert">
+              {error}
+            </p>
+          )}
+          <button disabled={loading} className="studio-primary w-full">
+            {loading ? (
+              <LoaderCircle size={16} className="animate-spin" />
+            ) : (
+              <ArrowRight size={16} />
+            )}{' '}
+            {loading
+              ? tr
+                ? 'Giriş yapılıyor…'
+                : 'Signing in…'
+              : tr
+                ? 'Giriş yap'
+                : 'Sign in'}
+          </button>
+        </form>
+        <div className="auth-divider" />
+        <a className="studio-text-button" href="/join">
+          {tr
+            ? 'Davetle yeni çalışma alanı'
+            : 'New workspace with an invitation'}
+          <ArrowRight size={14} />
+        </a>
+        <a className="studio-text-button identity-back" href="/recover">{tr?'Şifremi unuttum':'Forgot password'}<ArrowRight size={14}/></a>
+        <a className="studio-text-button identity-back" href="/register">{tr?'Yeni çalışma alanı':'New workspace'}<ArrowRight size={14}/></a>
+      </section>
+      <p className="auth-footer">
+        {tr
+          ? 'Organizasyon ve proje bazlı erişim'
+          : 'Organization and project scoped access'}
+      </p>
       </div>
-    </div>
+    </main>
   );
 }
-
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-ocean border-t-transparent rounded-full animate-spin" />
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <main className="workspace-loading">
+          <span className="studio-loader" />
+        </main>
+      }
+    >
       <LoginForm />
     </Suspense>
   );

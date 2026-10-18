@@ -1,0 +1,36 @@
+# Docker build context = repo kökü (crewinjob-web/docker-compose.yml → context: ..)
+# Gizli dosyalar, runtime verisi ve build çıktıları imaja GİRMEZ.
+
+**/node_modules
+**/.git
+.git
+.claude
+**/.claude
+.vscode
+
+# Gizli bilgiler
+**/.env
+**/.env.local
+**/.env.*.local
+crewinjob-agent/.userbot-config.json
+**/*.pem
+
+# Next.js build çıktıları (crewinjob-web/.next, .next-* NEXT_DIST_DIR klasörleri)
+crewinjob-web/.next
+crewinjob-web/.next-*
+crewinjob-web/out
+crewinjob-web/*.tsbuildinfo
+
+# Runtime verisi (volume ile bağlanır)
+crewinjob-web/data
+crewinjob-agent/data
+crewinjob-agent/logs
+crewinjob-agent/output
+crewinjob-agent/*.log
+crewinjob-agent/job-queue.json
+crewinjob-agent/.userbot-groups.json
+
+# Diğer
+crewin-linkedin-extension
+*.md
+!crewinjob-agent/context/*.md

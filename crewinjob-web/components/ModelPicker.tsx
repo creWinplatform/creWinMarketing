@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useLang } from '@/lib/lang';
+import { Sparkles } from 'lucide-react';
 
 export const TEXT_MODEL_KEY  = 'crewinjob_text_model';
 export const IMAGE_MODEL_KEY = 'crewinjob_image_model';
@@ -11,7 +12,7 @@ export const TEXT_MODELS = [
   { value: 'gemini-2.5-flash-lite',      label: 'Gemini 2.5 Flash Lite',      tagTr: '⚡ En Hızlı',   tagEn: '⚡ Fastest' },
   { value: 'gemini-3-flash-preview',     label: 'Gemini 3 Flash Preview',     tagTr: '🆕 Yeni',        tagEn: '🆕 New' },
   { value: 'gemini-3.1-pro-preview',     label: 'Gemini 3.1 Pro Preview',     tagTr: '🆕 En Yeni',     tagEn: '🆕 Latest' },
-  { value: 'gemini-2.0-flash-lite',      label: 'Gemini 2.0 Flash Lite',      tagTr: '🔒 Kararlı',     tagEn: '🔒 Stable' },
+  // gemini-2.0-flash-lite emekliye ayrıldı — listeden çıkarıldı
 ];
 
 export const IMAGE_MODELS = [
@@ -20,8 +21,15 @@ export const IMAGE_MODELS = [
   { value: 'gemini-3-pro-image-preview',     label: 'Gemini 3 Pro Image',     tagTr: '🎨 Yüksek Kalite', tagEn: '🎨 High Quality' },
 ];
 
-export function getTextModel()  { try { return localStorage.getItem(TEXT_MODEL_KEY)  || TEXT_MODELS[0].value;  } catch { return TEXT_MODELS[0].value;  } }
-export function getImageModel() { try { return localStorage.getItem(IMAGE_MODEL_KEY) || IMAGE_MODELS[0].value; } catch { return IMAGE_MODELS[0].value; } }
+// Kayıtlı seçim listede yoksa (ör. emekliye ayrılan model) varsayılana dön
+function storedModel(key: string, list: { value: string }[]): string {
+  try {
+    const v = localStorage.getItem(key);
+    return v && list.some(m => m.value === v) ? v : list[0].value;
+  } catch { return list[0].value; }
+}
+export function getTextModel()  { return storedModel(TEXT_MODEL_KEY,  TEXT_MODELS);  }
+export function getImageModel() { return storedModel(IMAGE_MODEL_KEY, IMAGE_MODELS); }
 
 export default function ModelPicker() {
   const { lang } = useLang();
@@ -64,7 +72,7 @@ export default function ModelPicker() {
         className="flex items-center gap-2 text-xs bg-white/10 hover:bg-white/20 text-white/90 px-3 py-1.5 rounded-lg transition-colors border border-white/10"
         title={lang === 'tr' ? 'Model seçimi' : 'Model selection'}
       >
-        <span>⚙️</span>
+        <Sparkles size={16} />
         <span className="hidden sm:inline">{textLabel}</span>
         <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

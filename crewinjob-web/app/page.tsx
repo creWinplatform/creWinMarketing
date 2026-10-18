@@ -1,223 +1,349 @@
 'use client';
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
-import SocialTab from '@/components/tabs/SocialTab';
-import GrowthTab from '@/components/tabs/GrowthTab';
-import RetentionTab from '@/components/tabs/RetentionTab';
-import SeoTab from '@/components/tabs/SeoTab';
-import AdsTab from '@/components/tabs/AdsTab';
-import CampaignManagerTab from '@/components/tabs/CampaignManagerTab';
-import MessagingTab from '@/components/tabs/MessagingTab';
-import KpiTab from '@/components/tabs/KpiTab';
-import CalendarTab from '@/components/tabs/CalendarTab';
-import DashboardTab from '@/components/tabs/DashboardTab';
-import ContentLibraryTab from '@/components/tabs/ContentLibraryTab';
+import { useState, useEffect, useCallback } from 'react';
+import Script from 'next/script';
+import dynamic from 'next/dynamic';
 import ModelPicker from '@/components/ModelPicker';
-import ThemeToggle from '@/components/ThemeToggle';
-import ProfileFillRatePanel from '@/components/ProfileFillRatePanel';
-import BreakdownPanel from '@/components/BreakdownPanel';
 import ActivityLogPanel from '@/components/ActivityLogPanel';
-import { LangToggle, useLang } from '@/lib/lang';
+import { useLang } from '@/lib/lang';
 import type { StatsResponse } from '@/lib/types';
+import { type ModuleId, type WorkspaceContext } from '@/lib/platform/catalog';
+import ProjectSettings from '@/components/platform/ProjectSettings';
+import ProjectDrafts from '@/components/platform/ProjectDrafts';
+import WorkspaceShell from '@/components/platform/WorkspaceShell';
+import ProjectOverview from '@/components/platform/ProjectOverview';
+import ProjectPlanning from '@/components/platform/ProjectPlanning';
+import ProjectReports from '@/components/platform/ProjectReports';
+import ProjectAudit from '@/components/platform/ProjectAudit';
+import { GrowthCompassProvider, CompassLauncher } from '@/components/platform/GrowthCompass';
 
-type Tab = 'dashboard' | 'social' | 'library' | 'growth' | 'retention' | 'seo' | 'ads' | 'campaigns' | 'messaging' | 'kpi' | 'calendar';
-
-const TAB_LABELS: Record<Tab, { tr: string; en: string }> = {
-  dashboard: { tr: 'Dashboard',           en: 'Dashboard' },
-  social:    { tr: 'Sosyal Medya',        en: 'Social Media' },
-  library:   { tr: 'İçerik Kütüphanesi', en: 'Content Library' },
-  growth:    { tr: 'Seafarer Büyüme',     en: 'Seafarer Growth' },
-  retention: { tr: 'Retention',           en: 'Retention' },
-  seo:       { tr: 'SEO & Blog',          en: 'SEO & Blog' },
-  ads:       { tr: 'Reklam İçeriği',      en: 'Ad Content' },
-  campaigns: { tr: 'Kampanyalar',         en: 'Campaigns' },
-  messaging: { tr: 'WA & Telegram',       en: 'WA & Telegram' },
-  kpi:       { tr: 'KPI & Raporlar',      en: 'KPI & Reports' },
-  calendar:  { tr: 'Takvim',              en: 'Calendar' },
-};
-
-const TAB_ICONS: Record<Tab, string> = {
-  dashboard: '📈', social: '📱', library: '🗂️', growth: '👥',
-  retention: '🔄', seo: '🔍', ads: '✍️', campaigns: '📣', messaging: '💬', kpi: '📊', calendar: '📅',
-};
-
-function StatCard({ icon, value, label }: { icon: string; value: string; label: string }) {
+function TabLoading() {
+  const { lang } = useLang();
   return (
-    <div className="flex items-center gap-3 px-4 py-2">
-      <span className="text-xl">{icon}</span>
-      <div>
-        <div className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-tight">{value}</div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
-      </div>
+    <div className="studio-skeleton" role="status">
+      {lang === 'tr' ? 'Yükleniyor…' : 'Loading…'}
     </div>
   );
 }
+const SocialTab = dynamic(() => import('@/components/tabs/SocialTab'), {
+  loading: TabLoading,
+});
+const GrowthTab = dynamic(() => import('@/components/tabs/GrowthTab'), {
+  loading: TabLoading,
+});
+const RetentionTab = dynamic(() => import('@/components/tabs/RetentionTab'), {
+  loading: TabLoading,
+});
+const SeoTab = dynamic(() => import('@/components/tabs/SeoTab'), {
+  loading: TabLoading,
+});
+const AdsTab = dynamic(() => import('@/components/tabs/AdsTab'), {
+  loading: TabLoading,
+});
+const CampaignHubTab = dynamic(
+  () => import('@/components/tabs/CampaignHubTab'),
+  { loading: TabLoading },
+);
+const MessagingTab = dynamic(() => import('@/components/tabs/MessagingTab'), {
+  loading: TabLoading,
+});
+const TelegramBotTab = dynamic(
+  () => import('@/components/tabs/TelegramBotTab'),
+  { loading: TabLoading },
+);
+const JobBotTab = dynamic(() => import('@/components/tabs/JobBotTab'), {
+  loading: TabLoading,
+});
+const PipelineTab = dynamic(() => import('@/components/tabs/PipelineTab'), {
+  loading: TabLoading,
+});
+const AnalyticsTab = dynamic(() => import('@/components/tabs/AnalyticsTab'), {
+  loading: TabLoading,
+});
+const KpiTab = dynamic(() => import('@/components/tabs/KpiTab'), {
+  loading: TabLoading,
+});
+const CalendarTab = dynamic(() => import('@/components/tabs/CalendarTab'), {
+  loading: TabLoading,
+});
+const DashboardTab = dynamic(() => import('@/components/tabs/DashboardTab'), {
+  loading: TabLoading,
+});
+const FirmaKrediTab = dynamic(() => import('@/components/tabs/FirmaKrediTab'), {
+  loading: TabLoading,
+});
+const ContentLibraryTab = dynamic(
+  () => import('@/components/tabs/ContentLibraryTab'),
+  { loading: TabLoading },
+);
+const ProfileFillRatePanel = dynamic(
+  () => import('@/components/ProfileFillRatePanel'),
+  { loading: TabLoading },
+);
+const BreakdownPanel = dynamic(() => import('@/components/BreakdownPanel'), {
+  loading: TabLoading,
+});
+const ProjectCampaignCenter=dynamic(()=>import('@/components/platform/ProjectCampaignCenter'),{loading:TabLoading});
+const MobileGrowthCenter=dynamic(()=>import('@/components/platform/MobileGrowthCenter'),{loading:TabLoading});
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
-  const { lang } = useLang();
-  const [stats, setStats] = useState<StatsResponse | null>(null);
-  const [statsLoading, setStatsLoading] = useState(true);
-
+  const { lang } = useLang(),
+    tr = lang === 'tr';
+  const [activeTab, setActiveTab] = useState<ModuleId>('dashboard'),
+    [workspace, setWorkspace] = useState<WorkspaceContext | null>(null),
+    [workspaceError, setWorkspaceError] = useState(''),
+    [stats, setStats] = useState<StatsResponse | null>(null),
+    [statsLoading, setStatsLoading] = useState(false);
+  const isCrewin =
+    workspace?.accessMode === 'legacy_single_account' &&
+    workspace.project.productPack === 'crewin';
   useEffect(() => {
-    fetch('/api/stats')
-      .then(r => r.json())
-      .then(d => setStats(d))
-      .catch(() => setStats({ error: 'API bağlantısı kurulamadı' }))
+    const controller = new AbortController();
+    fetch('/api/workspace', { cache: 'no-store', signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error();
+        return response.json() as Promise<WorkspaceContext>;
+      })
+      .then((context) => {
+        setWorkspace(context);
+        const requested = new URLSearchParams(window.location.search).get(
+          'tab',
+        );
+        setActiveTab(
+          context.modules.some((module) => module.id === requested)
+            ? (requested as ModuleId)
+            : (context.modules[0].id as ModuleId),
+        );
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError')
+          setWorkspaceError(
+            tr
+              ? 'Proje erişimi doğrulanamadı. Yeniden giriş yapın.'
+              : 'Could not verify project access. Please sign in again.',
+          );
+      });
+    return () => controller.abort();
+  }, [tr]);
+  useEffect(() => {
+    if (!workspace) return;
+    const back = () => {
+      const id = new URLSearchParams(window.location.search).get('tab');
+      setActiveTab(
+        workspace.modules.some((module) => module.id === id)
+          ? (id as ModuleId)
+          : (workspace.modules[0].id as ModuleId),
+      );
+    };
+    window.addEventListener('popstate', back);
+    return () => window.removeEventListener('popstate', back);
+  }, [workspace]);
+  const navigate = useCallback(
+    (tab: ModuleId) => {
+      if (!workspace?.modules.some((module) => module.id === tab)) return;
+      setActiveTab(tab);
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', tab);
+      window.history.pushState({}, '', url);
+      window.scrollTo({ top: 0 });
+    },
+    [workspace],
+  );
+  useEffect(() => {
+    if (!isCrewin) return;
+    const controller = new AbortController();
+    setStatsLoading(true);
+    fetch('/api/stats', { signal: controller.signal })
+      .then((response) => response.json())
+      .then(setStats)
+      .catch((error) => {
+        if (error.name !== 'AbortError')
+          setStats({ error: 'connection_failed', isRealData: false });
+      })
       .finally(() => setStatsLoading(false));
-  }, []);
-
-  return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-900">
-      {/* ── Header ── */}
-      <header className="bg-navy text-white px-6 py-4 flex items-center gap-3 shadow-lg">
-        <div className="flex items-center gap-3">
-          <Image
-            src="/crewin-logo.svg"
-            alt="Crewin Logo"
-            width={120}
-            height={32}
-            className="brightness-0 invert"
-            priority
-          />
-          <div className="border-l border-slate-600 pl-3">
-            <p className="text-slate-300 text-xs font-medium">Marketing Agent</p>
-            <p className="text-slate-500 text-[10px]">The Right Job, The Right Talent</p>
-          </div>
-        </div>
-
-        <div className="ml-auto flex items-center gap-3">
-          {!statsLoading && stats && (
-            <span
-              title={stats.isRealData
-                ? `api.crewin.org · ${stats.fetchedAt ? new Date(stats.fetchedAt).toLocaleTimeString('tr-TR') : ''}`
-                : 'API token eksik veya bağlantı yok — .env.local içinde CREWINJOB_API_KEY ayarlayın'}
-              className={`text-xs px-2.5 py-1 rounded-full font-medium cursor-help ${
-                stats.isRealData
-                  ? 'bg-green-500/20 text-green-300'
-                  : 'bg-yellow-500/20 text-yellow-300'
-              }`}
-            >
-              {stats.isRealData
-                ? (lang === 'tr' ? '● Gerçek API (api.crewin.org)' : '● Real API (api.crewin.org)')
-                : (lang === 'tr' ? '◐ Mock Veri (token eksik)' : '◐ Mock Data (token missing)')}
-            </span>
-          )}
-          <ActivityLogPanel />
-          <LangToggle />
-          <ThemeToggle />
-          <ModelPicker />
-          <button
-            onClick={async () => {
-              await fetch('/api/auth/logout', { method: 'POST' });
-              window.location.href = '/login';
-            }}
-            className="flex items-center gap-1.5 text-xs bg-slate-700 hover:bg-red-700 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-            title={lang === 'tr' ? 'Çıkış Yap' : 'Log Out'}
-          >
-            🚪 {lang === 'tr' ? 'Çıkış' : 'Logout'}
-          </button>
-        </div>
-      </header>
-
-      {/* ── Stats Bar ── */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 shadow-sm">
-        {statsLoading ? (
-          <div className="px-6 py-3 flex items-center gap-2 text-slate-400 dark:text-slate-500 text-sm">
-            <div className="w-4 h-4 border-2 border-slate-300 dark:border-slate-600 border-t-transparent rounded-full animate-spin" />
-            Veriler yükleniyor...
-          </div>
-        ) : stats && !stats.error ? (
-          <div className="px-4 flex flex-wrap divide-x divide-slate-100 dark:divide-slate-700">
-            <StatCard
-              icon="👥"
-              value={stats.seafarers?.total?.toLocaleString('tr-TR') || '–'}
-              label="Seafarers"
-            />
-            <StatCard
-              icon="🆕"
-              value={`+${stats.seafarers?.newThisWeek?.toLocaleString('tr-TR') || 0}`}
-              label={lang === 'tr' ? 'Son 7 Gün Kayıt' : 'Last 7 Days'}
-            />
-            <StatCard
-              icon="📋"
-              value={stats.jobs?.total?.toLocaleString('tr-TR') || '–'}
-              label={lang === 'tr' ? 'İlanlar' : 'Jobs'}
-            />
-            <StatCard
-              icon="🏢"
-              value={stats.jobs?.companies?.toLocaleString('tr-TR') || '–'}
-              label={lang === 'tr' ? `Firmalar (+${stats.jobs?.newCompaniesThisWeek ?? 0} bu hafta)` : `Companies (+${stats.jobs?.newCompaniesThisWeek ?? 0} this week)`}
-            />
-            <StatCard
-              icon="📊"
-              value={`%${stats.seafarers?.profileCompletion || 0}`}
-              label={lang === 'tr' ? 'Ort. Profil Doluluk' : 'Avg. Profile Completion'}
-            />
-            <StatCard
-              icon="✅"
-              value={stats.seafarers?.fillRateBuckets?.high?.toLocaleString('tr-TR') || '–'}
-              label={lang === 'tr' ? 'Profil %60+ (Tamamlanmış)' : 'Profile 60%+ (Complete)'}
-            />
-          </div>
-        ) : (
-          <div className="px-6 py-3 text-sm text-red-500">
-            ⚠️ {stats?.error || 'İstatistikler yüklenemedi'}
-          </div>
+    return () => controller.abort();
+  }, [isCrewin]);
+  if (!workspace)
+    return (
+      <main className="workspace-loading">
+        <span className="studio-loader" />
+        <p role="status">
+          {workspaceError ||
+            (tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…')}
+        </p>
+        {workspaceError && (
+          <a href="/login" className="studio-primary">
+            {tr ? 'Giriş yap' : 'Sign in'}
+          </a>
         )}
-      </div>
-
-      {/* ── Profil Doluluk Dağılımı Paneli ── */}
-      {!statsLoading && stats?.seafarers?.fillRateBuckets && (
-        <ProfileFillRatePanel
-          buckets={stats.seafarers.fillRateBuckets}
-          average={stats.seafarers.profileCompletion || 0}
-        />
-      )}
-
-      {/* ── Ülke & Pozisyon Dağılımı ── */}
-      <BreakdownPanel />
-
-      {/* ── Tab Navigation ── */}
-      <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-        <nav className="px-6 flex gap-0 overflow-x-auto">
-          {(Object.keys(TAB_LABELS) as Tab[]).map(id => (
-            <button
-              key={id}
-              onClick={() => setActiveTab(id)}
-              className={`flex items-center gap-2 px-5 py-3.5 text-sm font-medium border-b-2 whitespace-nowrap transition-all ${
-                activeTab === id
-                  ? 'border-ocean text-ocean'
-                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
-              }`}
-            >
-              <span>{TAB_ICONS[id]}</span>
-              <span>{TAB_LABELS[id][lang]}</span>
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* ── Main Content ── */}
-      <main className="flex-1 p-6 max-w-screen-xl mx-auto w-full">
-        {activeTab === 'dashboard' && <DashboardTab />}
-        {activeTab === 'social'    && <SocialTab />}
-        {activeTab === 'library'   && <ContentLibraryTab />}
-        {activeTab === 'growth'    && <GrowthTab />}
-        {activeTab === 'retention' && <RetentionTab segments={stats?.incomplete?.segments} />}
-        {activeTab === 'seo'       && <SeoTab />}
-        {activeTab === 'ads'       && <AdsTab />}
-        {activeTab === 'campaigns' && <CampaignManagerTab />}
-        {activeTab === 'messaging' && <MessagingTab />}
-        {activeTab === 'kpi'       && <KpiTab stats={stats || undefined} />}
-        {activeTab === 'calendar'  && <CalendarTab />}
       </main>
-
-      {/* ── Footer ── */}
-      <footer className="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-6 py-3 text-xs text-slate-400 dark:text-slate-500 flex items-center justify-between">
-        <span>⚓ crewinjob Marketing Agent — Powered by Gemini AI</span>
-        <span>crewinjob.com</span>
-      </footer>
-    </div>
+    );
+  return (
+    <GrowthCompassProvider key={workspace.project.id} enabled={!isCrewin} lang={lang}>
+    <WorkspaceShell
+      workspace={workspace}
+      activeTab={activeTab}
+      onNavigate={navigate}
+      lang={lang}
+      guidance={!isCrewin ? <CompassLauncher lang={lang}/> : undefined}
+      tools={
+        isCrewin ? (
+          <>
+            <ActivityLogPanel />
+            <ModelPicker />
+          </>
+        ) : undefined
+      }
+    >
+      {isCrewin && (
+        <>
+          <Script
+            src="https://www.googletagmanager.com/gtag/js?id=G-D6XC0PVB32"
+            strategy="afterInteractive"
+          />
+          <Script
+            id="crewin-workspace-analytics"
+            strategy="afterInteractive"
+          >{`window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-D6XC0PVB32');`}</Script>
+        </>
+      )}
+      {isCrewin && activeTab === 'dashboard' && (
+        <>
+          <DashboardTab onNavigate={navigate} />
+          <details className="crewin-detail-disclosure"><summary>{tr ? 'Profil ve şirket verileri: detaylı dağılım' : 'Profile and company data: detailed breakdown'}</summary>
+          {statsLoading ? (
+            <p className="studio-data-notice" role="status">
+              {tr ? 'Crewin verileri yükleniyor…' : 'Loading Crewin data…'}
+            </p>
+          ) : stats?.error ? (
+            <p className="studio-error" role="alert">
+              {tr
+                ? 'Crewin istatistikleri yüklenemedi. API bağlantısını kontrol edin.'
+                : 'Could not load Crewin statistics. Check the API connection.'}
+            </p>
+          ) : (
+            stats && (
+              <>
+                <div className="studio-data-notice">
+                  <span
+                    className={`status-dot ${stats.partial ? 'status-dot-amber' : ''}`}
+                  />
+                  <span>
+                    {stats.isRealData
+                      ? tr
+                        ? 'Crewin canlı verisi'
+                        : 'Crewin live data'
+                      : tr
+                        ? 'Veri doğrulanmadı'
+                        : 'Data not verified'}
+                    {stats.partial &&
+                      ` · ${tr ? 'Kısmi yanıt' : 'Partial response'}`}
+                  </span>
+                </div>
+                <div className="studio-stats crewin-stats">
+                  {[
+                    [
+                      tr ? 'Gemi adamları' : 'Seafarers',
+                      stats.seafarers?.total,
+                    ],
+                    [
+                      tr ? 'Son 7 gün kayıt' : 'Registrations / 7d',
+                      stats.seafarers?.newThisWeek,
+                    ],
+                    [tr ? 'İlanlar' : 'Jobs', stats.jobs?.total],
+                    [tr ? 'Firmalar' : 'Companies', stats.jobs?.companies],
+                  ].map(([label, value]) => (
+                    <div className="studio-stat" key={String(label)}>
+                      <div>
+                        <span>{label}</span>
+                        <strong>
+                          {typeof value === 'number'
+                            ? value.toLocaleString(tr ? 'tr-TR' : 'en-GB')
+                            : '—'}
+                        </strong>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          )}
+          {!statsLoading && stats?.seafarers?.fillRateBuckets && (
+            <ProfileFillRatePanel
+              buckets={stats.seafarers.fillRateBuckets}
+              average={stats.seafarers.profileCompletion || 0}
+              isExact={stats.seafarers.profileCompletionIsExact}
+            />
+          )}
+          <BreakdownPanel />
+          </details>
+        </>
+      )}
+      {!isCrewin ? (
+        <>
+          {activeTab === 'dashboard' && (
+            <ProjectOverview
+              workspace={workspace}
+              lang={lang}
+              onNavigate={navigate}
+            />
+          )}
+          {activeTab === 'campaigns' && <ProjectCampaignCenter key={workspace.project.id} workspace={workspace} lang={lang}/>}
+          {activeTab === 'mobile' && <MobileGrowthCenter key={workspace.project.id} lang={lang}/>}
+          {activeTab === 'library' && (
+            <ProjectDrafts
+              key={`${workspace.project.id}-${activeTab}`}
+              kind="content"
+              lang={lang}
+              canWrite={
+                workspace.permissions?.includes('content.write') || false
+              }
+              goals={workspace.project.goals}
+            />
+          )}
+          {activeTab === 'calendar' && (
+            <ProjectPlanning workspace={workspace} lang={lang} />
+          )}
+          {activeTab === 'analytics' && (
+            <ProjectReports workspace={workspace} lang={lang} />
+          )}
+          {activeTab === 'seo' && (
+            <ProjectAudit workspace={workspace} lang={lang} />
+          )}
+          {activeTab === 'project' && (
+            <ProjectSettings
+              workspace={workspace}
+              lang={lang}
+              onUpdate={setWorkspace}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          {activeTab === 'project' && (
+            <ProjectSettings workspace={workspace} lang={lang} />
+          )}
+          {activeTab === 'social' && <SocialTab />}
+          {activeTab === 'library' && <ContentLibraryTab />}
+          {activeTab === 'growth' && <GrowthTab />}
+          {activeTab === 'retention' && (
+            <RetentionTab segments={stats?.incomplete?.segments} />
+          )}
+          {activeTab === 'seo' && <SeoTab />}
+          {activeTab === 'ads' && <AdsTab />}
+          {activeTab === 'campaigns' && <CampaignHubTab />}
+          {activeTab === 'messaging' && (
+            <MessagingTab stats={stats || undefined} />
+          )}
+          {activeTab === 'telegrambot' && <TelegramBotTab />}
+          {activeTab === 'jobbot' && <JobBotTab />}
+          {activeTab === 'pipeline' && <PipelineTab />}
+          {activeTab === 'analytics' && <AnalyticsTab />}
+          {activeTab === 'kpi' && <KpiTab stats={stats || undefined} />}
+          {activeTab === 'calendar' && <CalendarTab />}
+          {activeTab === 'firma_kredi' && <FirmaKrediTab />}
+        </>
+      )}
+    </WorkspaceShell>
+    </GrowthCompassProvider>
   );
 }

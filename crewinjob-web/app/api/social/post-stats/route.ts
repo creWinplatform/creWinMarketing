@@ -1,53 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken } from '@/lib/social-tokens';
-import crypto from 'crypto';
+import { getToken, graphFetch, twitterOAuth1Creds } from '@/lib/social-tokens';
+import { buildOAuthHeader } from '@/lib/oauth1';
 
-// ── OAuth 1.0a imza üretici (Twitter Free tier okuma için) ───────────────────
-function oauthSign(method: string, url: string, params: Record<string, string>, consumerSecret: string, tokenSecret: string): string {
-  const sorted = Object.keys(params).sort()
-    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
-    .join('&');
-  const base = `${method}&${encodeURIComponent(url)}&${encodeURIComponent(sorted)}`;
-  const key  = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`;
-  return crypto.createHmac('sha1', key).update(base).digest('base64');
-}
+export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
-function buildOAuthHeader(method: string, url: string, queryParams: Record<string, string>, consumerKey: string, consumerSecret: string, accessToken: string, tokenSecret: string): string {
-  const nonce     = crypto.randomBytes(16).toString('hex');
-  const timestamp = Math.floor(Date.now() / 1000).toString();
-  const oauthParams: Record<string, string> = {
-    oauth_consumer_key:     consumerKey,
-    oauth_nonce:            nonce,
-    oauth_signature_method: 'HMAC-SHA1',
-    oauth_timestamp:        timestamp,
-    oauth_token:            accessToken,
-    oauth_version:          '1.0',
-  };
-  // İmza için hem oauth params hem query params kullanılır
-  const allParams = { ...oauthParams, ...queryParams };
-  const signature = oauthSign(method, url, allParams, consumerSecret, tokenSecret);
-  oauthParams.oauth_signature = signature;
-  return 'OAuth ' + Object.keys(oauthParams).sort()
-    .map(k => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`)
-    .join(', ');
-}
+type Stats = { likes: number; comments: number; shares: number; views: number } | { error: string };
 
 // ── Twitter / X metrikleri ───────────────────────────────────────────────────
-async function getTwitterStats(postId: string) {
-  const apiKey      = process.env.TWITTER_API_KEY;
-  const apiSecret   = process.env.TWITTER_API_SECRET;
-  const accessToken = process.env.TWITTER_ACCESS_TOKEN_V1 || process.env.TWITTER_ACCESS_TOKEN;
-  const tokenSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+async function getTwitterStats(postId: string): Promise<Stats> {
+  if (!/^\d+$/.test(postId)) return { error: 'Geçersiz tweet ID' };
+  const creds = twitterOAuth1Creds();
+  if (!creds) return { error: 'Twitter API credentials eksik' };
 
-  const baseUrl     = `https://api.twitter.com/2/tweets/${postId}`;
+  const baseUrl     = `https://api.twitter.com/2/tweets/${encodeURIComponent(postId)}`;
   const queryParams = { 'tweet.fields': 'public_metrics' };
-  const url         = `${baseUrl}?tweet.fields=public_metrics`;
+  const url         = `${baseUrl}?${new URLSearchParams(queryParams)}`;
 
-  if (!apiKey || !apiSecret || !accessToken || !tokenSecret) {
-    return { error: 'Twitter API credentials eksik' };
-  }
-
-  const header = buildOAuthHeader('GET', baseUrl, queryParams, apiKey, apiSecret, accessToken, tokenSecret);
+  // OAuth1 imzası ortak yardımcıdan — sorgu parametreleri imzaya dahil
+  const header = buildOAuthHeader('GET', baseUrl, creds.apiKey, creds.apiSecret, creds.accessToken, creds.tokenSecret, queryParams);
   const res = await fetch(url, { headers: { 'Authorization': header } });
   const data = await res.json() as Record<string, unknown>;
   if (!res.ok) {
@@ -64,13 +36,20 @@ async function getTwitterStats(postId: string) {
 }
 
 // ── Facebook metrikleri ──────────────────────────────────────────────────────
-async function getFacebookStats(postId: string) {
-  const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || getToken('facebook')?.accessToken;
+async function getFacebookStats(postId: string): Promise<Stats> {
+  const oauth       = getToken('facebook');
+  const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || oauth?.accessToken;
   if (!accessToken) return { error: 'Facebook token eksik' };
 
+  if (/^pfbid/i.test(postId)) {
+    return { error: 'pfbid biçimli bağlantılar Graph API ile çözümlenemiyor — gönderinin {sayfaId}_{gönderiId} biçimli ID\'sini veya API ile paylaşılan gönderiyi kullanın.' };
+  }
+  // Yalnızca gönderi numarası verildiyse sayfa ID'si ile tamamla ({pageId}_{postId})
+  const pageId = process.env.FACEBOOK_PAGE_ID || oauth?.pageId;
+  const id     = /^\d+$/.test(postId) && pageId ? `${pageId}_${postId}` : postId;
+
   const fields = 'reactions.summary(true),comments.summary(true),shares';
-  const url    = `https://graph.facebook.com/v19.0/${postId}?fields=${fields}&access_token=${accessToken}`;
-  const res    = await fetch(url);
+  const res    = await graphFetch(`${encodeURIComponent(id)}?fields=${encodeURIComponent(fields)}`, accessToken);
   const data   = await res.json();
   if (!res.ok || data.error) return { error: data.error?.message || 'Facebook API hatası' };
   return {
@@ -82,7 +61,7 @@ async function getFacebookStats(postId: string) {
 }
 
 // ── LinkedIn metrikleri ──────────────────────────────────────────────────────
-async function getLinkedInStats(postUrn: string) {
+async function getLinkedInStats(postUrn: string): Promise<Stats> {
   const accessToken = process.env.LINKEDIN_ACCESS_TOKEN || getToken('linkedin')?.accessToken;
   if (!accessToken) return { error: 'LinkedIn token eksik' };
 
@@ -101,12 +80,34 @@ async function getLinkedInStats(postUrn: string) {
 }
 
 // ── Instagram metrikleri ─────────────────────────────────────────────────────
-async function getInstagramStats(postId: string) {
+/**
+ * Manuel takipte URL'den yalnızca kısa kod (shortcode, ör. "C9x…") gelir; Graph API medya ID'si ister.
+ * Hesabın son gönderileri taranarak kısa kod medya ID'sine çevrilir.
+ */
+async function resolveInstagramMediaId(shortcode: string, accessToken: string): Promise<string | null> {
+  const igUserId = process.env.INSTAGRAM_IG_USER_ID || getToken('instagram')?.igUserId;
+  if (!igUserId) return null;
+  const res  = await graphFetch(`${encodeURIComponent(igUserId)}/media?fields=id,shortcode&limit=100`, accessToken);
+  const data = await res.json().catch(() => ({})) as { data?: { id: string; shortcode?: string }[] };
+  return data.data?.find(m => m.shortcode === shortcode)?.id || null;
+}
+
+async function getInstagramStats(postId: string): Promise<Stats> {
   const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || getToken('instagram')?.accessToken;
   if (!accessToken) return { error: 'Instagram token eksik' };
 
-  const url = `https://graph.facebook.com/v19.0/${postId}/insights?metric=engagement,impressions,reach,likes,comments&access_token=${accessToken}`;
-  const res = await fetch(url);
+  let mediaId = postId;
+  if (!/^\d+$/.test(postId)) {
+    const resolved = await resolveInstagramMediaId(postId, accessToken).catch(() => null);
+    if (!resolved) {
+      return { error: 'Instagram kısa kodu (shortcode) medya ID\'sine çevrilemedi — gönderi bağlı hesabın son 100 gönderisinde değil. API ile paylaşılan gönderiler otomatik izlenir.' };
+    }
+    mediaId = resolved;
+  }
+
+  // "impressions" metriği Nisan 2025'te kaldırıldı → views
+  const metrics = 'views,reach,likes,comments,saved,shares';
+  const res  = await graphFetch(`${encodeURIComponent(mediaId)}/insights?metric=${metrics}`, accessToken);
   const data = await res.json();
   if (!res.ok || data.error) return { error: data.error?.message || 'Instagram API hatası' };
 
@@ -117,18 +118,18 @@ async function getInstagramStats(postId: string) {
   return {
     likes:    valueOf('likes'),
     comments: valueOf('comments'),
-    shares:   0,
-    views:    valueOf('impressions') || valueOf('reach'),
+    shares:   valueOf('shares'),
+    views:    valueOf('views') || valueOf('reach'),
   };
 }
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
   const platform = searchParams.get('platform') || '';
-  const postId   = searchParams.get('postId')   || '';
+  const postId   = (searchParams.get('postId') || '').trim();
   if (!platform || !postId) return NextResponse.json({ error: 'platform ve postId gerekli' }, { status: 400 });
 
-  let result;
+  let result: Stats;
   switch (platform) {
     case 'twitter':   result = await getTwitterStats(postId);   break;
     case 'facebook':  result = await getFacebookStats(postId);  break;

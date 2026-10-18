@@ -1,0 +1,5 @@
+export type EmailMapping={sourceId:string;sourceVersion:number;field:string;revision:number};
+export type RecipientContact={key:string;maskedId:string;maskedEmail:string;validEmail:boolean;blocked:boolean;consent:'unknown'|'reviewed'|'withdrawn'|'revoked';decisionId:number|null;reported:'opted_in'|'opted_out'|null};
+export type EmailEligibility={eligible:number;invalid:number;unconsented:number;suppressed:number;duplicates:number;matched:number;revision:number;mappingReady:boolean};
+export type RecipientWorkspace={sources:{id:string;name:string;version:number;state:string;attributes:{key:string;type:string}[]}[];mapping:EmailMapping|null;sourceId:string;contacts:RecipientContact[];total:number;page:number;blocks:{maskedEmail:string;reason:string;createdAt:string}[];blockTotal:number;blockPage:number;revision:number};
+export const CONSENT_LABELS:Record<RecipientContact['consent'],[string,string]>={unknown:['İzin incelenmedi','Not reviewed'],reviewed:['Kanıt incelendi','Evidence reviewed'],withdrawn:['İzin geri çekildi','Consent withdrawn'],revoked:['Yetki değişti; yeniden inceleyin','Authority changed; review again']};

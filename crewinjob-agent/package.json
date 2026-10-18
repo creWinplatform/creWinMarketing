@@ -5,8 +5,12 @@
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "bot": "node telegram-bot.js",
+    "userbot": "node userbot.js",
+    "userbot-auth": "node userbot-auth.js"
   },
+  "overrides": { "exceljs": { "uuid": "^11.1.1" } },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "axios": "^1.15.2",
@@ -16,7 +20,10 @@
     "exceljs": "^3.4.0",
     "fs-extra": "^11.2.0",
     "googleapis": "^171.4.0",
-    "node-cron": "^4.2.1",
-    "node-fetch": "^3.3.2"
+    "node-cron": "^4.5.0",
+    "node-fetch": "^3.3.2",
+    "node-telegram-bot-api": "^1.1.2",
+    "nodemailer": "^10.1.1",
+    "telegram": "^2.26.22"
   }
 }

@@ -1,0 +1,40 @@
+/* ─────────────────────────────────────────────────────────────────────────────
+   Ryzevo UI v1 — ortak tasarım token'ları
+   Landing (.ryz-map) ve uygulama kabuğu (.workspace-shell) aynı seti kullanır.
+   Tema: uygulamanın <html class="dark"> sınıfı. Marka: lime + grafit + kâğıt.
+   Kural: lime yalnızca "birincil eylem" ve "aktif durum" anlamında; ikon ve
+   rozetler nötr kalır. Köşe ölçeği: 4 rozet · 8 kontrol · 12 kart · 20 panel.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root{
+  /* renk */
+  --rz-lime:#baf331; --rz-lime-ink:#172107; --rz-lime-soft:#ecf9c6; --rz-lime-deep:#7fa81a;
+  --rz-paper:#f4f5f2; --rz-paper-2:#ebede8; --rz-surface:#ffffff;
+  --rz-ink:#111510; --rz-ink-2:#2d342a; --rz-muted:#646d5e;
+  --rz-line:#d9ddd4; --rz-line-2:#c3c9bb;
+  --rz-graphite:#191f16; --rz-graphite-2:#242b20; --rz-graphite-line:#333c2e;
+  --rz-cobalt:#2454e6; --rz-amber:#b9800f; --rz-good:#3e7d2c; --rz-bad:#b3362b;
+  --rz-glow:rgba(186,243,49,.22);
+  /* birincil eylem: açık temada grafit, koyu temada lime */
+  --rz-primary-bg:var(--rz-ink); --rz-primary-fg:var(--rz-paper);
+  /* köşe */
+  --rz-r-badge:4px; --rz-r-control:8px; --rz-r-card:12px; --rz-r-panel:20px;
+  /* tipografi */
+  --rz-font:'Manrope Variable',Manrope,Arial,sans-serif;
+  --rz-fs-app:14px; --rz-fs-marketing:16px; --rz-fs-small:12px; --rz-fs-label:11px;
+  /* derinlik */
+  --rz-shadow-1:0 1px 2px rgba(17,21,16,.04),0 8px 24px rgba(17,21,16,.06);
+  --rz-shadow-2:0 20px 50px rgba(17,21,16,.12);
+  /* hareket */
+  --rz-ease:cubic-bezier(.2,.8,.2,1);
+}
+.dark{
+  --rz-lime-soft:#1f2a10; --rz-lime-deep:#a9dd2c;
+  --rz-paper:#0f120e; --rz-paper-2:#151a13; --rz-surface:#1a1f18;
+  --rz-ink:#f1f4ec; --rz-ink-2:#d2d9c8; --rz-muted:#97a28e;
+  --rz-line:#2a3127; --rz-line-2:#3b4536;
+  --rz-cobalt:#6d8cff; --rz-amber:#e3b341; --rz-good:#7fc96a; --rz-bad:#ef7c71;
+  --rz-glow:rgba(186,243,49,.16);
+  --rz-primary-bg:var(--rz-lime); --rz-primary-fg:var(--rz-lime-ink);
+  --rz-shadow-1:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.35);
+  --rz-shadow-2:0 20px 50px rgba(0,0,0,.5);
+}

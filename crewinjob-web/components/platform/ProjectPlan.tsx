@@ -1,0 +1,42 @@
+'use client';
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {RefreshCw,ShieldCheck,Check,Clock3,RotateCcw,ExternalLink,LockKeyhole} from 'lucide-react';
+import type {Locale} from '@/lib/platform/catalog';
+import type {PlanUsage,PlanResource} from '@/lib/platform/plan-types';
+import {projectRequest} from '@/lib/platform/client';
+import PlanCatalog from './PlanCatalog';
+
+export default function ProjectPlan({lang}:{lang:Locale}){
+  const tr=lang==='tr',controller=useRef<AbortController|null>(null);
+  const [data,setData]=useState<PlanUsage|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState('');
+  const load=useCallback(async()=>{
+    controller.current?.abort();const next=new AbortController();controller.current=next;setLoading(true);setError('');
+    try{const result=await projectRequest<PlanUsage>('/api/platform/plan',{signal:AbortSignal.any([next.signal,AbortSignal.timeout(15000)])});if(!next.signal.aborted)setData(result);}
+    catch{if(!next.signal.aborted)setError(tr?'Plan ve kullanım bilgisi alınamadı. Yenileyerek tekrar deneyin.':'Could not load plan and usage. Refresh to try again.');}
+    finally{if(!next.signal.aborted)setLoading(false);}
+  },[tr]);
+  useEffect(()=>{void load();return()=>controller.current?.abort();},[load]);
+  const label:Record<PlanResource,string>={ai:tr?'AI taslakları':'AI drafts',audits:tr?'Site denetimleri':'Site audits',campaigns:tr?'Kampanya taslakları':'Campaign drafts',content:tr?'İçerik kayıtları':'Content records',tasks:tr?'İş kayıtları':'Work items',members:tr?'Ekip kayıtları':'Team records'};
+  const date=(value:string)=>new Date(value).toLocaleString(tr?'tr-TR':'en-GB',{timeZone:'UTC',dateStyle:'medium',timeStyle:'short'})+' UTC';
+  return <section className="project-plan" aria-busy={loading}>
+    <header className="studio-section-title"><h2>{tr?'Plan & kullanım':'Plan & usage'}</h2><button className="icon-button" title={tr?'Kullanımı yenile':'Refresh usage'} aria-label={tr?'Kullanımı yenile':'Refresh usage'} disabled={loading} onClick={load}><RefreshCw size={17} className={loading?'animate-spin':''}/></button></header>
+    {error&&<p role="alert" className="studio-error">{error}</p>}
+    {loading&&!data?<p role="status" className="studio-note">{tr?'Kullanım yükleniyor…':'Loading usage…'}</p>:data&&<>
+      <div className="plan-summary"><div><span className="studio-badge"><ShieldCheck size={13}/> {data.plan.id==='trial'?(tr?'14 günlük deneme':'14-day trial'):'Pilot'}</span><h3>{data.plan.id==='trial'?(data.plan.active?(tr?'Denemeniz aktif':'Your trial is active'):(tr?'Deneme süreniz doldu':'Your trial has ended')):(tr?'Proje pilot planı':'Project pilot plan')}</h3><p>{tr?'Bu proje için geçerli limitler':'Current limits for this project'}</p></div><div className="plan-payment-state"><LockKeyhole size={18}/><strong>{tr?'Tahsilat kapalı':'Payments disabled'}</strong><span>{tr?'Ücretli abonelik etkinleştirilmedi':'Paid subscriptions have not been enabled'}</span></div></div>
+      {data.plan.id==='trial'&&<p className={data.plan.active?'plan-hold-notice':'studio-error'} role="status">{data.plan.active?(tr?'Deneme boyunca toplam 10 AI taslağı ve 3 tek URL denetimi. Gerçek gönderim kapalı; kotalar ay değişiminde yenilenmez.':'10 AI drafts and 3 single-URL audits for the entire trial. Live delivery is disabled; quotas do not renew at month end.'):(tr?'Kayıtlarınız korunur. Yeni üretim ve gerçek gönderim kapalıdır; mevcut kayıtları okuyabilir ve bağlantıları iptal edebilirsiniz.':'Your records are preserved. New production and live delivery are disabled; you can read existing records and revoke connections.')}</p>}
+      <section className="studio-band plan-usage-section"><div className="plan-section-heading"><h3>{data.plan.id==='trial'?(tr?'Deneme kullanımı':'Trial usage'):(tr?'Aylık kullanım':'Monthly usage')}</h3><span>{data.plan.id==='trial'?(tr?'Tek deneme dönemi':'One trial period'):data.period.key} · UTC</span></div><p className="studio-note">{data.plan.id==='trial'?(tr?'Deneme bitişi':'Trial ends'):(tr?'Sonraki kota dönemi':'Next quota period')}: {date(data.period.endsAt)}</p>
+        <div className="plan-monthly-grid">{data.resources.filter(r=>r.kind==='monthly').map(resource=><article key={resource.resource} className={'plan-meter plan-meter-'+resource.state}><div><span>{label[resource.resource]}</span><strong>{resource.used.toLocaleString(lang)} <small>/ {resource.limit.toLocaleString(lang)}</small></strong></div><progress aria-label={label[resource.resource]} value={Math.min(resource.used,resource.limit)} max={resource.limit}/><p>{resource.state==='over_limit'?(tr?'Limit üzerinde':'Above limit'):resource.state==='at_limit'?(tr?'Limit doldu':'Limit reached'):`${resource.remaining.toLocaleString(lang)} ${tr?'işlem kaldı':'remaining'}`}</p></article>)}</div>
+        {data.monthly.some(m=>!m.consistent)&&<p role="alert" className="studio-error">{tr?'İşlem kayıtları ile sayaç arasında fark var. Yönetici kontrolü gerekli.':'The operation ledger and counter differ. Administrator review is required.'}</p>}
+        {data.monthly.some(m=>m.reserved>0)&&<p className="plan-hold-notice"><Clock3 size={16}/>{tr?'Sonucu beklenen işlemler kotadan ayrılmıştır.':'Pending operations hold quota until their outcome is recorded.'}</p>}
+      </section>
+      {data.plan.id==='trial'&&<div className="plan-trial-capacities"><p>{tr?'Aktif ekip üyeleri':'Active team members'} <strong>{data.capacities.seats.used} / {data.capacities.seats.limit}</strong></p><p>{tr?'Aktif sosyal hesaplar':'Active social accounts'} <strong>{data.capacities.socialAccounts.used} / {data.capacities.socialAccounts.limit}</strong></p></div>}
+      <PlanCatalog data={data} lang={lang} onSaved={setData}/>
+      <section className="studio-band plan-usage-section"><div className="plan-section-heading"><h3>{tr?'Kayıt limitleri':'Record limits'}</h3><span>{tr?'Aylık sıfırlanmaz':'Not reset monthly'}</span></div><div className="studio-table-scroll" tabIndex={0} role="region" aria-label={tr?'Kayıt limitleri tablosu':'Record limits table'}><table className="studio-table"><thead><tr><th>{tr?'Kaynak':'Resource'}</th><th>{tr?'Kullanılan':'Used'}</th><th>{tr?'Limit':'Limit'}</th><th>{tr?'Kalan':'Remaining'}</th></tr></thead><tbody>{data.resources.filter(r=>r.kind==='stored').map(resource=><tr key={resource.resource}><td>{label[resource.resource]}</td><td>{resource.used.toLocaleString(lang)}</td><td>{resource.limit.toLocaleString(lang)}</td><td>{resource.remaining.toLocaleString(lang)}{resource.state==='over_limit'&&<span className="plan-overage">{tr?'Limit üzerinde':'Above limit'}</span>}</td></tr>)}</tbody></table></div></section>
+      <section className="studio-band plan-usage-section"><div className="plan-section-heading"><h3>{tr?'Son işlemler':'Recent operations'}</h3><span>{tr?'Bu dönem · Son 10 kayıt':'This period · Latest 10 records'}</span></div>
+        {data.recent.length===0?<p className="studio-note">{tr?'Bu ay yeni işlem kaydı yok. Önceki kullanım sayaçları korunur.':'No new operation records this month. Earlier usage counters are preserved.'}</p>:<div className="studio-table-scroll" tabIndex={0} role="region" aria-label={tr?'Son işlemler tablosu':'Recent operations table'}><table className="studio-table plan-history-table"><thead><tr><th>{tr?'İşlem':'Operation'}</th><th>{tr?'Durum':'Status'}</th><th>{tr?'Başlangıç':'Started'}</th><th>{tr?'Sonuç zamanı':'Settled'}</th></tr></thead><tbody>{data.recent.map(item=><tr key={item.id}><td>{label[item.resource]}</td><td><span className={'plan-operation-status plan-operation-'+item.status}>{item.status==='committed'?<Check size={14}/>:item.status==='released'?<RotateCcw size={14}/>:<Clock3 size={14}/>} {item.status==='committed'?(tr?'Tamamlandı':'Completed'):item.status==='released'?(tr?'Kota iade edildi':'Quota released'):item.needsReview?(tr?'Sonuç doğrulanmadı':'Outcome unconfirmed'):(tr?'İşleniyor':'In progress')}</span></td><td>{date(item.createdAt)}</td><td>{item.settledAt?date(item.settledAt):'—'}</td></tr>)}</tbody></table></div>}
+      </section>
+      <p className="plan-boundary"><LockKeyhole size={15}/>{tr?'Kota kaydı fatura veya ödeme değildir. Gerçek gönderim izinleri ayrı doğrulanır.':'Quota records are not invoices or payments. Live delivery permissions are verified separately.'}</p>
+      <a className="studio-text-button" href="/?tab=analytics">{tr?'Ölçümlere dön':'Back to measurements'}<ExternalLink size={14}/></a>
+    </>}
+  </section>;
+}

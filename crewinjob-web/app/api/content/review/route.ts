@@ -9,6 +9,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
+
 const REVIEW_PROMPT = (content: string, platform: string, lang: string) => `
 You are a senior social media strategist reviewing a ${platform.toUpperCase()} post for CrewinJob, a maritime recruitment platform.
 
@@ -65,8 +68,10 @@ export async function POST(req: NextRequest) {
   const lang = language === 'en' ? 'en' : 'tr';
   const plat = platform || 'instagram';
 
-  // Önce 2.5-flash dene, 503 alırsa 2.0-flash'e düş
-  const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-001', 'gemini-1.5-flash'];
+  // Önce 2.5-flash dene; kota/sunucu hatasında (429/5xx) 2.5-flash-lite'a düş.
+  // (1.5-flash ve 2.0-flash emekliye ayrıldı.)
+  const MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+  const RETRYABLE = new Set([429, 500, 502, 503, 504]);
   let res: Response | null = null;
   for (const model of MODELS) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -86,8 +91,8 @@ export async function POST(req: NextRequest) {
           responseMimeType: 'application/json',
         },
       }),
-    });
-    if (res.ok || res.status !== 503) break;
+    }).catch(() => null);   // ağ hatası → sonraki model
+    if (res && (res.ok || !RETRYABLE.has(res.status))) break;
   }
 
   if (!res || !res.ok) {

@@ -12,8 +12,8 @@ const FIELD_LABELS: Record<string, { label: string; urgency_tr: string; urgency_
   documents:      { label: '📁 Belgeler',           urgency_tr: 'ORTA',   urgency_en: 'MEDIUM', why_tr: 'Hızlı işe alım için şart',                  why_en: 'Required for fast hiring',                  color: 'yellow' },
   references:     { label: '🌟 Referanslar',        urgency_tr: 'DÜŞÜK',  urgency_en: 'LOW',    why_tr: 'Rekabette öne geçirir',                     why_en: 'Gives competitive edge',                    color: 'slate' },
   profile_empty:  { label: '🚫 Boş Profil (%0)',    urgency_tr: 'YÜKSEK', urgency_en: 'HIGH',   why_tr: 'Hiç doldurmamış — en büyük kayıp segment',  why_en: 'Never filled — biggest loss segment',       color: 'red' },
-  profile_low:    { label: '⚠️ Profil %0–30',       urgency_tr: 'YÜKSEK', urgency_en: 'HIGH',   why_tr: 'Çok eksik — iş bulması çok zor',            why_en: 'Very incomplete — very hard to find a job', color: 'red' },
-  profile_mid:    { label: '🔶 Profil %30–60',      urgency_tr: 'ORTA',   urgency_en: 'MEDIUM', why_tr: 'Biraz daha doldurursa işe alınabilir',      why_en: 'A bit more and can be hired',               color: 'yellow' },
+  profile_low:    { label: '⚠️ Profil %1–49',       urgency_tr: 'YÜKSEK', urgency_en: 'HIGH',   why_tr: 'Profil önemli ölçüde eksik',                 why_en: 'Profile is substantially incomplete',       color: 'red' },
+  profile_mid:    { label: '🔶 Profil %50–79',      urgency_tr: 'ORTA',   urgency_en: 'MEDIUM', why_tr: '%80 aktivasyon eşiğine yakın',              why_en: 'Close to the 80% activation threshold',     color: 'yellow' },
 };
 
 interface Props {
@@ -79,7 +79,9 @@ export default function RetentionTab({ segments }: Props) {
 
         {segs.length === 0 ? (
           <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 rounded-lg p-3">
-            {lang === 'tr' ? 'Segment verileri yükleniyor...' : 'Loading segment data...'}
+            {lang === 'tr'
+              ? 'Crewin eksik alan dağılımı döndürmedi. Tahmini segment gösterilmiyor.'
+              : 'Crewin did not return a missing-field distribution. No estimated segment is shown.'}
           </div>
         ) : (
           <div className="flex flex-col gap-2">

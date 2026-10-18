@@ -11,6 +11,14 @@ export interface CalendarEvent {
   language:  string;
   published: boolean;
   createdAt: number;
+  // Route'un döndürdüğü ek alanlar
+  campaignId?: string;
+  timezone?:   string;
+  title?:      string;
+  /** Yerel kopyada saklanan post görseli — otomatik yayında (scheduler/run) paylaşılır */
+  imageData?:  string;
+  imageMime?:  string;
+  imageUrl?:   string;
 }
 
 const BASE = '/api/data/calendar';

@@ -1,0 +1,63 @@
+.email-pilot {
+  min-width: 0;
+  width: 100%;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--studio-border);
+  color: var(--studio-ink);
+  font-size: 12px;
+  line-height: 1.7;
+  letter-spacing: 0;
+}
+.email-pilot :is(h3, h4, p, dl, dd) { margin: 0; }
+.email-pilot :is(h3, h4) { font-size: 14px; font-weight: 700; }
+.email-pilot :is(button, input, .email-pilot-table):focus-visible { outline: 2px solid var(--studio-accent); outline-offset: 3px; }
+.email-pilot :is(button, h3, .email-pilot-boundary, .email-pilot-job-status, .email-pilot-actions, .email-pilot-blocked) { display: flex; align-items: center; gap: 9px; }
+.email-pilot svg { flex: none; }
+.email-pilot button { min-height: 44px; justify-content: center; white-space: normal; line-height: 1.5; }
+.email-pilot button:disabled { opacity: .5; cursor: not-allowed; }
+.email-pilot .icon-button { flex: none; width: 44px; height: 44px; border-radius: 5px; }
+.email-pilot .email-pilot-heading, .email-pilot .email-pilot-job-heading, .email-pilot .email-pilot-list-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.email-pilot .email-pilot-heading { align-items: center; }
+.email-pilot .email-pilot-boundary { flex-wrap: wrap; padding: 14px 0; }
+.email-pilot .email-pilot-boundary > span { color: var(--studio-muted); }
+.email-pilot .email-pilot-note { color: var(--studio-muted); overflow-wrap: anywhere; }
+.email-pilot .email-pilot-messages > p { margin: 10px 0; }
+.email-pilot .email-pilot-error { border-left: 2px solid var(--studio-accent); padding-left: 12px; overflow-wrap: anywhere; }
+.email-pilot .email-pilot-enqueue { padding: 8px 0 24px; }
+.email-pilot .email-pilot-ack { display: flex; align-items: flex-start; gap: 10px; margin: 12px 0 16px; cursor: pointer; }
+.email-pilot .email-pilot-ack input { flex: none; width: 17px; height: 17px; margin: 3px 0 0; accent-color: var(--studio-accent); }
+.email-pilot .email-pilot-ack span { min-width: 0; overflow-wrap: anywhere; }
+.email-pilot .email-pilot-list-heading { padding: 18px 0 12px; border-top: 1px solid var(--studio-border); }
+.email-pilot .email-pilot-list-heading > span { color: var(--studio-muted); font-variant-numeric: tabular-nums; }
+.email-pilot .email-pilot-job { min-width: 0; padding: 22px 0; border-top: 1px solid var(--studio-border); }
+.email-pilot .email-pilot-job:last-child { padding-bottom: 0; }
+.email-pilot .email-pilot-job-heading > div:first-child { min-width: 0; }
+.email-pilot .email-pilot-job-status { flex-wrap: wrap; gap: 8px; }
+.email-pilot .email-pilot-job-status > span { color: var(--studio-muted); }
+.email-pilot .email-pilot-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font-size: 11px; color: var(--studio-muted); overflow-wrap: anywhere; }
+.email-pilot .email-pilot-meta code { color: var(--studio-ink); }
+.email-pilot .email-pilot-actions { flex: none; }
+.email-pilot .email-pilot-counts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; margin: 18px 0; }
+.email-pilot .email-pilot-counts dt { color: var(--studio-muted); font-size: 11px; overflow-wrap: anywhere; }
+.email-pilot .email-pilot-counts dd { margin-top: 4px; font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.email-pilot .email-pilot-sender { margin: 14px 0; }
+.email-pilot .email-pilot-table { width: 100%; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; }
+.email-pilot .email-pilot-table table { width: 100%; min-width: 580px; border-collapse: collapse; text-align: left; font-size: 11px; }
+.email-pilot .email-pilot-table :is(th, td) { padding: 12px 14px 12px 0; border-bottom: 1px solid var(--studio-border); vertical-align: top; overflow-wrap: anywhere; }
+.email-pilot .email-pilot-table th { color: var(--studio-muted); font-weight: 600; }
+.email-pilot .email-pilot-table td:first-child { min-width: 160px; }
+.email-pilot .email-pilot-table td:nth-child(2) { min-width: 150px; }
+.email-pilot .email-pilot-gates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px 0 12px; }
+.email-pilot .email-pilot-gates dt { color: var(--studio-muted); font-size: 11px; overflow-wrap: anywhere; }
+.email-pilot .email-pilot-gates dd { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.email-pilot .email-pilot-blocked { align-items: flex-start; color: var(--studio-muted); font-size: 11px; }
+.email-pilot .email-pilot-blocked svg { margin-top: 3px; }
+@media (max-width: 639px) {
+  .email-pilot .email-pilot-job-heading { flex-direction: column; gap: 12px; }
+  .email-pilot .email-pilot-actions { width: 100%; justify-content: flex-end; }
+  .email-pilot .email-pilot-counts { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .email-pilot .email-pilot-gates { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .email-pilot .email-pilot-gates > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+  .email-pilot .email-pilot-gates dd { margin: 0; }
+  .email-pilot .email-pilot-enqueue > button { width: 100%; }
+}

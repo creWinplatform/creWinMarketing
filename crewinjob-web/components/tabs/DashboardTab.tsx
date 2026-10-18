@@ -1,388 +1,69 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Users, BriefcaseBusiness, FolderOpen, Send, CircleCheck, Target, UserRoundCheck, RefreshCw, ArrowUpRight, Megaphone, ChartNoAxesCombined } from 'lucide-react';
 import { getHistory as getContentHistory } from '@/lib/content-history';
-import { getHistory as getPostHistory }    from '@/lib/post-history';
+import { getHistory as getPostHistory } from '@/lib/post-history';
 import type { BreakdownItem, FillRateBuckets, SeafarerStats, JobStats } from '@/lib/types';
+import type { ModuleId } from '@/lib/platform/catalog';
 import { useLang } from '@/lib/lang';
 
-// ─── API response type ────────────────────────────────────────────────────────
 interface DashboardData {
-  seafarers?:          SeafarerStats;
-  jobs?:               JobStats;
-  fillRateBuckets?:    FillRateBuckets;
-  dailyRegistrations?: number[];
-  topCountries?:       BreakdownItem[];
-  topPositions?:       BreakdownItem[];
-  isRealData?:         boolean;
-  fetchedAt?:          string;
-  error?:              string;
+  seafarers?: SeafarerStats; jobs?: JobStats; fillRateBuckets?: FillRateBuckets;
+  dailyRegistrations?: number[]; topCountries?: BreakdownItem[]; topPositions?: BreakdownItem[];
+  isRealData?: boolean; partial?: boolean; apiErrors?: string[]; fetchedAt?: string; error?: string;
 }
-
-// ─── Yardımcı: ISO-2 → emoji bayrak ──────────────────────────────────────────
-function flag(iso2?: string) {
-  if (!iso2 || iso2.length !== 2) return '';
-  const b = 0x1F1E6 - 65;
-  return String.fromCodePoint(b + iso2.toUpperCase().charCodeAt(0)) +
-         String.fromCodePoint(b + iso2.toUpperCase().charCodeAt(1));
-}
-
-// ─── Mini bar (yatay) ─────────────────────────────────────────────────────────
-function HBar({ pct, color }: { pct: number; color: string }) {
-  return (
-    <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-      <div className={`h-full rounded-full ${color} transition-all duration-700`} style={{ width: `${Math.max(pct, pct > 0 ? 2 : 0)}%` }} />
-    </div>
-  );
-}
-
-// ─── Stat kart ────────────────────────────────────────────────────────────────
-function Kart({ icon, value, label, sub, color }: {
-  icon: string; value: string; label: string; sub?: string; color: string;
-}) {
-  return (
-    <div className={`rounded-xl border p-4 flex items-start gap-3 ${color}`}>
-      <span className="text-2xl">{icon}</span>
-      <div>
-        <div className="text-xl font-bold leading-tight">{value}</div>
-        <div className="text-xs font-medium opacity-80">{label}</div>
-        {sub && <div className="text-[10px] opacity-60 mt-0.5">{sub}</div>}
-      </div>
-    </div>
-  );
-}
-
-// ─── PLATFORM renk map ────────────────────────────────────────────────────────
-const PLATFORM_COLOR: Record<string, string> = {
-  instagram: 'bg-pink-500',
-  facebook:  'bg-blue-600',
-  twitter:   'bg-sky-500',
-  linkedin:  'bg-blue-800',
-  tiktok:    'bg-slate-900',
-  telegram:  'bg-cyan-500',
-  whatsapp:  'bg-green-500',
-};
-const PLATFORM_ICON: Record<string, string> = {
-  instagram: '📸', facebook: '👥', twitter: '🐦',
-  linkedin: '💼', tiktok: '🎵', telegram: '✈️', whatsapp: '📩',
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-export default function DashboardTab() {
-  const { lang } = useLang();
-
-  const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
-
-  const [data,    setData]    = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // Sunucu taraflı geçmişler
-  const [contentCount, setContentCount] = useState(0);
-  const [postCount,    setPostCount]    = useState(0);
-  const [recentPosts,  setRecentPosts]  = useState<Awaited<ReturnType<typeof getPostHistory>>>([]);
-  const [platformDist, setPlatformDist] = useState<Record<string, number>>({});
-
-  useEffect(() => {
-    // API verisi
-    fetch('/api/dashboard')
-      .then(r => r.json())
-      .then(setData)
-      .catch(() => setData({ error: t('Veri alınamadı', 'Could not load data') }))
-      .finally(() => setLoading(false));
-
-    // Sunucu taraflı geçmişler
-    Promise.all([getContentHistory(), getPostHistory()]).then(([ch, ph]) => {
-      setContentCount(ch.length);
-      setPostCount(ph.length);
-      setRecentPosts(ph.slice(0, 5));
-
-      // Platform dağılımı
-      const dist: Record<string, number> = {};
-      ph.forEach(p => { dist[p.platform] = (dist[p.platform] || 0) + 1; });
-      ch.forEach(p => { dist[p.platform] = (dist[p.platform] || 0) + 1; });
-      setPlatformDist(dist);
-    }).catch(() => {});
-  }, []);
-
-  const refresh = () => {
+export default function DashboardTab({ onNavigate }: { onNavigate?: (id: ModuleId) => void }) {
+  const { lang } = useLang(), tr = lang === 'tr', locale = tr ? 'tr-TR' : 'en-GB';
+  const [data,setData] = useState<DashboardData | null>(null), [loading,setLoading] = useState(true);
+  const [contentCount,setContentCount] = useState<number | null>(null), [postCount,setPostCount] = useState<number | null>(null);
+  const [recentPosts,setRecentPosts] = useState<Awaited<ReturnType<typeof getPostHistory>>>([]), [historyError,setHistoryError] = useState('');
+  const [platforms,setPlatforms] = useState<Record<string,number>>({});
+  const refresh = useCallback(() => {
     setLoading(true);
-    setData(null);
-    fetch('/api/dashboard')
-      .then(r => r.json())
-      .then(setData)
-      .catch(() => setData({ error: t('Veri alınamadı', 'Could not load data') }))
-      .finally(() => setLoading(false));
-  };
-
-  // ── Hesaplamalar ─────────────────────────────────────────────────────────────
-  const buckets    = data?.fillRateBuckets;
-  const totalUsers = buckets ? buckets.zero + buckets.low + buckets.mid + buckets.high : 0;
-
-  const dailyReg  = data?.dailyRegistrations ?? [];
-  const maxDaily  = Math.max(...dailyReg, 1);
-  const DAY_LABEL = lang === 'tr'
-    ? ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz']
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-  const topCountries = data?.topCountries ?? [];
-  const maxCountry   = topCountries[0]?.count || 1;
-  const topPositions = data?.topPositions ?? [];
-  const maxPosition  = topPositions[0]?.count || 1;
-
-  const maxPlatformCount = Math.max(...Object.values(platformDist), 1);
-
+    fetch('/api/dashboard',{cache:'no-store',signal:AbortSignal.timeout(30000)}).then(async response => { if(!response.ok) throw new Error(); return response.json(); }).then(setData).catch(() => setData({error:tr?'Canlı veriler alınamadı.':'Could not load live data.'})).finally(() => setLoading(false));
+    setHistoryError('');
+    Promise.all([getContentHistory(),getPostHistory()]).then(([content,posts]) => {
+      setContentCount(content.length); setPostCount(posts.length); setRecentPosts(posts.slice(0,4));
+      const counts:Record<string,number> = {};
+      [...content,...posts].forEach(item => { counts[item.platform]=(counts[item.platform] || 0)+1; });
+      setPlatforms(counts);
+    }).catch(() => setHistoryError(tr?'İçerik ve yayın geçmişi yüklenemedi.':'Could not load content and publishing history.'));
+  },[tr]);
+  useEffect(refresh,[refresh]);
+  const trusted = data?.isRealData === true, buckets = trusted ? data.fillRateBuckets : undefined;
+  const total = buckets ? buckets.zero+buckets.low+buckets.mid+buckets.high : undefined;
+  const activated = trusted ? data.seafarers?.activatedSeafarers ?? buckets?.high : undefined;
+  const below = trusted ? data.seafarers?.profilesBelow80 ?? (total !== undefined && activated !== undefined ? total-activated : undefined) : undefined;
+  const rate = trusted ? data.seafarers?.activationRate ?? (total && activated !== undefined ? Math.round(activated/total*1000)/10 : undefined) : undefined;
+  const number = (value:number | null | undefined) => value == null ? '—' : value.toLocaleString(locale);
+  const daily = trusted ? data.dailyRegistrations || [] : [], maxDaily = Math.max(...daily,1);
+  const anchor = data?.fetchedAt && Number.isFinite(Date.parse(data.fetchedAt)) ? new Date(data.fetchedAt) : new Date();
+  const dateAt = (index:number) => { const date=new Date(anchor); date.setDate(date.getDate()-(daily.length-1-index)); return date; };
+  const countries = trusted ? data.topCountries || [] : [], positions = trusted ? data.topPositions || [] : [];
   return (
-    <div className="flex flex-col gap-6">
-
-      {/* ── Başlık satırı ── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <span>📈</span> {lang === 'tr' ? 'Genel Bakış' : 'Overview'}
-          </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {data?.isRealData ? (
-              <>{lang === 'tr' ? '● Gerçek API' : '● Real API'} · {data.fetchedAt ? new Date(data.fetchedAt).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US') : ''}</>
-            ) : (lang === 'tr' ? '◐ Mock veri' : '◐ Mock data')}
-          </p>
-        </div>
-        <button onClick={refresh}
-          className="text-xs text-ocean hover:text-ocean-dark font-medium flex items-center gap-1 transition-colors">
-          🔄 {lang === 'tr' ? 'Yenile' : 'Refresh'}
-        </button>
-      </div>
-
-      {loading && (
-        <div className="flex items-center gap-3 py-12 text-slate-400 text-sm">
-          <div className="w-5 h-5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-          {lang === 'tr' ? 'Dashboard verileri yükleniyor...' : 'Loading dashboard data...'}
-        </div>
-      )}
-
-      {data?.error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-red-700 dark:text-red-300 text-sm">
-          ❌ {data.error}
-        </div>
-      )}
-
-      {!loading && data && !data.error && (
-        <>
-          {/* ── Üst stat kartları ── */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kart
-              icon="👥" value={data.seafarers?.total?.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US') ?? '–'}
-              label={t('Toplam Seafarer', 'Total Seafarers')}
-              sub={`+${data.seafarers?.newThisWeek ?? 0} ${t('bu hafta', 'this week')}`}
-              color="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300"
-            />
-            <Kart
-              icon="📋" value={data.jobs?.total?.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US') ?? '–'}
-              label={t('Toplam İlan', 'Total Jobs')}
-              sub={`${data.jobs?.companies ?? 0} ${t('firma', 'companies')}`}
-              color="bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300"
-            />
-            <Kart
-              icon="✍️" value={contentCount.toString()}
-              label={lang === 'tr' ? 'Üretilen İçerik' : 'Generated Content'}
-              sub={lang === 'tr' ? 'Bu tarayıcıda' : 'This browser'}
-              color="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300"
-            />
-            <Kart
-              icon="📤" value={postCount.toString()}
-              label={lang === 'tr' ? 'Yayınlanan Post' : 'Shared Posts'}
-              sub={lang === 'tr' ? 'Toplam platform' : 'Total platforms'}
-              color="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-700 text-orange-800 dark:text-orange-300"
-            />
-          </div>
-
-          {/* ── İkili grid: sol = grafikler, sağ = listeler ── */}
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-
-            {/* ── Sol 2/3 ── */}
-            <div className="xl:col-span-2 flex flex-col gap-5">
-
-              {/* Son 7 gün kayıt trend */}
-              {dailyReg.length > 0 && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <span>📅</span> {lang === 'tr' ? 'Son 7 Gün — Günlük Kayıt' : 'Last 7 Days — Daily Registrations'}
-                  </h3>
-                  <div className="flex items-end gap-2 h-28">
-                    {dailyReg.map((v, i) => {
-                      const pct  = maxDaily > 0 ? (v / maxDaily) * 100 : 0;
-                      const label= DAY_LABEL[i % 7];
-                      return (
-                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                          <span className="text-[10px] font-bold text-ocean">{v > 0 ? v : ''}</span>
-                          <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-t-sm flex flex-col justify-end" style={{ height: '72px' }}>
-                            <div
-                              className="w-full rounded-t-sm bg-ocean transition-all duration-700"
-                              style={{ height: `${Math.max(pct, v > 0 ? 4 : 0)}%` }}
-                            />
-                          </div>
-                          <span className="text-[9px] text-slate-400">{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Profil doluluk dağılımı */}
-              {buckets && totalUsers > 0 && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <span>📊</span> {lang === 'tr' ? 'Profil Doluluk Dağılımı' : 'Profile Fill Rate Distribution'}
-                    <span className="ml-auto text-xs text-slate-400 font-normal">{totalUsers.toLocaleString('tr-TR')} seafarer</span>
-                  </h3>
-
-                  {/* Stacked bar */}
-                  <div className="h-6 flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 mb-4">
-                    {[
-                      { key: 'zero' as const, color: 'bg-red-500',    label: '%0' },
-                      { key: 'low'  as const, color: 'bg-orange-400', label: '%0–30' },
-                      { key: 'mid'  as const, color: 'bg-amber-400',  label: '%30–60' },
-                      { key: 'high' as const, color: 'bg-green-500',  label: '%60+' },
-                    ].map(seg => {
-                      const pct = totalUsers > 0 ? (buckets[seg.key] / totalUsers) * 100 : 0;
-                      if (pct === 0) return null;
-                      return (
-                        <div key={seg.key} className={`${seg.color} flex items-center justify-center`} style={{ width: `${pct}%` }}
-                          title={`${seg.label}: ${buckets[seg.key].toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')} ${t('kişi', 'people')}`}>
-                          {pct > 10 && <span className="text-[10px] font-bold text-white">%{pct.toFixed(0)}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-2">
-                    {[
-                      { key: 'zero' as const, icon: '🚫', labelTr: '%0 Boş',   labelEn: '%0 Empty', color: 'text-red-600 dark:text-red-400' },
-                      { key: 'low'  as const, icon: '⚠️', labelTr: '%0–30',    labelEn: '%0–30',    color: 'text-orange-500' },
-                      { key: 'mid'  as const, icon: '🔶', labelTr: '%30–60',   labelEn: '%30–60',   color: 'text-amber-500' },
-                      { key: 'high' as const, icon: '✅', labelTr: '%60+ Dolu', labelEn: '%60+ Full', color: 'text-green-600 dark:text-green-400' },
-                    ].map(seg => (
-                      <div key={seg.key} className="text-center">
-                        <div className={`text-base font-bold ${seg.color}`}>{buckets[seg.key].toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}</div>
-                        <div className="text-[10px] text-slate-500 dark:text-slate-400">{seg.icon} {lang === 'tr' ? seg.labelTr : seg.labelEn}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Platform aktivite dağılımı */}
-              {Object.keys(platformDist).length > 0 && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4 flex items-center gap-2">
-                    <span>📱</span> {lang === 'tr' ? 'Platform Aktivite Dağılımı' : 'Platform Activity Distribution'}
-                    <span className="ml-auto text-xs text-slate-400 font-normal">
-                      {lang === 'tr' ? 'İçerik + Yayın' : 'Content + Posts'}
-                    </span>
-                  </h3>
-                  <div className="flex flex-col gap-2.5">
-                    {Object.entries(platformDist)
-                      .sort((a, b) => b[1] - a[1])
-                      .map(([plat, count]) => (
-                        <div key={plat} className="flex items-center gap-3">
-                          <span className="text-base w-6 shrink-0">{PLATFORM_ICON[plat] ?? '📌'}</span>
-                          <span className="text-xs text-slate-700 dark:text-slate-200 w-20 shrink-0 capitalize">{plat}</span>
-                          <HBar pct={(count / maxPlatformCount) * 100} color={PLATFORM_COLOR[plat] ?? 'bg-slate-400'} />
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200 w-8 text-right shrink-0">{count}</span>
-                        </div>
-                      ))}
-                  </div>
-                  {Object.keys(platformDist).length === 0 && (
-                    <p className="text-xs text-slate-400 text-center py-4">
-                      {lang === 'tr' ? 'Henüz içerik üretilmedi' : 'No content generated yet'}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* ── Sağ 1/3 ── */}
-            <div className="flex flex-col gap-5">
-
-              {/* Top ülkeler */}
-              {topCountries.length > 0 && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                    <span>🌍</span> {lang === 'tr' ? 'En Çok Seafarer — Ülke' : 'Top Seafarers — Country'}
-                  </h3>
-                  <div className="flex flex-col gap-2">
-                    {topCountries.map((c, i) => (
-                      <div key={c.id} className="flex items-center gap-2">
-                        <span className="text-[11px] text-slate-400 w-4 text-right shrink-0">{i + 1}</span>
-                        <span className="text-sm shrink-0">{flag(c.code)}</span>
-                        <span className="text-xs text-slate-700 dark:text-slate-200 truncate flex-1 min-w-0" title={c.name}>{c.name}</span>
-                        <HBar pct={(c.count / maxCountry) * 100} color="bg-emerald-500" />
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 w-12 text-right shrink-0 tabular-nums">
-                          {c.count > 0 ? c.count.toLocaleString('tr-TR') : '–'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Top pozisyonlar */}
-              {topPositions.length > 0 && (
-                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-                  <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                    <span>⚓</span> {lang === 'tr' ? 'En Çok Seafarer — Pozisyon' : 'Top Seafarers — Position'}
-                  </h3>
-                  <div className="flex flex-col gap-2">
-                    {topPositions.map((p, i) => (
-                      <div key={p.id} className="flex items-center gap-2">
-                        <span className="text-[11px] text-slate-400 w-4 text-right shrink-0">{i + 1}</span>
-                        <span className="text-xs text-slate-700 dark:text-slate-200 truncate flex-1 min-w-0" title={p.name}>{p.name}</span>
-                        <HBar pct={(p.count / maxPosition) * 100} color="bg-ocean" />
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200 w-12 text-right shrink-0 tabular-nums">
-                          {p.count > 0 ? p.count.toLocaleString('tr-TR') : '–'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Son yayınlanan postlar */}
-              <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
-                <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3 flex items-center gap-2">
-                  <span>📤</span> {lang === 'tr' ? 'Son Yayınlanan' : 'Recent Posts'}
-                </h3>
-                {recentPosts.length === 0 ? (
-                  <div className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-                    {lang === 'tr' ? 'Henüz yayınlanmış post yok' : 'No posts yet'}
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    {recentPosts.map(p => (
-                      <div key={p.id} className="flex items-start gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
-                        <span className="text-base shrink-0">{PLATFORM_ICON[p.platform] ?? '📌'}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-slate-700 dark:text-slate-200 line-clamp-2 leading-relaxed">{p.content}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                              {new Date(p.publishedAt).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short' })}
-                            </span>
-                            {p.postUrl && (
-                              <a href={p.postUrl} target="_blank" rel="noopener noreferrer"
-                                className="text-[10px] text-ocean hover:underline">
-                                {lang === 'tr' ? 'Görüntüle →' : 'View →'}
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+    <section>
+      <header className="studio-page-heading"><div><p className="studio-eyebrow">CREWINJOB / MARKETING</p><h1>{tr?'Pazarlama genel bakışı':'Marketing overview'}</h1><p className="studio-subtitle">{tr?'Aday kazanımı, profil aktivasyonu ve şirket büyümesi.':'Acquisition, profile activation and company growth.'}</p></div><div className="overview-header-actions"><button className="icon-button" onClick={refresh} disabled={loading} title={tr?'Yenile':'Refresh'} aria-label={tr?'Yenile':'Refresh'}><RefreshCw size={17} className={loading?'animate-spin':''} /></button>{onNavigate && <button className="studio-primary" onClick={() => onNavigate('campaigns')}><Megaphone size={16} />{tr?'Kampanya merkezi':'Campaign centre'}</button>}</div></header>
+      <div className="studio-data-notice"><span className={`status-dot ${!trusted || data?.partial ? 'status-dot-amber' : ''}`} /><span>{loading ? (tr?'Canlı veriler yükleniyor…':'Loading live data…') : trusted ? (data.partial ? (tr?'Kısmi canlı yanıt':'Partial live response') : (tr?'Gerçek API verisi':'Live API data')) : (tr?'Canlı veri doğrulanamadı':'Live data unavailable')}{data?.fetchedAt && ` · ${new Date(data.fetchedAt).toLocaleString(locale)}`}</span></div>
+      {data?.error && <div role="alert" className="studio-error">{data.error}</div>}
+      {historyError && <div role="alert" className="studio-error">{historyError}</div>}
+      <div className="crewin-dashboard-stats">{[
+        {Icon:Users,label:tr?'Gemi adamı':'Seafarers',value:number(trusted?data?.seafarers?.total:undefined),note:trusted && data?.seafarers?.newThisWeek!==undefined?`${number(data.seafarers.newThisWeek)} ${tr?'bu hafta kayıt':'registrations this week'}`:tr?'Canlı kullanıcı sayısı':'Live user count'},
+        {Icon:BriefcaseBusiness,label:tr?'İlan':'Jobs',value:number(trusted?data?.jobs?.total:undefined),note:trusted && data?.jobs?.companies!==undefined?`${number(data.jobs.companies)} ${tr?'şirket':'companies'}`:tr?'Canlı ilan sayısı':'Live job count'},
+        {Icon:CircleCheck,label:tr?'Aktif profil':'Activated profiles',value:number(activated),note:tr?'Profil doluluğu %80+':'Profile completion 80%+'},
+        {Icon:ChartNoAxesCombined,label:tr?'Aktivasyon oranı':'Activation rate',value:rate===undefined?'—':`${number(rate)}%`,note:tr?'Aktif / toplam profil':'Activated / total profiles'},
+        {Icon:FolderOpen,label:tr?'İçerik':'Content',value:number(contentCount),note:tr?'Sunucudaki içerik geçmişi':'Server content history'},
+        {Icon:Send,label:tr?'Yayın':'Posts',value:number(postCount),note:tr?'Yayın geçmişi kayıtları':'Publishing history records'},
+        {Icon:Target,label:tr?'Aktivasyon kitlesi':'Activation audience',value:number(below),note:tr?'Profil doluluğu %80 altı':'Profile completion below 80%'},
+        {Icon:UserRoundCheck,label:tr?'Tam profil':'Complete profiles',value:number(trusted?data?.seafarers?.completeProfiles:undefined),note:tr?'Kesin %100 profil doluluğu':'Exact 100% profile completion'},
+      ].map(item => <div key={item.label}><span><item.Icon size={15} />{item.label}</span><strong>{item.value}</strong><small>{item.note}</small></div>)}</div>
+      <div className="crewin-dashboard-grid"><div>
+        <section className="studio-band"><div className="studio-section-title"><h2>{tr?'Son 7 gün kayıtları':'Registrations / last 7 days'}</h2><span className="studio-badge">{tr?'Günlük':'Daily'}</span></div>{daily.length ? <div className="crewin-daily-chart">{daily.map((value,index) => <div key={index} title={`${dateAt(index).toLocaleDateString(locale)}: ${value}`}><strong>{value}</strong><div className="bar-track"><div style={{height:`${value/maxDaily*100}%`}} /></div><span>{dateAt(index).toLocaleDateString(locale,{day:'numeric',month:'short'})}</span></div>)}</div> : <div className="studio-empty"><ChartNoAxesCombined size={25} /><p>{tr?'Günlük kayıt verisi henüz alınamadı.':'Daily registration data is unavailable.'}</p></div>}</section>
+        <section className="studio-band"><div className="studio-section-title"><h2>{tr?'Profil aktivasyonu':'Profile activation'}</h2>{onNavigate && <button className="studio-text-button" onClick={() => onNavigate('retention')}>{tr?'Retention':'Retention'}<ArrowUpRight size={14} /></button>}</div>{buckets && total ? <><div className="crewin-segment-bar">{[{key:'zero',color:'#e4757b'},{key:'low',color:'#c3ab72'},{key:'mid',color:'#9e92db'},{key:'high',color:'#549584'}].map(item => <div key={item.key} style={{width:`${buckets[item.key as keyof FillRateBuckets]/total*100}%`,background:item.color}} title={number(buckets[item.key as keyof FillRateBuckets])} />)}</div><div className="crewin-segments">{[{key:'zero',label:tr?'Boş profil':'Empty profile'},{key:'low',label:'1–49%'},{key:'mid',label:'50–79%'},{key:'high',label:tr?'80%+ aktif':'80%+ activated'}].map(item => <div key={item.key}><strong>{number(buckets[item.key as keyof FillRateBuckets])}</strong><span>{item.label}</span></div>)}</div></> : <p className="studio-note">{tr?'Profil dağılımı için doğrulanmış veri yok.':'No verified profile distribution data.'}</p>}</section>
+        <section className="studio-band"><div className="studio-section-title"><h2>{tr?'Kanal çalışmaları':'Channel activity'}</h2><span className="studio-badge">{tr?'İçerik + yayın':'Content + posts'}</span></div>{Object.keys(platforms).length ? Object.entries(platforms).sort((a,b)=>b[1]-a[1]).map(([platform,count]) => <div className="crewin-data-bar" key={platform}><span>{platform}</span><div className="crewin-bar-track"><div style={{width:`${count/Math.max(...Object.values(platforms))*100}%`}} /></div><strong>{number(count)}</strong></div>) : <p className="studio-note">{historyError || (tr?'Henüz kanal kaydı yok.':'No channel records yet.')}</p>}</section>
+      </div><div>
+        {[{title:tr?'Ülke dağılımı':'Countries',items:countries},{title:tr?'Pozisyon dağılımı':'Positions',items:positions}].map(group => <section className="studio-band" key={group.title}><div className="studio-section-title"><h2>{group.title}</h2></div>{group.items.length ? group.items.slice(0,6).map(item => <div className="crewin-data-bar" key={item.id}><span title={item.name}>{item.name}</span><div className="crewin-bar-track"><div style={{width:`${item.count/Math.max(...group.items.map(row=>row.count),1)*100}%`}} /></div><strong>{number(item.count)}</strong></div>) : <p className="studio-note">{tr?'Dağılım verisi alınamadı.':'Distribution data is unavailable.'}</p>}</section>)}
+        <section className="studio-band"><div className="studio-section-title"><h2>{tr?'Son yayınlar':'Recent posts'}</h2>{onNavigate && <button className="studio-text-button" onClick={() => onNavigate('social')}><ArrowUpRight size={16} /><span>{tr?'Sosyal medya':'Social media'}</span></button>}</div>{recentPosts.length ? recentPosts.map(post => <article className="crewin-latest-post" key={post.id}><span>{post.platform}</span><p className="line-clamp-2">{post.content}</p><small>{new Date(post.publishedAt).toLocaleDateString(locale)}</small>{post.postUrl && <a href={post.postUrl} rel="noreferrer" target="_blank" aria-label={tr?'Yayını görüntüle':'View post'} title={tr?'Yayını görüntüle':'View post'}><ArrowUpRight size={14} /></a>}</article>) : <p className="studio-note">{historyError || (tr?'Henüz yayınlanmış içerik yok.':'No posts yet.')}</p>}</section>
+      </div></div>
+    </section>
   );
 }

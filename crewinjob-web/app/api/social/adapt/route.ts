@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
+
 const PLATFORM_RULES: Record<string, { limit: number; name: string; format: string }> = {
   twitter: {
     limit:  280,

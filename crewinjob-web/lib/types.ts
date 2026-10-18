@@ -4,9 +4,9 @@
 // ── Fill-rate buckets ─────────────────────────────────────────────────────────
 export interface FillRateBuckets {
   zero: number;   // %0 — profili hiç doldurmamış
-  low:  number;   // %0–30
-  mid:  number;   // %30–60
-  high: number;   // %60+
+  low:  number;   // %1–49
+  mid:  number;   // %50–79
+  high: number;   // %80+ — Activated Seafarer
 }
 
 // ── Seafarer istatistikleri ───────────────────────────────────────────────────
@@ -15,8 +15,22 @@ export interface SeafarerStats {
   newToday?:          number;
   newThisWeek:        number;
   newThisMonth?:      number;
+  /** Ağırlıklı ORTALAMA profil doluluk yüzdesi — "profili tamamlanmış kullanıcı oranı" değildir. */
   profileCompletion:  number;
+  /** true ise GrowthAnalytics kesin ortalaması, false ise bucket midpoint tahminidir. */
+  profileCompletionIsExact?: boolean;
+  /** Activated olmayan kullanıcı sayısı. Geriye uyumlu alan. */
   incompleteProfiles: number;
+  /** @deprecated activatedSeafarers kullanın. */
+  readyToHire?:       number;
+  /** Pazarlama KPI tanımı: profil doluluğu %80 ve üzeri kullanıcı. */
+  activatedSeafarers?: number;
+  /** activatedSeafarers / total * 100. */
+  activationRate?:     number;
+  /** Profil doluluğu tam %100 olan kullanıcı sayısı; null ise endpoint desteklemiyordur. */
+  completeProfiles?:   number | null;
+  /** Profil doluluğu %80'in altında kalan kullanıcılar. */
+  profilesBelow80?:    number;
   activeLastMonth?:   number;
   retentionRate?:     number;
   byNationality?:     Record<string, number>;
@@ -30,7 +44,8 @@ export interface SeafarerStats {
 export interface JobStats {
   total:                  number;
   active:                 number;
-  newThisWeek:            number;
+  /** null = API'de haftalık ilan endpoint'i yok. 0 ile karıştırma — UI "–" göstermeli. */
+  newThisWeek:            number | null;
   totalApps?:             number;
   appsThisWeek?:          number;
   avgAppsPerJob?:         number;
@@ -68,7 +83,12 @@ export interface AllData {
   incomplete: IncompleteProfiles;
   sources:    RegistrationSources;
   fetchedAt:  string;
+  /** En az bir backend çağrısı başarılıysa true. */
   isRealData: boolean;
+  /** Bazı çağrılar başarısız → sayılar eksik olabilir. */
+  partial?:   boolean;
+  /** Kısa hata metinleri ("Endpoint → HTTP 500"); token/yanıt gövdesi içermez. */
+  apiErrors?: string[];
   /** Geriye dönük uyumluluk — generator.js tarafından kullanılır */
   stats: {
     seafarers:  string;
@@ -84,6 +104,10 @@ export interface StatsResponse {
   jobs?:       JobStats;
   incomplete?: IncompleteProfiles;
   isRealData?: boolean;
+  /** true → bazı backend çağrıları başarısız (kısmi veri). */
+  partial?:    boolean;
+  /** Başarısız çağrıların kısa açıklamaları (yalnızca string). */
+  apiErrors?:  string[];
   fetchedAt?:  string;
   error?:      string;
 }

@@ -1,0 +1,30 @@
+/* Shared SaaS ergonomics; legacy Crewin tool layouts retain their own styles. */
+.workspace-shell, .auth-page { --studio-muted:#626b5c; }
+.dark :is(.workspace-shell,.auth-page) { --studio-muted:#a4af9a; }
+:is(.workspace-shell,.auth-page) :is(input,textarea)::placeholder { color:var(--studio-muted); opacity:1; }
+.workspace-shell :is(.workspace-main, .studio-table-scroll) { scroll-margin-block-start:112px; }
+.workspace-shell .studio-table-scroll:focus-visible { outline:3px solid var(--studio-accent); outline-offset:3px; }
+.auth-page .studio-form-grid > div > label { display:block; }
+.workspace-mobile-drawer { overscroll-behavior:contain; }
+@media (min-width:1024px) {
+  .workspace-shell .workspace-menu-toggle { display:none; }
+}
+
+@media (max-width:1023px) {
+  .auth-page :is(input:not([type=checkbox]):not([type=radio]),select,textarea),
+  .workspace-shell :is(input:not([type=checkbox]):not([type=radio]),select,textarea) {
+    font-size:16px !important;
+  }
+  .auth-page .studio-form-grid label { font-size:14px; }
+  .auth-page .studio-text-button { display:inline-flex; align-items:center; min-height:44px; line-height:1.6; }
+  .auth-page .auth-password .icon-button { min-width:44px; min-height:44px; }
+  .workspace-shell .icon-button { min-width:44px; min-height:44px; }
+  .workspace-shell :is(.studio-primary,.studio-secondary,.studio-text-button) { min-height:44px; }
+  .workspace-shell .studio-channel-choices label { min-height:44px; }
+  .workspace-shell .workspace-topbar { height:auto; min-height:64px; flex-wrap:wrap; row-gap:8px; }
+  .workspace-shell .workspace-header-actions { flex-wrap:wrap; max-width:100%; margin-left:auto; }
+  .workspace-shell .workspace-header-actions > button { min-height:44px; }
+  .ryzevo-site .ryz-scene-controls button { min-height:44px; }
+  .ryzevo-site .ryz-scene-controls .ryz-scene-pause { width:44px; height:44px; }
+  .ryzevo-site .ryz-footer a { display:inline-flex; align-items:center; min-height:44px; }
+}

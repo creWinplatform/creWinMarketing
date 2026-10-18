@@ -3,10 +3,11 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   getActivityLog,
   clearActivityLog,
-  ACTIVITY_META,
+  activityMeta,
   type ActivityEntry,
 } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { History } from 'lucide-react';
 
 function timeAgo(ts: number, lang: 'tr' | 'en'): string {
   const diff = Date.now() - ts;
@@ -55,7 +56,7 @@ export default function ActivityLogPanel() {
         className="relative flex items-center gap-1.5 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors font-medium"
         title={lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity Log'}
       >
-        <span>🕐</span>
+        <History size={16} />
         <span className="hidden sm:inline">{lang === 'tr' ? 'Aktivite' : 'Activity'}</span>
         {unread > 0 && (
           <span className="absolute -top-1.5 -right-1.5 bg-ocean text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
@@ -120,7 +121,7 @@ export default function ActivityLogPanel() {
               ) : (
                 <div className="flex flex-col divide-y divide-slate-100 dark:divide-slate-700">
                   {entries.map(entry => {
-                    const meta = ACTIVITY_META[entry.type];
+                    const meta = activityMeta(entry.type);
                     return (
                       <div
                         key={entry.id}

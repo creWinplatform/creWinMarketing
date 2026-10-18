@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
+import { agentModule } from '@/lib/agent-bridge';
 
 export const dynamic = 'force-dynamic';
-
-const nativeRequire = eval('require') as NodeRequire;
-function agentModule(relPath: string) {
-  return nativeRequire(path.join(process.cwd(), '..', 'crewinjob-agent', relPath));
-}
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
 interface SendBody {
   mode:          'single' | 'broadcast' | 'template';
@@ -17,6 +14,10 @@ interface SendBody {
   langCode?:     string;
   components?:   unknown[];
 }
+
+// Meta kuralı: serbest metin yalnızca son 24 saatte işletmeye yazmış kullanıcılara ulaşır;
+// pazarlama mesajları için onaylı template gerekir. Gönderim mantığı değişmez, sonuçla birlikte bildirilir.
+const FREE_TEXT_NOTICE = 'Serbest metin yalnızca son 24 saat içinde size yazmış kullanıcılara ulaşır; pazarlama mesajları için onaylı WhatsApp template kullanın. / Free-text messages only reach users who messaged you in the last 24 hours; use approved WhatsApp templates for marketing.';
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: '"to" and "text" are required.' }, { status: 400 });
       }
       const result = await send.sendWhatsAppMessage(to, text);
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, notice: FREE_TEXT_NOTICE });
     }
 
     if (mode === 'broadcast') {
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Max 500 numbers per request.' }, { status: 400 });
       }
       const result = await send.broadcastWhatsApp(numbers, text);
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, notice: FREE_TEXT_NOTICE });
     }
 
     if (mode === 'template') {

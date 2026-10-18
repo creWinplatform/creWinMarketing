@@ -1,5 +1,6 @@
 // ─── Performans Takibi — UTM + Analytics + Geri Bildirim Döngüsü ─────────────
-const client     = require('../ai-client');
+const client     = require('../../ai-client');
+const ctx        = require('../../context');
 const { google } = require('googleapis');
 const fs         = require('fs-extra');
 const path       = require('path');
@@ -176,8 +177,13 @@ async function generatePerformanceInsights(performanceHistory, currentData) {
   const best   = sorted.slice(0, 3);
   const worst  = sorted.slice(-3);
 
-  const prompt = `
-crewinjob.com içerik performans geçmişi:
+  const prompt = `Sen CrewinJob'un içerik performans analistisin.
+
+${ctx.analysisBlock({ playbook: true })}
+
+---
+
+## İçerik Performans Geçmişi
 
 En iyi 3 içerik (kayıt başına):
 ${JSON.stringify(best, null, 2)}
@@ -185,21 +191,45 @@ ${JSON.stringify(best, null, 2)}
 En düşük 3 içerik:
 ${JSON.stringify(worst, null, 2)}
 
-Mevcut hafta verileri:
+Mevcut hafta verileri (API + GA4):
 ${JSON.stringify(currentData, null, 2)}
 
-Şunları yaz:
-1. **Hangi içerik tipi en iyi çalışıyor?** (platform + tip + neden)
-2. **Bu hafta ne üretmeli?** (geçmiş veriye göre 3 öneri)
-3. **Neyi bırakmalı?** (düşük performanslı içerik tipi)
-4. **Bir sonraki hafta için tahmin** (mevcut trend devam ederse)
+---
+
+## Analiz Görevi
+
+### 1. Hangi İçerik Tipi Çalışıyor?
+- Platform + içerik tipi + neden çalıştığı. Rakamla göster.
+- Dikkat: yüksek erişim ≠ yüksek kayıt. Kayıt getirmeyen viral içerik başarısızdır.
+
+### 2. Kanal Kalitesi — Kayıt mı, Aktivasyon mu?
+- Hangi kanal çok kayıt getiriyor ama aktive olmuyor? (kayıt sayısı yanıltıcıdır)
+- Kanal başına aktivasyon ölçülmüyorsa bunu eksik olarak işaretle ve UTM + \`profile_completed_80\` event eşleştirmesi öner.
+
+### 3. Bu Hafta Ne Üretmeli? (3 öneri)
+Her öneri için: içerik tipi → hedef kitle (seafarer mi şirket mi) → hangi metriği yükseltmeyi hedefliyor?
+
+**Önemli:** Marketplace darboğazına göre üret. Aday bol / şirket az ise şirket tarafına içerik üret; ilan bol / nitelikli aday az ise profil tamamlamaya yönelik içerik üret. Verilerden darboğazın hangi tarafta olduğunu belirt ve içerikleri ona göre seç.
+
+### 4. Neyi Bırakmalı?
+- Düşük performanslı içerik tipi ve neden bırakılmalı.
+
+### 5. Yükseltme Kaldıracı
+En zayıf kanal/içerik için playbook'tan bir kaldıraç seç:
+- **Sorun:** [ne düşük]
+- **Kaldıraç:** [seçilen aksiyon]
+- **4 haftalık hedef:** [X → Y]
+- **Doğrulama:** [hangi metrik]
+
+### 6. Sonraki Hafta Tahmini
+Mevcut trend devam ederse ne olur? Rakamla.
 
 Kısa ve net yaz. Türkçe.
 `;
 
   const response = await client.messages.create({
     model: 'gemini-2.5-flash',
-    max_tokens: 800,
+    max_tokens: 1800,
     messages: [{ role: 'user', content: prompt }],
   });
 

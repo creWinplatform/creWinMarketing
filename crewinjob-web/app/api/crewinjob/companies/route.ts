@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { agentModule } from '@/lib/agent-bridge';
 
 export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
 interface CompanyItem {
   id:           number;

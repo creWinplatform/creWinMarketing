@@ -362,8 +362,8 @@ async function kpiReport(apiData) {
     creds = await fs.readJSON(gsFile);
     console.log(green('  ✅ Google Search Console bağlı'));
   }
-  const jobData  = { stats: apiData.stats, jobs: [], newJobs: [] };
-  const result   = await kpi.generateWeeklyReport(jobData, path.join(OUTPUT_DIR,'kpi'), creds);
+  // Tam AllData: KPI raporu seafarers.newThisWeek / jobs.newThisWeek gibi gerçek alanları kullanır
+  const result   = await kpi.generateWeeklyReport(apiData, path.join(OUTPUT_DIR,'kpi'), creds);
   console.log('\n' + '─'.repeat(62));
   console.log(result.analysis);
   console.log('─'.repeat(62));
@@ -418,13 +418,14 @@ async function main() {
   console.log('\n  📡 Veriler yükleniyor...');
   const apiData = await api.fetchAllData();
 
-  // Eski scraper formatıyla uyumluluk
-  apiData.stats = {
+  // Eski scraper formatıyla uyumluluk — stats zaten fetchAllData'dan gerçek değerlerle gelir
+  // (eskiden businesses: '50+' sabit/uydurma değerle eziliyordu)
+  apiData.stats = apiData.stats || {
     seafarers:  String(apiData.seafarers.total),
     jobs:       String(apiData.jobs.total),
-    businesses: '50+',
+    businesses: String(apiData.jobs.companies ?? ''),
   };
-  apiData.newJobs = [];
+  apiData.newJobs = apiData.newJobs || [];
 
   printBanner(apiData);
 
@@ -440,6 +441,8 @@ async function main() {
       case '7':  await weeklyCalendar(apiData);      break;
       case '8':  await singlePlatform(apiData);      break;
       case '9':  await quickJobPost(apiData);        break;
+      case 'G':
+      case 'g':  await seoMenu(apiData);             break;
       case '10': await jobSEO(apiData);              break;
       case '11': await singleBlog(apiData);          break;
       case '12': await monthlyBlogPack(apiData);     break;
@@ -473,6 +476,10 @@ try {
 } catch(e) {}
 
 async function seoMenu(apiData) {
+  if (!seoTech || !seoKeywords) {
+    console.log(red('\n  ❌ SEO modülleri yüklenemedi (modules/seo-technical, modules/seo-keywords)'));
+    return;
+  }
   const creds   = await loadCreds();
   const jobStats = { jobs: apiData.jobs.total, seafarers: apiData.seafarers.total };
 

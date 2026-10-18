@@ -37,6 +37,11 @@ HEDEF KİTLE: Denizci, gemiadamı, maritime profesyoneller
 PLATFORM: crewinjob.com — AI-powered maritime recruitment platform
 STATS: ${jobStats.seafarers} seafarer kayıtlı, ${jobStats.jobs} aktif ilan
 
+DÖNÜŞÜM HEDEFİ: Bu makale organik trafik getirmeli, ama asıl amaç okuyucuyu kayda ve
+**profil tamamlamaya** yönlendirmektir. Sadece kayıt CTA'sı yetmez — makale içinde doğal bir yerde
+profilin/sertifikaların tamamlanmasının neden işe alınma şansını artırdığına değin.
+Kayıt olup profilini tamamlamayan kullanıcı, şirketlere görünmez.
+
 MAKALE YAPISI (her bölümü yaz):
 
 ## SEO METADATA
@@ -61,7 +66,7 @@ H1: [Başlık]
 [200+ kelime]
 
 **H2: ${lang === 'en' ? 'How crewinjob.com Helps' : 'crewinjob.com Nasıl Yardımcı Olur'}**
-[Platform özelliklerini doğal şekilde entegre et — BullsEye, AI matching, 15,000+ seafarers]
+[Platform özelliklerini doğal şekilde entegre et — BullsEye, AI matching, ${jobStats.seafarers} seafarer kayıtlı, ${jobStats.jobs} aktif ilan]
 
 **${lang === 'en' ? 'Conclusion' : 'Sonuç'}**
 [Güçlü CTA]

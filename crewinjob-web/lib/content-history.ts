@@ -12,16 +12,52 @@ export interface HistoryItem {
   timestamp: number;
   imageData?: string;
   imageMime?: string;
+  images?: { data: string; mime: string }[];
+  /**
+   * Başlık/logo basılmamış HAM arka plan ve onu tamamlayan metinler.
+   *
+   * Bunlar olmadan geçmişten geri yüklenen bir post yalnızca seyredilebiliyor:
+   * başlık düzenlenemiyor, alternatif başlık önerileri ve stil seçenekleri
+   * görünmüyordu. Ham arka planla birlikte bu düzenlemeler API çağrısı
+   * yapılmadan, tarayıcıda anında yeniden basılabiliyor.
+   *
+   * Ham JPEG (~300 KB) nihai PNG'nin (~2,5 MB) yanında küçük kalıyor.
+   */
+  rawBgData?:  string;
+  rawBgMime?:  string;
+  headline?:   string;
+  suggestions?: string[];
+  subline?:    string;
+  metadata?: Record<string, unknown>;
+}
+
+/** Görselle birlikte saklanan yeniden düzenleme verisi. */
+export interface ImagePayload {
+  imageData:    string;
+  imageMime:    string;
+  rawBgData?:   string;
+  rawBgMime?:   string;
+  headline?:    string;
+  suggestions?: string[];
+  subline?:     string;
 }
 
 const BASE = '/api/data/content-history';
 
+/** Kaydı oluşturur ve oluşan kaydı döner — sonraki düzenlemeler bu id'ye yazılır. */
+export async function createHistoryItem(item: Omit<HistoryItem, 'id' | 'timestamp'>): Promise<HistoryItem | null> {
+  try {
+    const res = await fetch(BASE, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(item),
+    });
+    return res.ok ? await res.json() as HistoryItem : null;
+  } catch { return null; }
+}
+
 export async function saveToHistory(item: Omit<HistoryItem, 'id' | 'timestamp'>): Promise<HistoryItem[]> {
-  await fetch(BASE, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(item),
-  });
+  await createHistoryItem(item);
   return getHistory();
 }
 
@@ -32,21 +68,21 @@ export async function getHistory(): Promise<HistoryItem[]> {
   } catch { return []; }
 }
 
-export async function attachImageToLatest(imageData: string, imageMime: string): Promise<void> {
+export async function attachImageToLatest(payload: ImagePayload): Promise<void> {
   const items = await getHistory();
   if (!items.length) return;
   await fetch(`${BASE}?id=${items[0].id}`, {
     method:  'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ imageData, imageMime }),
+    body:    JSON.stringify(payload),
   });
 }
 
-export async function attachImageToItem(id: string, imageData: string, imageMime: string): Promise<void> {
+export async function attachImageToItem(id: string, payload: ImagePayload): Promise<void> {
   await fetch(`${BASE}?id=${encodeURIComponent(id)}`, {
     method:  'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ imageData, imageMime }),
+    body:    JSON.stringify(payload),
   });
 }
 

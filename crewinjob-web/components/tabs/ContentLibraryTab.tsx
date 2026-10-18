@@ -5,6 +5,7 @@ import { compositePostImage } from '@/lib/image-composite';
 import { getImageModel } from '@/components/ModelPicker';
 import SharePanel from '@/components/SharePanel';
 import { useLang } from '@/lib/lang';
+import { loadPartnerLogo } from '@/lib/partner-logo';
 
 const LOGO_KEY = 'crewinjob_brand_logo';
 
@@ -37,7 +38,8 @@ export default function ContentLibraryTab() {
   const [search,       setSearch]       = useState('');
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [genError,     setGenError]     = useState<string | null>(null);
-  const [logoBase64,   setLogoBase64]   = useState('');
+  const [logoBase64,        setLogoBase64]        = useState('');
+  const [partnerLogoBase64, setPartnerLogoBase64] = useState('');
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [editValue,    setEditValue]    = useState('');
 
@@ -46,6 +48,7 @@ export default function ContentLibraryTab() {
     try {
       const savedLogo = localStorage.getItem(LOGO_KEY);
       if (savedLogo) setLogoBase64(savedLogo);
+      setPartnerLogoBase64(loadPartnerLogo().data);
     } catch { /* ignore */ }
   }, []);
 
@@ -99,6 +102,7 @@ export default function ContentLibraryTab() {
           textContent:  item.content,
           imageModel:   getImageModel(),
           refImages:    [],
+          language:     item.language,   // başlık kaydın dilinde üretilsin
         }),
       });
       const data = await res.json();
@@ -107,9 +111,14 @@ export default function ContentLibraryTab() {
       const mime      = data.mimeType  || 'image/jpeg';
       const rawB64    = data.imageData as string;
       const headline  = (data.headline as string) || 'The Right Job\nThe Right Talent';
-      const finalB64  = await compositePostImage(mime, rawB64, logoBase64, headline, item.platform);
+      const finalB64  = await compositePostImage(mime, rawB64, logoBase64, headline, item.platform, partnerLogoBase64);
 
-      await attachImageToItem(item.id, finalB64, 'image/png');
+      await attachImageToItem(item.id, {
+        imageData: finalB64, imageMime: 'image/png',
+        rawBgData: rawB64,   rawBgMime: mime,
+        headline,
+        suggestions: (data.suggestions as string[]) || [],
+      });
       reload();
     } catch (e: unknown) {
       setGenError(e instanceof Error ? e.message : (lang === 'tr' ? 'Görsel oluşturulamadı' : 'Image could not be generated'));
@@ -406,6 +415,11 @@ export default function ContentLibraryTab() {
           content={shareItem.content}
           imageData={shareItem.imageData}
           imageMime={shareItem.imageMime || 'image/png'}
+          // Ham arka plan kayıtlıysa her platform kendi boyutunda yeniden basılır (kırpma yok)
+          rawBgData={shareItem.rawBgData}
+          rawBgMime={shareItem.rawBgMime}
+          headline={shareItem.headline}
+          subline={shareItem.subline}
           onClose={() => setShareItem(null)}
         />
       )}

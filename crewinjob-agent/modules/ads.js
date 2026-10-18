@@ -1,6 +1,24 @@
 // ─── Reklam Kampanyası Generator (Facebook + Google Ads) ─────────────────────
 // Dijital pazarlama personeli yokken AI ile profesyonel kampanya üretir.
 const client = require('../ai-client');
+const ctx    = require('../context');
+
+// ─── Her kampanya promptuna eklenen ölçüm çerçevesi ──────────────────────────
+const ADS_METRICS_NOTE = `
+${ctx.core()}
+
+## Bu Kampanyanın Ölçüm Kuralları (zorunlu)
+
+1. **Ham kayıt hedefi koyma.** Kampanya başarısı "kaç kayıt" değil, "kaç *aktive olmuş* kayıt"tır.
+   Aktive olmuş = profil ≥%80 tamam + belge girilmiş. Hedefleri buna göre yaz.
+2. **UTM zorunlu.** Her reklam setine ayrı \`utm_source\`/\`utm_medium\`/\`utm_campaign\`/\`utm_content\` ver.
+   İzlenemeyen kampanya optimize edilemez.
+3. **CAC'yi iki kere hesapla:** kayıt başına maliyet VE aktive kayıt başına maliyet.
+   İkincisi gerçek maliyettir ve genelde 2-3 katıdır.
+4. **Hedef kitleyi darboğaza göre seç.** Aday havuzu bol / şirket az ise şirket (B2B) kitlesine bütçe ayır;
+   ilan bol / nitelikli aday az ise aday kalitesine yönelik kampanya kur. Hangi tarafta olduğunu gerekçelendir.
+5. **Kampanya sonrası ölçüm tablosu ekle:** metrik · nasıl ölçülür · hedef · hangi platform metriğine bakılacak.
+`;
 
 // ─── Hedef kitle preset'leri (denizcilik sektörü) ─────────────────────────────
 const AUDIENCE_PRESETS = {
@@ -61,6 +79,7 @@ async function generateFacebookCampaign(params, stats, model) {
 
   const prompt = `
 Sen crewinjob.com'un dijital pazarlama uzmanısın. Profesyonel bir Facebook Ads kampanyası tasarlayacaksın.
+${ADS_METRICS_NOTE}
 
 📊 GERÇEK PLATFORM VERİSİ (Crewin API):
 - Toplam gemi adamı: ${realStats.totalSeafarers.toLocaleString()}
@@ -162,6 +181,7 @@ async function generateGoogleCampaign(params, stats, model) {
 
   const prompt = `
 Sen crewinjob.com'un Google Ads uzmanısın. Search-first kampanya tasarlayacaksın.
+${ADS_METRICS_NOTE}
 
 📊 GERÇEK PLATFORM VERİSİ:
 - ${realStats.totalSeafarers.toLocaleString()} gemi adamı, ${realStats.totalJobs} aktif ilan
@@ -400,6 +420,7 @@ async function generateInstagramCampaign(params, stats, model) {
 
   const prompt = `
 Sen crewinjob.com'un Instagram Ads uzmanısın. Maritime/denizcilik sektörü için görsel odaklı kampanya tasarlayacaksın.
+${ADS_METRICS_NOTE}
 
 📊 GERÇEK PLATFORM VERİSİ (Crewin API):
 - Toplam gemi adamı: ${realStats.totalSeafarers.toLocaleString()}
@@ -568,6 +589,12 @@ async function generateLinkedInCampaign(params, stats, model) {
 
   const prompt = `
 Sen crewinjob.com'un LinkedIn Ads uzmanısın. Maritime sektöründe B2B ve profesyonel hedef kitleye yönelik kampanya tasarlayacaksın.
+${ADS_METRICS_NOTE}
+
+**LinkedIn özel not:** Bu kanal şirket (B2B) tarafına ulaşmanın ana yoludur.
+Buradan gelen şirketler için başarı metriği kayıt değil, **Company Activation Rate**'tir:
+ilk 14 günde ilan yayınlayan veya aday shortlist eden şirket oranı.
+Kampanya hedeflerini buna göre yaz.
 
 📊 GERÇEK PLATFORM VERİSİ (Crewin API):
 - Toplam gemi adamı: ${realStats.totalSeafarers.toLocaleString()}

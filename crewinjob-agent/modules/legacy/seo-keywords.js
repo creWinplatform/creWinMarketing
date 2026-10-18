@@ -1,7 +1,8 @@
 // ─── Keyword Araştırma + Rakip Analizi + Sıralama Takibi ─────────────────────
 const { google } = require('googleapis');
 const fetch  = (...a) => import('node-fetch').then(({ default: f }) => f(...a));
-const client = require('../ai-client');
+const client = require('../../ai-client');
+const ctx    = require('../../context');
 const fs     = require('fs-extra');
 const path   = require('path');
 const SITE_URL = process.env.GOOGLE_SITE_URL || 'https://crewinjob.com';
@@ -146,6 +147,12 @@ Sen crewinjob.com için SEO stratejisti olarak çalışıyorsun.
 Platform: AI destekli denizcilik iş platformu
 Mevcut durum: ${jobStats.jobs} ilan, ${jobStats.seafarers} seafarer
 
+${ctx.core()}
+
+**SEO'nun bu framework'teki yeri:** Organik trafik, en düşük CAC'li acquisition kanalıdır.
+Ama trafik tek başına metrik değildir — asıl ölçüm, organik trafikten gelen *aktive olmuş* kayıttır.
+Kaldıraç referansı: \`context/metrics-playbook.md\` Bölüm 8 (SEO).
+
 Mevcut sıralamalar (GSC verisi):
 ${JSON.stringify(topKeywords.slice(0, 10), null, 2)}
 
@@ -176,12 +183,30 @@ Her biri belirli bir keyword'ü hedefleyen 3 makale başlığı.
 ## 5. İç Link Stratejisi
 Hangi sayfalar birbirine bağlanmalı? Keyword juice'u nasıl aktarmalı?
 
+## 6. Programatik SEO Fırsatı
+Rütbe × ülke × gemi tipi kombinasyonlarından hangileri ayrı landing page hak ediyor?
+("Chief Officer jobs Philippines", "Tanker 2nd Engineer vacancy" gibi.)
+En yüksek getirili 5 kombinasyonu, arama niyeti gerekçesiyle sırala.
+
+## 7. Google for Jobs Durumu
+İlan sayfalarında JobPosting structured data var mı? Yoksa bu en yüksek getirili SEO işidir — belirt.
+Süresi dolmuş ilan sayfalarının indeksten çıkarılması gerekiyorsa uyar.
+
+## 8. Ölçüm Planı
+Bu stratejinin işe yarayıp yaramadığı nasıl anlaşılacak?
+
+| Metrik | Mevcut | 90 gün hedefi | Nereden ölçülür |
+|--------|--------|---------------|-----------------|
+
+Trafik hedefinin yanına mutlaka **organik trafikten gelen aktive olmuş kayıt** hedefini de koy.
+Sadece tıklama artışı başarı sayılmaz.
+
 Türkçe, somut ve aksiyon odaklı yaz.
 `;
 
   const response = await client.messages.create({
     model: 'gemini-2.5-flash',
-    max_tokens: 1500,
+    max_tokens: 2500,
     messages: [{ role: 'user', content: prompt }],
   });
 

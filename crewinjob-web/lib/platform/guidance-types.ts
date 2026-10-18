@@ -1,0 +1,6 @@
+import type { LocalizedText } from './catalog';
+import type { CompassIntent,CompassChannel,GuideId } from './guidance-catalog';
+export type CompassPreferences={revision:number;intent:CompassIntent;experience:'guided'|'experienced';goalId:string;campaignId:string;appId:string;channels:CompassChannel[];obstacles:Partial<Record<GuideId,'unknown'|'no_account'|'need_access'|'later'>>;deferred:boolean;updatedAt:string|null};
+export type CompassStep={id:string;label:LocalizedText;detail:LocalizedText;state:'done'|'todo'|'blocked'|'unknown';reason:LocalizedText|null;href:string;provider?:GuideId;canAct:boolean;evidenceAt:string|null};
+export type CompassProvider={id:GuideId;state:'missing'|'configured'|'access_verified'|'publishing_verified'|'operator_setup'|'restricted';checkedAt:string|null};
+export type CompassSnapshot={version:number;firstRun:boolean;preferences:CompassPreferences|null;projectName:string;goals:{id:string;label:LocalizedText}[];campaigns:{id:string;name:string}[];boundCampaignId:string|null;apps:{id:string;name:string}[];boundAppId:string|null;providers:CompassProvider[];steps:CompassStep[];nextStepId:string|null;completed:number;total:number;canManage:boolean;canWrite:boolean;liveEnabled:boolean;trialActive:boolean;updatedAt:string};

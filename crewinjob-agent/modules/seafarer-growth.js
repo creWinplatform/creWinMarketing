@@ -1,6 +1,7 @@
 // ─── Seafarer Büyüme Modülü ──────────────────────────────────────────────────
 // Kayıt odaklı içerik, FB grup mesajları, TikTok CTA scriptleri
 const client = require('../ai-client');
+const ctx    = require('../context');
 const fs     = require('fs-extra');
 const path   = require('path');
 
@@ -32,20 +33,20 @@ const REGISTRATION_TEMPLATES = {
   },
   // Fayda odaklı
   benefit: {
-    desc: 'Platformun seafarer\'a sağladığı somut faydayı anlat',
+    desc: 'Platformun seafarer\'a sağladığı somut faydayı anlat — gerçek rakam kullan',
     hooks: [
       'Şirketler artık seni arıyor, sen onları değil',
-      'Bir profil, yüzlerce şirkete ulaş',
+      'Deniz hizmetini ve sertifikalarını ekle, şirket aramalarında görün',
       'AI algoritması seni en uygun ilanla eşleştiriyor',
       'Sertifikalarını yükle, görünür ol, işe başla',
     ]
   },
-  // Sosyal kanıt
+  // Sosyal kanıt — sayıları stats'tan al, template buraya hardcode etme
   socialProof: {
-    desc: 'Platform büyüklüğünü ve başarıyı vurgula',
+    desc: 'Platform büyüklüğünü somut verilerle vurgula — STATS değişkeninden gerçek rakamları kullan',
     hooks: [
-      '15.000+ denizci zaten sistemde — sen neden yoksun?',
-      '50+ şirket aktif olarak denizci arıyor',
+      'Binlerce denizci zaten sistemde — aktif ilan sayısını söyle',
+      'Şirketler ilanları buraya veriyor — kaç ilan var söyle',
       'Her gün yeni ilanlar, her gün yeni eşleşmeler',
     ]
   },
@@ -59,6 +60,27 @@ const REGISTRATION_TEMPLATES = {
     ]
   }
 };
+
+// ─── İçerik kalite kuralları (tüm promtlarda ortak) ──────────────────────────
+function contentRules(stats) {
+  return `
+## İÇERİK KURALLARI (hepsi zorunlu)
+
+**1. Somut sayı kullan, belirsiz nicelik YASAK.**
+Elinde gerçek rakam var: **${stats.jobs} aktif ilan**, **${stats.seafarers} kayıtlı denizci**.
+YASAK kelimeler: "yüzlerce", "onlarca", "binlerce", "birçok", "sayısız", "pek çok".
+Yanlış: "yüzlerce ilana ulaş" · Doğru: "şu an açık olan ${stats.jobs} ilan"
+
+**2. Kullanıcıyı ASLA suçlama.**
+Denizci gemide çalışıyor; interneti kısıtlı, vardiyası ağır.
+Yasak: "neden hâlâ kayıt olmadın?", "hemen kayıt ol yoksa kaçırırsın" tarzı baskı.
+Doğru: fırsatı göster, kararı kullanıcıya bırak.
+
+**3. "%100 profil tamamla" DEME.**
+Kayıt için yüzde hedefi vermek yerine somut adım söyle:
+"deniz hizmetini ve sertifikalarını ekle" → şirketlerin nasıl filtrelediğini açıkla.
+`;
+}
 
 // ─── Facebook Grup Mesaj Üretici ─────────────────────────────────────────────
 async function generateFBGroupMessage(group, weekNumber, stats) {
@@ -74,6 +96,9 @@ DİL: ${isTurkish ? 'Türkçe' : 'İngilizce'}
 HAFTA: ${weekNumber} (${isWeek1or2 ? 'ISINMA DÖNEMİ — platform tanıtımı YAPMA' : 'AKTİF DÖNEM — kayıt CTA ekle'})
 PLATFORM: crewinjob.com — ücretsiz denizcilik iş platformu
 STATS: ${stats.seafarers} seafarer, ${stats.jobs} aktif ilan, ${stats.businesses} şirket
+
+İÇERİK KURALI: Sayı kullanacaksan gerçek rakamları kullan — "yüzlerce ilan" değil "${stats.jobs} aktif ilan".
+Kullanıcıyı suçlama; denizci gemide çalışıyor, koşullarını say.
 
 ${isWeek1or2 ? `
 KURAL: Bu hafta sadece DEĞER KAT. Platform tanıtımı YASAK.
@@ -221,6 +246,9 @@ BRIEF: ${s.brief}
 AMAÇ: Seafarerleri crewinjob.com'a ÜCRETSİZ KAYIT olmaya yönlendirmek.
 STATS: ${stats.seafarers} denizci kayıtlı, ${stats.businesses} şirket, ${stats.jobs} ilan
 
+İÇERİK KURALI: Sayı kullanacaksan gerçek rakamları kullan — "${stats.jobs} aktif ilan", "${stats.seafarers} denizci".
+"Yüzlerce", "binlerce" gibi belirsiz kelimeler YASAK. Kullanıcıyı suçlama; motive et.
+
 SCRIPT YAPISI:
 
 ### 🎬 60 SANİYE VERSİYONU
@@ -289,10 +317,18 @@ PLATFORM: ${platform.toUpperCase()}
 STATS: ${stats.seafarers} kayıtlı seafarer, ${stats.businesses} şirket, ${stats.jobs} ilan
 ${langLine}
 
-Kullanılabilecek hook'lar:
+${ctx.core()}
+
+**Bu içeriğin metrik karşılığı:** Seafarer Acquisition — ama sadece kayıt değil, *aktive olan* kayıt.
+Çok kayıt getirip profilini tamamlamayan kullanıcı platforma değer katmaz.
+Bu yüzden içerikte kayıt sonrası ne yapılacağını da ima et (profilini tamamla, sertifikanı yükle).
+
+${contentRules(stats)}
+
+Kullanılabilecek hook konseptleri:
 Acı noktası: ${hooks.painPoint.hooks.slice(0,2).join(' / ')}
 Fayda: ${hooks.benefit.hooks.slice(0,2).join(' / ')}
-Sosyal kanıt: ${hooks.socialProof.hooks[0]}
+Sosyal kanıt: ${stats.jobs} aktif ilan, ${stats.seafarers} kayıtlı denizci — somut sayıları kullan
 Ücretsizlik: ${hooks.free.hooks[0]}
 
 GÖREV: ${platform} için 3 FARKLI kayıt odaklı içerik yaz:
@@ -347,12 +383,19 @@ Her hafta yeni mesajlar üretilir, önceki haftanın tonu baz alınır.
 
 ## Başarı Kriterleri
 
-| Metrik | Hedef (4 hafta sonunda) |
-|--------|------------------------|
-| Gruplara katılım | 10 grubun tamamı |
-| Haftalık paylaşım | Her gruptan min. 1 |
-| Yorum/engage oranı | >5% |
-| Buradan gelen kayıt | İzlenebilir link ile ölç |
+| Metrik | Hedef (4 hafta sonunda) | Nasıl ölçülür |
+|--------|------------------------|---------------|
+| Gruplara katılım | 10 grubun tamamı | Manuel takip |
+| Haftalık paylaşım | Her gruptan min. 1 | Manuel takip |
+| Yorum/engage oranı | >%5 | Grup istatistiği |
+| Buradan gelen kayıt | UTM ile izlenebilir | \`utm_source=facebook&utm_medium=social\` |
+| **Buradan gelen aktif kayıt** | Kayıtların >%30'u | \`profile_completed_80\` event · UTM eşleşmesi |
+
+> ⚠️ **En kritik satır sonuncusudur.** Kanal başına ham kayıt yanıltıcıdır — çok kayıt getirip
+> hiç profil tamamlatmayan grup, kötü kanaldır. Kanalı kayıt sayısına göre değil,
+> Ready-to-Hire dönüşümüne göre değerlendirin.
+>
+> Kaldıraç detayı: \`context/metrics-playbook.md\` Bölüm 1 (Acquisition) ve Bölüm 2 (Activation).
 
 ---
 *crewinjob Marketing Agent — Seafarer Büyüme Modülü*

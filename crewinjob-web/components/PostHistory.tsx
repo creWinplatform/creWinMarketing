@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { getHistory, updateMetrics, removePost, clearHistory, type PostHistoryItem, type PostMetrics } from '@/lib/post-history';
+import { getHistory, updateMetrics, removePost, clearHistory, fetchPostMetrics, refreshMetrics, type PostHistoryItem } from '@/lib/post-history';
 import { useLang } from '@/lib/lang';
 
 const PLATFORM_META: Record<string, { icon: string; label: string; color: string }> = {
@@ -25,41 +25,20 @@ export default function PostHistory({ onClose }: Props) {
   }, []);
   useEffect(() => { reload(); }, [reload]);
 
-  const fetchStats = useCallback(async (item: PostHistoryItem): Promise<PostMetrics | null> => {
-    try {
-      const url = `/api/social/post-stats?platform=${item.platform}&postId=${encodeURIComponent(item.postId)}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.error) {
-        console.warn(`[PostHistory] ${item.platform} hata:`, data.error);
-        return null;
-      }
-      return {
-        likes:     data.likes    || 0,
-        comments:  data.comments || 0,
-        shares:    data.shares   || 0,
-        views:     data.views    || 0,
-        fetchedAt: data.fetchedAt || Date.now(),
-      };
-    } catch {
-      return null;
-    }
-  }, []);
-
+  // Metrik çekme EngagementPanel ile ortak (lib/post-history)
   const refreshOne = async (item: PostHistoryItem) => {
     setRefreshing(item.id);
-    const m = await fetchStats(item);
-    if (m) await updateMetrics(item.id, m);
+    const m = await fetchPostMetrics(item);
+    if ('error' in m) console.warn(`[PostHistory] ${item.platform} hata:`, m.error);
+    else await updateMetrics(item.id, m);
     reload();
     setRefreshing(null);
   };
 
   const refreshAllItems = async () => {
     setRefreshAll(true);
-    await Promise.all(items.map(async (item) => {
-      const m = await fetchStats(item);
-      if (m) await updateMetrics(item.id, m);
-    }));
+    const { errors } = await refreshMetrics(items);
+    errors.forEach(e => console.warn('[PostHistory]', e));
     reload();
     setRefreshAll(false);
   };

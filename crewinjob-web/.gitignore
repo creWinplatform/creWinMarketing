@@ -25,6 +25,11 @@
 /data/social-tokens.json
 /data/oauth-state.json
 /data/*.json
+/data/*.sqlite*
+/data/platform-credentials.key
+/data/backups/
+/data/recovery-drills/
+/data/private-onboarding/
 
 # ── misc ──────────────────────────────────────────────────────────────────────
 .DS_Store

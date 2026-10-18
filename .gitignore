@@ -8,9 +8,21 @@ node_modules/
 .env.*.local
 crewinjob-web/.env.local
 crewinjob-agent/.env
+# Telegram userbot: Gemini key, bot token, TG_SESSION (hesap ele geçirme!), Crewin şifresi
+crewinjob-agent/.userbot-config.json
+# Claude Code yerel ayarları (izin kurallarında komut/şifre geçmişi olabilir)
+.claude/settings.local.json
+**/.claude/settings.local.json
+**/.claude/launch.json
+
+# Local QA captures can contain private account or provider information.
+/docs/screenshots/
+/docs/design-prototype/screenshots/
 
 # ── Next.js build output ──────────────────────────────────────────────────────
 crewinjob-web/.next/
+# NEXT_DIST_DIR ile üretilen ek build klasörleri (ör. .next-seo-verify-elevated)
+crewinjob-web/.next-*/
 crewinjob-web/out/
 crewinjob-web/build/
 
@@ -39,6 +51,17 @@ crewinjob-web/data/social-tokens.json
 crewinjob-web/data/oauth-state.json
 crewinjob-web/data/scheduled-posts.json
 crewinjob-web/data/*.json
+crewinjob-web/data/*.txt
+crewinjob-web/data/*.tmp
+
+# ── Agent runtime verisi (kazınmış e-postalar/telefonlar = kişisel veri, NEVER commit) ──
+crewinjob-agent/data/
+crewinjob-agent/output/
+crewinjob-agent/job-queue.json
+crewinjob-agent/.userbot-groups.json
+*.tmp
+crewinjob-web/data/*.sqlite*
+crewinjob-web/data/platform-credentials.key
 
 # ── Chrome extension (local only, no secrets inside) ─────────────────────────
 # crewin-linkedin-extension/   ← açık bırak, commit edilebilir

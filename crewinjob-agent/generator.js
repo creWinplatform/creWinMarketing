@@ -176,8 +176,44 @@ async function generateSinglePlatform(platform, type, jobData, model) {
   return await generateContent(platform, type, data, model);
 }
 
+// ─── jobData normalizasyonu ──────────────────────────────────────────────────
+// jobData iki biçimde gelebilir:
+//  (a) eski scraper formatı:      { jobs: [...ilan], newJobs: [...ilan], stats }
+//  (b) api.fetchAllData() çıktısı: { jobs: { total, newThisWeek, ... }, newJobs: [], stats, seafarers }
+// Web (b) biçimini gönderir — jobs bir DİZİ DEĞİL; doğrudan .slice/.length çağırmak çöküyordu.
+function jobList(jobData) {
+  if (Array.isArray(jobData?.newJobs) && jobData.newJobs.length) return jobData.newJobs;
+  if (Array.isArray(jobData?.jobs)) return jobData.jobs;
+  return [];
+}
+
+function totalJobCount(jobData) {
+  const j = jobData?.jobs;
+  if (j && !Array.isArray(j) && typeof j.total === 'number') return j.total; // AllData.jobs.total
+  const s = jobData?.stats?.jobs;
+  if (s !== undefined && s !== null && s !== '' && Number.isFinite(Number(s))) return Number(s); // AllData.stats.jobs
+  if (Array.isArray(j) && j.length) return j.length;
+  return null;
+}
+
+// İlanı prompt için tek satıra çevir (scraper ve getJobListings formatlarını destekler)
+function formatJobLine(job) {
+  if (!job || typeof job !== 'object') return `- ${String(job)}`;
+  const parts = [
+    job.title || job.positionName || job.position,
+    job.vesselType || job.shipType || job.ship,
+    job.company || job.firmName,
+    job.location || job.country,
+    job.duration || job.contractType,
+    job.salary,
+    job.applyUrl || job.url,
+  ].filter(Boolean);
+  return parts.length ? `- ${parts.join(' | ')}` : `- ${JSON.stringify(job).slice(0, 200)}`;
+}
+
 // ─── Platform'a göre veri hazırla ────────────────────────────────────────────
 function prepareDataForPlatform(platform, type, jobData) {
+  jobData = jobData || {};
   const base = {
     brand:     config.site.name,
     slogan:    config.site.slogan,
@@ -188,13 +224,19 @@ function prepareDataForPlatform(platform, type, jobData) {
 
   switch (type) {
     case 'ilan_ozeti':
-      return { ...base, jobs: jobData.newJobs.slice(0, 5), totalJobs: jobData.jobs.length };
+      return { ...base, jobs: jobList(jobData).slice(0, 5), totalJobs: totalJobCount(jobData) };
 
     case 'kariyer_ipucu':
       return { ...base, context: 'Denizci kariyeri geliştirme ipuçları, CV hazırlama, sertifika önerileri' };
 
     case 'istatistik':
-      return { ...base, stats: jobData.stats, weeklyTrend: '15% artış bu hafta' };
+      // Uydurma trend yok — gerçek haftalık veriler (yoksa "veri yok")
+      return {
+        ...base,
+        stats: jobData.stats,
+        newSeafarersThisWeek: jobData.seafarers?.newThisWeek ?? 'veri yok',
+        newJobsThisWeek:      (jobData.jobs && !Array.isArray(jobData.jobs) ? jobData.jobs.newThisWeek : null) ?? 'veri yok',
+      };
 
     case 'platform_tanitim':
       return { ...base, features: ['BullsEye Filtering', 'Online Meeting', 'AI-powered matching', 'Crew Management'] };
@@ -203,7 +245,7 @@ function prepareDataForPlatform(platform, type, jobData) {
       return { ...base, context: 'Denizci motivasyonu, gemi hayatı, kariyer başarı hikayeleri' };
 
     case 'video_script':
-      return { ...base, jobs: jobData.newJobs.slice(0, 3), format: 'TikTok 60 saniye' };
+      return { ...base, jobs: jobList(jobData).slice(0, 3), format: 'TikTok 60 saniye' };
 
     case 'topluluk_sorusu':
       return { ...base, context: 'Denizci topluluğuna yönelik engagement sorusu — deneyim, kariyer, platform' };
@@ -215,7 +257,8 @@ function prepareDataForPlatform(platform, type, jobData) {
       return { ...base, context: 'Platform üzerinden iş bulan seafarer\'ın başarı hikayesi formatı' };
 
     default:
-      return { ...base, jobs: jobData.jobs.slice(0, 3) };
+      // blog_paylasim, hizli_ipucu, duyuru, ilan_tanitim, gemi_hayati vb.
+      return { ...base, jobs: jobList(jobData).slice(0, 3), totalJobs: totalJobCount(jobData) };
   }
 }
 
@@ -288,14 +331,19 @@ const TONE_MODIFIERS = {
 
 // ─── Serbest prompt ile içerik üret ──────────────────────────────────────────
 async function generateWithCustomPrompt(platform, customPrompt, jobData, model, language, tone) {
+  jobData = jobData || {};
   const data = {
-    brand:   config.site.name,
-    slogan:  config.site.slogan,
-    siteUrl: config.site.url,
-    stats:   jobData.stats,
-    date:    new Date().toLocaleDateString('tr-TR'),
-    jobs:    (jobData.newJobs || jobData.jobs || []).slice(0, 5),
+    brand:     config.site.name,
+    slogan:    config.site.slogan,
+    siteUrl:   config.site.url,
+    stats:     jobData.stats,
+    date:      new Date().toLocaleDateString('tr-TR'),
+    jobs:      jobList(jobData).slice(0, 5),
+    totalJobs: totalJobCount(jobData),
   };
+  const jobsBlock = data.jobs.length
+    ? `- Current job listings (use only these; do NOT invent other jobs):\n${data.jobs.map(formatJobLine).join('\n')}`
+    : '- Current job listings: none provided (do NOT invent specific job listings)';
 
   // Dil zorlaması — önce tanımla
   const lang = language === 'en' ? 'en' : 'tr';
@@ -313,8 +361,9 @@ async function generateWithCustomPrompt(platform, customPrompt, jobData, model, 
 Brand: ${config.site.name} — "${config.site.slogan}" — ${config.site.url}
 
 CONTEXT DATA:
-- Total jobs on platform: ${data.stats?.totalJobs || 'N/A'}
+- Total jobs on platform: ${data.totalJobs ?? 'N/A'}
 - Date: ${data.date}
+${jobsBlock}
 
 ${langInstruction}
 ${toneInstruction ? `\n${toneInstruction}` : ''}

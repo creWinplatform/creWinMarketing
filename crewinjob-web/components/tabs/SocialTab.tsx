@@ -4,11 +4,13 @@ import OutputPanel from '../OutputPanel';
 import SharePanel from '../SharePanel';
 import { getTextModel, getImageModel } from '../ModelPicker';
 import { compositePostImage } from '@/lib/image-composite';
-import { saveToHistory, getHistory, deleteFromHistory, clearHistory, HistoryItem } from '@/lib/content-history';
+import { createHistoryItem, getHistory, deleteFromHistory, clearHistory, HistoryItem } from '@/lib/content-history';
 import { saveTemplate, getTemplates, deleteTemplate, PromptTemplate } from '@/lib/prompt-templates';
+import EngagementPanel from '../EngagementPanel';
 import { addEvent } from '@/lib/calendar-store';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { loadPartnerLogo, savePartnerLogo, savePartnerUntil, clearPartnerLogo, daysLeft } from '@/lib/partner-logo';
 
 const PLATFORMS = [
   { value: 'instagram', label: '📸 Instagram' },
@@ -148,6 +150,14 @@ export default function SocialTab() {
   const { lang } = useLang();
 
   const [history,     setHistory]    = useState<HistoryItem[]>([]);
+  // Geçmişten geri yüklenen kaydın görseli + kaydın id'si. Yeni içerik
+  // üretildiğinde temizlenir, aksi halde eski görsel yeni metinle kalır.
+  const [restoredImg, setRestoredImg] = useState<{
+    data: string; mime: string;
+    rawBg?: string; rawBgMime?: string;
+    headline?: string; suggestions?: string[]; subline?: string;
+  } | null>(null);
+  const [restoredId,  setRestoredId]  = useState<string | undefined>(undefined);
   const [showHistory, setShowHistory] = useState(false);
 
   const [variantMode, setVariantMode] = useState(false);
@@ -155,31 +165,54 @@ export default function SocialTab() {
 
   const [allPlatMode, setAllPlatMode] = useState(false);
   const [allPlatData, setAllPlatData] = useState<PlatformContent[]>([]);
+  const [copiedIdx,   setCopiedIdx]   = useState<number | null>(null);
 
-  const [sharePlatItem,    setSharePlatItem]    = useState<{ content: string; platform: string; imageData?: string; imageMime?: string } | null>(null);
+  const [sharePlatItem,    setSharePlatItem]    = useState<{
+    content: string; platform: string; imageData?: string; imageMime?: string;
+    rawBgData?: string; rawBgMime?: string; headline?: string;
+  } | null>(null);
+  // OutputPanel'de üretilen/yeniden basılan son görsel — takvime eklerken kullanılır
+  const [outputImage,      setOutputImage]      = useState<{ data: string; mime: string } | null>(null);
   const [logoBase64,       setLogoBase64]       = useState('');
+  const [partnerLogoBase64,setPartnerLogoBase64]= useState('');
+  const [partnerUntil,     setPartnerUntil]     = useState('');
   const [allPlatImage,     setAllPlatImage]     = useState('');
   const [allPlatImgLoading,setAllPlatImgLoading]= useState(false);
   const [allPlatImgError,  setAllPlatImgError]  = useState('');
+  const [imagePrompt,      setImagePrompt]      = useState(''); // Kullanıcının görsel tarifi
   // Ham görsel (composite öncesi) — başlık değişince yeniden composite için cache
   const [rawBg,            setRawBg]            = useState('');   // base64
   const [rawBgMime,        setRawBgMime]        = useState('');   // e.g. image/jpeg
   // Başlık düzenleme
   const [customHeadline,   setCustomHeadline]   = useState('');
+  // Gösterilen görsele en son basılmış başlık (yazılıp uygulanmamış başlık değil) — paylaşım/indirme bununla
+  const [appliedHeadline,  setAppliedHeadline]  = useState('');
   const [headlineSuggestions, setHeadlineSuggestions] = useState<string[]>([]);
   const [headlineApplying, setHeadlineApplying] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const partnerLogoInputRef = useRef<HTMLInputElement>(null);
 
   const [showCalForm, setShowCalForm] = useState(false);
   const [calDate,     setCalDate]     = useState('');
   const [calSaved,    setCalSaved]    = useState(false);
 
   const [templates,    setTemplates]   = useState<PromptTemplate[]>([]);
-  const [stratPanel,   setStratPanel]  = useState<'strategy' | 'templates'>('strategy');
+  const [stratPanel,   setStratPanel]  = useState<'strategy' | 'templates' | 'engagement'>('strategy');
   const [showSaveTpl,  setShowSaveTpl] = useState(false);
   const [tplName,      setTplName]     = useState('');
 
   const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
+
+  // Tüm platform içerikleri hazır olduğunda görsel otomatik oluştur
+  useEffect(() => {
+    if (!allPlatMode) return;
+    const allDone    = allPlatData.length > 0 && allPlatData.every(p => !p.loading);
+    const hasContent = allPlatData.some(p => !!p.content);
+    if (allDone && hasContent && !allPlatImage && !allPlatImgLoading) {
+      void generateSharedImage();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPlatData]);
 
   useEffect(() => {
     setVisible(shuffle(PLATFORM_SUGGESTIONS[platform] || []).slice(0, CARDS_PER_PAGE));
@@ -191,12 +224,29 @@ export default function SocialTab() {
     const now = new Date();
     setCalDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`);
     try { const l = localStorage.getItem(LOGO_KEY); if (l) setLogoBase64(l); } catch { /* ignore */ }
+    { const p = loadPartnerLogo(); setPartnerLogoBase64(p.data); setPartnerUntil(p.until); }
   }, []);
 
   const handleRefresh = () => {
     setSpinning(true);
     setTimeout(() => setSpinning(false), 500);
     setVisible(shuffle(PLATFORM_SUGGESTIONS[platform] || []).slice(0, CARDS_PER_PAGE));
+  };
+
+  /**
+   * Yeni içeriği kütüphaneye kaydeder ve kaydın id'sini OutputPanel'e verir:
+   * görsel, düzenleme ve yeniden basımlar "en yeni kayıt" tahmini yerine bu kayda yazılır.
+   */
+  const contentSeqRef = useRef(0);   // geç dönen kayıt yanıtı sonraki içeriğin id'sini ezmesin
+  const persistNewContent = (content: string) => {
+    const seq = contentSeqRef.current;
+    createHistoryItem({ platform, language, content, prompt: customPrompt })
+      .then(item => {
+        if (item?.id && seq === contentSeqRef.current) setRestoredId(item.id);
+        return getHistory();
+      })
+      .then(setHistory)
+      .catch(() => {});
   };
 
   const generate = async () => {
@@ -206,6 +256,10 @@ export default function SocialTab() {
     setOutput('');
     setVariantMode(false);
     setAllPlatMode(false);
+    setRestoredImg(null);
+    setRestoredId(undefined);
+    setOutputImage(null);
+    contentSeqRef.current++;
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -216,8 +270,7 @@ export default function SocialTab() {
       if (data.error) throw new Error(data.error);
       setOutput(data.content);
       logActivity('content_generated', t(`${platform} içeriği üretildi`, `${platform} content generated`), `${data.content.length} ${t('karakter', 'chars')} · ${language.toUpperCase()}`);
-      saveToHistory({ platform, language, content: data.content, prompt: customPrompt })
-        .then(setHistory).catch(() => {});
+      persistNewContent(data.content);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : t('Hata oluştu', 'An error occurred'));
     } finally {
@@ -264,8 +317,11 @@ export default function SocialTab() {
   const useVariant = (content: string) => {
     setOutput(content);
     setVariantMode(false);
-    saveToHistory({ platform, language, content, prompt: customPrompt })
-      .then(setHistory).catch(() => {});
+    setRestoredImg(null);
+    setRestoredId(undefined);
+    setOutputImage(null);
+    contentSeqRef.current++;
+    persistNewContent(content);
   };
 
   const generateAllPlatforms = async () => {
@@ -325,6 +381,7 @@ export default function SocialTab() {
     setAllPlatImage('');
     setRawBg('');
     setCustomHeadline('');
+    setAppliedHeadline('');
     setHeadlineSuggestions([]);
     try {
       const res = await fetch('/api/generate-image', {
@@ -335,6 +392,8 @@ export default function SocialTab() {
           contentType: 'ilan_ozeti',
           textContent: firstContent,
           imageModel:  getImageModel(),
+          userScene:   imagePrompt.trim() || undefined,
+          language,    // başlık içerik dilinde üretilsin (önceden hep İngilizce)
         }),
       });
       const data = await res.json();
@@ -352,9 +411,10 @@ export default function SocialTab() {
       setHeadlineSuggestions(suggestions);
       setCustomHeadline(headline);
 
-      // instagram boyutunda composite — kare format tüm platformlara uyar
-      const finalB64 = await compositePostImage(mime, rawB64, logoBase64, headline, 'instagram');
+      // instagram boyutunda composite — diğer platformlar paylaşım/indirmede kendi boyutunda yeniden basılır
+      const finalB64 = await compositePostImage(mime, rawB64, logoBase64, headline, 'instagram', partnerLogoBase64);
       setAllPlatImage(finalB64);
+      setAppliedHeadline(headline);
     } catch (e) {
       setAllPlatImgError(e instanceof Error ? e.message : t('Görsel oluşturulamadı', 'Image generation failed'));
     } finally {
@@ -367,8 +427,9 @@ export default function SocialTab() {
     if (!rawBg || !customHeadline.trim()) return;
     setHeadlineApplying(true);
     try {
-      const finalB64 = await compositePostImage(rawBgMime, rawBg, logoBase64, customHeadline, 'instagram');
+      const finalB64 = await compositePostImage(rawBgMime, rawBg, logoBase64, customHeadline, 'instagram', partnerLogoBase64);
       setAllPlatImage(finalB64);
+      setAppliedHeadline(customHeadline);
     } finally {
       setHeadlineApplying(false);
     }
@@ -392,13 +453,37 @@ export default function SocialTab() {
     if (logoInputRef.current) logoInputRef.current.value = '';
   };
 
+  const handlePartnerLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const b64 = (ev.target?.result as string).split(',')[1];
+      setPartnerLogoBase64(b64);
+      savePartnerLogo(b64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const changePartnerUntil = (value: string) => {
+    setPartnerUntil(value);
+    savePartnerUntil(value);
+  };
+
+  const removePartnerLogo = () => {
+    setPartnerLogoBase64('');
+    setPartnerUntil('');
+    clearPartnerLogo();
+    if (partnerLogoInputRef.current) partnerLogoInputRef.current.value = '';
+  };
+
   const downloadPlatformImage = async (plt: string) => {
     if (!allPlatImage) return;
-    // rawBg varsa: aynı arka plan + aktif başlık, sadece platform boyutuna composite et
+    // rawBg varsa: aynı arka plan + önizlemedeki başlık, tam platform boyutunda (PLATFORM_TARGET) composite et
     if (rawBg) {
       try {
-        const headline = customHeadline.trim() || 'The Right Job\nThe Right Talent';
-        const finalB64 = await compositePostImage(rawBgMime || 'image/jpeg', rawBg, logoBase64, headline, plt);
+        const headline = appliedHeadline.trim() || customHeadline.trim() || 'The Right Job\nThe Right Talent';
+        const finalB64 = await compositePostImage(rawBgMime || 'image/jpeg', rawBg, logoBase64, headline, plt, partnerLogoBase64);
         const a = document.createElement('a');
         a.href     = `data:image/png;base64,${finalB64}`;
         a.download = `crewinjob_${plt}_${Date.now()}.png`;
@@ -425,13 +510,32 @@ export default function SocialTab() {
     setAllPlatData(prev => prev.map((p, i) => i === idx ? { ...p, editing: false, content: p.editValue } : p));
   };
 
-  const copyAllPlat = async (content: string) => {
-    await navigator.clipboard.writeText(content);
+  const copyAllPlat = async (content: string, idx: number) => {
+    try {
+      await navigator.clipboard.writeText(content);
+    } catch {
+      // Clipboard API yoksa fallback
+      const ta = document.createElement('textarea');
+      ta.value = content;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    setCopiedIdx(idx);
+    setTimeout(() => setCopiedIdx(null), 2000);
   };
 
   const saveToCalendar = () => {
     if (!output || !calDate) return;
-    void addEvent({ date: calDate, platform, content: output, language, published: false });
+    // Görsel varsa etkinliğe eklenir → otomatik yayın (scheduler/run) görselli paylaşır
+    const img = outputImage || (restoredImg ? { data: restoredImg.data, mime: restoredImg.mime } : null);
+    void addEvent({
+      date: calDate, platform, content: output, language, published: false,
+      ...(img ? { imageData: img.data, imageMime: img.mime } : {}),
+    });
     setCalSaved(true);
     setShowCalForm(false);
     setTimeout(() => setCalSaved(false), 3000);
@@ -461,6 +565,21 @@ export default function SocialTab() {
     setOutput(item.content);
     setPlatform(item.platform);
     setLanguage(item.language as 'tr' | 'en');
+    // Kayda iliştirilmiş görseli ve yeniden basım verisini geri getir — daha
+    // önce yalnızca metin dönüyor, görsel ve başlık düzenleme araçları
+    // kayboluyordu.
+    setRestoredImg(item.imageData ? {
+      data:        item.imageData,
+      mime:        item.imageMime || 'image/png',
+      rawBg:       item.rawBgData,
+      rawBgMime:   item.rawBgMime,
+      headline:    item.headline,
+      suggestions: item.suggestions,
+      subline:     item.subline,
+    } : null);
+    contentSeqRef.current++;
+    setRestoredId(item.id);
+    setOutputImage(null);
     setShowHistory(false);
     setVariantMode(false);
     setAllPlatMode(false);
@@ -481,6 +600,9 @@ export default function SocialTab() {
           content={sharePlatItem.content}
           imageData={sharePlatItem.imageData}
           imageMime={sharePlatItem.imageMime}
+          rawBgData={sharePlatItem.rawBgData}
+          rawBgMime={sharePlatItem.rawBgMime}
+          headline={sharePlatItem.headline}
           onClose={() => setSharePlatItem(null)}
         />
       )}
@@ -651,6 +773,14 @@ export default function SocialTab() {
                 </span>
               )}
             </button>
+            <button
+              onClick={() => setStratPanel('engagement')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                stratPanel === 'engagement' ? 'bg-white dark:bg-slate-600 shadow-sm text-slate-800 dark:text-slate-100' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              📊 {t('Etkileşim', 'Engagement')}
+            </button>
           </div>
           {stratPanel === 'strategy' && (
             <button
@@ -774,6 +904,12 @@ export default function SocialTab() {
                 </div>
               ))
             )}
+          </div>
+        )}
+
+        {stratPanel === 'engagement' && (
+          <div className="overflow-y-auto" style={{ maxHeight: '450px' }}>
+            <EngagementPanel />
           </div>
         )}
       </div>
@@ -1031,6 +1167,57 @@ export default function SocialTab() {
                     🏷️ {t('Logo Yükle', 'Upload Logo')}
                   </button>
                 )}
+
+                {/* Etkinlik / işbirliği logosu */}
+                <input
+                  ref={partnerLogoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handlePartnerLogoUpload}
+                />
+                {partnerLogoBase64 ? (
+                  <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-600 rounded-lg px-2.5 py-1.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`data:image/png;base64,${partnerLogoBase64}`} alt={t('Etkinlik logosu', 'Event logo')} className="h-6 w-auto max-w-[80px] object-contain" />
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">{t('Etkinlik', 'Event')}</span>
+                    <input
+                      type="date"
+                      value={partnerUntil}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={e => changePartnerUntil(e.target.value)}
+                      title={t('Bitiş tarihi — sonrasında logo otomatik kalkar', 'End date — logo is auto-removed after')}
+                      className="px-1 py-0.5 rounded border border-amber-300 dark:border-amber-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] focus:outline-none"
+                    />
+                    {partnerUntil && (
+                      <span className={`text-[10px] ${(daysLeft(partnerUntil) ?? 0) <= 3 ? 'text-red-500 font-medium' : 'text-slate-400'}`}>
+                        {(daysLeft(partnerUntil) ?? 0) <= 0 ? t('son gün', 'last day') : `${daysLeft(partnerUntil)}g`}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => partnerLogoInputRef.current?.click()}
+                      className="text-[10px] text-slate-400 hover:text-amber-600 transition-colors"
+                      title={t('Etkinlik logosunu değiştir', 'Change event logo')}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      onClick={removePartnerLogo}
+                      className="text-[10px] text-slate-300 hover:text-red-500 transition-colors"
+                      title={t('Etkinlik logosunu kaldır', 'Remove event logo')}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => partnerLogoInputRef.current?.click()}
+                    className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-700 hover:border-amber-500 hover:text-amber-600 border border-dashed border-slate-300 dark:border-slate-500 text-slate-500 dark:text-slate-400 rounded-lg px-3 py-1.5 transition-colors"
+                    title={t('Fuar, etkinlik veya işbirliği logosu', 'Fair, event or partnership logo')}
+                  >
+                    🤝 {t('Etkinlik Logosu', 'Event Logo')}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1055,6 +1242,38 @@ export default function SocialTab() {
                     ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t('Üretiliyor...', 'Generating...')}</>
                     : allPlatImage ? `🔄 ${t('Yeniden Üret', 'Regenerate')}` : `✨ ${t('Görsel Üret', 'Generate Image')}`}
                 </button>
+              </div>
+
+              {/* ── Görsel prompt alanı ── */}
+              <div className="px-4 py-3 bg-purple-50/50 dark:bg-purple-900/10 border-b border-purple-200 dark:border-purple-700">
+                <div className="flex gap-2 items-start">
+                  <div className="flex-1">
+                    <textarea
+                      value={imagePrompt}
+                      onChange={e => setImagePrompt(e.target.value)}
+                      rows={2}
+                      placeholder={t(
+                        'Görsel tarifi... (isteğe bağlı) — ör: "Akdeniz\'de gün batımı, yük gemisi, sıcak amber tonlar"',
+                        'Image description... (optional) — e.g. "Mediterranean sunset, cargo vessel, warm amber tones"',
+                      )}
+                      className="w-full text-xs border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-400/60 resize-none placeholder-slate-400 dark:placeholder-slate-500 leading-relaxed"
+                    />
+                    <p className="text-[10px] text-purple-500 dark:text-purple-400 mt-1">
+                      {imagePrompt.trim()
+                        ? t('✅ Tarif aktif — "Yeniden Üret" ile uygula', '✅ Description active — click "Regenerate" to apply')
+                        : t('Boş bırakırsan AI içeriğe göre otomatik belirler', 'Leave empty for AI to auto-decide from content')}
+                    </p>
+                  </div>
+                  {imagePrompt.trim() && (
+                    <button
+                      onClick={() => setImagePrompt('')}
+                      title={t('Tarifi temizle', 'Clear description')}
+                      className="text-slate-400 hover:text-red-500 text-xs mt-1 px-1.5 py-1 transition-colors"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="p-3">
@@ -1185,10 +1404,14 @@ export default function SocialTab() {
                     {!p.loading && p.content && (
                       <>
                         <button
-                          onClick={e => { e.stopPropagation(); copyAllPlat(p.editing ? p.editValue : p.content); }}
-                          className="text-[10px] bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-medium hover:border-ocean hover:text-ocean transition-colors"
+                          onClick={e => { e.stopPropagation(); copyAllPlat(p.editing ? p.editValue : p.content, i); }}
+                          className={`text-[10px] border px-2 py-0.5 rounded font-medium transition-colors ${
+                            copiedIdx === i
+                              ? 'bg-green-100 border-green-400 text-green-700 dark:bg-green-900/30 dark:border-green-600 dark:text-green-300'
+                              : 'bg-white dark:bg-slate-600 border-slate-200 dark:border-slate-500 text-slate-600 dark:text-slate-300 hover:border-ocean hover:text-ocean'
+                          }`}
                         >
-                          📋 {t('Kopyala', 'Copy')}
+                          {copiedIdx === i ? `✅ ${t('Kopyalandı', 'Copied')}` : `📋 ${t('Kopyala', 'Copy')}`}
                         </button>
                         <button
                           onClick={e => { e.stopPropagation(); startEditAllPlat(i); }}
@@ -1197,7 +1420,17 @@ export default function SocialTab() {
                           ✏️ {t('Düzenle', 'Edit')}
                         </button>
                         <button
-                          onClick={e => { e.stopPropagation(); setSharePlatItem({ content: p.editing ? p.editValue : p.content, platform: p.platform, imageData: allPlatImage || undefined, imageMime: allPlatImage ? 'image/png' : undefined }); }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            setSharePlatItem({
+                              content: p.editing ? p.editValue : p.content, platform: p.platform,
+                              imageData: allPlatImage || undefined, imageMime: allPlatImage ? 'image/png' : undefined,
+                              // Ham arka plan + uygulanmış başlık → SharePanel her platform için yeniden basar
+                              rawBgData: allPlatImage && rawBg ? rawBg : undefined,
+                              rawBgMime: allPlatImage && rawBg ? (rawBgMime || 'image/jpeg') : undefined,
+                              headline:  allPlatImage && rawBg ? (appliedHeadline || undefined) : undefined,
+                            });
+                          }}
                           className="text-[10px] bg-green-600 hover:bg-green-700 text-white px-2 py-0.5 rounded font-medium transition-colors"
                         >
                           📤 {t('Paylaş', 'Share')}
@@ -1247,7 +1480,11 @@ export default function SocialTab() {
         )}
 
         {!variantMode && !allPlatMode && (
-          <OutputPanel content={output} loading={loading} error={error} platform={platform} contentType="ilan_ozeti" />
+          <OutputPanel
+            content={output} loading={loading} error={error} platform={platform} contentType="ilan_ozeti" language={language}
+            restoredImage={restoredImg} historyId={restoredId}
+            onImageReady={(data, mime) => setOutputImage({ data, mime })}
+          />
         )}
       </div>
     </div>

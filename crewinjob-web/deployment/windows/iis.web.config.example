@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Candidate for the NEW Ryzevo IIS site only. Not a global IIS configuration.
+     Requires reviewed ARR proxy/host preservation and allowed server variables.
+     Do not copy into Crewin's existing site or applicationHost.config. -->
+<configuration>
+  <system.webServer>
+    <httpErrors existingResponse="PassThrough" />
+    <security>
+      <requestFiltering>
+        <requestLimits maxAllowedContentLength="20971520" />
+      </requestFiltering>
+    </security>
+    <rewrite>
+      <rules>
+        <rule name="Ryzevo reject unknown host" stopProcessing="true">
+          <match url=".*" />
+          <conditions><add input="{HTTP_HOST}" pattern="^ryzevo\.com$" negate="true" /></conditions>
+          <action type="CustomResponse" statusCode="400" statusReason="Bad Request" statusDescription="Invalid host" />
+        </rule>
+        <rule name="Ryzevo require HTTPS" stopProcessing="true">
+          <match url="(.*)" />
+          <conditions><add input="{HTTPS}" pattern="^OFF$" /></conditions>
+          <action type="Redirect" url="https://ryzevo.com/{R:1}" appendQueryString="true" redirectType="Permanent" />
+        </rule>
+        <rule name="Ryzevo loopback application" stopProcessing="true">
+          <match url="(.*)" />
+          <serverVariables>
+            <set name="HTTP_X_FORWARDED_PROTO" value="https" replace="true" />
+            <set name="HTTP_X_FORWARDED_HOST" value="ryzevo.com" replace="true" />
+            <set name="HTTP_X_FORWARDED_FOR" value="{REMOTE_ADDR}" replace="true" />
+          </serverVariables>
+          <action type="Rewrite" url="http://127.0.0.1:3033/{R:1}" appendQueryString="true" />
+        </rule>
+      </rules>
+    </rewrite>
+  </system.webServer>
+</configuration>

@@ -1,9 +1,13 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import PlatformPreview from './PlatformPreview';
-import { addPost, makeThumbnail } from '@/lib/post-history';
+import { addPost, extractPostId, makeThumbnail } from '@/lib/post-history';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { compositePostImage, PLATFORM_TARGET } from '@/lib/image-composite';
+import { loadPartnerLogo } from '@/lib/partner-logo';
+
+const LOGO_KEY = 'crewinjob_brand_logo';
 
 interface PlatformStatus {
   configured: boolean;
@@ -62,76 +66,49 @@ const PLATFORMS = [
   },
 ];
 
-
-function getAdaptedContent(platformId: string, content: string): string {
-  return content;
-}
-
-// Platform görsel boyutları (center-crop hedefleri)
-const PLATFORM_IMAGE_DIMS: Record<string, [number, number]> = {
-  instagram: [1080, 1080],  // 1:1
-  facebook:  [1200,  630],  // 1.91:1
-  twitter:   [1200,  675],  // 16:9
-  linkedin:  [1200,  627],  // 1.91:1
-};
-
-/** Görseli platforma özgü boyuta center-crop ile uyarlar, PNG base64 döndürür */
-async function cropImageForPlatform(
+/**
+ * Hazır (başlık/logo basılmış) görseli platform boyutuna KIRPMADAN sığdırır (letterbox).
+ * Kare görseli 1.91:1'e kırpmak alt çubuğu (logo/URL) ve başlığın bir kısmını kesiyordu.
+ * Boşluklar görselin bulanık/karartılmış hâliyle doldurulur. PNG base64 döndürür.
+ */
+async function letterboxImageForPlatform(
   imageData: string,
   imageMime: string,
   platformId: string,
 ): Promise<string> {
-  const [targetW, targetH] = PLATFORM_IMAGE_DIMS[platformId] || [1200, 630];
+  const [targetW, targetH] = PLATFORM_TARGET[platformId] || [1200, 630];
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width  = targetW;
       canvas.height = targetH;
-      const ctx = canvas.getContext('2d')!;
-      const srcAspect = img.width / img.height;
-      const dstAspect = targetW / targetH;
-      let sx = 0, sy = 0, sw = img.width, sh = img.height;
-      if (srcAspect > dstAspect) {
-        sw = Math.round(img.height * dstAspect);
-        sx = Math.round((img.width - sw) / 2);
-      } else {
-        sh = Math.round(img.width / dstAspect);
-        sy = Math.round((img.height - sh) / 2);
-      }
-      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve(imageData);
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // Zemin: görselin kaplayan (cover), bulanık ve koyulaştırılmış kopyası
+      ctx.fillStyle = '#050b19';
+      ctx.fillRect(0, 0, targetW, targetH);
+      const cover = Math.max(targetW / img.width, targetH / img.height);
+      const cw = img.width * cover, ch = img.height * cover;
+      ctx.save();
+      ctx.filter = 'blur(28px) brightness(0.45)';   // desteklenmeyen tarayıcıda yalnızca koyu kaplama kalır
+      ctx.drawImage(img, (targetW - cw) / 2, (targetH - ch) / 2, cw, ch);
+      ctx.restore();
+      ctx.fillStyle = 'rgba(5,11,25,0.35)';
+      ctx.fillRect(0, 0, targetW, targetH);
+
+      // Görselin tamamı (contain) ortada
+      const fit = Math.min(targetW / img.width, targetH / img.height);
+      const fw = Math.round(img.width * fit), fh = Math.round(img.height * fit);
+      ctx.drawImage(img, Math.round((targetW - fw) / 2), Math.round((targetH - fh) / 2), fw, fh);
       resolve(canvas.toDataURL('image/png').split(',')[1]);
     };
     img.onerror = () => resolve(imageData);
     img.src = `data:${imageMime};base64,${imageData}`;
   });
-}
-
-// Post URL'inden platform-spesifik post ID çıkarır
-function extractPostId(platform: string, url: string): string {
-  try {
-    if (platform === 'twitter') {
-      // https://twitter.com/i/web/status/123456 veya .../status/123456
-      const m = url.match(/status\/(\d+)/);
-      return m?.[1] || '';
-    }
-    if (platform === 'linkedin') {
-      // https://www.linkedin.com/feed/update/urn:li:share:123 veya urn:li:ugcPost:123
-      const m = url.match(/urn:li:[a-zA-Z]+:[\d_-]+/);
-      return m?.[0] || '';
-    }
-    if (platform === 'facebook') {
-      // https://www.facebook.com/{pageId}_{postId} veya ...{postId}
-      const m = url.match(/facebook\.com\/(.+?)$/);
-      return m?.[1]?.split('?')[0] || '';
-    }
-    if (platform === 'instagram') {
-      // https://www.instagram.com/p/{shortcode}/
-      const m = url.match(/\/p\/([^/?]+)/);
-      return m?.[1] || '';
-    }
-  } catch { /* ignore */ }
-  return '';
 }
 
 // Twitter Web Intent — API gerektirmez, ücretsiz, limit yok
@@ -289,11 +266,27 @@ interface Props {
   content:    string;
   imageData?: string;
   imageMime?: string;
+  /**
+   * Başlık/logo basılmamış HAM arka plan + başlık. Verilirse her platform için görsel
+   * bu arka plandan, o platformun boyutunda YENİDEN basılır (kırpma yok).
+   * Verilmezse hazır görsel platform boyutuna sığdırılır (letterbox).
+   */
+  rawBgData?: string;
+  rawBgMime?: string;
+  headline?:  string;
+  subline?:   string;
   onClose:    () => void;
 }
 
-export default function SharePanel({ content, imageData, imageMime, onClose }: Props) {
+export default function SharePanel({ content, imageData, imageMime, rawBgData, rawBgMime, headline, subline, onClose }: Props) {
   const { lang } = useLang();
+  // Yeniden basım için marka/etkinlik logoları (diğer panellerle aynı localStorage kaynağı)
+  const [brandLogo,   setBrandLogo]   = useState('');
+  const [partnerLogo, setPartnerLogo] = useState('');
+  useEffect(() => {
+    try { setBrandLogo(localStorage.getItem(LOGO_KEY) || ''); } catch { /* ignore */ }
+    setPartnerLogo(loadPartnerLogo().data);
+  }, []);
   const [status,    setStatus]   = useState<StatusMap>({});
   const [loading,   setLoading]  = useState(true);
   const [selected,  setSelected] = useState<string[]>([]);
@@ -311,6 +304,9 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
   const [adaptingImg,    setAdaptingImg]    = useState<string | null>(null);
   // Web Intent toast bildirimi (Twitter + LinkedIn)
   const [twToast,   setTwToast]  = useState<{ show: boolean; imageCopied: boolean; textCopied?: boolean; platform: 'twitter' | 'linkedin' }>({ show: false, imageCopied: false, platform: 'twitter' });
+  // Web Intent sonrası post URL takibi
+  const [trackUrl,  setTrackUrl]  = useState('');
+  const [trackSaved, setTrackSaved] = useState(false);
   // TikTok script kopyalama durumu
   const [tiktokCopied, setTiktokCopied] = useState(false);
   // Manuel kopyalama durumu (içerik + görsel)
@@ -321,12 +317,23 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
   const [quickPosting, setQuickPosting] = useState<string | null>(null);
   const [quickToast,   setQuickToast]   = useState<{ show: boolean; platform: string; success: boolean; message: string; url?: string } | null>(null);
 
+  /** Platform boyutunda görsel: ham arka plan varsa yeniden bas, yoksa sığdır (letterbox). */
+  const imageForPlatform = useCallback(async (platformId: string): Promise<string> => {
+    if (!imageData) return '';
+    if (rawBgData && headline?.trim()) {
+      try {
+        return await compositePostImage(rawBgMime || 'image/jpeg', rawBgData, brandLogo, headline, platformId, partnerLogo, subline || '');
+      } catch { /* sığdırmaya düş */ }
+    }
+    return letterboxImageForPlatform(imageData, imageMime || 'image/png', platformId);
+  }, [imageData, imageMime, rawBgData, rawBgMime, headline, subline, brandLogo, partnerLogo]);
+
   const adaptImageForPlatform = async (platformId: string) => {
     if (!imageData) return;
     setAdaptingImg(platformId);
     try {
-      const cropped = await cropImageForPlatform(imageData, imageMime || 'image/png', platformId);
-      setAdaptedImages(prev => ({ ...prev, [platformId]: cropped }));
+      const adaptedImg = await imageForPlatform(platformId);
+      setAdaptedImages(prev => ({ ...prev, [platformId]: adaptedImg }));
     } finally {
       setAdaptingImg(null);
     }
@@ -365,14 +372,14 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
     link.click();
   };
 
-  /** Görseli platforma özgü boyuta crop ederek indirir */
+  /** Görseli platforma özgü boyutta (yeniden basarak / sığdırarak) indirir */
   const downloadForPlatform = async (platformId: string) => {
     if (!imageData) return;
     setDownloadingPlatform(platformId);
     try {
-      const cropped = await cropImageForPlatform(imageData, imageMime || 'image/png', platformId);
+      const sized = adaptedImages[platformId] || await imageForPlatform(platformId);
       const link = document.createElement('a');
-      link.href     = `data:image/png;base64,${cropped}`;
+      link.href     = `data:image/png;base64,${sized}`;
       link.download = `crewin-${platformId}.png`;
       link.click();
     } catch {
@@ -382,16 +389,52 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
     }
   };
 
+  /** Başarılı API paylaşımlarını paylaşım geçmişine yazar (gerçek postId varsa onu kullanır) */
+  const recordResults = async (
+    rs: { platform: string; success: boolean; url?: string; postId?: string }[],
+    contentFor: (platform: string) => string,
+  ) => {
+    const ok = rs.filter(r => r.success && (r.url || r.postId));
+    if (!ok.length) return;
+    const thumbnail = imageData ? await makeThumbnail(imageData, imageMime || 'image/png') : '';
+    for (const r of ok) {
+      const postId = r.postId || (r.url ? extractPostId(r.platform, r.url) : '') || r.url || '';
+      void addPost({
+        platform:    r.platform,
+        postId,
+        postUrl:     r.url,
+        content:     contentFor(r.platform),
+        thumbnail:   thumbnail || undefined,
+        publishedAt: Date.now(),
+      });
+      logActivity('post_published', `${r.platform.charAt(0).toUpperCase() + r.platform.slice(1)}'a post yayınlandı`, r.url);
+    }
+  };
+
+  // Web Intent sonrası post URL'sini post-history'e kaydet
+  const handleTrackUrl = async (platformId: string) => {
+    const url = trackUrl.trim();
+    if (!url) return;
+    const postId = extractPostId(platformId, url) || url;
+    const thumbnail = imageData ? await makeThumbnail(imageData, imageMime || 'image/png') : '';
+    await addPost({ platform: platformId, postId, postUrl: url, content: editText, thumbnail: thumbnail || undefined, publishedAt: Date.now() });
+    setTrackSaved(true);
+    setTrackUrl('');
+    setTimeout(() => setTrackSaved(false), 4000);
+  };
+
   const handleTwitterQuickShare = async (text: string) => {
     const { imageCopied } = await shareToTwitter(text, imageData, imageMime);
     setTwToast({ show: true, imageCopied, platform: 'twitter' });
-    setTimeout(() => setTwToast({ show: false, imageCopied: false, platform: 'twitter' }), 10000);
+    setTrackUrl('');
+    setTrackSaved(false);
   };
 
   const handleLinkedInQuickShare = async (text: string) => {
     const { imageCopied, textCopied } = await shareToLinkedIn(text, imageData, imageMime);
     setTwToast({ show: true, imageCopied, textCopied, platform: 'linkedin' });
-    setTimeout(() => setTwToast({ show: false, imageCopied: false, platform: 'linkedin' }), 15000);
+    setTrackUrl('');
+    setTrackSaved(false);
   };
 
   /** Facebook / Instagram / TikTok — direkt API üzerinden hızlı paylaşım */
@@ -399,14 +442,21 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
     setQuickPosting(platform);
     setQuickToast(null);
     try {
+      // Görsel platform boyutunda gider (uyarlanmışsa o, değilse yeniden bas / sığdır)
+      const platformImg = imgData ? (adaptedImages[platform] || await imageForPlatform(platform)) : undefined;
       const res = await fetch('/api/social/post', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ platforms: [platform], content: text, imageData: imgData, imageMime: imgMime }),
+        body:    JSON.stringify({
+          platforms: [platform], content: text,
+          imageData: platformImg || imgData,
+          imageMime: platformImg ? 'image/png' : imgMime,
+        }),
       });
       const data = await res.json();
-      const result = (data.results as Array<{ success: boolean; url?: string; error?: string }>)?.[0];
+      const result = (data.results as Array<{ platform: string; success: boolean; url?: string; postId?: string; error?: string }>)?.[0];
       if (result?.success) {
+        void recordResults([{ ...result, platform }], () => text);
         setQuickToast({ show: true, platform, success: true,  message: lang === 'tr' ? 'Başarıyla yayınlandı!' : 'Successfully published!', url: result.url });
       } else {
         setQuickToast({ show: true, platform, success: false, message: result?.error || (lang === 'tr' ? 'Paylaşım başarısız' : 'Share failed') });
@@ -503,15 +553,11 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
       const perPlatformContent = Object.fromEntries(
         selected.map(p => [p, adapted[p] || editText])
       );
-      // Her platform için uyarlanmış görsel — yoksa otomatik crop yap
+      // Her platform için uyarlanmış görsel — yoksa platform boyutunda yeniden bas / sığdır
       const perPlatformImageData: Record<string, string> = {};
       if (imageData) {
         await Promise.all(selected.map(async (p) => {
-          if (adaptedImages[p]) {
-            perPlatformImageData[p] = adaptedImages[p];
-          } else {
-            perPlatformImageData[p] = await cropImageForPlatform(imageData, imageMime || 'image/png', p);
-          }
+          perPlatformImageData[p] = adaptedImages[p] || await imageForPlatform(p);
         }));
       }
       const res = await fetch('/api/social/post', {
@@ -522,23 +568,11 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
       const data = await res.json();
       setResults(data.results || []);
 
-      // Başarılı paylaşımları geçmişe kaydet
-      const thumbnail = imageData ? await makeThumbnail(imageData, imageMime || 'image/png') : '';
-      for (const r of (data.results || []) as { platform: string; success: boolean; url?: string }[]) {
-        if (r.success && r.url) {
-          // URL'den postId çıkar
-          const postId = extractPostId(r.platform, r.url) || r.url;
-          void addPost({
-            platform:    r.platform,
-            postId,
-            postUrl:     r.url,
-            content:     perPlatformContent[r.platform] || editText,
-            thumbnail:   thumbnail || undefined,
-            publishedAt: Date.now(),
-          });
-          logActivity('post_published', `${r.platform.charAt(0).toUpperCase() + r.platform.slice(1)}'a post yayınlandı`, r.url);
-        }
-      }
+      // Başarılı paylaşımları geçmişe kaydet (API'nin döndürdüğü gerçek postId öncelikli)
+      await recordResults(
+        (data.results || []) as { platform: string; success: boolean; url?: string; postId?: string }[],
+        p => perPlatformContent[p] || editText,
+      );
 
       setStep('done');
     } catch {
@@ -613,9 +647,38 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
               )
             )}
           </div>
+          {/* Post URL takip alanı */}
+          <div className="mt-3 pt-3 border-t border-slate-700 w-full">
+            {trackSaved ? (
+              <p className="text-xs text-green-400 font-medium">✅ {lang === 'tr' ? 'Post eklendi — Etkileşim sekmesinde takip edebilirsin.' : 'Post added — track it in the Engagement tab.'}</p>
+            ) : (
+              <>
+                <p className="text-[11px] text-slate-400 mb-1.5">
+                  📊 {lang === 'tr' ? 'Paylaştıktan sonra post URL\'sini buraya yapıştır:' : 'After posting, paste the post URL here to track engagement:'}
+                </p>
+                <div className="flex gap-1.5">
+                  <input
+                    type="url"
+                    value={trackUrl}
+                    onChange={e => setTrackUrl(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleTrackUrl(twToast.platform); }}
+                    placeholder={twToast.platform === 'twitter' ? 'https://twitter.com/.../status/...' : 'https://linkedin.com/feed/update/...'}
+                    className="flex-1 text-xs bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-ocean"
+                  />
+                  <button
+                    onClick={() => handleTrackUrl(twToast.platform)}
+                    disabled={!trackUrl.trim()}
+                    className="text-xs bg-ocean hover:bg-ocean-dark disabled:opacity-50 text-white px-3 py-1.5 rounded-lg font-medium whitespace-nowrap transition-colors"
+                  >
+                    {lang === 'tr' ? '+ Takip Et' : '+ Track'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={() => setTwToast({ show: false, imageCopied: false, platform: 'twitter' })}
-            className="text-slate-400 hover:text-white text-sm shrink-0"
+            className="text-slate-400 hover:text-white text-sm shrink-0 self-start"
           >✕</button>
         </div>
       )}
@@ -785,9 +848,13 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
                     ))}
                   </div>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                    {lang === 'tr'
-                      ? 'Her platform için görsel otomatik kırpılır ve doğru boyuta getirilir.'
-                      : 'Image is automatically cropped and resized for each platform.'}
+                    {rawBgData && headline
+                      ? (lang === 'tr'
+                          ? 'Görsel her platform için aynı arka plan ve başlıkla, o platformun boyutunda yeniden basılır.'
+                          : 'The image is re-rendered at each platform\'s size with the same background and headline.')
+                      : (lang === 'tr'
+                          ? 'Görsel kırpılmadan platform boyutuna sığdırılır (kenarlar bulanık zeminle doldurulur).'
+                          : 'The image is fitted to each platform size without cropping (edges filled with a blurred backdrop).')}
                   </p>
                 </div>
               )}
@@ -1038,9 +1105,9 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
                                 <span className="text-[10px] text-slate-400 dark:text-slate-500">
                                   📐 <span className="font-medium text-slate-500 dark:text-slate-400">{p.imageRatio}</span>
                                 </span>
-                                <span className={`text-[10px] font-medium ${editText.length > p.charLimit ? 'text-orange-500' : 'text-slate-400 dark:text-slate-500'}`}>
+                                <span className={`text-[10px] font-medium ${(adapted[p.id] ?? editText).length > p.charLimit ? 'text-orange-500' : 'text-slate-400 dark:text-slate-500'}`}>
                                   ✏️ {p.charLabel}
-                                  {editText.length > p.charLimit && ` (${editText.length - p.charLimit} ${lang === 'tr' ? 'fazla' : 'over'})`}
+                                  {(adapted[p.id] ?? editText).length > p.charLimit && ` (${(adapted[p.id] ?? editText).length - p.charLimit} ${lang === 'tr' ? 'fazla' : 'over'})`}
                                 </span>
                               </div>
                               <div className="flex gap-1.5 flex-wrap">
@@ -1074,7 +1141,7 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
                                     } disabled:opacity-50`}
                                   >
                                     {adaptingImg === p.id
-                                      ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Kırpılıyor...' : 'Cropping...'}</>
+                                      ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Uyarlanıyor...' : 'Adapting...'}</>
                                       : adaptedImages[p.id]
                                         ? (lang === 'tr' ? '🖼️ Görsel Uyarlandı' : '🖼️ Image Adapted')
                                         : (lang === 'tr' ? '🖼️ Görseli Uyarla' : '🖼️ Adapt Image')}
@@ -1110,7 +1177,7 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
                               {lang === 'tr' ? `${p.label}'da görünecek içerik:` : `Content as seen on ${p.label}:`}
                             </p>
                             <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap max-h-24 overflow-y-auto">
-                              {getAdaptedContent(p.id, editText)}
+                              {adapted[p.id] || editText}
                             </p>
                             {editText.length > p.charLimit && (
                               <p className="text-[10px] text-orange-500 mt-1">⚠️ {p.note}</p>
@@ -1233,9 +1300,8 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
             <div className="flex flex-col gap-3">
               {connectedSelected.map(id => {
                 const p            = PLATFORMS.find(x => x.id === id)!;
-                const finalContent = adapted[id] || getAdaptedContent(id, editText);
+                const finalContent = adapted[id] || editText;
                 const isAIAdapted  = !!adapted[id];
-                const isHardCut    = !isAIAdapted && finalContent.length < editText.length;
                 return (
                   <div key={id} className="bg-slate-50 dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 overflow-hidden">
                     <div className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-600 border-b border-slate-200 dark:border-slate-500 flex-wrap">
@@ -1245,8 +1311,7 @@ export default function SharePanel({ content, imageData, imageMime, onClose }: P
                         {finalContent.length} {lang === 'tr' ? 'karakter' : 'characters'}
                       </span>
                       {isAIAdapted  && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">🤖 {lang === 'tr' ? 'AI Uyarlandı' : 'AI Adapted'}</span>}
-                      {isHardCut    && <span className="text-[10px] text-orange-500 font-medium">✂️ {p.charLimit} {lang === 'tr' ? 'karaktere kısaltıldı' : 'characters truncated'}</span>}
-                      {!isAIAdapted && !isHardCut && <span className="text-[10px] text-green-600 font-medium">✓ {lang === 'tr' ? 'Tam içerik' : 'Full content'}</span>}
+                      {!isAIAdapted && <span className="text-[10px] text-green-600 font-medium">✓ {lang === 'tr' ? 'Tam içerik' : 'Full content'}</span>}
                       <span className="text-[10px] text-slate-400">📐 {p.imageRatio}</span>
                       <button
                         onClick={() => setConfirmPreview(confirmPreview === id ? null : id)}

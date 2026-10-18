@@ -1,10 +1,33 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
+import SiteAuditPanel from '@/components/seo/SiteAuditPanel';
 
-type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor';
+type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor' | 'ctr_report' | 'site_audit';
+
+interface RealJob {
+  jobId:      number | null;
+  title:      string;
+  company:    string;
+  vesselType: string;
+  duration:   string;
+  salary:     string;
+  location:   string;
+}
+
+interface CtrRow {
+  query: string; page: string; clicks: number; impressions: number;
+  ctr: number; position: number; expectedCtr: number; lostClicks: number;
+}
+interface CtrSuggestion {
+  page: string; suggestedTitle: string; suggestedDescription: string; reasoning: string;
+}
+interface CtrReportResponse {
+  ok: boolean; notConfigured?: boolean; error?: string; aiError?: string;
+  rows?: CtrRow[]; suggestions?: CtrSuggestion[]; totalAnalyzed?: number; fetchedAt?: string;
+}
 
 const VESSEL_TYPES = [
   'Bulk Carrier', 'Tanker', 'Container Ship', 'Offshore Vessel',
@@ -18,10 +41,10 @@ const RANKS = [
 ];
 
 const INTENT_TYPES = [
-  { value: 'all',           label: '🎯 Tümü' },
-  { value: 'commercial',    label: '💼 Commercial (Karşılaştırma, Best of)' },
-  { value: 'transactional', label: '💰 Transactional (Apply, Hire, Buy)' },
-  { value: 'informational', label: '📚 Informational (How to, What is)' },
+  { value: 'all',           label: '🎯 Tümü',                                labelEn: '🎯 All' },
+  { value: 'commercial',    label: '💼 Commercial (Karşılaştırma, Best of)', labelEn: '💼 Commercial (Comparison, Best of)' },
+  { value: 'transactional', label: '💰 Transactional (Apply, Hire, Buy)',    labelEn: '💰 Transactional (Apply, Hire, Buy)' },
+  { value: 'informational', label: '📚 Informational (How to, What is)',     labelEn: '📚 Informational (How to, What is)' },
 ];
 
 // ── Öneri havuzları ────────────────────────────────────────────────────────────
@@ -81,11 +104,12 @@ const SEO_TEMPLATES: { jobTitle: string; vesselType: string; label: string }[] =
   { jobTitle: 'Cook',           vesselType: 'Passenger Ship',   label: '🍳 Cook / Passenger' },
 ];
 
-const COMPETITOR_TEMPLATES: { label: string; focus: string }[] = [
-  { label: '🌍 Genel Karşılaştırma', focus: 'SEO, ürün, fiyatlama, pazar payı' },
-  { label: '📣 İçerik & SEO Odaklı', focus: 'Blog stratejisi, keyword boşlukları, backlink profili' },
-  { label: '💰 Reklam & Büyüme',     focus: 'Google Ads, sosyal medya reklamları, kullanıcı edinme maliyeti' },
-  { label: '🎯 Ürün & UX Odaklı',    focus: 'Arayüz karşılaştırma, özellik eksiklikleri, kullanıcı deneyimi' },
+// focus: AI istemine giden düzenlenebilir değer (TR kalır); etiketler TR/EN
+const COMPETITOR_TEMPLATES: { label: string; labelEn: string; focus: string }[] = [
+  { label: '🌍 Genel Karşılaştırma', labelEn: '🌍 General Comparison',   focus: 'SEO, ürün, fiyatlama, pazar payı' },
+  { label: '📣 İçerik & SEO Odaklı', labelEn: '📣 Content & SEO Focus',  focus: 'Blog stratejisi, keyword boşlukları, backlink profili' },
+  { label: '💰 Reklam & Büyüme',     labelEn: '💰 Ads & Growth',         focus: 'Google Ads, sosyal medya reklamları, kullanıcı edinme maliyeti' },
+  { label: '🎯 Ürün & UX Odaklı',    labelEn: '🎯 Product & UX Focus',   focus: 'Arayüz karşılaştırma, özellik eksiklikleri, kullanıcı deneyimi' },
 ];
 
 // ── Rastgele set seç (tekrar etmeme için indeks sakla) ────────────────────────
@@ -95,14 +119,40 @@ function pickSet<T>(pool: T[][], currentIdx: number): [T[], number] {
   return [pool[next], next];
 }
 
+// Keyword Araştırma çıktısındaki markdown tablosunun ilk sütunundan keyword'leri çıkarır.
+// AI serbest formatta markdown üretiyor — başlık/ayraç satırlarını ve boş hücreleri eler.
+function extractKeywordsFromMarkdown(md: string): string[] {
+  if (!md) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const line of md.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|')) continue;
+    const cells = trimmed.split('|').map(c => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1);
+    if (cells.length < 2) continue;
+    const first = cells[0].replace(/^\*\*|\*\*$/g, '').trim();
+    if (!first) continue;
+    if (/^:?-+:?$/.test(first.replace(/\s/g, ''))) continue; // ayraç satırı (|---|:---|---:|)
+    if (/^keyword$/i.test(first)) continue;               // başlık satırı
+    if (first.length > 60) continue;                      // tablo dışı uzun metin kaçtıysa ele
+    const key = first.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(first);
+  }
+  return out;
+}
+
 export default function SeoTab() {
   const { lang } = useLang();
 
   const SUB_TABS: { id: SubTab; label: string; icon: string }[] = [
-    { id: 'blog',       label: lang === 'tr' ? 'Blog Makalesi'   : 'Blog Article',        icon: '📝' },
-    { id: 'seo',        label: lang === 'tr' ? 'İlan SEO'        : 'Job SEO',             icon: '🔍' },
-    { id: 'keyword',    label: lang === 'tr' ? 'Keyword Araştır' : 'Keyword Research',    icon: '🎯' },
-    { id: 'competitor', label: lang === 'tr' ? 'Rakip Analizi'   : 'Competitor Analysis', icon: '⚔️' },
+    { id: 'blog',       label: lang === 'tr' ? 'Blog Makalesi'    : 'Blog Article',        icon: '📝' },
+    { id: 'seo',        label: lang === 'tr' ? 'İlan SEO'         : 'Job SEO',             icon: '🔍' },
+    { id: 'keyword',    label: lang === 'tr' ? 'Keyword Araştır'  : 'Keyword Research',    icon: '🎯' },
+    { id: 'competitor', label: lang === 'tr' ? 'Rakip Analizi'    : 'Competitor Analysis', icon: '⚔️' },
+    { id: 'ctr_report', label: lang === 'tr' ? 'Düşük CTR Raporu' : 'Low CTR Report',      icon: '📉' },
+    { id: 'site_audit', label: lang === 'tr' ? 'Site Denetimi'    : 'Site Audit',           icon: '🧭' },
   ];
 
   const [subTab,     setSubTab]     = useState<SubTab>('blog');
@@ -110,7 +160,49 @@ export default function SeoTab() {
   const [jobTitle,   setJobTitle]   = useState('Chief Officer');
   const [vesselType, setVesselType] = useState('Bulk Carrier');
   const [language,   setLanguage]   = useState<'tr' | 'en'>('en');
+
+  // Keyword Araştırma'dan İlan SEO'ya taşınan hedef keyword — sekme değişse de kalıcı
+  const [targetKeyword, setTargetKeyword] = useState('');
   const [competitorFocus, setCompetitorFocus] = useState('SEO, ürün, fiyatlama, pazar payı');
+
+  // ── İlan SEO: gerçek ilan mı, manuel şablon mu ────────────────────────────────
+  const [jobSourceMode, setJobSourceMode] = useState<'real' | 'manual'>('real');
+  const [realJobs,        setRealJobs]        = useState<RealJob[]>([]);
+  const [realJobsLoading, setRealJobsLoading] = useState(false);
+  const [realJobsError,   setRealJobsError]   = useState('');
+  const [jobSearch,       setJobSearch]       = useState('');
+  const [selectedJob,     setSelectedJob]     = useState<RealJob | null>(null);
+
+  const loadRealJobs = useCallback(async () => {
+    setRealJobsLoading(true);
+    setRealJobsError('');
+    try {
+      const res  = await fetch('/api/activation/job-listings?limit=60');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setRealJobs(data.jobs || []);
+    } catch (e: unknown) {
+      setRealJobsError(e instanceof Error ? e.message : lang === 'tr' ? 'İlanlar yüklenemedi' : 'Failed to load jobs');
+    } finally {
+      setRealJobsLoading(false);
+    }
+  }, [lang]);
+
+  useEffect(() => {
+    if (subTab === 'seo' && jobSourceMode === 'real' && realJobs.length === 0 && !realJobsLoading) {
+      loadRealJobs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subTab, jobSourceMode]);
+
+  const filteredRealJobs = realJobs.filter(j => {
+    const q = jobSearch.trim().toLowerCase();
+    if (!q) return true;
+    return j.title.toLowerCase().includes(q)
+        || j.company.toLowerCase().includes(q)
+        || j.vesselType.toLowerCase().includes(q)
+        || j.location.toLowerCase().includes(q);
+  });
 
   // Keyword research
   const [seedKeyword, setSeedKeyword] = useState('seafarer jobs');
@@ -145,6 +237,28 @@ export default function SeoTab() {
   const [blogImageData, setBlogImageData] = useState('');
   const [blogImageMime, setBlogImageMime] = useState('image/png');
 
+  // ── Düşük CTR Raporu ────────────────────────────────────────────────────────
+  const [ctrRange,    setCtrRange]    = useState<'7' | '30' | '90'>('30');
+  const [ctrData,     setCtrData]     = useState<CtrReportResponse | null>(null);
+  const [ctrLoading,  setCtrLoading]  = useState(false);
+  const [ctrError,    setCtrError]    = useState('');
+
+  const loadCtrReport = useCallback(async () => {
+    setCtrLoading(true);
+    setCtrError('');
+    setCtrData(null);
+    try {
+      const res  = await fetch(`/api/seo/ctr-report?range=${ctrRange}&lang=${language}`);
+      const data: CtrReportResponse = await res.json();
+      if (!data.ok) throw new Error(data.error || (lang === 'tr' ? 'GSC yapılandırılmamış' : 'GSC not configured'));
+      setCtrData(data);
+    } catch (e: unknown) {
+      setCtrError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
+    } finally {
+      setCtrLoading(false);
+    }
+  }, [ctrRange, language, lang]);
+
   const publishBlog = async () => {
     if (!output) return;
     setPublishing(true);
@@ -161,7 +275,7 @@ export default function SeoTab() {
       const data = await res.json() as typeof publishResult;
       setPublishResult(data);
     } catch (e: unknown) {
-      setPublishResult({ error: e instanceof Error ? e.message : 'Bağlantı hatası' });
+      setPublishResult({ error: e instanceof Error ? e.message : (lang === 'tr' ? 'Bağlantı hatası' : 'Connection error') });
     } finally {
       setPublishing(false);
     }
@@ -178,7 +292,24 @@ export default function SeoTab() {
       if (subTab === 'blog') {
         body = { ...body, type: 'blog', topic: blogTopic || undefined };
       } else if (subTab === 'seo') {
-        body = { ...body, type: 'seo_job', jobTitle, vesselType };
+        if (jobSourceMode === 'real' && selectedJob) {
+          body = {
+            ...body,
+            type: 'seo_job',
+            job: {
+              id:               selectedJob.jobId,
+              title:            selectedJob.title,
+              vesselType:       selectedJob.vesselType,
+              company:          selectedJob.company,
+              location:         selectedJob.location,
+              salary:           selectedJob.salary,
+              contractDuration: selectedJob.duration,
+            },
+            targetKeyword: targetKeyword || undefined,
+          };
+        } else {
+          body = { ...body, type: 'seo_job', jobTitle, vesselType, targetKeyword: targetKeyword || undefined };
+        }
       } else if (subTab === 'keyword') {
         body = { ...body, type: 'keyword_research', seedKeyword, intent };
       } else if (subTab === 'competitor') {
@@ -195,7 +326,7 @@ export default function SeoTab() {
       setOutput(data.content);
       if (subTab === 'blog') { setBlogImageData(''); setBlogImageMime('image/png'); setPublishResult(null); }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Hata oluştu');
+      setError(e instanceof Error ? e.message : (lang === 'tr' ? 'Hata oluştu' : 'An error occurred'));
     } finally {
       setLoading(false);
     }
@@ -210,6 +341,10 @@ export default function SeoTab() {
     if (subTab === 'competitor')  return `${flag} ${lang === 'tr' ? 'Rakip Analizi Üret'   : 'Generate Competitor Analysis'}`;
     return lang === 'tr' ? 'Üret' : 'Generate';
   };
+
+  if (subTab === 'site_audit') {
+    return <SiteAuditPanel lang={lang} onExit={() => setSubTab('blog')} onOpenCtrReport={() => setSubTab('ctr_report')} />;
+  }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -226,7 +361,7 @@ export default function SeoTab() {
           </p>
         </div>
 
-        {/* Sub-tabs grid 2x2 */}
+        {/* Sub-tabs grid */}
         <div className="grid grid-cols-2 gap-2">
           {SUB_TABS.map(t => (
             <button
@@ -301,38 +436,134 @@ export default function SeoTab() {
         {/* ── SEO Job form ── */}
         {subTab === 'seo' && (
           <div className="flex flex-col gap-3">
-            <Field label={lang === 'tr' ? 'Pozisyon / Rütbe' : 'Position / Rank'}>
-              <select value={jobTitle} onChange={e => setJobTitle(e.target.value)} className={selectClass}>
-                {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-            </Field>
-            <Field label={lang === 'tr' ? 'Gemi Tipi' : 'Vessel Type'}>
-              <select value={vesselType} onChange={e => setVesselType(e.target.value)} className={selectClass}>
-                {VESSEL_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
-              </select>
-            </Field>
-
-            {/* Hızlı şablonlar */}
-            <div className="flex flex-col gap-2">
-              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                ⚡ {lang === 'tr' ? 'Hızlı Şablonlar' : 'Quick Templates'}
-              </span>
-              <div className="grid grid-cols-2 gap-1.5">
-                {SEO_TEMPLATES.map((t, i) => (
-                  <button
-                    key={i}
-                    onClick={() => { setJobTitle(t.jobTitle); setVesselType(t.vesselType); }}
-                    className={`text-left text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${
-                      jobTitle === t.jobTitle && vesselType === t.vesselType
-                        ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
-                        : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-ocean hover:bg-ocean/5'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+            {/* Keyword Araştırma'dan taşınan hedef keyword */}
+            {targetKeyword && (
+              <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-2.5 flex items-center justify-between gap-2">
+                <p className="text-xs text-purple-700 dark:text-purple-300">
+                  🎯 {lang === 'tr' ? 'Hedef keyword:' : 'Target keyword:'} <strong>&quot;{targetKeyword}&quot;</strong>
+                </p>
+                <button
+                  onClick={() => setTargetKeyword('')}
+                  className="text-[11px] text-purple-500 hover:text-purple-700 dark:hover:text-purple-200 flex-shrink-0"
+                  title={lang === 'tr' ? 'Temizle' : 'Clear'}
+                >
+                  ✕
+                </button>
               </div>
+            )}
+
+            {/* Kaynak modu: gerçek ilan mı, manuel şablon mu */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setJobSourceMode('real')}
+                className={`py-2 px-3 rounded-lg text-xs font-medium transition-colors border-2 ${
+                  jobSourceMode === 'real'
+                    ? 'bg-ocean text-white border-ocean'
+                    : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50'
+                }`}
+              >
+                📋 {lang === 'tr' ? 'Gerçek İlan Seç' : 'Pick Real Job'}
+              </button>
+              <button
+                onClick={() => setJobSourceMode('manual')}
+                className={`py-2 px-3 rounded-lg text-xs font-medium transition-colors border-2 ${
+                  jobSourceMode === 'manual'
+                    ? 'bg-ocean text-white border-ocean'
+                    : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50'
+                }`}
+              >
+                ✏️ {lang === 'tr' ? 'Manuel Şablon' : 'Manual Template'}
+              </button>
             </div>
+
+            {jobSourceMode === 'real' ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  {lang === 'tr'
+                    ? 'Platformda yayında olan gerçek bir ilan seçin — üretilen meta o ilanın çalışan URL\'ine bağlanır.'
+                    : 'Pick a job that is actually live on the platform — the generated meta links to that job\'s working URL.'}
+                </p>
+                <input
+                  type="text"
+                  value={jobSearch}
+                  onChange={e => setJobSearch(e.target.value)}
+                  placeholder={lang === 'tr' ? 'Pozisyon, şirket, gemi tipi ara...' : 'Search position, company, vessel type...'}
+                  className={selectClass}
+                />
+                {realJobsLoading && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2 py-2">
+                    <span className="w-3.5 h-3.5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
+                    {lang === 'tr' ? 'İlanlar yükleniyor...' : 'Loading jobs...'}
+                  </p>
+                )}
+                {realJobsError && (
+                  <p className="text-xs text-red-500">❌ {realJobsError}</p>
+                )}
+                {!realJobsLoading && !realJobsError && (
+                  <div className="max-h-64 overflow-y-auto flex flex-col gap-1.5 border border-slate-200 dark:border-slate-600 rounded-lg p-2">
+                    {filteredRealJobs.length === 0 && (
+                      <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
+                        {lang === 'tr' ? 'Sonuç bulunamadı.' : 'No results.'}
+                      </p>
+                    )}
+                    {filteredRealJobs.map((j, i) => (
+                      <button
+                        key={j.jobId ?? i}
+                        onClick={() => setSelectedJob(j)}
+                        className={`text-left text-xs px-3 py-2 rounded-lg border transition-all ${
+                          selectedJob?.jobId === j.jobId
+                            ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
+                            : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-ocean hover:bg-ocean/5'
+                        }`}
+                      >
+                        <p className="font-semibold">{j.title || '—'} <span className="font-normal opacity-70">· {j.vesselType}</span></p>
+                        <p className="text-[10px] opacity-70 mt-0.5">{j.company} — {j.location}{j.salary ? ` — ${j.salary}` : ''}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {selectedJob && (
+                  <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg p-2.5 text-[11px] text-emerald-700 dark:text-emerald-300">
+                    ✅ {lang === 'tr' ? 'Seçili:' : 'Selected:'} <strong>{selectedJob.title}</strong> ({selectedJob.vesselType}) — ID {selectedJob.jobId}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <Field label={lang === 'tr' ? 'Pozisyon / Rütbe' : 'Position / Rank'}>
+                  <select value={jobTitle} onChange={e => setJobTitle(e.target.value)} className={selectClass}>
+                    {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </Field>
+                <Field label={lang === 'tr' ? 'Gemi Tipi' : 'Vessel Type'}>
+                  <select value={vesselType} onChange={e => setVesselType(e.target.value)} className={selectClass}>
+                    {VESSEL_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </Field>
+
+                {/* Hızlı şablonlar */}
+                <div className="flex flex-col gap-2">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    ⚡ {lang === 'tr' ? 'Hızlı Şablonlar' : 'Quick Templates'}
+                  </span>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {SEO_TEMPLATES.map((t, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { setJobTitle(t.jobTitle); setVesselType(t.vesselType); }}
+                        className={`text-left text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${
+                          jobTitle === t.jobTitle && vesselType === t.vesselType
+                            ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
+                            : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-ocean hover:bg-ocean/5'
+                        }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -344,7 +575,7 @@ export default function SeoTab() {
                 type="text"
                 value={seedKeyword}
                 onChange={e => setSeedKeyword(e.target.value)}
-                placeholder="Örn: seafarer jobs, gemi adamı işleri"
+                placeholder={lang === 'tr' ? 'Örn: seafarer jobs, gemi adamı işleri' : 'e.g. seafarer jobs, maritime careers'}
                 className={selectClass}
               />
             </Field>
@@ -381,7 +612,7 @@ export default function SeoTab() {
 
             <Field label="Search Intent">
               <select value={intent} onChange={e => setIntent(e.target.value)} className={selectClass}>
-                {INTENT_TYPES.map(i => <option key={i.value} value={i.value}>{i.label}</option>)}
+                {INTENT_TYPES.map(i => <option key={i.value} value={i.value}>{lang === 'tr' ? i.label : i.labelEn}</option>)}
               </select>
             </Field>
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
@@ -421,7 +652,7 @@ export default function SeoTab() {
                         : 'bg-slate-50 dark:bg-slate-700/50 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-ocean hover:bg-ocean/5'
                     }`}
                   >
-                    <p className="font-medium">{t.label}</p>
+                    <p className="font-medium">{lang === 'tr' ? t.label : t.labelEn}</p>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{t.focus}</p>
                   </button>
                 ))}
@@ -430,7 +661,39 @@ export default function SeoTab() {
           </div>
         )}
 
+        {/* ── Düşük CTR Raporu form ── */}
+        {subTab === 'ctr_report' && (
+          <div className="flex flex-col gap-3">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-300 flex gap-2">
+              <span className="text-base">📉</span>
+              <p className="leading-relaxed">
+                {lang === 'tr'
+                  ? 'Google\'da iyi pozisyonda gösterilen ama beklenenin çok altında tıklanan sayfaları bulur ve AI ile yeni başlık/açıklama önerir.'
+                  : 'Finds pages ranking well on Google but clicked far less than expected, and suggests AI-generated title/description fixes.'}
+              </p>
+            </div>
+            <Field label={lang === 'tr' ? 'Zaman Aralığı' : 'Date Range'}>
+              <div className="grid grid-cols-3 gap-2">
+                {(['7', '30', '90'] as const).map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setCtrRange(r)}
+                    className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors border-2 ${
+                      ctrRange === r
+                        ? 'bg-ocean text-white border-ocean'
+                        : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50'
+                    }`}
+                  >
+                    {r} {lang === 'tr' ? 'gün' : 'days'}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+        )}
+
         {/* Dil */}
+        {subTab !== 'ctr_report' && (
         <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content Language'}>
           <div className="grid grid-cols-2 gap-2">
             {([
@@ -452,21 +715,35 @@ export default function SeoTab() {
             ))}
           </div>
           {subTab === 'blog' && language === 'en' && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 SEO blog için İngilizce önerilir (global kitle).</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 {lang === 'tr' ? 'SEO blog için İngilizce önerilir (global kitle).' : 'English is recommended for SEO blogs (global audience).'}</p>
           )}
           {subTab === 'keyword' && language === 'en' && (
             <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 Maritime sektörü çoğunlukla İngilizce arama yapar.</p>
           )}
         </Field>
+        )}
 
-        <button
-          onClick={generate}
-          disabled={loading}
-          className="w-full bg-ocean hover:bg-ocean-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-auto"
-        >
-          {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          {buttonLabel()}
-        </button>
+        {subTab === 'ctr_report' ? (
+          <button
+            onClick={loadCtrReport}
+            disabled={ctrLoading}
+            className="w-full bg-ocean hover:bg-ocean-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-auto"
+          >
+            {ctrLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {ctrLoading
+              ? (lang === 'tr' ? 'Analiz ediliyor...' : 'Analyzing...')
+              : (lang === 'tr' ? '📉 Raporu Getir' : '📉 Fetch Report')}
+          </button>
+        ) : (
+          <button
+            onClick={generate}
+            disabled={loading || (subTab === 'seo' && jobSourceMode === 'real' && !selectedJob)}
+            className="w-full bg-ocean hover:bg-ocean-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-auto"
+          >
+            {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {buttonLabel()}
+          </button>
+        )}
 
         {/* Blog yayınla */}
         {subTab === 'blog' && output && (
@@ -536,17 +813,174 @@ export default function SeoTab() {
           {subTab === 'seo'        && (lang === 'tr' ? 'Üretilen SEO Meta'        : 'Generated SEO Meta')}
           {subTab === 'keyword'    && (lang === 'tr' ? 'Keyword Araştırma Sonucu' : 'Keyword Research Result')}
           {subTab === 'competitor' && (lang === 'tr' ? 'Rakip Analizi Raporu'     : 'Competitor Analysis Report')}
+          {subTab === 'ctr_report' && (lang === 'tr' ? 'Düşük CTR Raporu'         : 'Low CTR Report')}
         </h3>
-        <OutputPanel
-          content={output}
-          loading={loading}
-          error={error}
-          platform={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
-          contentType={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
-          autoSaveHistory={{ prompt: `SEO & Blog · ${subTab}`, language }}
-          onImageReady={subTab === 'blog' ? (data, mime) => { setBlogImageData(data); setBlogImageMime(mime); } : undefined}
-        />
+        {subTab === 'ctr_report' ? (
+          <CtrReportPanel data={ctrData} loading={ctrLoading} error={ctrError} lang={lang} />
+        ) : (
+          <OutputPanel
+            content={output}
+            loading={loading}
+            error={error}
+            platform={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
+            contentType={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
+            autoSaveHistory={{ prompt: `SEO & Blog · ${subTab}`, language }}
+            onImageReady={subTab === 'blog' ? (data, mime) => { setBlogImageData(data); setBlogImageMime(mime); } : undefined}
+          />
+        )}
+
+        {/* Keyword Araştırma → İlan SEO köprüsü: tablodan çıkarılan keyword'ler tıklanabilir */}
+        {subTab === 'keyword' && output && !loading && (() => {
+          const extracted = extractKeywordsFromMarkdown(output);
+          if (extracted.length === 0) return null;
+          return (
+            <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
+                🔗 {lang === 'tr'
+                  ? `${extracted.length} keyword bulundu — birini seçip İlan SEO'da hedefleyin:`
+                  : `Found ${extracted.length} keywords — pick one to target in Job SEO:`}
+              </p>
+              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                {extracted.map((kw, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setTargetKeyword(kw); setSubTab('seo'); }}
+                    className="text-[11px] px-2.5 py-1.5 rounded-full border border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+                    title={lang === 'tr' ? "İlan SEO'da hedefle" : 'Target in Job SEO'}
+                  >
+                    🎯 {kw}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
       </div>
+    </div>
+  );
+}
+
+function CtrReportPanel({
+  data, loading, error, lang,
+}: {
+  data: CtrReportResponse | null; loading: boolean; error: string; lang: 'tr' | 'en';
+}) {
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400 dark:text-slate-500">
+        <div className="w-8 h-8 border-3 border-ocean border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm">{lang === 'tr' ? 'GSC verisi analiz ediliyor ve AI önerileri üretiliyor...' : 'Analyzing GSC data and generating AI suggestions...'}</p>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-600 dark:text-red-400">
+        ❌ {error}
+      </div>
+    );
+  }
+  if (data?.notConfigured) {
+    return (
+      <div className="rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-4 text-sm text-amber-700 dark:text-amber-300">
+        ⚠️ {lang === 'tr'
+          ? 'Google Search Console yapılandırılmamış (GOOGLE_SERVICE_ACCOUNT_JSON / GSC_SITE_URL eksik).'
+          : 'Google Search Console is not configured (GOOGLE_SERVICE_ACCOUNT_JSON / GSC_SITE_URL missing).'}
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-2 text-slate-400 dark:text-slate-500 text-center">
+        <span className="text-3xl">📉</span>
+        <p className="text-sm">
+          {lang === 'tr' ? 'Zaman aralığını seçin ve ' : 'Pick a date range and click '}
+          <strong>{lang === 'tr' ? 'Raporu Getir' : 'Fetch Report'}</strong>
+          {lang === 'tr' ? "'e tıklayın." : '.'}
+        </p>
+      </div>
+    );
+  }
+
+  const rows        = data.rows || [];
+  const suggestions = data.suggestions || [];
+  const suggByPage  = new Map(suggestions.map(s => [s.page, s]));
+  const totalLost   = Math.round(rows.reduce((sum, r) => sum + r.lostClicks, 0));
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-xl border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 p-4 text-sm text-green-700 dark:text-green-300">
+        ✅ {lang === 'tr'
+          ? `Analiz edilen ${data.totalAnalyzed ?? 0} sorgu/sayfa çiftinde önemli bir CTR sapması bulunamadı.`
+          : `No significant CTR gap found among ${data.totalAnalyzed ?? 0} analyzed query/page pairs.`}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label={lang === 'tr' ? 'Sorunlu Satır' : 'Flagged Rows'} value={String(rows.length)} />
+        <StatCard label={lang === 'tr' ? 'Analiz Edilen' : 'Total Analyzed'} value={String(data.totalAnalyzed ?? 0)} />
+        <StatCard label={lang === 'tr' ? 'Tahmini Kayıp Tık.' : 'Est. Lost Clicks'} value={String(totalLost)} accent />
+      </div>
+
+      {data.aiError && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-700 dark:text-amber-300">
+          ⚠️ {lang === 'tr' ? 'AI önerisi üretilemedi, ham veri aşağıda:' : 'AI suggestions failed, raw data below:'} {data.aiError}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {rows.map((r, i) => {
+          const sugg = suggByPage.get(r.page);
+          return (
+            <div key={i} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <div className="bg-slate-50 dark:bg-slate-700/50 px-4 py-2.5 flex items-center justify-between gap-2">
+                <a href={r.page} target="_blank" rel="noopener noreferrer"
+                   className="text-xs text-ocean hover:underline truncate font-medium">{r.page}</a>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                  ~{Math.round(r.lostClicks)} {lang === 'tr' ? 'kayıp tık.' : 'lost clicks'}
+                </span>
+              </div>
+              <div className="p-4 flex flex-col gap-3">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                  <span>🔎 <strong className="text-slate-700 dark:text-slate-200">&quot;{r.query}&quot;</strong></span>
+                  <span>📍 {lang === 'tr' ? 'poz.' : 'pos.'} {r.position.toFixed(1)}</span>
+                  <span>👁️ {r.impressions}</span>
+                  <span>🖱️ {r.clicks}</span>
+                  <span className="text-red-500 font-medium">
+                    CTR %{(r.ctr * 100).toFixed(1)} <span className="text-slate-400">({lang === 'tr' ? 'beklenen' : 'expected'} %{(r.expectedCtr * 100).toFixed(1)})</span>
+                  </span>
+                </div>
+                {sugg ? (
+                  <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg p-3 flex flex-col gap-1.5">
+                    <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
+                      {lang === 'tr' ? 'Önerilen Düzeltme' : 'Suggested Fix'}
+                    </p>
+                    <p className="text-sm text-slate-800 dark:text-slate-100"><strong>Title:</strong> {sugg.suggestedTitle}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300"><strong>Description:</strong> {sugg.suggestedDescription}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 italic mt-1">💡 {sugg.reasoning}</p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+                    {lang === 'tr' ? 'Bu satır için AI önerisi yok (ilk 15 içinde değil).' : 'No AI suggestion for this row (not in top 15).'}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
+      <p className={`text-xl font-bold ${accent ? 'text-red-500' : 'text-slate-800 dark:text-slate-100'}`}>{value}</p>
+      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{label}</p>
     </div>
   );
 }

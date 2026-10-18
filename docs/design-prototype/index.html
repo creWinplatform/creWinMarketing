@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="tr" data-brand="ryzevo">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="robots" content="noindex,nofollow">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="application-name" content="Ryzevo">
+  <meta name="description" content="Ryzevo Growth Studio: araştırma, içerik ve kampanya çalışma alanı. Yerel tasarım prototipi.">
+  <title>Ryzevo | Growth Studio</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./studio.css">
+  <link rel="stylesheet" href="./ryzevo-brand.css">
+  <script defer src="./vendor/lucide.min.js"></script>
+  <script defer src="./vendor/three.min.js"></script>
+  <script defer src="./studio.js"></script>
+  <script defer src="./scene.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">İçeriğe geç</a>
+  <div id="landing-view">
+    <header class="landing-header">
+      <a class="brand" href="#" aria-label="Ryzevo ana sayfa"><span class="brand-logo"><img src="./assets/ryzevo-brand-board.png" alt="Ryzevo" width="1536" height="1024"></span></a>
+      <nav class="landing-nav" aria-label="Ana menü">
+        <a href="#workflow">Çalışma alanı</a><a href="#solutions">Çözümler</a><a href="#principles">Yaklaşımımız</a>
+      </nav>
+      <div class="header-actions"><span class="concept-label">TASARIM PROTOTİPİ</span><button class="button button-ink" data-enter>Stüdyoyu aç <i data-lucide="arrow-up-right"></i></button></div>
+    </header>
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <div id="growth-scene" aria-label="Araştırma, içerik ve kampanya adımlarını temsil eden etkileşimli 3D çalışma alanı"></div>
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="tiny-cross">+</span> FİKİRDEN ETKİYE, BİRLİKTE.</div>
+          <h1 id="hero-title">Büyüme<br><span>stüdyonuz.</span></h1>
+          <p>Araştır, üret, yayına hazırla.<br>Tüm pazarlama işlerin, tek bir akışta.</p>
+          <div class="hero-actions"><button class="button button-green" data-enter>Çalışma alanını keşfet <i data-lucide="arrow-up-right"></i></button><a class="text-link" href="#workflow">Akışı gör <i data-lucide="arrow-down"></i></a></div>
+        </div>
+        <div class="hero-bottom">
+          <div class="scene-tabs" role="tablist" aria-label="Büyüme adımları">
+            <button role="tab" aria-selected="true" data-scene="0"><span>01</span> Araştır</button>
+            <button role="tab" aria-selected="false" data-scene="1"><span>02</span> Üret</button>
+            <button role="tab" aria-selected="false" data-scene="2"><span>03</span> Büyüt</button>
+          </div>
+          <button class="icon-button scene-pause" id="scene-pause" aria-label="Animasyonu duraklat" title="Animasyonu duraklat"><i data-lucide="pause"></i></button>
+          <span class="hero-note"><span class="status-dot"></span> İyi işler, birbirine bağlı.</span>
+        </div>
+      </section>
+      <section class="workflow-section" id="workflow">
+        <div class="section-heading"><div><div class="eyebrow">DAĞINIK ARAÇLAR DEĞİL. ORTAK BİR RİTİM.</div><h2>Bir sonraki adımın belli olsun.</h2></div><button class="text-link" data-enter>Stüdyoya gir <i data-lucide="arrow-up-right"></i></button></div>
+        <div class="workflow-preview">
+          <div class="preview-rail"><span class="brand-symbol" aria-label="Ryzevo"><img src="./assets/ryzevo-brand-board.png" alt="" width="1536" height="1024"></span><i data-lucide="layout-dashboard"></i><i data-lucide="workflow"></i><i data-lucide="scan-search"></i><i data-lucide="calendar-days"></i></div>
+          <div class="preview-body"><div class="preview-top"><span>CREWINJOB <i data-lucide="chevron-down"></i></span><span class="demo-label">Örnek çalışma alanı</span></div><div class="preview-title"><h3>Fikir, doğru insanla buluşsun.</h3><span class="badge green">3 / 4 adım hazır</span></div>
+            <div class="mini-flow"><div><i data-lucide="scan-search"></i><strong>Doğru kitle</strong><span>Kaynaklarıyla araştır</span><em>Hazır</em></div><i data-lucide="arrow-right"></i><div><i data-lucide="notebook-pen"></i><strong>İyi içerik</strong><span>Markanın sesiyle üret</span><em>Hazır</em></div><i data-lucide="arrow-right"></i><div class="mini-flow-active"><i data-lucide="mouse-pointer-2"></i><strong>Son kontrol</strong><span>Yayın öncesi onayla</span><em>Senin sıran</em></div><i data-lucide="arrow-right"></i><div><i data-lucide="send"></i><strong>Yayın & ölçüm</strong><span>Sonucunu takip et</span><em>Bekliyor</em></div></div>
+          </div>
+        </div>
+      </section>
+      <section class="solutions-section" id="solutions">
+        <div class="eyebrow">TEK BİR MARKA KALIBINA SIĞMAZ.</div><h2>Senin işin.<br><span>Senin büyüme yolun.</span></h2>
+        <div class="solution-tabs" role="tablist" aria-label="Hedef kitle çözümleri"><button role="tab" aria-selected="true" data-solution="startup">Girişimler</button><button role="tab" aria-selected="false" data-solution="team">Pazarlama ekipleri</button><button role="tab" aria-selected="false" data-solution="crewin">CrewinJob</button></div>
+        <div class="solution-detail"><div><span id="solution-index">01 / İLK GÜNDEN İTİBAREN</span><h3 id="solution-title">İlk doğru müşterini bul.</h3><p id="solution-copy">Hedef kitleni araştır, ilk kampanyanı hazırla ve hangi adımın işe yaradığını takip et.</p><button class="button button-ink" data-enter>Örnek projeyi aç <i data-lucide="arrow-up-right"></i></button></div><div class="solution-map" aria-label="Proje akışı"><span class="map-source"><i data-lucide="building-2"></i> Proje bağlamı</span><i data-lucide="arrow-down"></i><div><span><i data-lucide="users"></i> Kitle</span><span><i data-lucide="flag"></i> Hedefler</span><span><i data-lucide="radio"></i> Kanallar</span></div><i data-lucide="arrow-down"></i><strong id="solution-outcome">İlk nitelikli müşteri</strong></div></div>
+      </section>
+      <section class="principles-section" id="principles"><div class="eyebrow">KONTROL SENDE KALSIN.</div><h2>AI hızlandırsın.<br>Kararı sen ver.</h2><div class="principles-grid"><div><i data-lucide="fingerprint"></i><h3>Markana ait bir bağlam.</h3><p>Hedeflerin, sesin ve çalışma biçimin aynı projede.</p></div><div><i data-lucide="circle-check"></i><h3>Yayından önce son söz.</h3><p>Araştırmadan içeriğe, kritik adımlar onayından geçer.</p></div><div><i data-lucide="scan-line"></i><h3>Kaynağı belli sonuçlar.</h3><p>Bağlı veri varsa ölçüm. Yoksa açıkça veri yok.</p></div></div></section>
+      <section class="landing-cta"><div class="eyebrow">BİR SONRAKİ İYİ FİKİR SENİN.</div><h2>Birlikte<br>ilerletelim.</h2><button class="button button-light" data-enter>Stüdyoyu keşfet <i data-lucide="arrow-up-right"></i></button><span class="cta-mark brand-symbol" aria-hidden="true"><img src="./assets/ryzevo-brand-board.png" alt="" width="1536" height="1024"></span></section>
+    </main>
+    <footer class="landing-footer"><a class="brand" href="#" aria-label="Ryzevo ana sayfa"><span class="brand-logo"><img src="./assets/ryzevo-brand-board.png" alt="Ryzevo" width="1536" height="1024"></span></a><span>ryzevo.com · Growth Studio</span><a href="#hero-title">Yukarı dön <i data-lucide="arrow-up"></i></a></footer>
+  </div>
+
+  <div id="workspace-view" hidden>
+    <div class="mobile-scrim" id="mobile-scrim"></div>
+    <aside class="sidebar" id="sidebar" aria-label="Çalışma alanı navigasyonu">
+      <div class="sidebar-brand"><button class="brand" data-home aria-label="Ryzevo ana sayfasına dön"><span class="brand-logo brand-logo--inverse"><img src="./assets/ryzevo-brand-board.png" alt="Ryzevo" width="1536" height="1024"></span></button><button class="icon-button mobile-only" id="close-sidebar" aria-label="Menüyü kapat"><i data-lucide="x"></i></button></div>
+      <button class="project-switch" id="project-switch" aria-expanded="false"><span class="project-logo">C</span><span><strong>CrewinJob</strong><small>Pazarlama çalışma alanı</small></span><i data-lucide="chevrons-up-down"></i></button>
+      <div class="project-popover" id="project-popover" hidden><span>ÖRNEK PROJELER</span><button data-project="CrewinJob"><span class="project-logo">C</span> CrewinJob <i data-lucide="check"></i></button><button data-project="Yeni girişim"><span class="project-logo project-logo-alt">Y</span> Yeni girişim</button></div>
+      <button class="search-trigger" data-command><i data-lucide="search"></i><span>Bir şey bul...</span><kbd>Ctrl K</kbd></button>
+      <nav class="side-nav" aria-label="Araçlar">
+        <button data-nav="overview" class="active"><i data-lucide="panels-top-left"></i><span>Çalışma masası</span></button>
+        <button data-nav="campaigns"><i data-lucide="workflow"></i><span>Kampanyalar</span><small>3</small></button>
+        <button data-nav="inbox"><i data-lucide="inbox"></i><span>Onay kutusu</span><small class="notification-count" id="approval-nav-count">3</small></button>
+        <div class="nav-label">BÜYÜME ARAÇLARI</div>
+        <button data-nav="audience"><i data-lucide="scan-search"></i><span>Kitle & araştırma</span></button>
+        <button data-nav="content"><i data-lucide="notebook-pen"></i><span>İçerik stüdyosu</span></button>
+        <button data-nav="calendar"><i data-lucide="calendar-days"></i><span>Yayın takvimi</span></button>
+        <button data-nav="seo"><i data-lucide="globe"></i><span>SEO & fırsatlar</span></button>
+        <button data-nav="reports"><i data-lucide="chart-no-axes-combined"></i><span>Sonuçlar</span></button>
+        <div class="nav-label">ÇALIŞMA ALANI</div>
+        <button data-nav="connections"><i data-lucide="plug"></i><span>Bağlantılar</span><span class="connection-dot"></span></button>
+        <button data-nav="settings"><i data-lucide="sliders-horizontal"></i><span>Proje ayarları</span></button>
+      </nav>
+      <div class="sidebar-bottom"><span class="demo-label"><i data-lucide="flask-conical"></i> Örnek veriler</span><button class="profile-button" data-nav="settings"><span class="avatar">EA</span><span><strong>Emre</strong><small>Çalışma alanı sahibi</small></span><i data-lucide="chevron-right"></i></button></div>
+    </aside>
+    <div class="workspace-main">
+      <header class="workspace-header"><div class="breadcrumb"><button class="icon-button mobile-only" id="open-sidebar" aria-label="Menüyü aç"><i data-lucide="menu"></i></button><span id="workspace-project">CrewinJob</span><span class="crumb-slash">/</span><strong id="breadcrumb-current">Çalışma masası</strong></div><div class="workspace-header-actions"><span class="local-indicator"><span class="status-dot"></span> Tasarım prototipi</span><button class="icon-button" data-command title="Ara" aria-label="Ara"><i data-lucide="search"></i></button><button class="icon-button notification-button" data-nav="inbox" title="Onay kutusu" aria-label="Onay kutusunu aç"><i data-lucide="bell"></i><b></b></button><button class="avatar avatar-small" data-nav="settings" title="Profil">EA</button></div></header>
+      <main class="workspace-content" id="workspace-content" tabindex="-1"></main>
+      <footer class="workspace-footer"><span><span class="status-dot"></span> Örnek çalışma alanı</span><button data-home>Landing sayfası <i data-lucide="arrow-up-right"></i></button></footer>
+    </div>
+    <nav class="mobile-bottom-nav" aria-label="Hızlı navigasyon"><button class="active" data-nav="overview"><i data-lucide="panels-top-left"></i><span>Masa</span></button><button data-nav="campaigns"><i data-lucide="workflow"></i><span>Akışlar</span></button><button data-nav="inbox"><i data-lucide="inbox"></i><span>Onaylar</span></button><button data-nav="calendar"><i data-lucide="calendar-days"></i><span>Takvim</span></button></nav>
+  </div>
+  <dialog id="command-dialog" class="command-dialog"><div class="command-input"><i data-lucide="search"></i><input id="command-input" placeholder="Kampanya, araç veya içerik ara..." aria-label="Çalışma alanında ara"><button class="icon-button" data-close-dialog aria-label="Aramayı kapat"><i data-lucide="x"></i></button></div><div id="command-results"></div><div class="command-footer">Çalışma alanı araması <span>Örnek veriler</span></div></dialog>
+  <dialog id="content-dialog" class="content-dialog"><div id="dialog-content"></div></dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript><div class="noscript-note">Etkileşimli prototipi görüntülemek için JavaScript etkin olmalıdır.</div></noscript>
+</body>
+</html>

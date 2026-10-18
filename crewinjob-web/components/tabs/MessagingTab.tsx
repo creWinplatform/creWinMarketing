@@ -1,11 +1,91 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import type { StatsResponse } from '@/lib/types';
 
-type SubTab = 'whatsapp' | 'telegram_channel' | 'telegram_bot' | 'notify_wa' | 'notify_tg';
+type SubTab = 'whatsapp' | 'telegram_channel' | 'telegram_bot' | 'notify_wa' | 'notify_tg' | 'notify_email' | 'notify_job_match';
+
+interface Props {
+  stats?: StatsResponse;
+}
+
+// ── E-posta re-aktivasyon ────────────────────────────────────────────────────
+const EMAIL_BUCKETS = [
+  { value: 'zero', labelTr: '🚫 Hiç Başlamamış (%0)',   labelEn: '🚫 Never Started (0%)',   color: 'bg-red-500' },
+  { value: 'low',   labelTr: '⚠️ Eksik Profil (%1–49)', labelEn: '⚠️ Incomplete Profile (1–49%)', color: 'bg-amber-500' },
+  { value: 'mid',   labelTr: '🔶 Aktivasyona Yakın (%50–79)', labelEn: '🔶 Near Activation (50–79%)', color: 'bg-yellow-500' },
+] as const;
+
+interface JobListing {
+  jobId:      number | null;
+  title:      string;
+  company:    string;
+  vesselType: string;
+  duration:   string;
+  salary:     string;
+  location:   string;
+  postedAt:   string | null;
+  applyUrl:   string;
+}
+
+// "Size Uygun İlanlar" kampanyasında tüm profil doluluklarını hedefleyebiliriz
+const JOB_MATCH_BUCKETS = [
+  { value: 'zero', labelTr: '🚫 Hiç Başlamamış (%0)',             labelEn: '🚫 Never Started (0%)',         color: 'bg-red-500' },
+  { value: 'low',  labelTr: '⚠️ Yarım Bırakmış (%1–49)',          labelEn: '⚠️ Started Incomplete (1–49%)',  color: 'bg-amber-500' },
+  { value: 'mid',  labelTr: '🔶 Aktivasyona Yakın (%50–79)',       labelEn: '🔶 Near Activation (50–79%)',    color: 'bg-yellow-500' },
+  { value: 'high', labelTr: '✅ Activated Seafarer (%80+)',         labelEn: '✅ Activated Seafarer (80%+)',  color: 'bg-emerald-500' },
+] as const;
+
+interface EmailRecipient {
+  email:           string;
+  userId?:         number | null;
+  fullName?:       string;
+  fillRate:        number;
+  lastActiveAt:    string | null;
+  unsubscribeUrl?: string | null;
+  nationality?:    string | null;
+  emailOptOut?:    boolean;
+  include:         boolean;
+}
+
+type EmailLang = 'tr' | 'en' | 'tl' | 'uk' | 'ru' | 'ka' | 'az' | 'id' | 'hi' | 'ro' | 'pl';
+
+// ISO-2 → e-posta dili. retention.js'deki NATIONALITY_TO_LANGUAGE_CODE ile birebir eşleşir.
+const NATIONALITY_LANG: Partial<Record<string, EmailLang>> = {
+  TR: 'tr', PH: 'tl', UA: 'uk', RU: 'ru', GE: 'ka', AZ: 'az',
+  ID: 'id', IN: 'hi', RO: 'ro', PL: 'pl',
+  // GB, US, AU, CA, NZ ve diğerleri → 'en' (default)
+};
+function langFromNationality(nat: string | null | undefined): EmailLang | null {
+  if (!nat) return null;
+  return NATIONALITY_LANG[nat.trim().toUpperCase()] ?? 'en';
+}
+
+// Denizcilik sektöründe en yaygın uyruklar — retention.js'deki LANGUAGE_BY_CODE ile birebir eşleşir.
+// nationality alanı backend'den gelince kişi başı otomatik dil seçimi için kullanılacak.
+const EMAIL_LANGUAGES: { value: EmailLang; flag: string; label: string }[] = [
+  { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
+  { value: 'en', flag: '🇬🇧', label: 'English' },
+  { value: 'tl', flag: '🇵🇭', label: 'Filipino' },
+  { value: 'uk', flag: '🇺🇦', label: 'Українська' },
+  { value: 'ru', flag: '🇷🇺', label: 'Русский' },
+  { value: 'ka', flag: '🇬🇪', label: 'ქართული' },
+  { value: 'az', flag: '🇦🇿', label: 'Azərbaycan' },
+  { value: 'id', flag: '🇮🇩', label: 'Indonesia' },
+  { value: 'hi', flag: '🇮🇳', label: 'हिन्दी' },
+  { value: 'ro', flag: '🇷🇴', label: 'Română' },
+  { value: 'pl', flag: '🇵🇱', label: 'Polski' },
+];
+
+function daysAgo(iso: string | null, lang: 'tr' | 'en'): string {
+  if (!iso) return lang === 'tr' ? 'bilinmiyor' : 'unknown';
+  const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (d <= 0) return lang === 'tr' ? 'bugün' : 'today';
+  return lang === 'tr' ? `${d} gün önce` : `${d}d ago`;
+}
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
 const WA_AUDIENCES = [
@@ -68,13 +148,371 @@ const BOT_FEATURES = [
   { value: 'multilang',   labelTr: '🌍 Çok Dil Desteği',       labelEn: '🌍 Multi-Language Support' },
 ];
 
-export default function MessagingTab() {
+export default function MessagingTab({ stats }: Props) {
   const { lang } = useLang();
   const [subTab,   setSubTab]   = useState<SubTab>('whatsapp');
   const [language, setLanguage] = useState<'tr' | 'en'>('en');
   const [output,   setOutput]   = useState('');
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState('');
+
+  // ── E-posta state ───────────────────────────────────────────────
+  const [emailBucket,     setEmailBucket]     = useState<'zero' | 'low' | 'mid'>('zero');
+  const [emailLanguage,   setEmailLanguage]   = useState<EmailLang>('tr');
+  const [emailSubject,    setEmailSubject]    = useState('');
+  const [emailHtml,       setEmailHtml]       = useState('');
+  const [emailCtaPath,    setEmailCtaPath]    = useState('');
+  const [emailGenLoading, setEmailGenLoading] = useState(false);
+  const [emailGenError,   setEmailGenError]   = useState('');
+  const [emailRecipients, setEmailRecipients] = useState(''); // manuel yapıştırma (fallback)
+  const [recipientDetails,setRecipientDetails]= useState<EmailRecipient[]>([]); // segmentten yüklenen — doluluk + son güncelleme
+  const [minStaleDays,    setMinStaleDays]    = useState(0); // sadece X günden uzun süredir güncellenmeyenleri hedefle
+  const [emailSendResult, setEmailSendResult] = useState<{ sent?: number; failed?: number; success?: boolean; error?: string } | null>(null);
+  const [emailSendLoading,setEmailSendLoading]= useState(false);
+  const [emailSendProgress, setEmailSendProgress] = useState<{ done: number; total: number } | null>(null);
+  const [segmentLoading,  setSegmentLoading]  = useState(false);
+  const [segmentError,    setSegmentError]    = useState('');
+  const [segmentProgress, setSegmentProgress] = useState<{ loaded: number; total: number | null } | null>(null);
+  const [batchProgress,   setBatchProgress]   = useState<Record<string, { status: 'idle' | 'generating' | 'sending' | 'done' | { error: string }; sent?: number; failed?: number }> | null>(null);
+  const [batchLoading,    setBatchLoading]    = useState(false);
+
+  // ── İş Eşleşme state ───────────────────────────────────────────
+  const [jobMatchBucket,      setJobMatchBucket]      = useState<'zero' | 'low' | 'mid' | 'high'>('zero');
+  const [jobMatchLang,        setJobMatchLang]        = useState<EmailLang>('tr');
+  const [jobListings,         setJobListings]         = useState<JobListing[]>([]);
+  const [jobListLoading,      setJobListLoading]      = useState(false);
+  const [jobListError,        setJobListError]        = useState('');
+  const [jobMatchHtml,        setJobMatchHtml]        = useState('');
+  const [jobMatchSubject,     setJobMatchSubject]     = useState('');
+  const [jobMatchRenderLoading, setJobMatchRenderLoading] = useState(false);
+  const [jobMatchRecipients,  setJobMatchRecipients]  = useState<EmailRecipient[]>([]);
+  const [jobMatchSegLoading,  setJobMatchSegLoading]  = useState(false);
+  const [jobMatchSegProgress, setJobMatchSegProgress] = useState<{ loaded: number; total: number | null } | null>(null);
+  const [jobMatchSegError,    setJobMatchSegError]    = useState('');
+  const [jobMatchSendResult,  setJobMatchSendResult]  = useState<{ sent?: number; failed?: number; success?: boolean; error?: string } | null>(null);
+  const [jobMatchSendLoading, setJobMatchSendLoading] = useState(false);
+
+  const bucketCount = stats?.seafarers?.fillRateBuckets?.[emailBucket] ?? 0;
+
+  // Yüklenen alıcıların nationality → dil dağılımı. Nationality bilinmiyorsa 'en' grubuna düşer.
+  const langDistribution = useMemo(() => {
+    if (recipientDetails.length === 0) return [];
+    const counts: Partial<Record<EmailLang, number>> = {};
+    for (const r of recipientDetails) {
+      const l: EmailLang = langFromNationality(r.nationality) ?? 'en';
+      counts[l] = (counts[l] ?? 0) + 1;
+    }
+    return (Object.entries(counts) as [EmailLang, number][])
+      .sort((a, b) => b[1] - a[1])
+      .map(([l, count]) => ({
+        lang: l,
+        count,
+        pct: Math.round((count / recipientDetails.length) * 100),
+        info: EMAIL_LANGUAGES.find(x => x.value === l),
+      }));
+  }, [recipientDetails]);
+
+  const toggleRecipient = (email: string) =>
+    setRecipientDetails(prev => prev.map(r => r.email === email ? { ...r, include: !r.include } : r));
+
+  const visibleRecipients = recipientDetails.filter(r => {
+    if (!r.lastActiveAt) return minStaleDays === 0;
+    const days = Math.floor((Date.now() - new Date(r.lastActiveAt).getTime()) / 86_400_000);
+    return days >= minStaleDays;
+  });
+
+  // Gönderilecek nihai e-posta listesi: segmentten yüklendiyse işaretli+görünür satırlar (userId + backend'in
+  // ürettiği unsubscribeUrl ile), aksi halde manuel textarea (userId/unsubscribeUrl yok, event/unsub atlanır)
+  const effectiveRecipients: { email: string; userId?: number | null; unsubscribeUrl?: string | null }[] = recipientDetails.length > 0
+    ? visibleRecipients.filter(r => r.include).map(r => ({ email: r.email, userId: r.userId, unsubscribeUrl: r.unsubscribeUrl }))
+    : emailRecipients.split('\n').map(s => s.trim()).filter(Boolean).map(email => ({ email }));
+
+  const generateEmail = async () => {
+    setEmailGenLoading(true);
+    setEmailGenError('');
+    setEmailSendResult(null);
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'reactivation_email', bucket: emailBucket, language: emailLanguage, textModel: getTextModel() }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setEmailSubject(data.subject ?? '');
+      setEmailHtml(data.html ?? '');
+      setEmailCtaPath(data.ctaPath ?? '');
+    } catch (e: unknown) {
+      setEmailGenError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
+    } finally {
+      setEmailGenLoading(false);
+    }
+  };
+
+  const loadSegmentRecipients = async () => {
+    setSegmentLoading(true);
+    setSegmentError('');
+    setSegmentProgress(null);
+    setRecipientDetails([]);
+    setBatchProgress(null);
+
+    const PAGE_SIZE = 200;
+    const all: EmailRecipient[] = [];
+    let page = 1;
+    let totalCount: number | null = null;
+
+    try {
+      while (true) {
+        const res = await fetch(
+          `/api/activation/seafarers-by-bucket?bucket=${emailBucket}&page=${page}&size=${PAGE_SIZE}`,
+        );
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+
+        const items: EmailRecipient[] = (data.items ?? [])
+          // Güvenlik: emailOptOut=true kayıtları frontend'de de filtrele
+          .filter((r: EmailRecipient) => !r.emailOptOut)
+          .map((r: EmailRecipient) => ({ ...r, include: true }));
+
+        if (totalCount === null && data.totalCount != null) totalCount = data.totalCount;
+        all.push(...items);
+        setSegmentProgress({ loaded: all.length, total: totalCount });
+
+        // Son sayfa: boş döndü veya sayfa boyutundan az kayıt
+        if (items.length === 0 || items.length < PAGE_SIZE) break;
+        page++;
+      }
+
+      setRecipientDetails(all);
+
+      // Nationality mevcut ve tek bir dil hakimse e-posta dilini otomatik ayarla
+      const langs = all.map(r => langFromNationality(r.nationality)).filter(Boolean) as EmailLang[];
+      if (langs.length > 0) {
+        const freq = langs.reduce<Partial<Record<EmailLang, number>>>((acc, l) => {
+          acc[l] = (acc[l] ?? 0) + 1; return acc;
+        }, {});
+        const dominant = (Object.entries(freq) as [EmailLang, number][])
+          .sort((a, b) => b[1] - a[1])[0][0];
+        // Dominant dil %60+ ise otomatik seç
+        if ((freq[dominant]! / langs.length) >= 0.6) setEmailLanguage(dominant);
+      }
+    } catch (e: unknown) {
+      setSegmentError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
+    } finally {
+      setSegmentLoading(false);
+    }
+  };
+
+  const loadJobListings = async () => {
+    setJobListLoading(true);
+    setJobListError('');
+    try {
+      const res  = await fetch('/api/activation/job-listings?limit=6');
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setJobListings(data.jobs ?? []);
+    } catch (e: unknown) {
+      setJobListError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
+    } finally {
+      setJobListLoading(false);
+    }
+  };
+
+  const buildJobMatchEmail = async () => {
+    if (jobListings.length === 0) return;
+    setJobMatchRenderLoading(true);
+    try {
+      const res  = await fetch('/api/messaging/email/render-job-match', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ jobs: jobListings, lang: jobMatchLang }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setJobMatchSubject(data.subject ?? '');
+      setJobMatchHtml(data.html ?? '');
+    } catch (e: unknown) {
+      setJobListError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
+    } finally {
+      setJobMatchRenderLoading(false);
+    }
+  };
+
+  const loadJobMatchRecipients = async () => {
+    setJobMatchSegLoading(true);
+    setJobMatchSegError('');
+    setJobMatchSegProgress(null);
+    setJobMatchRecipients([]);
+    const PAGE_SIZE = 200;
+    const all: EmailRecipient[] = [];
+    let page = 1;
+    let totalCount: number | null = null;
+    try {
+      while (true) {
+        const res  = await fetch(`/api/activation/seafarers-by-bucket?bucket=${jobMatchBucket}&page=${page}&size=${PAGE_SIZE}`);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+        const items: EmailRecipient[] = (data.items ?? [])
+          .filter((r: EmailRecipient) => !r.emailOptOut)
+          .map((r: EmailRecipient)   => ({ ...r, include: true }));
+        if (totalCount === null && data.totalCount != null) totalCount = data.totalCount;
+        all.push(...items);
+        setJobMatchSegProgress({ loaded: all.length, total: totalCount });
+        if (items.length === 0 || items.length < PAGE_SIZE) break;
+        page++;
+      }
+      setJobMatchRecipients(all);
+    } catch (e: unknown) {
+      setJobMatchSegError(e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred');
+    } finally {
+      setJobMatchSegLoading(false);
+    }
+  };
+
+  const sendJobMatchCampaign = async () => {
+    setJobMatchSendLoading(true);
+    setJobMatchSendResult(null);
+    const CHUNK = 100; // Route başına max 100 alıcı gönder (timeout önlemi)
+    const included = jobMatchRecipients.filter(r => r.include);
+    const chunks: EmailRecipient[][] = [];
+    for (let i = 0; i < included.length; i += CHUNK) chunks.push(included.slice(i, i + CHUNK));
+    let totalSent = 0, totalFailed = 0;
+    try {
+      for (const chunk of chunks) {
+        const recipients = chunk.map(r => ({
+          email:          r.email,
+          userId:         r.userId ?? null,
+          nationality:    r.nationality ?? null,  // dil kişi başı nationality'den otomatik çözülür
+          unsubscribeUrl: r.unsubscribeUrl ?? null,
+        }));
+        const res = await fetch('/api/messaging/email/send-job-match', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // Her alıcı için: backend'den kişisel ilan + nationality'den dil belirlenir
+          body: JSON.stringify({ recipients, lang: jobMatchLang, campaign: `job-match-${jobMatchBucket}` }),
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        totalSent   += data.sent   ?? 0;
+        totalFailed += data.failed ?? 0;
+      }
+      const result = { sent: totalSent, failed: totalFailed };
+      setJobMatchSendResult(result);
+      logActivity('email_sent', `${lang === 'tr' ? 'İş eşleşme maili gönderildi' : 'Job match email sent'} (${jobMatchBucket})`, `${totalSent} sent`);
+    } catch (e: unknown) {
+      setJobMatchSendResult({ error: e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred' });
+    } finally {
+      setJobMatchSendLoading(false);
+    }
+  };
+
+  // Route istek başına en fazla 500 alıcı kabul eder → istemcide 200'lük parçalar halinde, ilerlemeyle gönder
+  const sendEmailCampaign = async () => {
+    const CHUNK = 200;
+    const recipients = effectiveRecipients;
+    setEmailSendLoading(true);
+    setEmailSendResult(null);
+    setEmailSendProgress({ done: 0, total: recipients.length });
+    let totalSent = 0, totalFailed = 0;
+    try {
+      for (let i = 0; i < recipients.length; i += CHUNK) {
+        const chunk = recipients.slice(i, i + CHUNK);
+        const res = await fetch('/api/messaging/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'broadcast', recipients: chunk, subject: emailSubject, html: emailHtml, campaign: `reactivation-${emailBucket}`, ctaPath: emailCtaPath || undefined }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          const sentSoFar = lang === 'tr'
+            ? ` (${totalSent} gönderildi, ${recipients.length - i} alıcı gönderilmedi)`
+            : ` (${totalSent} sent, ${recipients.length - i} recipients not sent)`;
+          throw new Error(`${data.error || `HTTP ${res.status}`}${i > 0 ? sentSoFar : ''}`);
+        }
+        totalSent   += data.sent   ?? 0;
+        totalFailed += data.failed ?? 0;
+        setEmailSendProgress({ done: Math.min(i + CHUNK, recipients.length), total: recipients.length });
+      }
+      setEmailSendResult({ sent: totalSent, failed: totalFailed });
+      logActivity('email_sent', `${lang === 'tr' ? 'E-posta kampanyası gönderildi' : 'Email campaign sent'} (${emailBucket})`, emailSubject);
+    } catch (e: unknown) {
+      setEmailSendResult({ sent: totalSent, failed: totalFailed, error: e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred' });
+    } finally {
+      setEmailSendLoading(false);
+      setEmailSendProgress(null);
+    }
+  };
+
+  // ── Dil bazlı toplu gönderim — her dil grubuna ayrı AI emaili üret + gönder ────
+  const sendByLanguageBatch = async () => {
+    // Alıcıları nationality → dile göre grupla
+    const groups: Partial<Record<EmailLang, { email: string; userId?: number | null; unsubscribeUrl?: string | null }[]>> = {};
+    for (const r of visibleRecipients.filter(r => r.include)) {
+      const l: EmailLang = langFromNationality(r.nationality) ?? 'en';
+      if (!groups[l]) groups[l] = [];
+      groups[l]!.push({ email: r.email, userId: r.userId, unsubscribeUrl: r.unsubscribeUrl });
+    }
+    if (Object.keys(groups).length === 0) return;
+
+    const initial: Record<string, { status: 'idle' }> = {};
+    for (const l of Object.keys(groups)) initial[l] = { status: 'idle' };
+    setBatchProgress(initial);
+    setBatchLoading(true);
+    setEmailSendResult(null);
+
+    let totalSent = 0, totalFailed = 0;
+
+    for (const [groupLang, groupRecipients] of Object.entries(groups)) {
+      const l = groupLang as EmailLang;
+
+      // 1. AI içerik üret
+      setBatchProgress(prev => ({ ...prev!, [l]: { status: 'generating' } }));
+      let subject = '', html = '', groupCtaPath = '';
+      try {
+        const genRes = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type: 'reactivation_email', bucket: emailBucket, language: l, textModel: getTextModel() }),
+        });
+        const genData = await genRes.json();
+        if (genData.error) throw new Error(genData.error);
+        subject      = genData.subject  ?? '';
+        html         = genData.html     ?? '';
+        groupCtaPath = genData.ctaPath  ?? '';
+      } catch (e) {
+        setBatchProgress(prev => ({ ...prev!, [l]: { status: { error: e instanceof Error ? e.message : 'AI generation failed' } } }));
+        continue;
+      }
+
+      // 2. Gruba gönder (100'lük parçalar halinde)
+      setBatchProgress(prev => ({ ...prev!, [l]: { status: 'sending' } }));
+      const CHUNK = 100;
+      let groupSent = 0, groupFailed = 0;
+      try {
+        for (let i = 0; i < groupRecipients!.length; i += CHUNK) {
+          const chunk = groupRecipients!.slice(i, i + CHUNK);
+          const res   = await fetch('/api/messaging/email/send', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'broadcast', recipients: chunk, subject, html, campaign: `reactivation-${emailBucket}`, ctaPath: groupCtaPath || undefined }),
+          });
+          const data = await res.json();
+          if (data.error) throw new Error(data.error);
+          groupSent   += data.sent   ?? 0;
+          groupFailed += data.failed ?? 0;
+        }
+        totalSent   += groupSent;
+        totalFailed += groupFailed;
+        setBatchProgress(prev => ({ ...prev!, [l]: { status: 'done', sent: groupSent, failed: groupFailed } }));
+      } catch (e) {
+        setBatchProgress(prev => ({ ...prev!, [l]: { status: { error: e instanceof Error ? e.message : 'Send failed' } } }));
+      }
+    }
+
+    setBatchLoading(false);
+    setEmailSendResult({ sent: totalSent, failed: totalFailed });
+    logActivity('email_sent', `${lang === 'tr' ? 'Dil bazlı toplu e-posta gönderildi' : 'Language-based batch email sent'} (${emailBucket})`, `${totalSent} sent`);
+  };
 
   // ── Send state ──────────────────────────────────────────────────
   const [msgText,      setMsgText]      = useState('');
@@ -84,8 +522,8 @@ export default function MessagingTab() {
   const [sendLoading,  setSendLoading]  = useState(false);
   const [sendResult,   setSendResult]   = useState<{ sent?: number; failed?: number; success?: boolean; error?: string } | null>(null);
 
-  // ── WA/TG config status ────────────────────────────────────────────────────
-  const [msgConfig, setMsgConfig] = useState<{ whatsapp: { configured: boolean }; telegram: { configured: boolean } } | null>(null);
+  // ── WA/TG/Email config status ───────────────────────────────────────────────
+  const [msgConfig, setMsgConfig] = useState<{ whatsapp: { configured: boolean }; telegram: { configured: boolean }; email: { configured: boolean } } | null>(null);
   useEffect(() => {
     fetch('/api/messaging/config').then(r => r.json()).then(setMsgConfig).catch(() => null);
   }, []);
@@ -214,6 +652,8 @@ export default function MessagingTab() {
     { id: 'telegram_bot',     icon: '🤖', label: 'Telegram Bot',                                    color: 'bg-indigo-500',  group_tr: 'Yeni Kullanıcı (İçerik)', group_en: 'New User (Content)' },
     { id: 'notify_wa',        icon: '📩', label: lang === 'tr' ? 'WA Bildirim Gönder' : 'Send WA Notification', color: 'bg-emerald-600', group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
     { id: 'notify_tg',        icon: '✈️', label: lang === 'tr' ? 'TG Kanal Gönder'   : 'Send TG Channel',        color: 'bg-cyan-600',    group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
+    { id: 'notify_email',     icon: '📧', label: lang === 'tr' ? 'E-posta Re-aktivasyon'  : 'Email Reactivation',  color: 'bg-amber-600',   group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
+    { id: 'notify_job_match', icon: '💼', label: lang === 'tr' ? 'İş Eşleşme Maili'       : 'Job Match Email',      color: 'bg-teal-600',    group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
   ];
 
   const groups = lang === 'tr'
@@ -266,6 +706,11 @@ export default function MessagingTab() {
                     <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                       msgConfig.telegram.configured ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'
                     }`}>{msgConfig.telegram.configured ? '●' : '○'}</span>
+                  )}
+                  {(t.id === 'notify_email' || t.id === 'notify_job_match') && msgConfig && (
+                    <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                      msgConfig.email.configured ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'
+                    }`}>{msgConfig.email.configured ? '●' : '○'}</span>
                   )}
                 </button>
               ))}
@@ -444,6 +889,11 @@ export default function MessagingTab() {
                     ? <>Mevcut kullanıcılara doğrudan WhatsApp mesajı. Önce <code>WHATSAPP_PHONE_NUMBER_ID</code> ve <code>WHATSAPP_ACCESS_TOKEN</code> ayarlayın.</>
                     : <>Direct WhatsApp message to existing users. First set <code>WHATSAPP_PHONE_NUMBER_ID</code> and <code>WHATSAPP_ACCESS_TOKEN</code>.</>}
                 </p>
+                <p className="leading-relaxed mt-1 font-medium">
+                  {lang === 'tr'
+                    ? '⚠️ Serbest metin yalnızca son 24 saat içinde size yazmış kullanıcılara ulaşır. Pazarlama/duyuru mesajları için Meta onaylı WhatsApp template gerekir.'
+                    : '⚠️ Free-text messages only reach users who messaged you in the last 24 hours. Marketing/announcement messages require Meta-approved WhatsApp templates.'}
+                </p>
               </div>
             </div>
 
@@ -543,19 +993,311 @@ export default function MessagingTab() {
               </Field>
             )}
 
-            <Field label={lang === 'tr' ? 'Mesaj (HTML destekler)' : 'Message (supports HTML)'}>
+            <Field label={lang === 'tr' ? 'Mesaj (düz metin)' : 'Message (plain text)'}>
               <textarea value={msgText} onChange={e => setMsgText(e.target.value)}
-                placeholder="<b>Yeni ilanlar!</b> crewinjob.com'da arama yapın 👇&#10;<a href='https://crewinjob.com'>crewinjob.com</a>"
+                placeholder={"Yeni ilanlar! crewinjob.com'da arama yapın 👇\nhttps://crewinjob.com"}
                 rows={5} className={`${selectClass} resize-none font-mono text-xs`} />
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {lang === 'tr' ? 'Etiketler: ' : 'Tags: '}&lt;b&gt;, &lt;i&gt;, &lt;a href&gt;, &lt;code&gt;
+                {lang === 'tr'
+                  ? 'Metin olduğu gibi gönderilir; <, > ve & karakterleri güvenle kaçışlanır. Linkler Telegram\'da otomatik tıklanabilir olur.'
+                  : 'Text is sent as-is; <, > and & are safely escaped. Links become clickable automatically in Telegram.'}
               </p>
             </Field>
           </>
         )}
 
-        {/* Output language — only for content generation tabs */}
-        {!['notify_wa', 'notify_tg'].includes(subTab) && (
+        {/* ── E-posta Re-aktivasyon ── */}
+        {subTab === 'notify_email' && (
+          <>
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300 flex gap-2">
+              <span className="text-base shrink-0">📧</span>
+              <div>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'E-posta Re-aktivasyon Kampanyası' : 'Email Reactivation Campaign'}</p>
+                <p className="leading-relaxed">
+                  {lang === 'tr'
+                    ? <>Profili yarım bırakan kullanıcılara AI ile içerik üretip SMTP üzerinden gönderir. Önce <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code> ayarlayın.</>
+                    : <>Generates AI content for users who left their profile incomplete and sends via SMTP. First set <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code>.</>}
+                </p>
+              </div>
+            </div>
+
+            {msgConfig && !msgConfig.email.configured && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-xs text-red-700 dark:text-red-300">
+                ⚠️ <strong>.env.local</strong> {lang === 'tr' ? 'içinde' : ':'} <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code> {lang === 'tr' ? 'tanımlanmamış.' : 'not configured.'}
+              </div>
+            )}
+
+            <Field label={lang === 'tr' ? 'Hedef Segment' : 'Target Segment'}>
+              <div className="flex flex-col gap-1.5">
+                {EMAIL_BUCKETS.map(b => (
+                  <button key={b.value}
+                    onClick={() => { setEmailBucket(b.value); setEmailSubject(''); setEmailHtml(''); setEmailCtaPath(''); setEmailRecipients(''); setRecipientDetails([]); setMinStaleDays(0); setEmailSendResult(null); setSegmentError(''); }}
+                    className={`flex items-center justify-between text-xs py-2.5 px-3 rounded-lg font-medium transition-colors text-left ${
+                      emailBucket === b.value ? `${b.color} text-white` : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                    }`}>
+                    <span>{lang === 'tr' ? b.labelTr : b.labelEn}</span>
+                    {stats?.seafarers?.fillRateBuckets && (
+                      <span className="font-bold">{(stats.seafarers.fillRateBuckets[b.value] ?? 0).toLocaleString('tr-TR')}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </Field>
+
+            <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content Language'}>
+              <div className="grid grid-cols-3 gap-1.5">
+                {EMAIL_LANGUAGES.map(l => (
+                  <button key={l.value} onClick={() => setEmailLanguage(l.value)}
+                    className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-colors border-2 ${
+                      emailLanguage === l.value
+                        ? 'bg-amber-600 text-white border-amber-600'
+                        : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-amber-400'
+                    }`}>
+                    <span>{l.flag}</span>
+                    <span className="truncate">{l.label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                {lang === 'tr'
+                  ? 'Segment yüklenince uyruğa göre baskın dil otomatik seçilir. Manuel değiştirebilirsiniz.'
+                  : 'After loading the segment, the dominant language is auto-selected from nationality. You can override it.'}
+              </p>
+            </Field>
+
+            <button onClick={generateEmail} disabled={emailGenLoading}
+              className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+              {emailGenLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {emailGenLoading ? (lang === 'tr' ? 'Üretiliyor...' : 'Generating...') : (lang === 'tr' ? '✨ E-posta İçeriği Üret' : '✨ Generate Email Content')}
+            </button>
+            {emailGenError && (
+              <p className="text-xs text-red-600 dark:text-red-400">{emailGenError}</p>
+            )}
+
+            <Field label={lang === 'tr' ? 'Konu' : 'Subject'}>
+              <input type="text" value={emailSubject} onChange={e => setEmailSubject(e.target.value)}
+                placeholder={lang === 'tr' ? 'AI ile üret veya elle yaz' : 'Generate with AI or write manually'}
+                className={selectClass} />
+            </Field>
+
+            <Field label={lang === 'tr' ? `Alıcılar — ${bucketCount.toLocaleString('tr-TR')} kişilik segment` : `Recipients — ${bucketCount.toLocaleString('tr-TR')}-person segment`}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <button onClick={loadSegmentRecipients} disabled={segmentLoading}
+                  className="text-[11px] px-2.5 py-1.5 rounded-lg font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 flex items-center gap-1.5">
+                  {segmentLoading && <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />}
+                  {segmentLoading
+                    ? (segmentProgress
+                        ? `${segmentProgress.loaded.toLocaleString('tr-TR')}${segmentProgress.total ? ' / ' + segmentProgress.total.toLocaleString('tr-TR') : ''} ${lang === 'tr' ? 'yüklendi' : 'loaded'}`
+                        : (lang === 'tr' ? 'Yükleniyor...' : 'Loading...'))
+                    : (lang === 'tr' ? '📥 Segmentten Yükle' : '📥 Load from Segment')}
+                </button>
+                {recipientDetails.length > 0 && !segmentLoading && (
+                  <button onClick={() => { setRecipientDetails([]); setMinStaleDays(0); setSegmentProgress(null); setBatchProgress(null); }}
+                    className="text-[11px] px-2 py-1.5 rounded-lg font-medium text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300">
+                    {lang === 'tr' ? 'Temizle' : 'Clear'}
+                  </button>
+                )}
+              </div>
+              {segmentError && (
+                <p className="text-[10px] text-red-600 dark:text-red-400 mb-1.5 leading-relaxed">
+                  ⚠️ {segmentError}
+                </p>
+              )}
+
+              {recipientDetails.length > 0 ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      {lang === 'tr' ? 'En az' : 'At least'}
+                    </label>
+                    <input type="number" min={0} value={minStaleDays}
+                      onChange={e => setMinStaleDays(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-16 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-1 text-xs bg-white dark:bg-slate-700 dark:text-slate-100" />
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                      {lang === 'tr' ? 'gündür güncellenmemiş' : 'days since last update'}
+                    </label>
+                  </div>
+
+                  <div className="border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden">
+                    <div className="max-h-56 overflow-y-auto">
+                      {visibleRecipients.map(r => (
+                        <label key={r.email} className="flex items-center gap-2 px-2.5 py-1.5 text-xs border-b border-slate-100 dark:border-slate-700 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer">
+                          <input type="checkbox" checked={r.include} onChange={() => toggleRecipient(r.email)}
+                            className="w-3.5 h-3.5 accent-amber-600 shrink-0" />
+                          <span className="flex-1 truncate text-slate-700 dark:text-slate-200">{r.fullName || r.email}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">%{Math.round(r.fillRate)}</span>
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 w-16 text-right">{daysAgo(r.lastActiveAt, lang)}</span>
+                        </label>
+                      ))}
+                      {visibleRecipients.length === 0 && (
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 px-2.5 py-3 text-center">
+                          {lang === 'tr' ? 'Bu filtreye uyan kimse yok.' : 'Nobody matches this filter.'}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                    {visibleRecipients.filter(r => r.include).length} / {visibleRecipients.length} {lang === 'tr' ? 'işaretli — gönderim bu listeye gidecek' : 'checked — sending goes to this list'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <textarea value={emailRecipients} onChange={e => setEmailRecipients(e.target.value)}
+                    placeholder="ali@example.com&#10;veli@example.com&#10;..."
+                    rows={5} className={`${selectClass} resize-none font-mono text-xs`} />
+                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                    {emailRecipients.split('\n').map(s => s.trim()).filter(Boolean).length} {lang === 'tr' ? 'alıcı — her satıra bir e-posta' : 'recipients — one email per line'}
+                  </p>
+                </>
+              )}
+            </Field>
+
+            {/* Dil dağılımı — nationality verisine göre */}
+            {recipientDetails.length > 0 && langDistribution.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  🌍 {lang === 'tr' ? 'Dil Dağılımı (nationality)' : 'Language Distribution (nationality)'}
+                </p>
+                <div className="flex flex-col gap-1">
+                  {langDistribution.map(({ lang: l, count, pct, info }) => (
+                    <div key={l} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-5 text-center shrink-0">{info?.flag ?? '🌐'}</span>
+                      <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                        <div className="h-2 bg-amber-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-slate-500 dark:text-slate-400 w-8 text-right">{pct}%</span>
+                      <span className="text-slate-400 dark:text-slate-500 w-8 text-right">{count}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  {lang === 'tr'
+                    ? 'Nationality bilinmiyorsa İngilizce (en) grubuna düşer. "Dil Bazlı Gönder" her gruba ayrı mail üretir.'
+                    : 'Unknown nationality falls into English (en). "Send by Language" generates a separate email per group.'}
+                </p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── İş Eşleşme Maili ── */}
+        {subTab === 'notify_job_match' && (
+          <>
+            <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700 rounded-lg p-3 text-xs text-teal-800 dark:text-teal-300 flex gap-2">
+              <span className="text-base shrink-0">💼</span>
+              <div>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'Size Uygun İlanlar Maili' : 'Matching Job Listings Email'}</p>
+                <p className="leading-relaxed">
+                  {lang === 'tr'
+                    ? 'Güncel iş ilanlarını seçili segmente mail olarak gönderir. Kişisel eşleşme için backend\'de userId desteği gerekir.'
+                    : 'Sends current job listings to the selected segment. Personalized matching requires userId support in the backend.'}
+                </p>
+              </div>
+            </div>
+
+            {msgConfig && !msgConfig.email.configured && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-xs text-red-700 dark:text-red-300">
+                ⚠️ SMTP yapılandırması eksik.
+              </div>
+            )}
+
+            {/* 1 — İlanları yükle */}
+            <Field label={lang === 'tr' ? '1. İş İlanlarını Yükle' : '1. Load Job Listings'}>
+              <button onClick={loadJobListings} disabled={jobListLoading}
+                className="w-full text-sm px-3 py-2.5 rounded-lg font-medium bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white flex items-center justify-center gap-2">
+                {jobListLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                {jobListLoading ? (lang === 'tr' ? 'Yükleniyor...' : 'Loading...') : (lang === 'tr' ? '🔄 İlanları Çek' : '🔄 Fetch Listings')}
+              </button>
+              {jobListError && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{jobListError}</p>}
+              {jobListings.length > 0 && (
+                <div className="border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden mt-1.5">
+                  {jobListings.map((j, i) => (
+                    <div key={i} className="flex items-start gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-700 last:border-b-0 text-xs">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 flex items-center justify-center font-bold text-[10px]">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">{j.title || '—'}</p>
+                        <p className="text-slate-500 dark:text-slate-400 truncate">{[j.company, j.vesselType, j.location].filter(Boolean).join(' • ')}</p>
+                        {j.salary && <p className="text-teal-600 dark:text-teal-400 font-medium">{j.salary}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Field>
+
+            {/* 2 — Dil + önizleme oluştur */}
+            {jobListings.length > 0 && (
+              <>
+                <Field label={lang === 'tr' ? '2. E-posta Dili' : '2. Email Language'}>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {EMAIL_LANGUAGES.map(l => (
+                      <button key={l.value} onClick={() => setJobMatchLang(l.value)}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg text-xs font-medium transition-colors border-2 ${
+                          jobMatchLang === l.value
+                            ? 'bg-teal-600 text-white border-teal-600'
+                            : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-teal-400'
+                        }`}>
+                        <span>{l.flag}</span>
+                        <span className="truncate">{l.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <button onClick={buildJobMatchEmail} disabled={jobMatchRenderLoading}
+                  className="w-full bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+                  {jobMatchRenderLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  {jobMatchRenderLoading ? (lang === 'tr' ? 'Oluşturuluyor...' : 'Rendering...') : (lang === 'tr' ? '✉️ E-posta Önizlemesi Oluştur' : '✉️ Build Email Preview')}
+                </button>
+              </>
+            )}
+
+            {/* 3 — Alıcıları yükle */}
+            {jobMatchHtml && (
+              <Field label={lang === 'tr' ? '3. Hedef Segment' : '3. Target Segment'}>
+                <div className="flex flex-col gap-1.5 mb-1.5">
+                  {JOB_MATCH_BUCKETS.map(b => (
+                    <button key={b.value} onClick={() => { setJobMatchBucket(b.value); setJobMatchRecipients([]); setJobMatchSegProgress(null); }}
+                      className={`flex items-center justify-between text-xs py-2.5 px-3 rounded-lg font-medium transition-colors text-left ${
+                        jobMatchBucket === b.value ? `${b.color} text-white` : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                      }`}>
+                      <span>{lang === 'tr' ? b.labelTr : b.labelEn}</span>
+                      {stats?.seafarers?.fillRateBuckets && (
+                        <span className="font-bold">{(stats.seafarers.fillRateBuckets[b.value] ?? 0).toLocaleString('tr-TR')}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={loadJobMatchRecipients} disabled={jobMatchSegLoading}
+                    className="text-[11px] px-2.5 py-1.5 rounded-lg font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 flex items-center gap-1.5">
+                    {jobMatchSegLoading && <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />}
+                    {jobMatchSegLoading
+                      ? (jobMatchSegProgress
+                          ? `${jobMatchSegProgress.loaded.toLocaleString('tr-TR')}${jobMatchSegProgress.total ? ' / ' + jobMatchSegProgress.total.toLocaleString('tr-TR') : ''} ${lang === 'tr' ? 'yüklendi' : 'loaded'}`
+                          : (lang === 'tr' ? 'Yükleniyor...' : 'Loading...'))
+                      : (lang === 'tr' ? '📥 Segmentten Yükle' : '📥 Load from Segment')}
+                  </button>
+                  {jobMatchRecipients.length > 0 && !jobMatchSegLoading && (
+                    <button onClick={() => { setJobMatchRecipients([]); setJobMatchSegProgress(null); }}
+                      className="text-[11px] px-2 py-1.5 rounded-lg font-medium text-slate-400 hover:text-slate-600">
+                      {lang === 'tr' ? 'Temizle' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+                {jobMatchSegError && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">⚠️ {jobMatchSegError}</p>}
+                {jobMatchRecipients.length > 0 && (
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                    {jobMatchRecipients.filter(r => r.include).length.toLocaleString('tr-TR')} {lang === 'tr' ? 'alıcı hazır' : 'recipients ready'}
+                  </p>
+                )}
+              </Field>
+            )}
+          </>
+        )}
+
+        {/* Output language — only for content generation tabs (email has its own extended selector) */}
+        {!['notify_wa', 'notify_tg', 'notify_email', 'notify_job_match'].includes(subTab) && (
           <Field label={lang === 'tr' ? 'Çıktı Dili' : 'Output Language'}>
             <div className="grid grid-cols-2 gap-2">
               {([
@@ -577,7 +1319,7 @@ export default function MessagingTab() {
         )}
 
         {/* Generate content button */}
-        {!['notify_wa', 'notify_tg'].includes(subTab) && (
+        {!['notify_wa', 'notify_tg', 'notify_email', 'notify_job_match'].includes(subTab) && (
           <button onClick={generate} disabled={loading}
             className="w-full bg-ocean hover:bg-ocean-dark disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-auto">
             {loading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
@@ -597,12 +1339,60 @@ export default function MessagingTab() {
               : (lang === 'tr' ? '✈️ Telegram Gönder' : '✈️ Send Telegram')}
           </button>
         )}
+
+        {/* Send email button(s) */}
+        {subTab === 'notify_email' && (
+          <div className="flex flex-col gap-2 mt-auto">
+            {/* Dil bazlı gönder — segment yüklendi ve 2+ dil varsa göster */}
+            {recipientDetails.length > 0 && langDistribution.length > 1 && (
+              <button
+                onClick={sendByLanguageBatch}
+                disabled={batchLoading || emailSendLoading || effectiveRecipients.length === 0}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+              >
+                {batchLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                🌍 {lang === 'tr' ? 'Dil Bazlı Toplu Gönder' : 'Send by Language Groups'}
+              </button>
+            )}
+            <button
+              onClick={sendEmailCampaign}
+              disabled={emailSendLoading || batchLoading || !emailSubject.trim() || !emailHtml.trim() || effectiveRecipients.length === 0}
+              className="w-full bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+            >
+              {emailSendLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {lang === 'tr' ? '📧 Kampanyayı Gönder (tek dil)' : '📧 Send Campaign (single language)'}
+            </button>
+          </div>
+        )}
+
+        {/* Send job match email button */}
+        {subTab === 'notify_job_match' && (
+          <div className="mt-auto space-y-2">
+            {/* Kişiselleştirilmiş gönderim notu */}
+            {jobMatchRecipients.filter(r => r.include).length > 0 && !jobMatchSendLoading && (
+              <p className="text-xs text-teal-700 dark:text-teal-400 text-center">
+                🎯 {lang === 'tr'
+                  ? 'Her seafarer kendi profiline uygun ilanlarla kişisel mail alır'
+                  : 'Each seafarer receives personalized job matches based on their profile'}
+              </p>
+            )}
+            <button
+              onClick={sendJobMatchCampaign}
+              disabled={jobMatchSendLoading || !jobMatchHtml.trim() || jobMatchRecipients.filter(r => r.include).length === 0}
+              className="w-full bg-teal-700 hover:bg-teal-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+              {jobMatchSendLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {jobMatchSendLoading
+                ? (lang === 'tr' ? 'Kişiselleştirip gönderiliyor…' : 'Personalizing & sending…')
+                : (lang === 'tr' ? '💼 İş Eşleşme Mailini Gönder' : '💼 Send Job Match Email')}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Right panel — output or send result */}
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         {/* Content generation panel */}
-        {!['notify_wa', 'notify_tg'].includes(subTab) && (
+        {!['notify_wa', 'notify_tg', 'notify_email', 'notify_job_match'].includes(subTab) && (
           <>
             <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
               {subTab === 'whatsapp'         && <><span>📲</span> {lang === 'tr' ? 'Click-to-WhatsApp Kampanya Paketi' : 'Click-to-WhatsApp Campaign Package'}</>}
@@ -622,6 +1412,216 @@ export default function MessagingTab() {
               autoSaveHistory={{ prompt: `${lang === 'tr' ? 'Mesajlaşma' : 'Messaging'} · ${subTab}`, language }}
             />
           </>
+        )}
+
+        {/* Email preview + send result panel */}
+        {subTab === 'notify_email' && (
+          <div className="flex flex-col gap-4">
+            <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2">
+              <span>📧</span> {lang === 'tr' ? 'E-posta Önizleme' : 'Email Preview'}
+            </h3>
+
+            {emailGenLoading && (
+              <div className="flex items-center gap-3 py-10 text-slate-400 dark:text-slate-500 text-sm justify-center">
+                <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                {lang === 'tr' ? 'AI içerik üretiyor...' : 'AI is generating content...'}
+              </div>
+            )}
+
+            {!emailGenLoading && emailHtml && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="bg-slate-50 dark:bg-slate-700/50 px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? 'Konu: ' : 'Subject: '}</span>
+                  {emailSubject}
+                </div>
+                <div className="p-4 bg-white dark:bg-slate-900 max-h-[420px] overflow-auto text-sm text-slate-800 dark:text-slate-100"
+                  dangerouslySetInnerHTML={{ __html: emailHtml
+                    .replace(/cid:crewinjob-logo/g, '/email-logo.png')
+                    .replace(/\{\{CTA_URL\}\}/g, 'https://www.crewinjob.com/account/login')
+                    .replace(/\{\{UNSUBSCRIBE_URL\}\}/g, '#')
+                  }} />
+              </div>
+            )}
+
+            {!emailGenLoading && !emailHtml && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-300 dark:text-slate-600">
+                <span className="text-5xl">📧</span>
+                <p className="text-xs text-center">
+                  {lang === 'tr' ? 'Sol taraftan segment seçip "E-posta İçeriği Üret" butonuna tıklayın' : 'Select a segment on the left and click "Generate Email Content"'}
+                </p>
+              </div>
+            )}
+
+            {/* Dil bazlı toplu gönderim durumu */}
+            {batchProgress && (
+              <div className="rounded-xl p-4 border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 flex flex-col gap-2">
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
+                  🌍 {lang === 'tr' ? 'Dil Bazlı Gönderim' : 'Language Group Send'}
+                  {batchLoading
+                    ? <span className="font-normal text-indigo-500">&nbsp;— {lang === 'tr' ? 'devam ediyor...' : 'in progress...'}</span>
+                    : <span className="font-normal text-indigo-500">&nbsp;— {lang === 'tr' ? 'tamamlandı' : 'complete'}</span>}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  {Object.entries(batchProgress).map(([l, state]) => {
+                    const info = EMAIL_LANGUAGES.find(x => x.value === l);
+                    const s = state.status;
+                    return (
+                      <div key={l} className="flex items-center gap-2 text-xs">
+                        <span className="w-5 text-center shrink-0">{info?.flag ?? '🌐'}</span>
+                        <span className="flex-1 text-slate-700 dark:text-slate-200 font-medium">{info?.label ?? l}</span>
+                        {s === 'idle' && <span className="text-slate-400">—</span>}
+                        {s === 'generating' && (
+                          <span className="text-amber-600 flex items-center gap-1">
+                            <div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                            {lang === 'tr' ? 'üretiyor' : 'generating'}
+                          </span>
+                        )}
+                        {s === 'sending' && (
+                          <span className="text-blue-600 flex items-center gap-1">
+                            <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            {lang === 'tr' ? 'gönderiyor' : 'sending'}
+                          </span>
+                        )}
+                        {s === 'done' && (
+                          <span className="text-green-600 font-medium">
+                            ✓ {state.sent} {lang === 'tr' ? 'gönderildi' : 'sent'}
+                            {(state.failed ?? 0) > 0 && <span className="text-amber-600"> · {state.failed} {lang === 'tr' ? 'hata' : 'failed'}</span>}
+                          </span>
+                        )}
+                        {typeof s === 'object' && 'error' in s && (
+                          <span className="text-red-600 truncate max-w-[140px]" title={s.error}>❌ {s.error}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {emailSendLoading && (
+              <div className="flex items-center gap-3 py-4 text-slate-400 dark:text-slate-500 text-sm">
+                <div className="w-5 h-5 border-2 border-amber-700 border-t-transparent rounded-full animate-spin" />
+                {lang === 'tr' ? 'Gönderiliyor...' : 'Sending...'}
+                {emailSendProgress && emailSendProgress.total > 0 && (
+                  <span className="text-xs">{emailSendProgress.done}/{emailSendProgress.total}</span>
+                )}
+              </div>
+            )}
+
+            {emailSendResult && !emailSendLoading && (
+              <div className={`rounded-xl p-5 border ${
+                emailSendResult.error
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700'
+              }`}>
+                {emailSendResult.error ? (
+                  <div className="flex gap-2 items-start text-red-700 dark:text-red-300">
+                    <span className="text-lg">❌</span>
+                    <div>
+                      <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim başarısız' : 'Send failed'}</p>
+                      <p className="text-xs mt-1 opacity-80">{emailSendResult.error}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 items-start text-green-700 dark:text-green-300">
+                    <span className="text-lg">✅</span>
+                    <div>
+                      <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim tamamlandı' : 'Send complete'}</p>
+                      {emailSendResult.sent !== undefined && (
+                        <div className="mt-2 flex gap-4 text-xs">
+                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{emailSendResult.sent}</strong></span>
+                          {(emailSendResult.failed ?? 0) > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{emailSendResult.failed}</strong></span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Job match preview + send result panel */}
+        {subTab === 'notify_job_match' && (
+          <div className="flex flex-col gap-4">
+            <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2">
+              <span>💼</span> {lang === 'tr' ? 'İş Eşleşme E-postası Önizleme' : 'Job Match Email Preview'}
+            </h3>
+
+            {(jobMatchRenderLoading) && (
+              <div className="flex items-center gap-3 py-10 text-slate-400 dark:text-slate-500 text-sm justify-center">
+                <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                {lang === 'tr' ? 'E-posta oluşturuluyor...' : 'Building email...'}
+              </div>
+            )}
+
+            {!jobMatchRenderLoading && jobMatchHtml && (
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="bg-slate-50 dark:bg-slate-700/50 px-4 py-2.5 text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? 'Konu: ' : 'Subject: '}</span>
+                  {jobMatchSubject}
+                </div>
+                <div className="p-4 bg-white dark:bg-slate-900 max-h-[420px] overflow-auto text-sm text-slate-800 dark:text-slate-100"
+                  dangerouslySetInnerHTML={{ __html: jobMatchHtml
+                    .replace(/cid:crewinjob-logo/g, '/email-logo.png')
+                    .replace(/\{\{UNSUBSCRIBE_URL\}\}/g, '#')
+                  }} />
+              </div>
+            )}
+
+            {!jobMatchRenderLoading && !jobMatchHtml && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-300 dark:text-slate-600">
+                <span className="text-5xl">💼</span>
+                <p className="text-xs text-center max-w-xs">
+                  {lang === 'tr'
+                    ? '1. İlanları çek → 2. Dili seç → 3. E-posta önizlemesi oluştur'
+                    : '1. Fetch listings → 2. Select language → 3. Build email preview'}
+                </p>
+              </div>
+            )}
+
+            {jobMatchSendLoading && (
+              <div className="flex items-center gap-3 py-4 text-slate-400 dark:text-slate-500 text-sm">
+                <div className="w-5 h-5 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
+                {lang === 'tr' ? 'Gönderiliyor...' : 'Sending...'}
+              </div>
+            )}
+
+            {jobMatchSendResult && !jobMatchSendLoading && (
+              <div className={`rounded-xl p-5 border ${
+                jobMatchSendResult.error
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700'
+                  : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700'
+              }`}>
+                {jobMatchSendResult.error ? (
+                  <div className="flex gap-2 items-start text-red-700 dark:text-red-300">
+                    <span className="text-lg">❌</span>
+                    <div>
+                      <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim başarısız' : 'Send failed'}</p>
+                      <p className="text-xs mt-1 opacity-80">{jobMatchSendResult.error}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 items-start text-green-700 dark:text-green-300">
+                    <span className="text-lg">✅</span>
+                    <div>
+                      <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim tamamlandı' : 'Send complete'}</p>
+                      {jobMatchSendResult.sent !== undefined && (
+                        <div className="mt-2 flex gap-4 text-xs">
+                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{jobMatchSendResult.sent}</strong></span>
+                          {(jobMatchSendResult.failed ?? 0) > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{jobMatchSendResult.failed}</strong></span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Send result panel */}
@@ -666,7 +1666,7 @@ export default function MessagingTab() {
                       <li>Botu kanalınıza admin olarak ekleyin</li>
                       <li><code>TELEGRAM_CHANNEL_ID</code> = @crewinjob_jobs veya -100... sayısal ID</li>
                       <li>Mod: <strong>Kanal</strong> = env'den channel ID otomatik; <strong>Tekli</strong> = chat_id girin; <strong>Toplu</strong> = satır satır chat_id listesi</li>
-                      <li>HTML etiketleri desteklenir: &lt;b&gt;, &lt;i&gt;, &lt;a href&gt;</li>
+                      <li>Mesaj düz metin olarak gönderilir (&lt; &gt; &amp; kaçışlanır); linkler otomatik tıklanabilir olur</li>
                     </>
                   ) : (
                     <>
@@ -674,7 +1674,7 @@ export default function MessagingTab() {
                       <li>Add bot as admin to your channel</li>
                       <li><code>TELEGRAM_CHANNEL_ID</code> = @crewinjob_jobs or -100... numeric ID</li>
                       <li>Mode: <strong>Channel</strong> = auto from env; <strong>Single</strong> = enter chat_id; <strong>Broadcast</strong> = line-by-line chat_id list</li>
-                      <li>HTML tags supported: &lt;b&gt;, &lt;i&gt;, &lt;a href&gt;</li>
+                      <li>Messages are sent as plain text (&lt; &gt; &amp; are escaped); links become clickable automatically</li>
                     </>
                   )}
                 </ol>

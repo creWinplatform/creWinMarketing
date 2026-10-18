@@ -3,13 +3,14 @@
  * POST /api/schedule          — Yeni zamanlanmış post oluştur
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { loadPosts, createPost }     from '@/lib/scheduled-posts';
+import { createScheduledPost, listScheduledPosts } from '@/lib/scheduled-posts-backend';
+
+export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
 export async function GET() {
-  const posts = loadPosts().sort(
-    (a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
-  );
-  return NextResponse.json(posts);
+  return NextResponse.json(await listScheduledPosts());
 }
 
 export async function POST(req: NextRequest) {
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
     imageMime?:  string;
     scheduledAt: string;
     note?:       string;
+    campaignId?: string;
+    deliveryId?: string;
+    perPlatformContent?: Record<string, string>;
   };
 
   if (!body.platforms?.length)  return NextResponse.json({ error: 'Platform seçilmedi' }, { status: 400 });
@@ -31,13 +35,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Geçersiz tarih formatı' }, { status: 400 });
   }
 
-  const post = createPost({
+  const post = await createScheduledPost({
     platforms:   body.platforms,
     content:     body.content,
     imageData:   body.imageData,
     imageMime:   body.imageMime,
     scheduledAt: scheduled.toISOString(),
     note:        body.note,
+    campaignId:  body.campaignId,
+    deliveryId:  body.deliveryId,
+    perPlatformContent: body.perPlatformContent,
+    timezone: process.env.APP_TIMEZONE || 'Europe/Istanbul',
+    idempotencyKey: `schedule-${crypto.randomUUID()}`,
   });
 
   return NextResponse.json(post, { status: 201 });

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 
 export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
 const nativeRequire = eval('require') as NodeRequire;
 function agentModule(relPath: string) {

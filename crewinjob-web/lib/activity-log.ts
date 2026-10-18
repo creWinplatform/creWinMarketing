@@ -10,12 +10,22 @@ export type ActivityType =
   | 'image_generated'
   | 'wa_sent'
   | 'tg_sent'
+  | 'email_sent'
   | 'calendar_added'
-  | 'kpi_generated';
+  | 'kpi_generated'
+  | 'kpi_action'
+  | 'seo_crawl_started'
+  | 'seo_crawl_completed'
+  | 'seo_proposed'
+  | 'seo_approved'
+  | 'seo_rejected'
+  | 'seo_applied'
+  | 'test';
 
 export interface ActivityEntry {
   id:      string;
-  type:    ActivityType;
+  /** Backend/yerel kayıtlar bilinmeyen tip içerebilir → activityMeta() ile güvenli eriş */
+  type:    ActivityType | (string & {});
   label:   string;
   detail?: string;
   ts:      number;
@@ -51,6 +61,22 @@ export const ACTIVITY_META: Record<ActivityType, { icon: string; color: string }
   image_generated:   { icon: '🎨', color: 'text-pink-500'   },
   wa_sent:           { icon: '💬', color: 'text-green-600'  },
   tg_sent:           { icon: '✈️',  color: 'text-sky-500'    },
+  email_sent:        { icon: '📧', color: 'text-amber-600'  },
   calendar_added:    { icon: '📅', color: 'text-orange-500' },
   kpi_generated:     { icon: '📊', color: 'text-indigo-500' },
+  kpi_action:        { icon: '⚡', color: 'text-amber-500'  },
+  seo_crawl_started:   { icon: '🕷️', color: 'text-slate-500'   },
+  seo_crawl_completed: { icon: '🔎', color: 'text-teal-500'    },
+  seo_proposed:        { icon: '📝', color: 'text-blue-500'    },
+  seo_approved:        { icon: '✅', color: 'text-green-500'   },
+  seo_rejected:        { icon: '🚫', color: 'text-red-500'     },
+  seo_applied:         { icon: '🛠️', color: 'text-emerald-600' },
+  test:                { icon: '🧪', color: 'text-slate-400'   },
 };
+
+/** Bilinmeyen tipler için yedek (panel çökmesin) */
+export const ACTIVITY_FALLBACK_META = { icon: '•', color: 'text-slate-400' };
+
+export function activityMeta(type: string): { icon: string; color: string } {
+  return (ACTIVITY_META as Record<string, { icon: string; color: string }>)[type] ?? ACTIVITY_FALLBACK_META;
+}

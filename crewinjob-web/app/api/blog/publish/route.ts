@@ -5,17 +5,21 @@
  *  1. Blog içeriğinden başlık + slug çıkar
  *  2. Görsel üret (veya gönderilen imageData'yı kullan)
  *  3. Görseli sunucuya kaydet: public/images/blog/<slug>.png
- *  4. POST /api/services/app/Blog/CreateOrEdit  (token gerekmez)
+ *  4. POST /api/services/app/Blog/CreateOrEdit  (ABP Bearer token ile)
  */
 import { NextRequest, NextResponse } from 'next/server';
 import fs   from 'fs';
 import path from 'path';
+import { internalFetch, publicAppUrl } from '@/lib/internal-fetch';
+
+export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
 const API_BASE    = (process.env.CREWINJOB_API_URL || 'https://api.crewin.org').replace(/\/$/, '');
-const APP_URL     = (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3333').replace(/\/$/, '');
 const BLOG_IMG_DIR = path.join(process.cwd(), 'public', 'images', 'blog');
 
-// ── ABP Token (S3 upload için) ────────────────────────────────────────────────
+// ── ABP Token (S3 upload + Blog/CreateOrEdit için) ────────────────
 let _abpToken      = '';
 let _abpTokenExp   = 0;
 let _abpLoginLock: Promise<string> | null = null;
@@ -177,38 +181,63 @@ async function uploadToS3(base64: string, mime: string, filename: string): Promi
 }
 
 // ── Markdown → HTML ───────────────────────────────────────────────────────────
+// Public blog'a gider → metin önce HTML-escape edilir (stored XSS), inline markdown sonra uygulanır.
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function inlineMd(raw: string): string {
+  // Linkler placeholder'a alınır (URL içindeki * vb. bold/em dönüşümüne girmesin); yalnızca http(s)
+  const links: string[] = [];
+  let text = raw.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_m, label: string, url: string) => {
+    if (!/^https?:\/\//i.test(url)) return label;
+    links.push(`<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
+    return `\u0000${links.length - 1}\u0000`;
+  });
+  text = escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
+    .replace(/`(.+?)`/g,       '<code>$1</code>');
+  return text.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => links[Number(i)] ?? '');
+}
+
 function mdToHtml(md: string): string {
   const html: string[] = [];
-  let inList = false;
+  let listTag: 'ul' | 'ol' | null = null;   // açık liste tipi — doğru etiketle kapatılır
+  const closeList = () => { if (listTag) { html.push(`</${listTag}>`); listTag = null; } };
+  const openList  = (tag: 'ul' | 'ol') => { if (listTag !== tag) { closeList(); html.push(`<${tag}>`); listTag = tag; } };
 
-  for (const raw of md.split('\n')) {
-    const line = raw
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g,     '<em>$1</em>')
-      .replace(/`(.+?)`/g,       '<code>$1</code>');
-
-    if      (/^#{4}\s/.test(line)) { if (inList) { html.push('</ul>'); inList = false; } html.push(`<h4>${line.replace(/^#{4}\s/,'')}</h4>`); }
-    else if (/^#{3}\s/.test(line)) { if (inList) { html.push('</ul>'); inList = false; } html.push(`<h3>${line.replace(/^#{3}\s/,'')}</h3>`); }
-    else if (/^#{2}\s/.test(line)) { if (inList) { html.push('</ul>'); inList = false; } html.push(`<h2>${line.replace(/^#{2}\s/,'')}</h2>`); }
-    else if (/^#{1}\s/.test(line)) { if (inList) { html.push('</ul>'); inList = false; } html.push(`<h1>${line.replace(/^#{1}\s/,'')}</h1>`); }
-    else if (/^[-*]\s/.test(line)) { if (!inList) { html.push('<ul>'); inList = true; }  html.push(`<li>${line.replace(/^[-*]\s/,'')}</li>`); }
-    else if (/^\d+\.\s/.test(line)){ if (!inList) { html.push('<ol>'); inList = true; }  html.push(`<li>${line.replace(/^\d+\.\s/,'')}</li>`); }
-    else if (line.trim() === '')   { if (inList)  { html.push('</ul>'); inList = false; } html.push(''); }
-    else                           { if (inList)  { html.push('</ul>'); inList = false; } html.push(`<p>${line}</p>`); }
+  for (const line of md.replace(/\u0000/g, '').split('\n')) {
+    let m: RegExpMatchArray | null;
+    if      ((m = line.match(/^(#{1,4})\s+(.*)$/))) { closeList(); const n = m[1].length; html.push(`<h${n}>${inlineMd(m[2])}</h${n}>`); }
+    else if ((m = line.match(/^[-*]\s+(.*)$/)))      { openList('ul'); html.push(`<li>${inlineMd(m[1])}</li>`); }
+    else if ((m = line.match(/^\d+\.\s+(.*)$/)))    { openList('ol'); html.push(`<li>${inlineMd(m[1])}</li>`); }
+    else if (line.trim() === '')                     { closeList(); html.push(''); }
+    else                                             { closeList(); html.push(`<p>${inlineMd(line)}</p>`); }
   }
-  if (inList) html.push('</ul>');
+  closeList();
   return html.join('\n');
 }
 
-// ── Görseli yerel diske kaydet (yedek) ───────────────────────────────────────
+// ── Görseli yerel diske kaydet (yedek) — hata yayını asla düşürmez ─────────────
 function saveImageLocally(base64: string, mime: string, slug: string): string {
-  ensureBlogImgDir();
-  const ext      = mime.includes('png') ? 'png' : 'jpg';
-  const filename = `${slug}-${Date.now()}.${ext}`;
-  const filePath = path.join(BLOG_IMG_DIR, filename);
-  fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
-  console.log(`[blog/publish] Görsel kaydedildi: ${filePath}`);
-  return filename;
+  try {
+    ensureBlogImgDir();
+    const ext      = mime.includes('png') ? 'png' : 'jpg';
+    const filename = `${slug}-${Date.now()}.${ext}`;
+    const filePath = path.join(BLOG_IMG_DIR, filename);
+    fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+    console.log(`[blog/publish] Görsel kaydedildi: ${filePath}`);
+    return filename;
+  } catch (e) {
+    console.warn('[blog/publish] Yerel görsel kaydı başarısız (yayın etkilenmez):', e);
+    return '';
+  }
 }
 
 // ── Görseli imgbb'ye yükle → public URL döner ─────────────────────────────────
@@ -261,9 +290,9 @@ export async function POST(req: NextRequest) {
 
   if (!imgBase64) {
     try {
-      const imgRes = await fetch(`${APP_URL}/api/generate-image`, {
+      // Dahili çağrı → servis oturumu cookie'si ile (aksi halde middleware 401 döner)
+      const imgRes = await internalFetch('/api/generate-image', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           platform:    'blog',
           contentType: 'blog',
@@ -271,8 +300,9 @@ export async function POST(req: NextRequest) {
         }),
         signal: AbortSignal.timeout(60000),
       });
-      const imgJson = await imgRes.json() as { imageData?: string; mimeType?: string; error?: string };
-      if (!imgJson.error && imgJson.imageData) {
+      const imgJson = await imgRes.json().catch(() => ({})) as { imageData?: string; mimeType?: string; error?: string };
+      if (!imgRes.ok) console.warn(`[blog/publish] Görsel üretimi HTTP ${imgRes.status}: ${imgJson.error ?? ''}`);
+      if (imgRes.ok && !imgJson.error && imgJson.imageData) {
         imgBase64 = imgJson.imageData;
         imgMime   = imgJson.mimeType || 'image/jpeg';
         console.log('[blog/publish] Görsel üretildi');
@@ -300,19 +330,25 @@ export async function POST(req: NextRequest) {
       finalImageUrl = await uploadToImgbb(imgBase64);
     }
 
-    // 3c. Yerel yedek
+    // 3c. Yerel yedek (yalnızca arşiv — kanonik URL S3/imgbb)
     imageFileName = saveImageLocally(imgBase64, imgMime, slug);
-    localImageUrl = `${APP_URL}/images/blog/${imageFileName}`;
+    localImageUrl = imageFileName ? `${publicAppUrl()}/images/blog/${imageFileName}` : '';
   }
 
   // 4. Sadece makale gövdesini al, sonra Markdown → HTML
   const articleBody = extractArticleBody(content);
   const htmlContent = mdToHtml(articleBody);
 
-  // 5. Blog yayınla
+  // 5. Blog yayınla (ABP endpoint'i yetkili çağrı ister)
+  let abpToken: string;
+  try {
+    abpToken = await getAbpToken();
+  } catch (e) {
+    return NextResponse.json({ error: `Blog yayınlanamadı: ABP oturumu açılamadı — ${(e as Error).message}` }, { status: 502 });
+  }
   const blogRes = await fetch(`${API_BASE}/api/services/app/Blog/CreateOrEdit`, {
     method:  'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'Authorization': `Bearer ${abpToken}` },
     body:    JSON.stringify({ id: null, title, content: htmlContent, imageUrl: finalImageUrl }),
     signal:  AbortSignal.timeout(15000),
   });
@@ -355,7 +391,7 @@ export async function GET() {
       .filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f))
       .map(f => ({
         filename: f,
-        url:      `${APP_URL}/images/blog/${f}`,
+        url:      `${publicAppUrl()}/images/blog/${f}`,
         size:     fs.statSync(path.join(BLOG_IMG_DIR, f)).size,
         created:  fs.statSync(path.join(BLOG_IMG_DIR, f)).birthtime,
       }))

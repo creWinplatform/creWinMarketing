@@ -1,13 +1,17 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
+import '@fontsource-variable/manrope';
+import './product-design.css';
+import './ryzevo-tokens.css';
+import './ryzevo.css';
+import './mobile-growth.css';
+import './growth-compass.css';
+import './accessibility.css';
 import { LangProvider } from '@/lib/lang';
 
-const inter = Inter({ subsets: ['latin'] });
-
 export const metadata: Metadata = {
-  title: 'crewinjob Marketing Agent',
-  description: 'AI-powered maritime marketing content generator',
+  title: { default:'Ryzevo', template:'%s | Ryzevo' },
+  description: 'Projenize özel içerik, kampanya ve büyüme çalışma alanı.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -18,13 +22,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           (function() {
             try {
               var t = localStorage.getItem('crewinjob_theme');
-              if (t === 'light') { document.documentElement.classList.remove('dark'); }
-              else { document.documentElement.classList.add('dark'); }
-            } catch(e) { document.documentElement.classList.add('dark'); }
+              document.documentElement.classList.toggle('dark', t === 'dark');
+            } catch(e) { document.documentElement.classList.remove('dark'); }
           })();
         `}} />
       </head>
-      <body className={inter.className}><LangProvider>{children}</LangProvider></body>
+      <body><LangProvider>{children}</LangProvider></body>
     </html>
   );
 }

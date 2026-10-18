@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getToken }           from '@/lib/social-tokens';
+import { getFreshTwitterOAuth2Token, getToken, graphFetch, twitterOAuth1Creds } from '@/lib/social-tokens';
 import { buildOAuthHeader }   from '@/lib/oauth1';
+
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
 interface PostRequest {
   platforms:              string[];
@@ -15,6 +18,8 @@ interface PostResult {
   platform: string;
   success:  boolean;
   url?:     string;
+  /** Platformun gerçek gönderi/medya ID'si (metrik takibi için — URL'den çıkarmaya gerek kalmaz) */
+  postId?:  string;
   error?:   string;
 }
 
@@ -42,17 +47,55 @@ function parseTwitterError(status: number, data: Record<string, unknown>): strin
   return raw;
 }
 
+// ── Twitter kısaltma ──────────────────────────────────────────────────────────
+function truncateForTwitter(content: string): string {
+  const LIMIT = 280;
+  if (content.length <= LIMIT) return content;
+
+  // Sondaki hashtag bloğunu ayır
+  const hashtagMatch = content.match(/(\s*#[\wÀ-ɏ]+)+\s*$/);
+  const hashtags     = hashtagMatch ? hashtagMatch[0].trim() : '';
+  const body         = hashtagMatch ? content.slice(0, hashtagMatch.index).trim() : content;
+
+  const suffix    = hashtags ? `\n\n${hashtags}` : '';
+  const ellipsis  = '…';
+  const available = LIMIT - suffix.length - ellipsis.length;
+
+  if (available <= 0) {
+    return content.slice(0, LIMIT - ellipsis.length) + ellipsis;
+  }
+
+  if (body.length <= available) {
+    // Gövde zaten sığıyor — sadece hashtag ekle
+    const combined = body + suffix;
+    return combined.length <= LIMIT ? combined : body.slice(0, LIMIT - ellipsis.length) + ellipsis;
+  }
+
+  let truncated = body.slice(0, available);
+
+  // Cümle sonunda kes (. ! ?)
+  const sentenceEnd = truncated.search(/[.!?][^.!?]{0,10}$/);
+  if (sentenceEnd > available * 0.55) {
+    const cut = truncated.slice(0, sentenceEnd + 1);
+    return (cut + suffix).length <= LIMIT ? cut + suffix : cut + ellipsis;
+  }
+
+  // Kelime sonunda kes
+  const lastSpace = truncated.lastIndexOf(' ');
+  if (lastSpace > available * 0.6) truncated = truncated.slice(0, lastSpace);
+
+  return truncated + ellipsis + suffix;
+}
+
 // ── Twitter/X ────────────────────────────────────────────────────────────────
 async function postTwitter(content: string): Promise<PostResult> {
-  const tweet = content.slice(0, 280);
+  const tweet = truncateForTwitter(content);
 
   // OAuth 1.0a (Free tier — ayda 1.500 tweet)
-  const apiKey      = process.env.TWITTER_API_KEY;
-  const apiSecret   = process.env.TWITTER_API_SECRET;
-  const accessToken = process.env.TWITTER_ACCESS_TOKEN_V1 || process.env.TWITTER_ACCESS_TOKEN;
-  const tokenSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+  const creds = twitterOAuth1Creds();
 
-  if (apiKey && apiSecret && accessToken && tokenSecret) {
+  if (creds) {
+    const { apiKey, apiSecret, accessToken, tokenSecret } = creds;
     const url    = 'https://api.twitter.com/2/tweets';
     const header = buildOAuthHeader('POST', url, apiKey, apiSecret, accessToken, tokenSecret);
 
@@ -68,31 +111,57 @@ async function postTwitter(content: string): Promise<PostResult> {
         status:  res.status,
         body:    data,
         keys:    {
-          apiKey:       apiKey ? `${apiKey.slice(0, 6)}...` : 'MISSING',
+          // Anahtar değerleri (kısmi de olsa) loglanmaz
+          apiKey:       apiKey ? 'OK' : 'MISSING',
           apiSecret:    apiSecret ? 'OK' : 'MISSING',
-          accessToken:  accessToken ? `${accessToken.slice(0, 6)}...` : 'MISSING',
+          accessToken:  accessToken ? 'OK' : 'MISSING',
           tokenSecret:  tokenSecret ? 'OK' : 'MISSING',
         },
       });
       return { platform: 'twitter', success: false, error: parseTwitterError(res.status, data) };
     }
     const tweetId = (data.data as Record<string, string>)?.id;
-    return { platform: 'twitter', success: true, url: tweetId ? `https://twitter.com/i/web/status/${tweetId}` : undefined };
+    return { platform: 'twitter', success: true, postId: tweetId, url: tweetId ? `https://twitter.com/i/web/status/${tweetId}` : undefined };
   }
 
-  // Fallback: OAuth 2.0 Bearer Token
-  const token = getToken('twitter');
+  // Fallback: OAuth 2.0 Bearer Token (OAuth akışıyla bağlanmış hesap) — süresi dolmuşsa yenilenir
+  let token = await getFreshTwitterOAuth2Token();
   if (!token?.accessToken) return { platform: 'twitter', success: false, error: 'Twitter bağlı değil. .env.local\'a TWITTER_API_KEY ekleyin.' };
 
-  const res  = await fetch('https://api.twitter.com/2/tweets', {
+  const send = (accessToken: string) => fetch('https://api.twitter.com/2/tweets', {
     method:  'POST',
-    headers: { 'Authorization': `Bearer ${token.accessToken}`, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body:    JSON.stringify({ text: tweet }),
   });
+  let res = await send(token.accessToken);
+  if (res.status === 401 && token.refreshToken) {
+    // expiresAt bilinmiyorsa (env token) süre dolumu ancak 401 ile anlaşılır → bir kez yenile ve tekrar dene
+    const refreshed = await getFreshTwitterOAuth2Token(true);
+    if (refreshed?.accessToken && refreshed.accessToken !== token.accessToken) {
+      token = refreshed;
+      res   = await send(token.accessToken);
+    }
+  }
   const data = await res.json() as Record<string, unknown>;
   if (!res.ok) return { platform: 'twitter', success: false, error: parseTwitterError(res.status, data) };
   const tweetId = (data.data as Record<string, string>)?.id;
-  return { platform: 'twitter', success: true, url: tweetId ? `https://twitter.com/i/web/status/${tweetId}` : undefined };
+  return { platform: 'twitter', success: true, postId: tweetId, url: tweetId ? `https://twitter.com/i/web/status/${tweetId}` : undefined };
+}
+
+// ── LinkedIn "little text" kaçışı ─────────────────────────────────────────────
+// Posts API commentary alanı "little text" formatındadır: ayrılmış karakterler kaçırılmazsa
+// metin o noktada kesilir veya 422 döner. Önce ters bölü, sonra diğerleri.
+function escapeLinkedInText(text: string): string {
+  return text.replace(/[\\()[\]{}<>@|~_*]/g, ch => `\\${ch}`);
+}
+
+function linkedInHeaders(accessToken: string): Record<string, string> {
+  return {
+    'Authorization':             `Bearer ${accessToken}`,
+    'Content-Type':              'application/json',
+    'X-Restli-Protocol-Version': '2.0.0',
+    'Linkedin-Version':          process.env.LINKEDIN_API_VERSION || '202608',
+  };
 }
 
 // ── LinkedIn ─────────────────────────────────────────────────────────────────
@@ -144,94 +213,75 @@ async function postLinkedIn(content: string, imageData?: string): Promise<PostRe
       authorUrn = uid.startsWith('urn:') ? uid : `urn:li:person:${uid}`;
     }
   }
-  const headers   = {
-    'Authorization':             `Bearer ${accessToken}`,
-    'Content-Type':              'application/json',
-    'X-Restli-Protocol-Version': '2.0.0',
-  };
+  const headers = linkedInHeaders(accessToken);
 
-  // Görsel varsa önce yükle
-  let assetUrn = '';
+  // Görsel varsa önce yükle (versiyonlu REST Images API)
+  let imageUrn = '';
   if (imageData) {
     try {
-      // 1. Upload kaydı başlat
-      const regRes = await fetch('https://api.linkedin.com/v2/assets?action=registerUpload', {
+      // 1. Yükleme başlat → uploadUrl + image URN
+      const initRes = await fetch('https://api.linkedin.com/rest/images?action=initializeUpload', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          registerUploadRequest: {
-            recipes:              ['urn:li:digitalmediaRecipe:feedshare-image'],
-            owner:                authorUrn,
-            serviceRelationships: [{ relationshipType: 'OWNER', identifier: 'urn:li:userGeneratedContent' }],
-          },
-        }),
+        body:   JSON.stringify({ initializeUploadRequest: { owner: authorUrn } }),
       });
-      const regData = await regRes.json() as Record<string, unknown>;
-      const uploadUrl = (regData.value as Record<string, unknown>)?.uploadMechanism as Record<string, unknown>;
-      const httpUpload = uploadUrl?.['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'] as Record<string, unknown>;
-      const putUrl     = httpUpload?.uploadUrl as string;
-      assetUrn         = ((regData.value as Record<string, unknown>)?.asset as string) || '';
-
-      // 2. Görseli binary olarak yükle (sharp JPEG çıktısı verir, mime'e göre belirle)
-      if (putUrl && assetUrn) {
-        const imgBuffer  = Buffer.from(imageData, 'base64');
-        const mimeType   = imageData.startsWith('/9j/') ? 'image/jpeg' : 'image/png'; // JPEG magic bytes base64'te /9j/ ile başlar
-        await fetch(putUrl, {
+      const initData = await initRes.json().catch(() => ({})) as { value?: { uploadUrl?: string; image?: string }; message?: string };
+      const putUrl   = initData.value?.uploadUrl;
+      const urn      = initData.value?.image;
+      if (!initRes.ok || !putUrl || !urn) {
+        console.warn('[LinkedIn] initializeUpload başarısız:', initRes.status, initData.message || '');
+      } else {
+        // 2. Görseli binary olarak yükle — sonucu kontrol et (başarısızsa görselsiz devam)
+        const imgBuffer = Buffer.from(imageData, 'base64');
+        const mimeType  = imageData.startsWith('/9j/') ? 'image/jpeg' : 'image/png'; // JPEG magic bytes base64'te /9j/ ile başlar
+        const putRes    = await fetch(putUrl, {
           method:  'PUT',
-          headers: { 'Content-Type': mimeType },
+          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': mimeType },
           body:    imgBuffer,
         });
-      } else {
-        assetUrn = ''; // yükleme başarısız, text-only devam
+        if (putRes.ok) imageUrn = urn;
+        else console.warn('[LinkedIn] Görsel yükleme (PUT) başarısız:', putRes.status);
       }
-    } catch {
-      assetUrn = ''; // hata varsa görselsiz devam
+    } catch (e) {
+      console.warn('[LinkedIn] Görsel yükleme hatası, görselsiz devam:', e);
+      imageUrn = '';
     }
   }
 
-  // Post gövdesi — görsel varsa IMAGE kategorisi, yoksa NONE
-  const shareContent = assetUrn
-    ? {
-        shareCommentary:    { text: content.slice(0, 3000) },
-        shareMediaCategory: 'IMAGE',
-        media: [{
-          status:      'READY',
-          description: { text: 'CrewinJob Post' },
-          media:       assetUrn,
-          title:       { text: 'CrewinJob' },
-        }],
-      }
-    : {
-        shareCommentary:    { text: content.slice(0, 3000) },
-        shareMediaCategory: 'NONE',
-      };
-
   const body = {
-    author:          authorUrn,
-    lifecycleState:  'PUBLISHED',
-    specificContent: { 'com.linkedin.ugc.ShareContent': shareContent },
-    visibility:      { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
+    author:     authorUrn,
+    commentary: escapeLinkedInText(content.slice(0, 3000)),
+    visibility: 'PUBLIC',
+    distribution: {
+      feedDistribution:               'MAIN_FEED',
+      targetEntities:                 [],
+      thirdPartyDistributionChannels: [],
+    },
+    ...(imageUrn ? { content: { media: { id: imageUrn } } } : {}),
+    lifecycleState:            'PUBLISHED',
+    isReshareDisabledByAuthor: false,
   };
 
-  console.log('[LinkedIn] POST body:', JSON.stringify({ author: body.author, hasImage: !!assetUrn }));
-  const res = await fetch('https://api.linkedin.com/v2/ugcPosts', {
+  console.log('[LinkedIn] POST body:', JSON.stringify({ author: body.author, hasImage: !!imageUrn }));
+  const res = await fetch('https://api.linkedin.com/rest/posts', {
     method: 'POST',
     headers,
     body:   JSON.stringify(body),
   });
 
   if (!res.ok) {
-    const data = await res.json();
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>;
     console.error('[LinkedIn API Error]', { status: res.status, body: data });
-    return { platform: 'linkedin', success: false, error: data.message || JSON.stringify(data) };
+    return { platform: 'linkedin', success: false, error: (data.message as string) || JSON.stringify(data) };
   }
   console.log('[LinkedIn] POST başarılı, status:', res.status);
 
-  const resData = await res.json().catch(() => ({})) as Record<string, unknown>;
-  const postId  = (resData.id as string) || '';
+  // Posts API gövde döndürmez — ID x-restli-id başlığında (urn:li:share:… / urn:li:ugcPost:…)
+  const postId = res.headers.get('x-restli-id') || '';
   return {
     platform: 'linkedin',
     success:  true,
+    postId:   postId || undefined,
     url:      postId ? `https://www.linkedin.com/feed/update/${postId}` : 'https://www.linkedin.com/feed/',
   };
 }
@@ -253,7 +303,7 @@ async function postFacebook(content: string, imageData?: string): Promise<PostRe
   // (System User token ile doğrudan post atılamaz, page token gerekir)
   let pageToken = accessToken;
   try {
-    const ptRes  = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=access_token&access_token=${accessToken}`);
+    const ptRes  = await graphFetch(`${encodeURIComponent(pageId)}?fields=access_token`, accessToken);
     const ptData = await ptRes.json() as { access_token?: string };
     if (ptData.access_token) pageToken = ptData.access_token;
   } catch (_) { /* dönüşüm başarısız → mevcut token ile devam et */ }
@@ -267,9 +317,8 @@ async function postFacebook(content: string, imageData?: string): Promise<PostRe
     const blob      = new Blob([imgBuffer], { type: mimeType });
     form.append('source',       blob,         fileName);
     form.append('message',      content);
-    form.append('access_token', pageToken);
 
-    const res  = await fetch(`https://graph.facebook.com/v19.0/${pageId}/photos`, {
+    const res  = await graphFetch(`${encodeURIComponent(pageId)}/photos`, pageToken, {
       method: 'POST',
       body:   form,
     });
@@ -282,15 +331,16 @@ async function postFacebook(content: string, imageData?: string): Promise<PostRe
     return {
       platform: 'facebook',
       success:  true,
+      postId:   data.post_id || undefined,
       url:      data.post_id ? `https://www.facebook.com/${data.post_id}` : undefined,
     };
   }
 
   // Görselsiz metin post
-  const res = await fetch(`https://graph.facebook.com/v19.0/${pageId}/feed`, {
+  const res = await graphFetch(`${encodeURIComponent(pageId)}/feed`, pageToken, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ message: content, access_token: pageToken }),
+    body:    JSON.stringify({ message: content }),
   });
   const data = await res.json();
 
@@ -302,6 +352,7 @@ async function postFacebook(content: string, imageData?: string): Promise<PostRe
   return {
     platform: 'facebook',
     success:  true,
+    postId:   data.id || undefined,
     url:      data.id ? `https://www.facebook.com/${data.id}` : undefined,
   };
 }
@@ -332,9 +383,11 @@ async function postInstagram(content: string, imageData?: string): Promise<PostR
   }
 
   // 1. ImgBB'ye yükle (URLSearchParams — FormData sunucu taraflı Cloudflare bloğu yaşar)
+  // Görsel yalnızca Instagram'ın çekmesi için gerekli → 24 saat sonra silinsin (blog yüklemeleri süresiz kalır)
   const imgbbBody = new URLSearchParams();
-  imgbbBody.append('key',   imgbbKey);
-  imgbbBody.append('image', imageData);
+  imgbbBody.append('key',        imgbbKey);
+  imgbbBody.append('image',      imageData);
+  imgbbBody.append('expiration', '86400');
   const uploadRes  = await fetch('https://api.imgbb.com/1/upload', {
     method:  'POST',
     headers: {
@@ -350,36 +403,61 @@ async function postInstagram(content: string, imageData?: string): Promise<PostR
   const imageUrl = uploadData.data.url as string;
 
   // 2. Media container oluştur
-  const containerRes = await fetch(
-    `https://graph.facebook.com/v19.0/${igUserId}/media`,
-    {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ image_url: imageUrl, caption: content.slice(0, 2200), access_token: accessToken }),
-    }
-  );
+  const containerRes = await graphFetch(`${encodeURIComponent(igUserId)}/media`, accessToken, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ image_url: imageUrl, caption: content.slice(0, 2200) }),
+  });
   const containerData = await containerRes.json();
   if (!containerRes.ok || containerData.error) {
     console.error('[Instagram API Error - container]', { status: containerRes.status, body: containerData });
     return { platform: 'instagram', success: false, error: containerData.error?.message || JSON.stringify(containerData) };
   }
+  const containerId = containerData.id as string;
 
-  // 3. Publish
-  const publishRes = await fetch(
-    `https://graph.facebook.com/v19.0/${igUserId}/media_publish`,
-    {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ creation_id: containerData.id, access_token: accessToken }),
+  // 3. Container işlenene kadar bekle (maks 30s, 3s aralıkla)
+  let statusCode = 'IN_PROGRESS';
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await new Promise(r => setTimeout(r, 3000));
+    const statusRes  = await graphFetch(`${encodeURIComponent(containerId)}?fields=status_code`, accessToken);
+    const statusData = await statusRes.json() as { status_code?: string; error?: { message: string } };
+    if (statusData.error) {
+      return { platform: 'instagram', success: false, error: `Container durum hatası: ${statusData.error.message}` };
     }
-  );
+    statusCode = statusData.status_code || 'IN_PROGRESS';
+    if (statusCode === 'FINISHED') break;
+    if (statusCode === 'ERROR' || statusCode === 'EXPIRED') {
+      return { platform: 'instagram', success: false, error: `Instagram görsel işleme başarısız (durum: ${statusCode})` };
+    }
+  }
+  if (statusCode !== 'FINISHED') {
+    return { platform: 'instagram', success: false, error: 'Instagram görseli 30 saniyede işlenemedi, lütfen tekrar dene.' };
+  }
+
+  // 4. Publish
+  const publishRes = await graphFetch(`${encodeURIComponent(igUserId)}/media_publish`, accessToken, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ creation_id: containerId }),
+  });
   const publishData = await publishRes.json();
   if (!publishRes.ok || publishData.error) {
     console.error('[Instagram API Error - publish]', { status: publishRes.status, body: publishData });
     return { platform: 'instagram', success: false, error: publishData.error?.message || JSON.stringify(publishData) };
   }
 
-  return { platform: 'instagram', success: true, url: 'https://www.instagram.com/' };
+  // 5. Gerçek medya ID'si (metrikler için) + kalıcı bağlantı
+  const mediaId = (publishData.id as string) || '';
+  let permalink = '';
+  if (mediaId) {
+    try {
+      const plRes  = await graphFetch(`${encodeURIComponent(mediaId)}?fields=permalink`, accessToken);
+      const plData = await plRes.json() as { permalink?: string };
+      permalink = plData.permalink || '';
+    } catch { /* permalink alınamazsa genel profil bağlantısı */ }
+  }
+
+  return { platform: 'instagram', success: true, postId: mediaId || undefined, url: permalink || 'https://www.instagram.com/' };
 }
 
 // ── TikTok ───────────────────────────────────────────────────────────────────

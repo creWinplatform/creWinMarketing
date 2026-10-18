@@ -1,0 +1,41 @@
+import 'server-only';
+import type Database from 'better-sqlite3';
+import { PILOT_LIMITS } from './limits';
+import { MarketingStoreError } from './errors';
+
+type Scope = { organizationId: string; projectId: string };
+export const TRIAL_LIMITS = Object.freeze({ ai: 10, audits: 3, campaigns: 10, content: 25, tasks: 25, members: 10 });
+export const TRIAL_DAYS = 14;
+type EntitlementRow = { mode: 'pilot' | 'trial'; started_at: string; ends_at: string | null };
+
+// Only baseline rights are persisted. A package preference or sandbox payment cannot grant paid rights.
+export function projectEntitlement(db: Database.Database, scope: Scope) {
+  const project = db.prepare('SELECT product_pack FROM platform_projects WHERE id=? AND organization_id=?').get(scope.projectId, scope.organizationId) as {product_pack: string} | undefined;
+  if (!project) throw new MarketingStoreError('Proje bulunamadı.', 404);
+  const row = project.product_pack === 'crewin' ? {mode: 'pilot' as const, started_at: '', ends_at: null} : db.prepare('SELECT mode,started_at,ends_at FROM platform_project_entitlements WHERE organization_id=? AND project_id=?').get(scope.organizationId, scope.projectId) as EntitlementRow | undefined;
+  if (!row || !['pilot', 'trial'].includes(row.mode)) throw new MarketingStoreError('Proje planı doğrulanamadı.', 409);
+  const trial = row.mode === 'trial';
+  if (trial && (!Number.isFinite(Date.parse(row.started_at)) || !row.ends_at || !Number.isFinite(Date.parse(row.ends_at)) || Date.parse(row.ends_at) - Date.parse(row.started_at) !== TRIAL_DAYS * 86400000)) throw new MarketingStoreError('Deneme dönemi doğrulanamadı.', 409);
+  const active = !trial || Date.now() >= Date.parse(row.started_at) && Date.now() < Date.parse(row.ends_at!);
+  return { id: row.mode, active, startsAt: trial ? row.started_at : null, endsAt: row.ends_at,
+    limits: trial ? TRIAL_LIMITS : PILOT_LIMITS, seats: trial ? 2 : null, socialAccounts: trial ? 1 : null,
+    liveDeliveryAllowed: !trial, periodKey: trial ? 'trial-v1' : null };
+}
+
+export function assertProjectWork(db: Database.Database, scope: Scope) {
+  const rights = projectEntitlement(db, scope);
+  if (!rights.active) throw new MarketingStoreError('Deneme süresi doldu. Mevcut kayıtlarınız korunuyor; yeni üretim için yöneticiyle iletişime geçin.', 403);
+  return rights;
+}
+
+export function assertProjectDelivery(db: Database.Database, scope: Scope) {
+  const rights = assertProjectWork(db, scope);
+  if (!rights.liveDeliveryAllowed) throw new MarketingStoreError('Deneme planında gerçek e-posta ve sosyal yayın kapalıdır. Prova kullanabilirsiniz.', 403);
+}
+
+export function assertSeatCapacity(db: Database.Database, scope: Scope) {
+  const rights = assertProjectWork(db, scope);
+  if (rights.seats === null) return;
+  const count = (db.prepare('SELECT COUNT(*) AS n FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE m.organization_id=? AND m.project_id=? AND m.active=1 AND u.active=1').get(scope.organizationId, scope.projectId) as {n:number}).n;
+  if (count >= rights.seats) throw new MarketingStoreError('Aktif ekip üyesi sınırına ulaşıldı.', 429);
+}

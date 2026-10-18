@@ -5,8 +5,12 @@
  * Yalnızca READ isteği yapar — hiçbir post oluşturmaz.
  */
 import { NextResponse }       from 'next/server';
-import { getToken }           from '@/lib/social-tokens';
+import { getToken, graphFetch, twitterOAuth1Creds } from '@/lib/social-tokens';
 import { buildOAuthHeader }   from '@/lib/oauth1';
+
+export const dynamic = 'force-dynamic';
+// Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
+export const fetchCache = 'force-no-store';
 
 interface HealthResult {
   platform: string;
@@ -17,13 +21,11 @@ interface HealthResult {
 }
 
 async function checkTwitter(): Promise<HealthResult> {
-  const apiKey      = process.env.TWITTER_API_KEY;
-  const apiSecret   = process.env.TWITTER_API_SECRET;
-  const accessToken = process.env.TWITTER_ACCESS_TOKEN_V1 || process.env.TWITTER_ACCESS_TOKEN;
-  const tokenSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET;
-  if (!apiKey || !apiSecret || !accessToken || !tokenSecret) {
+  const creds = twitterOAuth1Creds();
+  if (!creds) {
     return { platform: 'twitter', ok: false, detail: 'Token eksik' };
   }
+  const { apiKey, apiSecret, accessToken, tokenSecret } = creds;
 
   // /2/users/me — sadece okur
   const url    = 'https://api.twitter.com/2/users/me';
@@ -79,7 +81,7 @@ async function checkFacebook(): Promise<HealthResult> {
   const pageId = process.env.FACEBOOK_PAGE_ID;
   if (!token || !pageId) return { platform: 'facebook', ok: false, detail: 'Token veya Page ID eksik' };
 
-  const res  = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=name&access_token=${token}`);
+  const res  = await graphFetch(`${encodeURIComponent(pageId)}?fields=name`, token);
   const data = await res.json() as Record<string, unknown>;
   return {
     platform: 'facebook',
@@ -95,7 +97,7 @@ async function checkInstagram(): Promise<HealthResult> {
   const igUserId = process.env.INSTAGRAM_IG_USER_ID;
   if (!token || !igUserId) return { platform: 'instagram', ok: false, detail: 'Token veya IG User ID eksik' };
 
-  const res  = await fetch(`https://graph.facebook.com/v19.0/${igUserId}?fields=username&access_token=${token}`);
+  const res  = await graphFetch(`${encodeURIComponent(igUserId)}?fields=username`, token);
   const data = await res.json() as Record<string, unknown>;
   return {
     platform: 'instagram',

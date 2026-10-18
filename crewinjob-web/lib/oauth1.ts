@@ -3,6 +3,11 @@
  */
 import crypto from 'crypto';
 
+/** RFC 3986 percent-encoding (encodeURIComponent ! ' ( ) * karakterlerini kodlamaz) */
+function pct(s: string): string {
+  return encodeURIComponent(s).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 export function oauthSign(
   method:        string,
   url:           string,
@@ -11,13 +16,17 @@ export function oauthSign(
   tokenSecret:   string,
 ): string {
   const sorted = Object.keys(params).sort()
-    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`)
+    .map(k => `${pct(k)}=${pct(params[k])}`)
     .join('&');
-  const base = `${method}&${encodeURIComponent(url)}&${encodeURIComponent(sorted)}`;
-  const key  = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`;
+  const base = `${method}&${pct(url)}&${pct(sorted)}`;
+  const key  = `${pct(consumerSecret)}&${pct(tokenSecret)}`;
   return crypto.createHmac('sha1', key).update(base).digest('base64');
 }
 
+/**
+ * `url` sorgu dizesi İÇERMEMELİ; GET sorgu parametreleri `queryParams` ile verilir
+ * (imzaya dahil edilmeleri zorunlu — aksi halde 401).
+ */
 export function buildOAuthHeader(
   method:        string,
   url:           string,
@@ -25,6 +34,7 @@ export function buildOAuthHeader(
   consumerSecret: string,
   accessToken:   string,
   tokenSecret:   string,
+  queryParams:   Record<string, string> = {},
 ): string {
   const nonce     = crypto.randomBytes(16).toString('hex');
   const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -38,10 +48,10 @@ export function buildOAuthHeader(
     oauth_version:          '1.0',
   };
 
-  const signature = oauthSign(method, url, oauthParams, consumerSecret, tokenSecret);
+  const signature = oauthSign(method, url, { ...queryParams, ...oauthParams }, consumerSecret, tokenSecret);
   oauthParams.oauth_signature = signature;
 
   return 'OAuth ' + Object.keys(oauthParams).sort()
-    .map(k => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`)
+    .map(k => `${pct(k)}="${pct(oauthParams[k])}"`)
     .join(', ');
 }

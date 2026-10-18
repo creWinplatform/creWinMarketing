@@ -2,6 +2,29 @@
 // Yeni kullanıcı kazanımı için Click-to-WA reklamları, Telegram kanal içerikleri
 // ve Telegram Bot kayıt akışı üretir.
 const client = require('../ai-client');
+const ctx    = require('../context');
+
+// ─── Mesajlaşma kanallarının ortak ölçüm notu ────────────────────────────────
+const MESSAGING_METRICS_NOTE = `
+${ctx.core()}
+
+## Bu Kanalın Ölçüm Kuralları
+
+1. **Başarı = aktive olmuş kayıt.** Bot ile konuşan kişi sayısı vanity metriktir.
+   Asıl hedef: crewinjob.com'a kaydolan VE profilini ≥%80 tamamlayan kullanıcı.
+2. **Akışa profil tamamlama adımı koy.** Kayıt sonrası bot/kanal kullanıcıyı sertifika ve
+   sea service eklemeye yönlendirmeli. Kayıt tek başına değer üretmez.
+3. **Her CTA linkinde UTM olsun** (\`utm_source=whatsapp\` / \`telegram\`, \`utm_medium=messaging\`).
+4. **Funnel'ı ölç:** mesaj alan → linke tıklayan → kaydolan → profilini tamamlayan.
+   Bu dört adımın hangisinde düşüş olduğunu görmeden optimizasyon yapılamaz.
+5. Çıktının sonuna bu funnel için ölçüm tablosu ekle: adım · hedef oran · nasıl izlenir.
+
+## İçerik Kalite Kuralları
+
+- **Somut sayı kullan:** Elindeki gerçek rakamları kullan. "Yüzlerce ilan" değil, tam sayı.
+- **Kullanıcıyı suçlama:** Gemide internet kısıtlı, vardiya ağır — koşulları say, kararı bırak.
+- **"%100 tamamla" deme:** Somut adım söyle: deniz hizmetini ve sertifikalarını ekle.
+`;
 
 // ─── A) Click-to-WhatsApp Reklam + Bot Karşılama Akışı ───────────────────────
 async function generateClickToWhatsApp(params, data, model) {
@@ -39,6 +62,7 @@ async function generateClickToWhatsApp(params, data, model) {
   const prompt = `
 Sen crewinjob.com'un dijital pazarlama uzmanısın. WhatsApp Business üzerinden yeni kullanıcı kazanımı için
 Click-to-WhatsApp reklam kampanyası ve otomatik bot karşılama akışı tasarlayacaksın.
+${MESSAGING_METRICS_NOTE}
 
 📊 GERÇEK PLATFORM VERİSİ:
 - ${realStats.totalSeafarers.toLocaleString()} kayıtlı gemi adamı
@@ -169,6 +193,7 @@ async function generateTelegramChannel(params, data, model) {
   const prompt = `
 Sen crewinjob.com'un Telegram kanal stratejistisin. Yeni seafarer kullanıcıları kazanmak için
 Telegram kanalını büyütecek ve etkili içerikler üreteceksin.
+${MESSAGING_METRICS_NOTE}
 
 📊 GERÇEK PLATFORM VERİSİ:
 - ${realStats.totalSeafarers.toLocaleString()} kayıtlı gemi adamı
@@ -365,6 +390,7 @@ async function generateTelegramBot(params, data, model) {
   const prompt = `
 Sen crewinjob.com'un Telegram Bot mimarısın. Yeni seafarer kullanıcıları kazanmak ve
 crewinjob.com'a yönlendirmek için profesyonel bir Telegram botu tasarlayacaksın.
+${MESSAGING_METRICS_NOTE}
 
 📊 GERÇEK PLATFORM VERİSİ:
 - ${realStats.totalSeafarers.toLocaleString()} kayıtlı gemi adamı

@@ -1,6 +1,7 @@
 // ─── Seafarer Büyüme KPI Dashboard ───────────────────────────────────────────
 const ExcelJS = require('exceljs');
-const client  = require('../ai-client');
+const client  = require('../../ai-client');
+const ctx     = require('../../context');
 const fs      = require('fs-extra');
 const path    = require('path');
 
@@ -219,8 +220,13 @@ async function generateGrowthAnalysis(growthData) {
   const current = growthData.current;
   const target  = GROWTH_TARGETS.month1;
 
-  const prompt = `
-crewinjob.com seafarer büyüme verileri:
+  const prompt = `Sen CrewinJob'un büyüme analistisin.
+
+${ctx.analysisBlock({ playbook: true })}
+
+---
+
+## Bu Dönemin Seafarer Büyüme Verileri
 
 Mevcut Durum:
 - Toplam: ${current.totalSeafarers} seafarer
@@ -231,24 +237,52 @@ Mevcut Durum:
 Ay 1 Hedefleri:
 - Toplam: ${target.totalSeafarers}
 - Yeni: ${target.newMonthly}/ay
-- Profil: %${target.profileCompletion}
+- Profil tamamlanma: %${target.profileCompletion}
+- Aktif profil: %${target.activeProfiles}
 
 Kanal dağılımı: ${JSON.stringify(growthData.channels)}
 
-MB'ye geçiş kriteri: ${growthData.current.totalSeafarers} / ${MB_TRANSITION_CRITERIA.totalSeafarers} seafarer
+MB (monetizasyon) geçiş kriteri: ${current.totalSeafarers} / ${MB_TRANSITION_CRITERIA.totalSeafarers} seafarer
 
-Şunları yaz:
-1. **Durum Değerlendirmesi** (2-3 cümle) — Hedeflere göre neredeyiz?
-2. **En Kritik 2 Aksiyon** — Bu hafta ne yapılmalı?
-3. **MB'ye Ne Zaman Geçilir?** — Mevcut büyüme hızıyla kaç ayda ulaşılır?
-4. **LinkedIn Paylaşım Metni** — Bu haftaki büyüme raporu için kısa özet (ekip içi)
+---
+
+## Analiz Görevi
+
+### 1. Durum Değerlendirmesi (2-3 cümle)
+Hedeflere göre neredeyiz? Hangi metrik 🔴, hangisi 🟢?
+
+### 2. Ready-to-Hire Gerçeği
+- ${current.totalSeafarers} kayıtlı seafarer'ın profil tamamlanma oranı %${current.profileCompletion}.
+- Buna göre **gerçek kullanılabilir envanter** kaç kişi? Hesapla ve yaz.
+- Bu sayı şirketlere sunulabilecek gerçek değerdir — ham kayıt sayısı değil.
+
+### 3. Yükseltme Planı (en fazla 2 metrik)
+Hedefin altındaki metrikler için playbook'tan kaldıraç seçerek yaz:
+
+**[Metrik] — mevcut X, hedef Y**
+- **Neden düşük:** [teşhis]
+- **Seçilen kaldıraç:** [playbook'tan, neden bu]
+- **İlk 7 gün:** [somut adım]
+- **4 haftalık hedef:** [X → Y]
+- **Doğrulama:** [hangi sayıya bakılacak]
+
+### 4. Kanal Değerlendirmesi
+- Hangi kanal en çok kayıt getiriyor? Hangisi büyütülmeli, hangisi bırakılmalı?
+- Kanal başına *aktive olmuş* kayıt ölçülüyor mu? Ölçülmüyorsa bunu bir eksik olarak işaretle — çok kayıt getirip hiç aktive etmeyen kanal kötü kanaldır.
+
+### 5. MB'ye Ne Zaman Geçilir?
+- Mevcut aylık büyüme hızıyla ${MB_TRANSITION_CRITERIA.totalSeafarers} seafarer hedefine kaç ayda ulaşılır? Hesapla.
+- Sadece sayı yeterli değil: profil tamamlanma %${MB_TRANSITION_CRITERIA.profileCompletion} kriterine de bakılmalı. Hangisi daha geç gerçekleşecek?
+
+### 6. Ekip İçi Özet (kısa paragraf)
+Bu haftanın büyüme tablosu — rakamla, abartısız.
 
 Türkçe, net ve aksiyon odaklı yaz.
 `;
 
   const response = await client.messages.create({
     model: 'gemini-2.5-flash',
-    max_tokens: 1000,
+    max_tokens: 2000,
     messages: [{ role: 'user', content: prompt }],
   });
 
