@@ -1058,4 +1058,13 @@ export const MESSAGES_EN: Record<string, string> = {
   "1–10 geçerli ülke kodu girin (ör. TR).": "Enter 1–10 valid country codes (e.g. TR).",
   "Reklam hesabı ve bütçe tavanı için bağlantı yönetimi ve onay yetkisi gerekli.": "The ad account and budget caps need connection management and approval rights.",
   "Reklam planlarını yalnız onay yetkisi olan ekip üyeleri onaylayabilir.": "Only teammates with approval rights can approve ad plans.",
+  "Bütçe planlayıcı için standart proje erişimi gerekli.": "The budget planner needs access to a standard project.",
+  "Senaryo adı 1–80 karakter olmalı.": "The scenario name must be 1–80 characters.",
+  "Senaryo türü geçersiz.": "The scenario type is not valid.",
+  "Para birimi geçersiz.": "The currency is not valid.",
+  "Senaryo değerleri geçersiz: tutarlar 0 veya üzeri, oranlar 0–1 arası ve her aralıkta alt değer üst değerden büyük olmamalı.": "The scenario values are not valid: amounts must be 0 or more, rates between 0 and 1, and in each range the lower value must not exceed the upper value.",
+  "Senaryo sınırına ulaşıldı.": "The scenario limit has been reached.",
+  "Senaryo bulunamadı.": "Scenario not found.",
+  "Senaryo başka bir sekmede değişti. Yenileyip tekrar deneyin.": "The scenario changed in another tab. Refresh and try again.",
+  "Geçersiz bütçe planı işlemi.": "Invalid budget plan action.",
 };

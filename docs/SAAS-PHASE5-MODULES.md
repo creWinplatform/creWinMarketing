@@ -7,7 +7,8 @@ Social publishing (LinkedIn, Facebook, Instagram, X) existed before this phase. 
 - lifecycle automation;
 - B2B prospects;
 - a Telegram channel target for social publishing;
-- ad management.
+- ad management;
+- a budget and goal planner.
 
 All of it lives in the modular monolith and reuses existing pieces: RBAC, encrypted connections, the job queue and worker, segments, consent and suppression, campaign review, the email pilot, the social pipeline and the Calendar.
 
@@ -155,19 +156,64 @@ Tables: `platform_seo_scans`, `platform_seo_scan_pages`, `platform_seo_findings`
 
 **Files:** `lib/platform/ad-manager.ts` and `ad-types.ts`; `app/api/platform/ads`; `components/platform/ProjectAds.tsx`.
 
+## 6. Budget and goal planner (Analytics)
+
+Answers questions such as "roughly what would SEO or Meta ads cost, and how many leads could that bring?" with arithmetic on the team's own assumptions. It is not a forecast: no industry averages or benchmarks are built in, and every result says so.
+
+### Views
+
+- **Ads (Meta):** budget, cost per click and click-to-lead conversion; optionally lead-to-customer rate and revenue per customer (for ROAS). Clicks = budget ÷ CPC.
+- **SEO:** monthly hours × hourly rate, tools, and content pieces × cost per piece; today's monthly organic clicks and a change range. Clicks = today's clicks × (1 + change).
+- **Budget from a goal:** the ad budget a lead target needs under the CPC and conversion ranges.
+
+### Ranges and results
+
+- **Ranges:** every assumption is a min–max range.
+- **Results:** three columns.
+  - **Worst:** combines the worst end of every range (highest CPC, lowest rates).
+  - **Middle:** uses the midpoints.
+  - **Best:** combines the best ends.
+- **Never shown:** customers and ROAS are left out unless their rates are given. A cost per lead or customer is shown as "—" when there is nothing to divide by.
+- **Sensitivity:** the planner names the assumption that moves the middle lead count most (each range swung alone), so the team knows what to measure first.
+
+### Calibration with measured data
+
+Values measured for this project can replace an assumption with one click. Each shows its source and period, and the label is saved with the scenario. Editing the field by hand removes the label.
+
+| Value | Where it comes from |
+|---|---|
+| Cost per click and click-through rate | Meta-reported spend, clicks and impressions across this project's ad plans in one currency. Ad spend refresh now also stores impressions and clicks. |
+| Organic clicks per day | The latest automatic Search Console "clicks" reading, divided by its period length. It can be used as × 30 days. |
+| Stage-to-stage conversion | Automatic readings of the same goal, source and period (for example key events ÷ sessions). Only readings whose mapping still matches the goal as it is today count. Manual entries are not used. |
+
+### Scenarios and storage
+
+- **Scenarios:** saved per project, at most 30.
+- **Who can do what:** viewers can read; writers can save, update (with a revision check) and delete. Opening a scenario and saving updates it; "Save as new" copies it.
+- **Audit:** `budget.scenario.save`.
+- **Schema 45:**
+  - `platform_budget_scenarios`;
+  - `impressions` and `clicks` on `platform_ad_plans`.
+
+**Files:** `lib/platform/budget-math.ts` (pure, client-safe), `budget-planner.ts`; `app/api/platform/budget`; `components/platform/BudgetPlanner.tsx` (in Analytics, standard projects only).
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**
-  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications` and `platform-ads` `.test.cjs`;
+  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads` and `platform-budget-planner` `.test.cjs`;
   - recovery and schema fixtures updated.
-- **Recovery:** `MAX_RECOVERY_SCHEMA` is 44.
+- **Recovery:** `MAX_RECOVERY_SCHEMA` is 45.
 - **Browser QA** on isolated fixtures, TR/EN, 375–1440, light/dark:
   - a real public-HTML scan of example.com, a rescan without duplicates, one work item, opportunities, and viewer read-only;
   - an automation created, activated, evaluated (21 enrolled) and rehearsed (pilot limit 3; send disabled without SES);
   - a prospect checked against a real public page;
   - the Telegram connection form;
-  - ad caps, approval and the paused-on-Meta state, with start disabled.
-- **QA fixture flags:** `--ads` (fake ad account, no Meta call) and the `ryzevo-automation-qa` and `ryzevo-ads-qa` launch configurations.
+  - ad caps, approval and the paused-on-Meta state, with start disabled;
+  - the budget planner: measured values used, a scenario saved, updated, saved as new and deleted, and no overflow at 375 px.
+- **QA fixture flags:**
+  - `--ads` (fake ad account, no Meta call);
+  - `--budget` (with `--ads`: fake Meta totals and stub GA4 and Search Console readings);
+  - the `ryzevo-automation-qa`, `ryzevo-ads-qa` and `ryzevo-budget-qa` launch configurations.
 - **Not verified against real providers:**
   - a Telegram bot posting to a real channel;
   - a real Meta ad account (create, start, pause, insights);

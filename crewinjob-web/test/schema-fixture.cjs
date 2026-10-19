@@ -1,6 +1,7 @@
 // Disposable migration fixtures only; never loaded by application code.
 // Reverts schema 43: the schema-42 social accounts table (rows of the newer 'telegram' platform cannot exist there).
-exports.removeAdSchema=db=>db.exec('DROP TABLE IF EXISTS platform_ad_plans; DROP TABLE IF EXISTS platform_ad_policies; DELETE FROM platform_migrations WHERE version=44;');
+exports.removeBudgetSchema=db=>db.exec('DROP TABLE IF EXISTS platform_budget_scenarios; ALTER TABLE platform_ad_plans DROP COLUMN clicks; ALTER TABLE platform_ad_plans DROP COLUMN impressions; DELETE FROM platform_migrations WHERE version=45;');
+exports.removeAdSchema=db=>{exports.removeBudgetSchema(db);db.exec('DROP TABLE IF EXISTS platform_ad_plans; DROP TABLE IF EXISTS platform_ad_policies; DELETE FROM platform_migrations WHERE version=44;');};
 exports.removeTelegramSchema=db=>{exports.removeAdSchema(db);db.exec(`CREATE TABLE platform_social_accounts_v42 (connection_id TEXT PRIMARY KEY REFERENCES platform_connections(id), platform TEXT NOT NULL CHECK(platform IN ('linkedin','twitter','facebook','instagram')), account_id TEXT NOT NULL, expires_at INTEGER, page_id TEXT, graph_version TEXT);
   INSERT INTO platform_social_accounts_v42 SELECT * FROM platform_social_accounts WHERE platform<>'telegram'; DROP TABLE platform_social_accounts; ALTER TABLE platform_social_accounts_v42 RENAME TO platform_social_accounts; DELETE FROM platform_migrations WHERE version=43;`);};
 exports.removeProspectSchema=db=>{exports.removeTelegramSchema(db);db.exec('DROP TABLE IF EXISTS platform_prospects; DELETE FROM platform_migrations WHERE version=42;');};

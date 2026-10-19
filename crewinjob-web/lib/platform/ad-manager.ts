@@ -7,7 +7,7 @@ import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { AD_LIMITS, AD_OBJECTIVES, AD_SPECIAL_CATEGORIES, type AdPlanState, type AdPlanView, type AdsSnapshot } from './ad-types';
 
 type AdCredentials={accessToken:string;refreshToken:string;adAccountId:string;currency:string;name:string;status:number|null;timezone:string|null;checkedAt:string};
-type Plan={id:string;connection_id:string;name:string;objective:typeof AD_OBJECTIVES[number];special_category:typeof AD_SPECIAL_CATEGORIES[number];daily_budget_minor:number;currency:string;start_date:string;end_date:string;countries_json:string;link_url:string;state:AdPlanState;digest:string;approved_by:string|null;approved_digest:string|null;approved_at:string|null;provider_campaign_id:string|null;provider_adset_id:string|null;last_error:string|null;spend_minor:number|null;spend_checked_at:string|null;revision:number;updated_at:string};
+type Plan={id:string;connection_id:string;name:string;objective:typeof AD_OBJECTIVES[number];special_category:typeof AD_SPECIAL_CATEGORIES[number];daily_budget_minor:number;currency:string;start_date:string;end_date:string;countries_json:string;link_url:string;state:AdPlanState;digest:string;approved_by:string|null;approved_digest:string|null;approved_at:string|null;provider_campaign_id:string|null;provider_adset_id:string|null;last_error:string|null;spend_minor:number|null;spend_checked_at:string|null;impressions:number|null;clicks:number|null;revision:number;updated_at:string};
 // One Graph API call. The token travels only in the Authorization header; the host is fixed.
 export type AdGraph=(method:'GET'|'POST',path:string,token:string,params?:Record<string,string>)=>Promise<Record<string,unknown>>;
 const version=()=>{const value=process.env.PLATFORM_META_ADS_GRAPH_VERSION||'v25.0';return /^v\d{1,3}\.\d$/.test(value)?value:'v25.0';};
@@ -162,10 +162,12 @@ export class ProjectAds{
   // Spend as Meta reports it for the campaign's lifetime; no estimate is made when Meta returns nothing.
   async refreshSpend(raw:Record<string,unknown>){
     this.authorize('read');const row=this.row(raw.id);if(!row.provider_campaign_id)throw new MarketingStoreError('Plan Meta’da oluşturulmamış.',409);
-    const {credentials}=this.credentials();let spend:number|null=null;
-    try{const insights=await this.graph('GET',`${row.provider_campaign_id}/insights`,credentials.accessToken,{fields:'spend',date_preset:'maximum'}),first=(insights.data as Record<string,unknown>[]|undefined)?.[0];
-      if(first&&typeof first.spend==='string'&&/^\d+(\.\d+)?$/.test(first.spend))spend=Math.round(Number(first.spend)*adMinorUnit(row.currency));else if(Array.isArray(insights.data)&&!insights.data.length)spend=0;}catch{throw new MarketingStoreError('Meta harcama verisi şu anda alınamadı.',502);}
-    return this.db.transaction(()=>{this.db.prepare('UPDATE platform_ad_plans SET spend_minor=?,spend_checked_at=?,updated_at=? WHERE id=?').run(spend,new Date().toISOString(),new Date().toISOString(),row.id);return this.read();}).immediate();
+    const {credentials}=this.credentials();let spend:number|null=null,impressions:number|null=null,clicks:number|null=null;
+    const count=(value:unknown)=>typeof value==='string'&&/^\d{1,15}$/.test(value)?Number(value):null;
+    try{const insights=await this.graph('GET',`${row.provider_campaign_id}/insights`,credentials.accessToken,{fields:'spend,impressions,clicks',date_preset:'maximum'}),first=(insights.data as Record<string,unknown>[]|undefined)?.[0];
+      if(first&&typeof first.spend==='string'&&/^\d+(\.\d+)?$/.test(first.spend)){spend=Math.round(Number(first.spend)*adMinorUnit(row.currency));impressions=count(first.impressions);clicks=count(first.clicks);}
+      else if(Array.isArray(insights.data)&&!insights.data.length){spend=0;impressions=0;clicks=0;}}catch{throw new MarketingStoreError('Meta harcama verisi şu anda alınamadı.',502);}
+    return this.db.transaction(()=>{this.db.prepare('UPDATE platform_ad_plans SET spend_minor=?,impressions=?,clicks=?,spend_checked_at=?,updated_at=? WHERE id=?').run(spend,impressions,clicks,new Date().toISOString(),new Date().toISOString(),row.id);return this.read();}).immediate();
   }
   read():AdsSnapshot{
     this.authorize();const connection=this.connection(),policy=this.policy();let account:AdsSnapshot['account']=null;
@@ -173,7 +175,7 @@ export class ProjectAds{
     const rows=this.db.prepare("SELECT * FROM platform_ad_plans WHERE organization_id=? AND project_id=? ORDER BY CASE state WHEN 'active' THEN 0 WHEN 'created' THEN 1 WHEN 'paused' THEN 2 WHEN 'approved' THEN 3 WHEN 'draft' THEN 4 ELSE 5 END,updated_at DESC").all(...this.args()) as Plan[];
     return {account,policy:policy?{currency:policy.currency,dailyCapMinor:policy.daily_cap_minor,monthlyCapMinor:policy.monthly_cap_minor,revision:policy.revision,updatedAt:policy.updated_at}:null,minorUnit:adMinorUnit(account?.currency||policy?.currency||'USD'),
       plans:rows.map((row):AdPlanView=>({id:row.id,name:row.name,objective:row.objective,specialCategory:row.special_category,dailyBudgetMinor:row.daily_budget_minor,currency:row.currency,startDate:row.start_date,endDate:row.end_date,days:days(row.start_date,row.end_date),totalMinor:row.daily_budget_minor*days(row.start_date,row.end_date),
-        countries:JSON.parse(row.countries_json),linkUrl:row.link_url,state:row.state,approved:this.approvedNow(row),approvedAt:row.approved_at,providerCampaignId:row.provider_campaign_id,lastError:row.last_error,spendMinor:row.spend_minor,spendCheckedAt:row.spend_checked_at,revision:row.revision,updatedAt:row.updated_at})),
+        countries:JSON.parse(row.countries_json),linkUrl:row.link_url,state:row.state,approved:this.approvedNow(row),approvedAt:row.approved_at,providerCampaignId:row.provider_campaign_id,lastError:row.last_error,spendMinor:row.spend_minor,impressions:row.impressions,clicks:row.clicks,spendCheckedAt:row.spend_checked_at,revision:row.revision,updatedAt:row.updated_at})),
       plannedActiveMinor:this.plannedActive(),launchEnabled:adsLaunchEnabled(),canWrite:this.can('content.write'),canManage:this.manager(),canApprove:this.can('campaign.approve')};
   }
 }

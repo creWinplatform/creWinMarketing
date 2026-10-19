@@ -9,7 +9,7 @@ export type AdPolicyView={currency:string;dailyCapMinor:number;monthlyCapMinor:n
 export type AdPlanView={
   id:string;name:string;objective:typeof AD_OBJECTIVES[number];specialCategory:typeof AD_SPECIAL_CATEGORIES[number];dailyBudgetMinor:number;currency:string;
   startDate:string;endDate:string;days:number;totalMinor:number;countries:string[];linkUrl:string;state:AdPlanState;
-  approved:boolean;approvedAt:string|null;providerCampaignId:string|null;lastError:string|null;spendMinor:number|null;spendCheckedAt:string|null;revision:number;updatedAt:string;
+  approved:boolean;approvedAt:string|null;providerCampaignId:string|null;lastError:string|null;spendMinor:number|null;impressions:number|null;clicks:number|null;spendCheckedAt:string|null;revision:number;updatedAt:string;
 };
 export type AdsSnapshot={
   account:AdAccountView|null;policy:AdPolicyView|null;plans:AdPlanView[];minorUnit:number;

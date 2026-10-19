@@ -62,7 +62,7 @@ test('measurement trend uses dated records only; viewers can read; Crewin is exc
 test('schema35 backfills existing approved briefs and is repeatable',coachRun(async f=>{
   await f.approve();const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-learning-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeBriefHistorySchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,34);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,44);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach_briefs').get().n,1,'the approved brief is backfilled');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,45);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach_briefs').get().n,1,'the approved brief is backfilled');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));
 
 // Phase 4 · outcomes week by week and the email bridge.

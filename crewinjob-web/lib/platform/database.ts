@@ -921,6 +921,19 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_ad_plan_scope ON platform_ad_plans(organization_id,project_id,state);
     INSERT INTO platform_migrations(version,applied_at) VALUES(44,datetime('now'));
   `))();
+  // Budget and goal planner: saved scenarios, and Meta-reported impressions/clicks next to spend for calibration.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=45').get())db.transaction(()=>db.exec(`
+    ALTER TABLE platform_ad_plans ADD COLUMN impressions INTEGER;
+    ALTER TABLE platform_ad_plans ADD COLUMN clicks INTEGER;
+    CREATE TABLE platform_budget_scenarios (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('paid','seo')), currency TEXT NOT NULL, inputs_json TEXT NOT NULL, sources_json TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_budget_scenario_scope ON platform_budget_scenarios(organization_id,project_id,updated_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(45,datetime('now'));
+  `))();
   return db;
 }
 

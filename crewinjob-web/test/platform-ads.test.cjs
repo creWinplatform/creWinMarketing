@@ -9,7 +9,7 @@ const day=offset=>new Date(Date.now()+offset*86400000).toISOString().slice(0,10)
 const graph=(answers={})=>{const calls=[];let next=900;const fn=async(method,path,token,params={})=>{calls.push({method,path,token,params});
   const key=`${method} ${path.replace(/\d{3,}/g,'#')}`,answer=answers[key];if(answer instanceof Error)throw answer;if(answer)return answer;
   if(key==='GET act_#')return {id:'act_123456',name:'QA ads',currency:'USD',account_status:1,timezone_name:'Europe/Istanbul'};
-  if(key.startsWith('POST act_#/'))return {id:String(++next)};if(key.endsWith('/insights'))return {data:[{spend:'12.34'}]};return {success:true};};fn.calls=calls;return fn;};
+  if(key.startsWith('POST act_#/'))return {id:String(++next)};if(key.endsWith('/insights'))return {data:[{spend:'12.34',impressions:'5400',clicks:'87'}]};return {success:true};};fn.calls=calls;return fn;};
 const ads=(f,g=graph(),scope=f.scope)=>new ProjectAds(f.db,scope,KEY,g);
 const plan=(extra={})=>({name:'Spring traffic',objective:'OUTCOME_TRAFFIC',dailyBudgetMinor:2000,startDate:day(1),endDate:day(10),countries:['tr','DE'],linkUrl:'https://example.com/spring',...extra});
 const ready=async(f,g)=>{await ads(f,g).connect({adAccountId:'123456',accessToken:TOKEN});return ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});};
@@ -57,7 +57,7 @@ test('creating puts a PAUSED campaign and ad set on Meta; starting needs the swi
     await assert.rejects(ads(f,g).start({id:second.id,acknowledged:true}),/aylık tavanı/);
     // Any writer can pause; Meta's reported spend is stored as reported.
     item=(await ads(f,g,editor).pause({id:item.id})).plans.find(row=>row.id===item.id);assert.equal(item.state,'paused');
-    item=(await ads(f,g,editor).refreshSpend({id:item.id})).plans.find(row=>row.id===item.id);assert.equal(item.spendMinor,1234);
+    item=(await ads(f,g,editor).refreshSpend({id:item.id})).plans.find(row=>row.id===item.id);assert.equal(item.spendMinor,1234);assert.equal(item.clicks,87);assert.equal(item.impressions,5400);
   }finally{process.env.PLATFORM_ADS_ENABLED='0';}
 }));
 test('provider failures are recorded honestly; a refused start leaves the campaign paused',coachRun(async f=>{
@@ -77,5 +77,5 @@ test('the Graph client keeps the token in the header, fixes the host and rejects
 test('schema44 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'ads-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAdSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,43);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,44);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,45);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

@@ -13,6 +13,7 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import AutomaticMeasurements from './AutomaticMeasurements';
 import CoachLearning from './CoachLearning';
+import BudgetPlanner from './BudgetPlanner';
 import Msg from '@/components/Msg';
 export default function ProjectReports({
   workspace,
@@ -369,6 +370,7 @@ export default function ProjectReports({
         )}
       </section>
       </>}
+      {workspace.project.productPack === 'standard' && <BudgetPlanner lang={lang} />}
       {data && (
         <section className="studio-band mt-6">
           <div className="studio-section-title">
