@@ -135,9 +135,9 @@ export class GrowthCoach{
   constructor(public db:Database.Database,public scope:MarketingScope){this.repo=new PlatformRepository(db);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
   can(permission:WorkspacePermission){return this.repo.can(this.scope.subject,...this.args(),permission);}
-  authorize(permission:WorkspacePermission='read'){
+  authorize(permission:WorkspacePermission='read',denied?:string){
     if(!this.can('read')||this.repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Büyüme koçu için standart proje erişimi gerekli.',403);
-    if(!this.can(permission))throw new MarketingStoreError(permission==='campaign.approve'?'Strateji briefini yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.',403);
+    if(!this.can(permission))throw new MarketingStoreError(denied||(permission==='campaign.approve'?'Strateji briefini yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.'),403);
   }
   // Applies an accepted weekly-review adjustment to the approved plan; same approval right as approving the brief.
   adjustPlan(expectedRevision:unknown,mutate:(brief:CoachBrief)=>CoachBrief,operation:string){

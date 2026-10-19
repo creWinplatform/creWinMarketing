@@ -23,7 +23,7 @@ test('sending is off unless the platform enables it, and only approvers can queu
   assert.equal(digestConfiguration(),null);assert.equal(digest(f).read().enabled,false);assert.ok(digest(f).read().preview.text.length>20,'the preview works while sending is off');
   assert.throws(()=>digest(f).send({reviewId:review.id}),error=>error.status===503);
   await withEnv(async()=>{
-    const editor=f.member('editor');assert.throws(()=>digest(f,editor).send({reviewId:review.id}),error=>error.status===403);
+    const editor=f.member('editor');assert.throws(()=>digest(f,editor).send({reviewId:review.id}),error=>error.status===403&&/özeti yalnız onay/.test(error.message));
     assert.throws(()=>digest(f).send({reviewId:'review_other'}),error=>error.status===409);
     const first=digest(f).send({reviewId:review.id});assert.equal(first.queued,1);assert.equal(first.snapshot.deliveries.queued,1);
     assert.equal(digest(f).send({reviewId:review.id}).queued,0,'the same review never goes to the same person twice');

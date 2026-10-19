@@ -939,6 +939,7 @@ export const MESSAGES_EN: Record<string, string> = {
   "Geçersiz büyüme koçu bağlantısı.": "Invalid growth coach reference.",
   "Bu özete abone olmuş ve e-postası doğrulanmış ekip üyesi yok.": "No teammate with a verified email has subscribed to this review.",
   "E-posta özeti bu platformda etkin değil; yalnız önizleme kullanılabilir.": "The email digest isn't enabled on this platform; only the preview is available.",
+  "Haftalık özeti yalnız onay yetkisi olan ekip üyeleri gönderebilir.": "Only teammates with approval rights can send the weekly digest.",
   "Geçersiz e-posta özeti işlemi.": "Invalid email digest action.",
   "Özeti e-postayla almak için önce hesap e-postanızı doğrulayın.": "Verify your account email first to get the review by email.",
   "Yalnız bu haftanın özeti gönderilebilir.": "Only this week's review can be sent.",

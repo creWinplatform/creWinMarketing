@@ -44,6 +44,7 @@ export function digestMessage(facts:CoachReviewFacts,adjustments:CoachAdjustment
     tr?'Bu e-postayı haftalık özete abone olduğunuz için aldınız. Aboneliği genel bakıştaki haftalık özet kartından kapatabilirsiniz. Tahmin, artış veya ROI hesaplanmaz.':'You receive this email because you subscribed to the weekly review. You can turn it off from the weekly review card on the overview. No estimates, uplift or ROI are calculated.');
   return {subject:tr?`Ryzevo · ${project.name} · haftalık özet (${period})`:`Ryzevo · ${project.name} · weekly review (${period})`,text:lines.join('\n').slice(0,20000)};
 }
+const SEND_DENIED='Haftalık özeti yalnız onay yetkisi olan ekip üyeleri gönderebilir.';
 type ReviewRow={id:string;week:string;facts_json:string;adjustments_json:string};
 export class CoachDigest{
   coach:GrowthCoach;repo:PlatformRepository;
@@ -74,9 +75,9 @@ export class CoachDigest{
   }
   // Queues this week's review for current subscribers. Re-sending the same review never mails anyone twice.
   send(raw:Record<string,unknown>){
-    this.coach.authorize('campaign.approve');if(!digestConfiguration())throw new MarketingStoreError('E-posta özeti bu platformda etkin değil; yalnız önizleme kullanılabilir.',503);
+    this.coach.authorize('campaign.approve',SEND_DENIED);if(!digestConfiguration())throw new MarketingStoreError('E-posta özeti bu platformda etkin değil; yalnız önizleme kullanılabilir.',503);
     return this.db.transaction(()=>{
-      this.coach.authorize('campaign.approve');const review=this.review();if(!review||review.id!==raw.reviewId)throw new MarketingStoreError('Yalnız bu haftanın özeti gönderilebilir.',409);
+      this.coach.authorize('campaign.approve',SEND_DENIED);const review=this.review();if(!review||review.id!==raw.reviewId)throw new MarketingStoreError('Yalnız bu haftanın özeti gönderilebilir.',409);
       const recipients=this.recipients();if(!recipients.length)throw new MarketingStoreError('Bu özete abone olmuş ve e-postası doğrulanmış ekip üyesi yok.',409);
       const now=new Date().toISOString(),insert=this.db.prepare("INSERT OR IGNORE INTO platform_coach_digest_deliveries(id,organization_id,project_id,review_id,user_id,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?,?)");
       let queued=0;for(const item of recipients)queued+=insert.run(`digest_${randomUUID()}`,...this.args(),review.id,item.user_id,this.scope.subject,now,now).changes;
