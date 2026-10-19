@@ -189,3 +189,49 @@
 .coach-refresh ul{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px}
 .coach-refresh .coach-resolved ul{padding-left:0}
 .coach-my-work .studio-section-title h2{display:flex;align-items:center;gap:8px}
+/* Faz 5 · SEO operations */
+.seo-ops>*+*{margin-top:12px}
+.seo-ops-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.seo-ops-list a{color:var(--studio-accent);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.seo-ops-progress{display:block;width:100%;height:6px;margin-top:8px;accent-color:var(--studio-accent)}
+.seo-ops-history{list-style:none;margin:6px 0;padding:0;display:grid;gap:4px;font-size:12px}
+.seo-ops-history li{display:flex;align-items:center;gap:8px}
+.seo-ops-filter{margin-top:18px}
+.seo-ops .coach-dev-task summary{gap:6px}
+@media (max-width:640px){.seo-ops .studio-draft-top{flex-direction:column;align-items:stretch;gap:10px}.seo-ops .studio-draft-top .coach-action-buttons{justify-content:flex-start}}
+/* Faz 5 · lifecycle automations */
+.automation-center>*+*{margin-top:12px}
+.automation-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.automation-form{display:grid;gap:12px;max-width:720px}
+.automation-form label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
+.automation-form :is(input:not([type=radio]):not([type=checkbox]),select){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;font-weight:500;width:100%;min-width:0}
+.automation-form fieldset{border:0;padding:0;margin:0;display:grid;gap:6px}
+.automation-form legend{font-size:12px;font-weight:600;color:var(--studio-muted);margin-bottom:4px}
+.automation-choice{display:flex!important;align-items:flex-start;gap:8px;font-weight:500!important;color:var(--studio-ink)!important;line-height:1.5}
+.automation-choice input{width:18px;height:18px;flex:none;margin-top:1px;accent-color:var(--studio-accent)}
+.automation-counts{list-style:none;margin:10px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.automation-counts li{display:flex;justify-content:space-between;gap:8px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:8px 10px;font-size:12px;background:var(--studio-surface)}
+.automation-approve{display:grid;gap:8px;margin-top:10px;border-top:1px solid var(--studio-border);padding-top:10px}
+@media (max-width:640px){.automation-center .studio-draft-top{flex-direction:column;align-items:stretch;gap:10px}}
+/* Faz 5 · B2B prospects */
+.prospect-center>*+*{margin-top:12px}
+.prospect-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.prospect-link,.prospect-evidence a{display:inline-flex;align-items:center;gap:5px;color:var(--studio-accent);font-size:12px;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.prospect-evidence{border-left:3px solid var(--studio-accent);padding:6px 10px;margin:8px 0;display:grid;gap:4px;font-size:13px}
+.prospect-form{display:grid;gap:10px}
+.prospect-form label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
+.prospect-form :is(input,textarea){border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:9px 10px;font:inherit;font-weight:500;width:100%;min-width:0}
+.prospect-form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.prospect-decisions{margin-top:8px}
+@media (max-width:640px){.prospect-form-row{grid-template-columns:1fr}.prospect-center .studio-draft-top{flex-direction:column;align-items:stretch;gap:10px}}
+/* Faz 5 · ads */
+.ads-center>*+*{margin-top:12px}
+.ads-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.ads-account{display:grid;gap:10px}
+.ads-account h3{font-size:13px;font-weight:650;margin-top:6px}
+.ads-form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) auto;gap:10px;align-items:end}
+.ads-plan-form{display:grid;gap:10px;max-width:760px}
+.ads-plan-form .ads-form-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+:is(.ads-account,.ads-plan-form) label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
+:is(.ads-account,.ads-plan-form) :is(input,select){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;font-weight:500;width:100%;min-width:0}
+@media (max-width:640px){.ads-form-row,.ads-plan-form .ads-form-row{grid-template-columns:1fr}.ads-center .studio-draft-top{flex-direction:column;align-items:stretch;gap:10px}}

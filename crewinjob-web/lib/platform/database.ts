@@ -806,6 +806,121 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_coach_assignment_assignee ON platform_coach_assignments(organization_id,project_id,assignee_id);
     INSERT INTO platform_migrations(version,applied_at) VALUES(39,datetime('now'));
   `))();
+  // Faz 5 · SEO operations: multi-page scans of the project's own site, persistent findings with history.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=40').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_seo_scans (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, origin TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('sitemap','homepage_links')), discovered INTEGER NOT NULL DEFAULT 0,
+      state TEXT NOT NULL CHECK(state IN ('running','completed','cancelled')), started_by TEXT NOT NULL REFERENCES platform_users(id),
+      started_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT,
+      UNIQUE(id,organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_seo_scan_scope ON platform_seo_scans(organization_id,project_id,started_at);
+    CREATE TABLE platform_seo_scan_pages (
+      scan_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, position INTEGER NOT NULL, url TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('pending','running','done','failed','skipped')), lease_token TEXT, lease_until TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+      http_status INTEGER, findings INTEGER NOT NULL DEFAULT 0, error TEXT, checked_at TEXT,
+      PRIMARY KEY(scan_id,url),
+      FOREIGN KEY(scan_id,organization_id,project_id) REFERENCES platform_seo_scans(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_seo_findings (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, finding_key TEXT NOT NULL, url TEXT NOT NULL,
+      category TEXT NOT NULL, title TEXT NOT NULL, priority TEXT NOT NULL CHECK(priority IN ('high','medium','low')),
+      detail TEXT NOT NULL, recommendation TEXT NOT NULL, evidence TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('open','fixed','ignored')), first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
+      last_scan_id TEXT NOT NULL, fixed_at TEXT, task_id TEXT, revision INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(organization_id,project_id,finding_key), UNIQUE(id,organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_seo_finding_state ON platform_seo_findings(organization_id,project_id,state);
+    CREATE TABLE platform_seo_finding_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, finding_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('detected','fixed','reopened','ignored','restored','planned')),
+      scan_id TEXT, actor_id TEXT, at TEXT NOT NULL,
+      FOREIGN KEY(finding_id,organization_id,project_id) REFERENCES platform_seo_findings(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_seo_finding_history ON platform_seo_finding_events(finding_id,id);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(40,datetime('now'));
+  `))();
+  // Faz 5 · lifecycle automation: rules, one enrollment per contact per rule, and evaluation/approval runs.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=41').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_automations (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, name TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('draft','active','paused')), definition_json TEXT NOT NULL, source_id TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, updated_by TEXT NOT NULL, activated_by TEXT, activated_at TEXT,
+      last_evaluated_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(id,organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_automation_enrollments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, automation_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      source_id TEXT NOT NULL, entity_id TEXT NOT NULL, entered_at TEXT NOT NULL, due_at TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('waiting','ready','sent','exited')), reason TEXT, job_id TEXT, updated_at TEXT NOT NULL,
+      UNIQUE(automation_id,entity_id),
+      FOREIGN KEY(automation_id,organization_id,project_id) REFERENCES platform_automations(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_automation_due ON platform_automation_enrollments(automation_id,state,due_at);
+    CREATE INDEX platform_automation_contact ON platform_automation_enrollments(organization_id,project_id,source_id,entity_id,state);
+    CREATE TABLE platform_automation_runs (
+      id TEXT PRIMARY KEY, automation_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('evaluate','approve')), mode TEXT CHECK(mode IN ('rehearsal','send')), actor_id TEXT NOT NULL,
+      job_id TEXT, counts_json TEXT NOT NULL, created_at TEXT NOT NULL,
+      FOREIGN KEY(automation_id,organization_id,project_id) REFERENCES platform_automations(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_automation_run_scope ON platform_automation_runs(automation_id,created_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(41,datetime('now'));
+  `))();
+  // Faz 5 · B2B prospects: companies the team enters, checked against their own public page. No people, no emails.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=42').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_prospects (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, company TEXT NOT NULL, website TEXT NOT NULL,
+      sector TEXT NOT NULL DEFAULT '', country TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', contact_role TEXT NOT NULL DEFAULT '',
+      check_status TEXT NOT NULL DEFAULT 'not_checked' CHECK(check_status IN ('not_checked','ok','unreachable')),
+      source_url TEXT, page_title TEXT, page_summary TEXT, evidence TEXT, checked_at TEXT, reason_source TEXT CHECK(reason_source IN ('human','ai')),
+      state TEXT NOT NULL DEFAULT 'candidate' CHECK(state IN ('candidate','approved','rejected')), decided_by TEXT, decided_at TEXT, note TEXT NOT NULL DEFAULT '',
+      task_id TEXT, revision INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,website),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_scope ON platform_prospects(organization_id,project_id,state,updated_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(42,datetime('now'));
+  `))();
+  // Faz 5 · Telegram channel publishing: social accounts accept the 'telegram' platform. Same columns, rows kept.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=43').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_social_accounts_v43 (
+      connection_id TEXT PRIMARY KEY REFERENCES platform_connections(id),
+      platform TEXT NOT NULL CHECK(platform IN ('linkedin','twitter','facebook','instagram','telegram')),
+      account_id TEXT NOT NULL, expires_at INTEGER, page_id TEXT, graph_version TEXT
+    );
+    INSERT INTO platform_social_accounts_v43(connection_id,platform,account_id,expires_at,page_id,graph_version) SELECT connection_id,platform,account_id,expires_at,page_id,graph_version FROM platform_social_accounts;
+    DROP TABLE platform_social_accounts;
+    ALTER TABLE platform_social_accounts_v43 RENAME TO platform_social_accounts;
+    INSERT INTO platform_migrations(version,applied_at) VALUES(43,datetime('now'));
+  `))();
+  // Faz 5 · ad management: per-project budget policy and approved ad plans. Provider objects start paused.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=44').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ad_policies (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL, currency TEXT NOT NULL,
+      daily_cap_minor INTEGER NOT NULL CHECK(daily_cap_minor>0), monthly_cap_minor INTEGER NOT NULL CHECK(monthly_cap_minor>0),
+      revision INTEGER NOT NULL DEFAULT 1, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_ad_plans (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      name TEXT NOT NULL, objective TEXT NOT NULL CHECK(objective IN ('OUTCOME_AWARENESS','OUTCOME_TRAFFIC')),
+      special_category TEXT NOT NULL DEFAULT 'NONE', daily_budget_minor INTEGER NOT NULL CHECK(daily_budget_minor>0), currency TEXT NOT NULL,
+      start_date TEXT NOT NULL, end_date TEXT NOT NULL, countries_json TEXT NOT NULL, link_url TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('draft','approved','created','active','paused','failed')),
+      digest TEXT NOT NULL, approved_by TEXT, approved_digest TEXT, approved_at TEXT,
+      provider_campaign_id TEXT, provider_adset_id TEXT, last_error TEXT, spend_minor INTEGER, spend_checked_at TEXT,
+      revision INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_ad_plan_scope ON platform_ad_plans(organization_id,project_id,state);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(44,datetime('now'));
+  `))();
   return db;
 }
 

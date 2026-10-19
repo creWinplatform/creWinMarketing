@@ -61,5 +61,5 @@ test('schema37 is additive and repeatable',coachRun(async f=>{
   brand(f).saveCompetitors({competitors:rivals,difference:'',expectedRevision:0});
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-brand-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeBrandSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,36);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,39);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_brand').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,44);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_brand').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

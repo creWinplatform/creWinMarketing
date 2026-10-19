@@ -35,10 +35,11 @@ const channels = [
   'instagram',
   'facebook',
   'twitter',
+  'telegram',
   'tiktok',
   'blog',
 ];
-const channelNames: Record<string, [string, string]> = { email: ['E-posta', 'Email'], linkedin: ['LinkedIn', 'LinkedIn'], instagram: ['Instagram', 'Instagram'], facebook: ['Facebook', 'Facebook'], twitter: ['X', 'X'], tiktok: ['TikTok', 'TikTok'], blog: ['Blog', 'Blog'] };
+const channelNames: Record<string, [string, string]> = { email: ['E-posta', 'Email'], linkedin: ['LinkedIn', 'LinkedIn'], instagram: ['Instagram', 'Instagram'], facebook: ['Facebook', 'Facebook'], twitter: ['X', 'X'], telegram: ['Telegram', 'Telegram'], tiktok: ['TikTok', 'TikTok'], blog: ['Blog', 'Blog'] };
 const channelLabel = (channel: string, lang: Locale) => channelNames[channel]?.[lang === 'en' ? 1 : 0] || channel;
 const empty = {
   name: '',

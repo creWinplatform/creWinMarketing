@@ -14,6 +14,8 @@ import { observeWorkerTick } from '@/lib/platform/worker-health';
 import { MobileGrowth } from '@/lib/platform/mobile-store';
 import { MobileDelivery,settleUnauthorizedMobileJob } from '@/lib/platform/mobile-delivery';
 import { deliverNextCoachDigest } from '@/lib/platform/coach-digest';
+import { advanceSeoScans } from '@/lib/platform/seo-operations';
+import { evaluateDueAutomations } from '@/lib/platform/automations';
 export const dynamic = 'force-dynamic',
   maxDuration = 60;
 export async function POST(request: NextRequest) {
@@ -73,5 +75,9 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   }
   const identityEmail=Date.now()-startedAt<25000?await identity.deliverNext():false;
   const coachDigest=Date.now()-startedAt<25000?await deliverNextCoachDigest(db).catch(()=>false):false;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest };
+  // SEO scans whose tab was closed continue here, one page at a time.
+  const seoPages=Date.now()-startedAt<20000?await advanceSeoScans(db).catch(()=>0):0;
+  // Automation bookkeeping only (enrollments and exits); sending always waits for a person's approval.
+  let automations=0;try{automations=evaluateDueAutomations(db,credentialEncryptionKey());}catch{automations=0;}
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, seoPages, automations };
 }

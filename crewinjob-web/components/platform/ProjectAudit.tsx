@@ -10,6 +10,10 @@ import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
 import { developerTask, rankAuditFindings, type RankedFinding } from '@/lib/platform/seo-impact';
 const CoachSeo=dynamic(()=>import('./CoachSeo'));
+const SeoOperations=dynamic(()=>import('./SeoOperations'));
+const SeoOpportunities=dynamic(()=>import('./SeoOpportunities'));
+type SeoView='scan'|'audit'|'opportunities'|'topics';
+const SEO_VIEWS:SeoView[]=['scan','audit','opportunities','topics'];
 const IMPACT_LABELS: Record<string, [string, string]> = { high: ['Olası etki: yüksek', 'Likely impact: high'], medium: ['Olası etki: orta', 'Likely impact: medium'], low: ['Olası etki: düşük', 'Likely impact: low'] };
 const PRIORITY_LABELS: Record<string, [string, string]> = { high: ['Yüksek', 'High'], medium: ['Orta', 'Medium'], low: ['Düşük', 'Low'] };
 export default function ProjectAudit({
@@ -27,8 +31,8 @@ export default function ProjectAudit({
     [saved, setSaved] = useState<string[]>([]),
     [saving, setSaving] = useState(''),
     canWrite = workspace.permissions?.includes('content.write');
-  const [view, setView] = useState<'audit' | 'topics'>('audit'), [copied, setCopied] = useState('');
-  useEffect(() => { if (new URLSearchParams(window.location.search).get('seoView') === 'topics') setView('topics'); }, []);
+  const [view, setView] = useState<SeoView>('scan'), [copied, setCopied] = useState('');
+  useEffect(() => { const value = new URLSearchParams(window.location.search).get('seoView'); if (SEO_VIEWS.includes(value as SeoView)) setView(value as SeoView); }, []);
   const ranked = audit ? rankAuditFindings(audit.findings) : [];
   const task = (finding: RankedFinding) => developerTask(finding, audit?.finalUrl || url, lang, text => translateMessage(text, lang));
   const run = async (event: FormEvent) => {
@@ -71,20 +75,22 @@ export default function ProjectAudit({
       setSaving('');
     }
   };
+  const labels: Record<SeoView, [string, string]> = { scan: ['Site taraması', 'Site scan'], audit: ['Tek sayfa denetimi', 'Single-page audit'], opportunities: ['Arama fırsatları', 'Search opportunities'], topics: ['Konular ve briefler', 'Topics & briefs'] };
   const tabs = (
-    <div className="publication-view-tabs" role="tablist" aria-label={tr ? 'SEO görünümü' : 'SEO view'} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); const next = view === 'audit' ? 'topics' : 'audit'; setView(next); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[next === 'audit' ? 0 : 1]?.focus(); } }}>
-      <button role="tab" aria-selected={view === 'audit'} tabIndex={view === 'audit' ? 0 : -1} onClick={() => setView('audit')}>{tr ? 'Site denetimi' : 'Site audit'}</button>
-      <button role="tab" aria-selected={view === 'topics'} tabIndex={view === 'topics' ? 0 : -1} onClick={() => setView('topics')}>{tr ? 'Konular ve briefler' : 'Topics & briefs'}</button>
+    <div className="publication-view-tabs" role="tablist" aria-label={tr ? 'SEO görünümü' : 'SEO view'} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); const next = SEO_VIEWS[(SEO_VIEWS.indexOf(view) + (event.key === 'ArrowRight' ? 1 : SEO_VIEWS.length - 1)) % SEO_VIEWS.length]; setView(next); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[SEO_VIEWS.indexOf(next)]?.focus(); } }}>
+      {SEO_VIEWS.map(item => <button key={item} role="tab" aria-selected={view === item} tabIndex={view === item ? 0 : -1} onClick={() => setView(item)}>{labels[item][tr ? 0 : 1]}</button>)}
     </div>
   );
   if (view === 'topics') return <section>{tabs}<CoachSeo lang={lang} /></section>;
+  if (view === 'scan') return <section>{tabs}<SeoOperations workspace={workspace} lang={lang} /></section>;
+  if (view === 'opportunities') return <section>{tabs}<SeoOpportunities lang={lang} /></section>;
   return (
     <section>
       {tabs}
       <header className="studio-page-heading">
         <div>
           <p className="studio-eyebrow">{tr ? 'GENEL HTML' : 'PUBLIC HTML'}</p>
-          <h1>{tr ? 'Site denetimi' : 'Site audit'}</h1>
+          <h1>{tr ? 'Tek sayfa denetimi' : 'Single-page audit'}</h1>
           <p className="studio-subtitle">
             {tr
               ? 'Projenizin sayfasında teknik ve içerik kontrolü.'

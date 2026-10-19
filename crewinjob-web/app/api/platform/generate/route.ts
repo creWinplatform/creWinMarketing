@@ -48,6 +48,7 @@ export async function POST(request: NextRequest) {
         'facebook',
         'instagram',
         'twitter',
+        'telegram',
         'tiktok',
         'blog',
       ].includes(input.channel) ||

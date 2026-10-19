@@ -14,6 +14,7 @@ import { normalizePublicationImages, type PublicationImage } from './publication
 import { xConfiguration } from './x-client';
 import { checkXPublishing, publishXText, xPostId } from './x-publishing';
 import { xText } from './x-text';
+import { TELEGRAM_TEXT_LIMIT, checkTelegramPublishing, publishTelegramText, telegramPostId, telegramPublishingConfiguration } from './telegram-publishing';
 import type { Publication, PublicationSource, PublicationWorkspace, PublicationEngagement, EngagementCounts } from './social-publication-types';
 import { cleanEngagementCounts, readPublicationEngagement, type EngagementReader } from './social-engagement';
 
@@ -37,12 +38,12 @@ export class SocialPublications {
   private connection(id: string) {
     const row = this.db.prepare("SELECT c.id,c.integration_id,c.account_name,c.encrypted_credentials,s.account_id,s.platform,s.expires_at FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.id=? AND c.organization_id=? AND c.project_id=? AND c.active=1 AND c.provider='social'").get(id, ...this.args()) as Connection | undefined;
     if (!row) throw new MarketingStoreError('Yayın hesabı bulunamadı.', 404);
-    if (!['linkedin','facebook','instagram','twitter'].includes(row.platform) || row.expires_at && row.expires_at <= Date.now()) throw new MarketingStoreError('Etkin LinkedIn, Facebook, Instagram veya X bağlantısı gerekli.', 409);
+    if (!['linkedin','facebook','instagram','twitter','telegram'].includes(row.platform) || row.expires_at && row.expires_at <= Date.now()) throw new MarketingStoreError('Etkin LinkedIn, Facebook, Instagram, X veya Telegram bağlantısı gerekli.', 409);
     if(isLinkedInOrganization(row.platform,row.account_id,row.integration_id))row.accountType='organization';
     return row;
   }
-  private config(platform = 'linkedin') { try { return platform === 'twitter' ? xConfiguration().revision : platform === 'instagram' ? instagramPublishingConfiguration().revision : platform === 'facebook' ? facebookPublishingConfiguration().revision : platform === 'linkedin' ? linkedinPublishingConfiguration().revision : ''; } catch { return ''; } }
-  private checker(platform:string,accountType?:string) { return platform==='linkedin'&&accountType==='organization'?checkLinkedInOrganizationPublishing:platform==='twitter'?checkXPublishing:platform==='instagram'?checkInstagramPublishing:platform==='facebook'?checkFacebookPublishing:checkLinkedInPublishing; }
+  private config(platform = 'linkedin') { try { return platform === 'telegram' ? telegramPublishingConfiguration().revision : platform === 'twitter' ? xConfiguration().revision : platform === 'instagram' ? instagramPublishingConfiguration().revision : platform === 'facebook' ? facebookPublishingConfiguration().revision : platform === 'linkedin' ? linkedinPublishingConfiguration().revision : ''; } catch { return ''; } }
+  private checker(platform:string,accountType?:string) { return platform==='linkedin'&&accountType==='organization'?checkLinkedInOrganizationPublishing:platform==='twitter'?checkXPublishing:platform==='telegram'?checkTelegramPublishing:platform==='instagram'?checkInstagramPublishing:platform==='facebook'?checkFacebookPublishing:checkLinkedInPublishing; }
   private source(kind: unknown, id: unknown, platform = 'linkedin'): PublicationSource {
     if (typeof kind!=='string'||!['content','campaign'].includes(kind) || typeof id !== 'string' || !id || id.length > 150) throw new MarketingStoreError('Geçerli içerik kaynağı gerekli.');
     const project = this.repo.workspace(this.scope.subject, ...this.args())!.project;
@@ -63,7 +64,7 @@ export class SocialPublications {
       imageCount=content.images?.length|| (content.imageData?1:0);
       title = content.headline || platform; text = content.content; media = Boolean(imageCount || content.rawBgData); raw = content;
     }
-    const eligible = !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && (platform==='twitter'?xText(text).valid:text.length <= (platform==='instagram'?2200:3000)) && (platform==='instagram'?imageCount>=1&&imageCount<=5:platform==='facebook'?imageCount<=1&&(!media||imageCount===1):!media) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
+    const eligible = !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && (platform==='twitter'?xText(text).valid:text.length <= (platform==='instagram'?2200:platform==='telegram'?TELEGRAM_TEXT_LIMIT:3000)) && (platform==='instagram'?imageCount>=1&&imageCount<=5:platform==='facebook'?imageCount<=1&&(!media||imageCount===1):!media) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
     const digest=hash(JSON.stringify(platform === 'linkedin' ? [kind,id,raw,project] : [kind,id,raw,project,platform]));
     const previews=['instagram','facebook'].includes(platform)?Array.from({length:Math.min(imageCount,5)},(_,index)=>`/api/platform/publication-preview?kind=${kind}&id=${encodeURIComponent(id)}&digest=${digest}&platform=${platform}&index=${index}`):[];
     return { kind: kind as 'content' | 'campaign', id, platform, title, text, eligible, digest, format:imageCount>1?'carousel':imageCount?'image':'text', ...(platform==='twitter'?{weightedLength:xText(text).length}:{}), ...(previews.length?{imagePreview:previews[0],imagePreviews:previews}:{}) };
@@ -99,8 +100,8 @@ export class SocialPublications {
     const canManage = this.can(), sources: PublicationSource[] = []; let sourceTotal=0;
     if (canManage) {
       const candidates=this.db.prepare(`SELECT *,COUNT(*) OVER() AS total FROM (
-        SELECT 'content' AS kind,id,json_extract(payload,'$.platform') AS platform,updated_at FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.platform') IN ('linkedin','facebook','instagram','twitter')
-        UNION ALL SELECT DISTINCT 'campaign' AS kind,c.id,ch.value AS platform,c.updated_at FROM platform_campaigns c,json_each(c.payload,'$.channels.social') ch WHERE c.organization_id=? AND c.project_id=? AND json_extract(c.payload,'$.status')='draft' AND ch.value IN ('linkedin','facebook','instagram','twitter')
+        SELECT 'content' AS kind,id,json_extract(payload,'$.platform') AS platform,updated_at FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.platform') IN ('linkedin','facebook','instagram','twitter','telegram')
+        UNION ALL SELECT DISTINCT 'campaign' AS kind,c.id,ch.value AS platform,c.updated_at FROM platform_campaigns c,json_each(c.payload,'$.channels.social') ch WHERE c.organization_id=? AND c.project_id=? AND json_extract(c.payload,'$.status')='draft' AND ch.value IN ('linkedin','facebook','instagram','twitter','telegram')
       ) ORDER BY updated_at DESC,id,platform LIMIT 50`).all(...this.args(),...this.args()) as {kind:'content'|'campaign';id:string;platform:string;total:number}[];
       sourceTotal=candidates[0]?.total||0;for(const item of candidates)sources.push(this.source(item.kind,item.id,item.platform));
     }
@@ -109,7 +110,7 @@ export class SocialPublications {
       return { id:item.id, name:item.account_name, platform:item.platform, accountId:item.account_id, accountType:isLinkedInOrganization(item.platform,item.account_id,item.integration_id)?'organization' as const:'person' as const, revision, configured:Boolean(this.config(item.platform)), ready:Boolean(proof), checkedAt:proof?.checked_at || null, expiresAt:item.expires_at ? new Date(item.expires_at).toISOString() : null };
     }) : [];
     const rows = this.db.prepare(query+' ORDER BY p.scheduled_at DESC,j.rowid DESC LIMIT 20 OFFSET ?').all(...this.args(),(page-1)*20) as Row[];
-    return { items:rows.map(row=>this.describe(row)), total:(this.db.prepare('SELECT COUNT(*) AS n FROM platform_social_publications WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n, page, sources, sourceTotal, targets, canManage, configured:['linkedin','facebook','instagram','twitter'].some(platform=>Boolean(this.config(platform))), publishingEnabled:socialPublishingEnabled(), timezone:this.repo.workspace(this.scope.subject,...this.args())!.project.timezone };
+    return { items:rows.map(row=>this.describe(row)), total:(this.db.prepare('SELECT COUNT(*) AS n FROM platform_social_publications WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n, page, sources, sourceTotal, targets, canManage, configured:['linkedin','facebook','instagram','twitter','telegram'].some(platform=>Boolean(this.config(platform))), publishingEnabled:socialPublishingEnabled(), timezone:this.repo.workspace(this.scope.subject,...this.args())!.project.timezone };
   }
   async check(connectionId: string, read?: PublishCheck) {
     this.authorize(true); const connection=this.connection(connectionId), revision=hash(connection.encrypted_credentials), config=this.config(connection.platform);
@@ -131,7 +132,7 @@ export class SocialPublications {
         if(!updated.changes)throw new Error();
         this.audit('social.publish.check'); return {ready:true,checkedAt,expiresAt};
       }).immediate();
-    } catch { throw new MarketingStoreError(connection.accountType==='organization'?'LinkedIn şirket yayın izni doğrulanamadı. w_organization_social, r_organization_admin, seçilen sayfa rolü ve token süresini kontrol edin.':connection.platform==='twitter'?'X yayın izni doğrulanamadı. X OAuth ile yayın izni isteyerek yeniden bağlanın; tweet.write, token süresi ve uygulama erişimini kontrol edin.':connection.platform==='instagram'?'Instagram yayın izni doğrulanamadı. instagram_content_publish izni, bağlı sayfa ve içerik oluşturma görevini kontrol edin.':connection.platform==='facebook'?'Facebook yayın izni doğrulanamadı. Yayın izniyle yeniden bağlanın; pages_manage_posts ve sayfanın içerik oluşturma görevini kontrol edin.':'LinkedIn yayın izni doğrulanamadı. w_member_social iznini, token süresini ve hesabı kontrol edin.',409); }
+    } catch { throw new MarketingStoreError(connection.accountType==='organization'?'LinkedIn şirket yayın izni doğrulanamadı. w_organization_social, r_organization_admin, seçilen sayfa rolü ve token süresini kontrol edin.':connection.platform==='telegram'?'Telegram yayın izni doğrulanamadı. Botu kanala yönetici olarak ekleyin ve “Mesaj gönder” iznini açın; bot token’ının güncel olduğunu kontrol edin.':connection.platform==='twitter'?'X yayın izni doğrulanamadı. X OAuth ile yayın izni isteyerek yeniden bağlanın; tweet.write, token süresi ve uygulama erişimini kontrol edin.':connection.platform==='instagram'?'Instagram yayın izni doğrulanamadı. instagram_content_publish izni, bağlı sayfa ve içerik oluşturma görevini kontrol edin.':connection.platform==='facebook'?'Facebook yayın izni doğrulanamadı. Yayın izniyle yeniden bağlanın; pages_manage_posts ve sayfanın içerik oluşturma görevini kontrol edin.':'LinkedIn yayın izni doğrulanamadı. w_member_social iznini, token süresini ve hesabı kontrol edin.',409); }
   }
   private row(id: string) { const row=this.db.prepare(query+' AND j.id=?').get(...this.args(),id) as Row|undefined; if(!row)throw new MarketingStoreError('Yayın işi bulunamadı.',404);return row; }
   private snapshot(row: Row) { return decryptCredentials<Snapshot>(row.encrypted_snapshot,this.key,...this.args(),`publication:${row.id}`); }
@@ -303,14 +304,14 @@ export class SocialPublications {
       if(connection.platform==='instagram'){
         const imageResult=await this.prepareInstagram(claimed,lease,credentials,reserve,manualRunner);if(!imageResult)return;result=imageResult;
       }else if(connection.platform==='facebook'&&snapshot.image)result=await publishFacebookImage(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.image,reserve);
-      else result=await (transport || (connection.accountType==='organization'?publishLinkedInOrganizationText:connection.platform==='twitter'?publishXText:connection.platform==='facebook'?publishFacebookText:publishLinkedInText))(credentials.accessToken,snapshot.accountId,snapshot.text,reserve);
+      else result=await (transport || (connection.accountType==='organization'?publishLinkedInOrganizationText:connection.platform==='twitter'?publishXText:connection.platform==='telegram'?publishTelegramText:connection.platform==='facebook'?publishFacebookText:publishLinkedInText))(credentials.accessToken,snapshot.accountId,snapshot.text,reserve);
     }catch{try{this.live(claimed,manualRunner);}catch{reason='changed';}}
     this.db.transaction(()=>{
       if(!this.holder(id,lease))return;const row=this.row(id);
       if(row.submitted_at){
-        const snapshot=this.snapshot(row),facebook=snapshot.platform==='facebook',instagram=snapshot.platform==='instagram',x=snapshot.platform==='twitter';
-        const accepted=result.state==='accepted'&&typeof result.postId==='string'&&(x?xPostId(result.postId):instagram?instagramId(result.postId):facebook?validFacebookPost(result.postId,snapshot.accountId):/^urn:li:(share|ugcPost):\d{1,30}$/.test(result.postId));
-        if(accepted){this.db.prepare('UPDATE platform_social_publications SET provider_post_id=?,provider_url=? WHERE job_id=?').run(result.postId,x?`https://x.com/i/status/${result.postId}`:instagram?instagramPermalink(result.postUrl):facebook?`https://www.facebook.com/${result.postId}`:`https://www.linkedin.com/feed/update/${result.postId}`,id);this.finish(id,'accepted',null);}
+        const snapshot=this.snapshot(row),facebook=snapshot.platform==='facebook',instagram=snapshot.platform==='instagram',x=snapshot.platform==='twitter',telegram=snapshot.platform==='telegram';
+        const accepted=result.state==='accepted'&&typeof result.postId==='string'&&(x?xPostId(result.postId):telegram?telegramPostId(result.postId):instagram?instagramId(result.postId):facebook?validFacebookPost(result.postId,snapshot.accountId):/^urn:li:(share|ugcPost):\d{1,30}$/.test(result.postId));
+        if(accepted){this.db.prepare('UPDATE platform_social_publications SET provider_post_id=?,provider_url=? WHERE job_id=?').run(result.postId,x?`https://x.com/i/status/${result.postId}`:telegram?(typeof result.postUrl==='string'&&/^https:\/\/t\.me\/[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(result.postUrl)?result.postUrl:null):instagram?instagramPermalink(result.postUrl):facebook?`https://www.facebook.com/${result.postId}`:`https://www.linkedin.com/feed/update/${result.postId}`,id);this.finish(id,'accepted',null);}
         else this.finish(id,result.state==='rejected'?'rejected':'uncertain',result.state==='rejected'?'unavailable':'interrupted');
       }else this.finish(id,'blocked',reason);
     }).immediate();

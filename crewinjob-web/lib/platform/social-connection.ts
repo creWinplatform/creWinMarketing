@@ -2,7 +2,7 @@ import 'server-only';
 import { normalizeSocialConfiguration, type SocialConfiguration } from './social-configuration';
 export async function readSocialJson(url: string, token: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
   const parsed = new URL(url);
-  if (parsed.protocol !== 'https:' || !['api.linkedin.com', 'api.x.com', 'graph.facebook.com'].includes(parsed.hostname) || parsed.username || parsed.password || parsed.port || parsed.searchParams.has('access_token')) throw new Error('Invalid provider URL.');
+  if (parsed.protocol !== 'https:' || !['api.linkedin.com', 'api.x.com', 'graph.facebook.com', 'api.telegram.org'].includes(parsed.hostname) || parsed.username || parsed.password || parsed.port || parsed.searchParams.has('access_token')) throw new Error('Invalid provider URL.');
   const headers = new Headers(init.headers); headers.set('Accept', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const timeout = AbortSignal.timeout(12000);
@@ -37,6 +37,12 @@ export async function verifySocialConnection(raw: SocialConfiguration, token: st
       const {checkLinkedInOrganizationReadAccess}=await import('./linkedin-organization-publishing');
       await checkLinkedInOrganizationReadAccess(token,settings.accountId);
       return {status:'verified' as const,message:'LinkedIn şirket sayfası erişimi eşleştirildi. Yayın izni henüz doğrulanmadı.'};
+    }
+    if (settings.platform === 'telegram') {
+      const { verifyTelegramChannel } = await import('./telegram-publishing');
+      const channel = await verifyTelegramChannel(token, settings.accountId);
+      if (settings.accountId.startsWith('-100') && channel.chatId !== settings.accountId) throw new Error();
+      return { status: 'verified' as const, message: 'Telegram botu ve kanal eşleştirildi. Botun kanalda gönderme izni henüz doğrulanmadı.' };
     }
     if (settings.platform === 'facebook' || settings.platform === 'instagram') {
       const url = new URL(`https://graph.facebook.com/${settings.graphVersion}/me`);

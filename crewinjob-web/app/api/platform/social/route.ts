@@ -14,7 +14,7 @@ export async function GET() {
   if (!access || access.identity.mode !== 'platform') return NextResponse.json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, { status: 403 });
   let linkedinConfigured = false;
   try { linkedinConfiguration(); linkedinConfigured = true; } catch {}
-  return NextResponse.json({ linkedinConfigured, manualPlatforms: ['linkedin', 'twitter'], publishingEnabled: socialPublishingEnabled(), publishingPlatforms: ['linkedin'] }, { headers: { 'Cache-Control': 'private, no-store' } });
+  return NextResponse.json({ linkedinConfigured, manualPlatforms: ['linkedin', 'twitter', 'telegram'], publishingEnabled: socialPublishingEnabled(), publishingPlatforms: ['linkedin', 'telegram'] }, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 export async function POST(request: NextRequest) {
   if (!hasSameRequestOrigin(request)) return NextResponse.json({ error: 'İstek kaynağı geçersiz.' }, { status: 403 });

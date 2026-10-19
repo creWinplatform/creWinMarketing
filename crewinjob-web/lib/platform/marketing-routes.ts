@@ -57,7 +57,7 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   const content = string(raw.content, 100000, current?.content).trim();
   if (!content) throw new MarketingStoreError('İçerik gerekli.');
   const platform = string(raw.platform, 50, current?.platform || 'email');
-  if (!['email', 'linkedin', 'facebook', 'instagram', 'twitter', 'tiktok', 'blog'].includes(platform)) throw new MarketingStoreError('Geçersiz kanal.');
+  if (!['email', 'linkedin', 'facebook', 'instagram', 'twitter', 'telegram', 'tiktok', 'blog'].includes(platform)) throw new MarketingStoreError('Geçersiz kanal.');
   const language = string(raw.language, 10, current?.language || 'tr');
   if (!['tr', 'en'].includes(language)) throw new MarketingStoreError('Geçersiz dil.');
   let images=current?.images;

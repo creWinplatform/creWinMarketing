@@ -62,7 +62,8 @@ export class EmailPilotQueue {
     const allowed=new Set(grants.filter(grant=>repo.can(grant.granted_by,...this.args(),'connections.manage')&&repo.can(grant.granted_by,...this.args(),'recipients.manage')).map(grant=>grant.email_key));
     return recipients.filter(recipient=>allowed.has(recipient.emailKey)).sort((a,b)=>a.emailKey.localeCompare(b.emailKey));
   }
-  enqueue(input:{campaignId:string;expectedDigest:string;expectedReviewId:number;idempotencyKey:string;acknowledged:boolean;sendAcknowledged?:boolean},mode:'rehearsal'|'send'='rehearsal'){
+  // onlyEmailKeys narrows the eligible pilot recipients (lifecycle automation); every other gate stays the same.
+  enqueue(input:{campaignId:string;expectedDigest:string;expectedReviewId:number;idempotencyKey:string;acknowledged:boolean;sendAcknowledged?:boolean},mode:'rehearsal'|'send'='rehearsal',onlyEmailKeys?:ReadonlySet<string>){
     this.authorize(true);
     assertProjectWork(this.db,this.scope);if(mode==='send')assertProjectDelivery(this.db,this.scope);
     if(input.acknowledged!==true||typeof input.idempotencyKey!=='string'||!/^[a-zA-Z0-9_-]{8,100}$/.test(input.idempotencyKey)||typeof input.expectedDigest!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedDigest)||!Number.isSafeInteger(input.expectedReviewId))throw new MarketingStoreError('Prova onayı, içerik sürümü ve işlem anahtarı gerekli.');
@@ -78,7 +79,7 @@ export class EmailPilotQueue {
       if(mode==='send'&&this.db.prepare(`${query} AND p.mode='send' AND j.status IN ('queued','running')`).get(...this.args()))throw new MarketingStoreError('Projede aktif bir gerçek pilot var.',409);
       const active=this.db.prepare(`${query} AND p.campaign_id=? AND j.status IN ('queued','running')`).get(...this.args(),input.campaignId);
       if(active)throw new MarketingStoreError('Bu kampanyanın aktif bir pilot provası var.',409);
-      const recipients=this.eligible(input.campaignId).slice(0,Math.min(sender.maxRecipients,EMAIL_QUEUE_LIMITS.recipients));
+      const recipients=this.eligible(input.campaignId).filter(recipient=>!onlyEmailKeys||onlyEmailKeys.has(recipient.emailKey)).slice(0,Math.min(sender.maxRecipients,EMAIL_QUEUE_LIMITS.recipients));
       if(!recipients.length)throw new MarketingStoreError('Güncel izinli pilot alıcısı bulunamadı.',409);
       const total=(this.db.prepare('SELECT COUNT(*) AS n FROM platform_email_pilots WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n;
       const day=new Date().toISOString().slice(0,10),used=this.db.prepare("SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource='email_rehearsal'").get(...this.args(),day) as {count:number}|undefined;

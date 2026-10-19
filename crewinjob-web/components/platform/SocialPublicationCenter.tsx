@@ -16,7 +16,7 @@ export default function SocialPublicationCenter({workspace,lang}:{workspace:Work
   const [imageReady,setImageReady]=useState<string[]>([]),[imageError,setImageError]=useState('');
   const mounted=useRef(false),locked=useRef(false),controller=useRef<AbortController|null>(null),intents=useRef(new Map<string,string>());
   const source=data?.sources.find(item=>`${item.kind}:${item.id}:${item.platform}`===sourceKey),target=data?.targets.find(item=>item.id===targetId);
-  const supported=(platform:string)=>['linkedin','facebook','instagram','twitter'].includes(platform),platformName=(platform:string,accountType?:string)=>platform==='linkedin'&&accountType==='organization'?(tr?'LinkedIn şirket sayfası':'LinkedIn company page'):platform==='twitter'?'X':platform==='instagram'?'Instagram':platform==='facebook'?'Facebook':platform==='linkedin'?'LinkedIn':platform;
+  const supported=(platform:string)=>['linkedin','facebook','instagram','twitter','telegram'].includes(platform),platformName=(platform:string,accountType?:string)=>platform==='linkedin'&&accountType==='organization'?(tr?'LinkedIn şirket sayfası':'LinkedIn company page'):platform==='twitter'?'X':platform==='telegram'?'Telegram':platform==='instagram'?'Instagram':platform==='facebook'?'Facebook':platform==='linkedin'?'LinkedIn':platform;
   const compatible=Boolean(source&&target&&source.platform===target.platform&&supported(target.platform));
   const previewReady=Boolean(source&&(!source.imagePreviews?.length||source.imagePreviews.every((_,index)=>imageReady.includes(`${source.digest}:${index}`)))&&imageError!==source.digest);
   const formatLabel=(format?:string)=>format==='carousel'?(tr?'Çoklu görsel':'Carousel'):format==='image'?(tr?'Görsel + metin':'Image + text'):(tr?'Metin':'Text');
