@@ -1,5 +1,15 @@
 // Disposable migration fixtures only; never loaded by application code.
-exports.removeBrandSchema=db=>db.exec('DROP TABLE IF EXISTS platform_coach_brand; DELETE FROM platform_migrations WHERE version=37;');
+exports.removeAssignmentSchema=db=>db.exec('DROP TABLE IF EXISTS platform_coach_assignments; DELETE FROM platform_migrations WHERE version=39;');
+// Reverts schema 38: drops renewals and restores the schema-37 brief history table (rows of the newer 'refresh' kind cannot exist there).
+exports.removeRefreshSchema=db=>{exports.removeAssignmentSchema(db);db.exec(`DROP TABLE IF EXISTS platform_coach_refreshes;
+  CREATE TABLE platform_growth_coach_briefs_v37 (id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, coach_revision INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('approve','adjust','positioning')), brief_json TEXT NOT NULL, approved_by TEXT NOT NULL, approved_at TEXT NOT NULL,
+    FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id));
+  INSERT INTO platform_growth_coach_briefs_v37 SELECT * FROM platform_growth_coach_briefs WHERE kind<>'refresh';
+  DROP TABLE platform_growth_coach_briefs; ALTER TABLE platform_growth_coach_briefs_v37 RENAME TO platform_growth_coach_briefs;
+  CREATE INDEX platform_growth_coach_brief_scope ON platform_growth_coach_briefs(organization_id,project_id,id);
+  DELETE FROM platform_migrations WHERE version=38;`);};
+exports.removeBrandSchema=db=>{exports.removeRefreshSchema(db);db.exec('DROP TABLE IF EXISTS platform_coach_brand; DELETE FROM platform_migrations WHERE version=37;');};
 exports.removeDigestSchema=db=>{exports.removeBrandSchema(db);db.exec('DROP TABLE IF EXISTS platform_coach_digest_deliveries; DROP TABLE IF EXISTS platform_coach_digest_subscriptions; DELETE FROM platform_migrations WHERE version=36;');};
 exports.removeBriefHistorySchema=db=>{exports.removeDigestSchema(db);db.exec('DROP TABLE IF EXISTS platform_growth_coach_briefs; DELETE FROM platform_migrations WHERE version=35;');};
 exports.removeReviewSchema=db=>{exports.removeBriefHistorySchema(db);db.exec('DROP TABLE IF EXISTS platform_coach_reviews; DELETE FROM platform_migrations WHERE version=34;');};

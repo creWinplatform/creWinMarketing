@@ -158,3 +158,34 @@
 @media (max-width:640px){.coach-learning-table td:nth-child(2){grid-column:auto}.coach-learning-table td:nth-child(2)::before{content:attr(data-label) ": ";color:var(--studio-muted)}}
 .coach-learning h3{font-size:13px;font-weight:650}
 .coach-brand .coach-keywords :is(td,th){text-align:left!important;white-space:normal}
+/* Phase 4 · outcomes week by week, email results */
+.coach-outcomes{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;min-width:0}
+.coach-outcome-pick{display:grid;gap:4px;font-size:12px;font-weight:600;color:var(--studio-muted);max-width:420px}
+.coach-outcome-pick select{width:100%;min-width:0;max-width:100%;text-overflow:ellipsis;min-height:40px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-surface);color:var(--studio-ink);padding:0 10px;font:inherit;font-weight:500}
+.coach-outcome-weeks{list-style:none;margin:0;padding:0;display:grid;gap:0;border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);overflow:hidden}
+.coach-outcome-weeks li{display:grid;grid-template-columns:minmax(120px,160px) minmax(110px,180px) minmax(0,1fr);gap:10px;align-items:center;padding:9px 12px;font-size:13px;border-top:1px solid var(--studio-border);overflow-wrap:anywhere}
+.coach-outcome-weeks li:first-child{border-top:0}
+@media (max-width:640px){.coach-outcome-weeks li{grid-template-columns:1fr;gap:3px}}
+.coach-learning-email{display:grid;gap:8px}
+.coach-email-results{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.coach-email-results li{display:flex;justify-content:space-between;gap:8px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:8px 10px;font-size:12px;background:var(--studio-surface)}
+.coach-outcome-weeks .coach-state{justify-self:start}
+/* Phase 4 · owners and due dates, assigned-to-me card, monthly renewal */
+.coach-assign{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;font-size:12px}
+.coach-assign-label{display:inline-flex;flex-wrap:wrap;align-items:center;gap:5px;color:var(--studio-muted);font-size:12px;overflow-wrap:anywhere}
+.coach-assign-label strong{color:var(--studio-ink);font-weight:600}
+.coach-assign-label.overdue,.coach-assign-label em{color:#b23a2e;font-style:normal;font-weight:600}
+.dark .coach-assign-label.overdue,.dark .coach-assign-label em{color:#f0a49a}
+.coach-assign-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;width:100%;border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);padding:12px;background:var(--studio-surface)}
+.coach-assign-form label{font-size:12px;font-weight:600;color:var(--studio-muted);grid-row:1}
+.coach-assign-form :is(select,input){min-height:40px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;min-width:0;width:100%}
+.coach-assign-form>.coach-action-buttons,.coach-assign-form>p{grid-column:1/-1}
+@media (max-width:640px){.coach-assign-form{grid-template-columns:1fr}.coach-assign-form label{grid-row:auto}}
+.coach-my-work-list{list-style:none;margin:0;padding:0}
+.coach-my-work-list li{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--studio-border);font-size:13px}
+.coach-my-work-list li>span:nth-child(2){overflow-wrap:anywhere}
+@media (max-width:640px){.coach-my-work-list li{grid-template-columns:minmax(0,1fr) auto}.coach-my-work-list li>.coach-state{grid-column:1/-1;justify-self:start}}
+.coach-refresh>*+*{margin-top:12px}
+.coach-refresh ul{margin:0;padding-left:18px;display:grid;gap:6px;font-size:13px}
+.coach-refresh .coach-resolved ul{padding-left:0}
+.coach-my-work .studio-section-title h2{display:flex;align-items:center;gap:8px}

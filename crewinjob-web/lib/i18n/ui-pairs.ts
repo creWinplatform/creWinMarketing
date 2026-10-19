@@ -248,6 +248,7 @@ export const UI_PAIRS: Record<string, string> = {
   "SNS adresi kopyalandı.": "SNS endpoint copied.",
   "Sonuç doğrulanmadı": "Outcome unconfirmed",
   "Sorgu tamamlanamadı. Yenile ile kayıtlı sonucu kontrol edin; yeniden sorgulamalar arasında en az bir dakika bekleyin.": "The inquiry did not complete. Refresh to check the recorded result; allow at least one minute between new inquiries.",
+  "Sorumlu:": "Owner:",
   "Strateji briefi onaylandı. Bu haftanın eylemleri aşağıda.": "Strategy brief approved. This week’s actions are below.",
   "Sunucu hatası": "Server error",
   "Sunucuya bağlanılamadı. Tekrar deneyin.": "Could not connect to the server. Try again.",

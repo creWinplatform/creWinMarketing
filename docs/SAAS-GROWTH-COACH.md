@@ -266,3 +266,129 @@ On approval, only the approver's own Compass path is seeded, and only if they ha
   - competitor notes → comparison → positioning applied and versioned;
   - the review email preview, with sending shown as off.
 - **Not verified:** a real SES send (needs operator SES credentials), real provider engagement data and real Gemini output. All three are covered by stub-based tests only.
+
+# Phase 4: outcomes, monthly renewal, email bridge, team assignment
+
+Same rules as Phases 1–3:
+- AI suggests, people approve; nothing is published or sent automatically.
+- Every AI call has a usage reservation and a rule-based starter.
+- Standard projects only; server-side scope and permission checks; TR/EN.
+
+## 4.1 Outcomes next to the work (Analytics → "what we learned" → "Week by week")
+
+**The week is the window.** Weeks start on Monday in the project's time zone.
+- The last 8 weeks are shown.
+- For each goal stage and each source, the latest reading of the week is shown: a manual record, Google Analytics, Search Console or product events.
+- A manual reading belongs to the day it was recorded. An automatic reading belongs to the last day of its measured period; the period is shown next to it.
+
+**Next to each reading: that week's coach work.** This means coach drafts, coach campaigns, accepted publications, email pilot recipients, completed actions and approved plan items, plus how many of them are linked to the selected goal.
+
+**Nothing is credited or counted twice.**
+- Each reading and each piece of work falls into exactly one week.
+- Manual and automatic records are separate rows and are never added up.
+- No outcome is credited to a piece of work, and the page says so.
+- "No measurement" is shown as such, never as zero.
+
+**The Phase 3 trend now splits by source.** The "Measurements · last 8 weeks" lines (first → last) are per source.
+
+## 4.2 Monthly renewal (overview → Monthly renewal)
+
+**When it is due.** The 30-day plan is in its last week, or a new month started at least 14 days after approval. It is not due once this month's renewal was approved.
+
+**What the proposal is built from.** The period's own records (`CoachRenewal.facts`):
+- the state of each plan action;
+- drafts and email campaigns by channel;
+- accepted publications;
+- email pilot recipients;
+- measurements per goal stage and source;
+- the "what we learned" leader, if one is named.
+
+**Rule-based proposal** (`coachStarterRefresh`). Every change carries a reason that names its fact:
+- **Unfinished actions** move into weeks 1–3. The reason states how many were carried and how many the weekly time limit dropped, counted on the final plan.
+- **Completed actions** are removed.
+- **The observed leader channel** moves first, with its average and the note that it is not proof of cause.
+- **A channel with no work** moves last.
+- **Active channels** get one more draft each.
+- **Measurement:** a missing measurement comes first; otherwise this month's measurement is in week 4.
+- **No duplicates:** the same action (tool + title) never appears twice.
+
+**AI proposal** (`coachRefreshPrompt` / `parseCoachRefresh`). It uses the same rules. Numbers may only be copied from the facts. Reasons are checked against the banned-claims rule; broken or non-compliant output is refunded.
+
+**Approval.**
+- An approver (`campaign.approve`) approves with both revisions. Approving replaces the brief, restarts the 30-day plan and stores a `refresh` brief version.
+- A proposal goes stale if the brief changed after it was prepared (for example, an accepted weekly-review change). A stale proposal can't be approved.
+- Editors can dismiss a proposal or prepare it again. There is one row per month; regenerating rewrites it in place.
+
+**Schema 38:**
+- `platform_coach_refreshes` (`UNIQUE(organization, project, month)`);
+- `platform_growth_coach_briefs` rebuilt with the `refresh` kind, keeping every existing row and its id.
+
+## 4.3 Email bridge
+
+- **Content plan:** an email item's "Create a campaign draft" opens the campaign draft editor (Campaigns → Drafts) pre-filled from the item.
+- **Coach actions:** with the campaigns tool, these already opened it.
+- **What is stored:** the campaign draft keeps the `coachRef` (validated against `COACH_REF`, set on creation, kept on edits) and the goal.
+- **Sending is unchanged:** it still goes through segment, consent, suppression, preflight, review and pilot limits.
+- **What "what we learned" shows:**
+  - coach campaigns as `email` rows;
+  - rehearsals and pilot sends;
+  - recipient states from the existing SES flow: accepted, delivered, bounced, complaint, rejected, uncertain.
+- "Accepted by the provider" is not delivery. Opens and clicks are not tracked. Email never feeds the engagement leader.
+
+## 4.4 Team assignment
+
+**What can be assigned.** Weekly actions (setup and plan) and content plan items get an owner and an optional due date.
+- **Owner:** an active teammate with content rights.
+- **Due date:** from one month before to one year after today, in the project's time zone.
+- **Concurrency:** optimistic `revision`.
+
+**Where it shows.**
+- On the action card and the content plan item.
+- In "Assigned to me" on the overview: my open items, overdue first, plus the team's open count.
+- **Overdue:** only for open work.
+
+**What counts as done.** For an action: marked done, or its linked Calendar task completed. For a content item: a draft or campaign opened from it.
+
+**Nothing is sent.** The only email mention is a personal "Open work assigned to you" section in the weekly-review email the member already subscribed to. It lists only the recipient's own items, read again at send time.
+
+**Schema 39:** `platform_coach_assignments` (`PK(organization, project, item_kind, item_id)`).
+
+## Phase 4 permissions
+
+| Action | Permission |
+|---|---|
+| Read outcomes, email results, renewal, assignments | `read` |
+| Prepare or dismiss a renewal; assign or unassign an owner | `content.write` |
+| Approve a renewal | `campaign.approve` |
+
+## Phase 4 files and tests
+
+- **Server:** `lib/platform/coach-refresh.ts`, `coach-assignments.ts`, `coach-assignment-rows.ts`; `coach-learning.ts` (outcomes, email, trend per source).
+- **Routes:** `app/api/platform/coach/{refresh,assignments}/route.ts`.
+- **UI:** `components/platform/CoachRefresh.tsx`, `CoachAssign.tsx`, `CoachMyWork.tsx`.
+- **Changed:** CoachLearning, GrowthCoach, CoachContentPlan, ProjectDrafts (campaign `coachRef`), ProjectOverview.
+- **Server changes:** `coach.ts` (`renew`, `actions`, assignments on actions), `coach-content.ts` (assignments on items), `coach-digest.ts` (personal section), `marketing-routes.ts` and `campaigns.ts` (`coachRef` on campaigns), `coach-review.ts` (renew note).
+- **Tests (in `test:platform`):**
+  - `test/platform-coach-refresh.test.cjs` and `platform-coach-assignments.test.cjs`;
+  - new cases in `platform-coach-learning.test.cjs`.
+- **Recovery:** `MAX_RECOVERY_SCHEMA` is 39. The schema assertions and the recovery "future schema" fixtures moved to 39 and 40.
+- **QA flag:** `node scripts/preview-design.cjs --dev --coach --coach-brief --coach-renewal` moves the fixture approval back 23 days. It adds disposable manual readings and a stub automatic reading.
+
+## Verification (Phase 4, October 19, 2026)
+
+- `npx tsc --noEmit -p .`, `npm run test:platform` and `npm run test:i18n` pass.
+- **Dry run:** migrations 38–39 were run on a copy of the real database (schema 37 → 39, integrity ok, 0 FK problems, rows kept); the copy was deleted.
+- **Browser QA** on the isolated fixture (owner, editor, viewer), TR/EN, 1440/375, light/dark:
+  - the renewal is proposed with accurate reasons, approved, and the plan restarts at week 1;
+  - assignment with an overdue date appears in "Assigned to me";
+  - an email plan item → campaign draft with `coachRef` and goal → counted in "what we learned";
+  - week-by-week outcomes keep manual and automatic rows apart.
+- **Real Gemini (`gemini-2.5-flash`, fixture data only):** every coach AI path was run against the real model (diagnosis, content plan, SEO topics and brief, brand voice, competitor analysis, renewal). This found two problems, both fixed:
+  - Thinking tokens used up the output budget and cut JSON answers off. `coachGemini` now caps thinking at 1024 tokens and adds that on top of the answer budget.
+  - Slightly long AI text failed the whole answer. AI text is now shortened to the field limits (`fitCoachBriefText`, `fitSeoBriefText` and clipping in content ideas, brand analysis and renewal reasons). Structure, the banned-claims rule and the own-site link rule still reject, and team edits keep the strict limits.
+  - Repeated runs then passed.
+- **Real GA4 and Search Console:** read-only, one-off, through `ProjectMeasurements.process` and the real `readGoogleMeasurement`, with a service-account token.
+  - It found that GA4 answers an event filter with no match as 200 with no rows and no `metricHeaders`. This is now no data instead of a failure, with a test.
+  - Afterwards 12 of 12 readings were correct, landed in the right week and kept their source rows apart. A real 0 stays distinct from no data.
+  - The coach SEO query snapshot also read real Search Console queries.
+- **Not verified:** a real SES pilot send with delivery feedback, the per-project Google OAuth flow and real social engagement data.

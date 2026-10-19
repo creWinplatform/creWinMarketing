@@ -67,5 +67,5 @@ test('schema36 is additive and repeatable',coachRun(async f=>{
   await setup(f);digest(f).subscribe({language:'en'});
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-digest-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeDigestSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,35);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,37);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_digest_subscriptions').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,39);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_digest_subscriptions').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

@@ -6,6 +6,7 @@ import type { MarketingScope } from './marketing-store';
 import { MarketingStoreError } from './errors';
 import { PlatformRepository } from './repository';
 import { GrowthCoach,coachChoice,coachWeekKey } from './coach';
+import { CoachAssignments } from './coach-assignments';
 import { identityEmailConfiguration } from './identity-email';
 import type { CoachDigestSnapshot,CoachReviewFacts,CoachAdjustment } from './coach-types';
 
@@ -26,7 +27,7 @@ export async function deliverCoachDigest(mail:DigestMail,configuration:Configura
 }
 const SOURCES:Record<string,[string,string]>={manual:['manuel kayıt','manual record'],ga4:['Google Analytics','Google Analytics'],search_console:['Search Console','Search Console'],product_webhook:['ürün olayları','product events']};
 // Plain-text summary built only from the stored review facts; the same honesty rules as the screen.
-export function digestMessage(facts:CoachReviewFacts,adjustments:CoachAdjustment[],lang:Lang,project:{name:string;timezone:string},origin:string){
+export function digestMessage(facts:CoachReviewFacts,adjustments:CoachAdjustment[],lang:Lang,project:{name:string;timezone:string},origin:string,assigned:{title:string;dueOn:string|null;overdue:boolean}[]=[]){
   const tr=lang==='tr',locale=tr?'tr-TR':'en-GB',n=(value:number)=>value.toLocaleString(locale),date=(value:string)=>new Date(value).toLocaleDateString(locale,{day:'numeric',month:'short',timeZone:project.timezone});
   const period=`${date(facts.from)} – ${date(facts.to)}`,lines:string[]=[];
   lines.push(tr?`${project.name} · haftalık özet · ${period}`:`${project.name} · weekly review · ${period}`,'');
@@ -40,6 +41,9 @@ export function digestMessage(facts:CoachReviewFacts,adjustments:CoachAdjustment
   if(facts.rose.length)lines.push('',tr?'Ekip aktifken artan ölçümler (neden-sonuç kanıtı değildir):':'Measurements that rose while the team was active (not proof of cause):',...facts.rose.map(item=>`- ${item.goal[lang]} · ${item.stage[lang]}: ${n(item.from)} → ${n(item.to)}`));
   const open=adjustments.filter(item=>item.state==='proposed');
   if(open.length)lines.push('',tr?'Onay bekleyen plan önerileri':'Plan proposals waiting for approval',...open.map(item=>`- ${item.title[lang]}`));
+  // Personal section: only the recipient's own open assignments, as recorded by the team.
+  const day=(key:string)=>new Date(`${key}T12:00:00Z`).toLocaleDateString(locale,{day:'numeric',month:'short',timeZone:'UTC'});
+  if(assigned.length)lines.push('',tr?'Size atanan açık işler':'Open work assigned to you',...assigned.slice(0,10).map(item=>`- ${item.title}${item.dueOn?` · ${tr?'son tarih':'due'} ${day(item.dueOn)}${item.overdue?(tr?' (gecikti)':' (overdue)'):''}`:''}`));
   lines.push('',tr?`Özeti Ryzevo'da açın: ${origin}/?tab=dashboard`:`Open the review in Ryzevo: ${origin}/?tab=dashboard`,'',
     tr?'Bu e-postayı haftalık özete abone olduğunuz için aldınız. Aboneliği genel bakıştaki haftalık özet kartından kapatabilirsiniz. Tahmin, artış veya ROI hesaplanmaz.':'You receive this email because you subscribed to the weekly review. You can turn it off from the weekly review card on the overview. No estimates, uplift or ROI are calculated.');
   return {subject:tr?`Ryzevo · ${project.name} · haftalık özet (${period})`:`Ryzevo · ${project.name} · weekly review (${period})`,text:lines.join('\n').slice(0,20000)};
@@ -62,7 +66,7 @@ export class CoachDigest{
     const lang=subscription?.language||(viewLang==='en'||viewLang==='tr'?viewLang:project.language)||'tr';
     return {subscribed:Boolean(subscription),language:subscription?.language||null,hasVerifiedEmail:Boolean(this.email()),enabled:Boolean(configuration),canSend,
       recipients:canSend?this.recipients().length:null,reviewId:review?.id||null,deliveries:Object.fromEntries(counts.map(item=>[item.state,item.n])),
-      preview:review?digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),lang,project,configuration?.origin||'https://ryzevo.com'):null};
+      preview:review?digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),lang,project,configuration?.origin||'https://ryzevo.com',new CoachAssignments(this.db,this.scope).read().mine):null};
   }
   subscribe(raw:Record<string,unknown>){
     this.coach.authorize();const language=coachChoice(['tr','en'] as const,raw.language);
@@ -99,7 +103,8 @@ export async function deliverNextCoachDigest(db:Database.Database,deliver:Digest
     const review=db.prepare('SELECT facts_json,adjustments_json FROM platform_coach_reviews WHERE id=? AND organization_id=? AND project_id=?').get(row.review_id,row.organization_id,row.project_id) as {facts_json:string;adjustments_json:string}|undefined;
     if(!workspace||workspace.project.productPack!=='standard')return skip('membership');if(!subscription)return skip('unsubscribed');if(!email)return skip('email');if(!review)return skip('review');
     db.prepare("UPDATE platform_coach_digest_deliveries SET state='submitted',updated_at=? WHERE id=? AND state='queued'").run(now,row.id);
-    return {id:row.id,mail:{to:email,...digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),subscription.language,workspace.project,configuration.origin)}};
+    const assigned=new CoachAssignments(db,{subject:row.user_id,organizationId:row.organization_id,projectId:row.project_id}).read().mine;
+    return {id:row.id,mail:{to:email,...digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),subscription.language,workspace.project,configuration.origin,assigned)}};
   }).immediate();
   if(!claimed||claimed==='skipped')return Boolean(claimed);
   let state:'sent'|'uncertain'='sent';try{await deliver(claimed.mail,configuration);}catch{state='uncertain';}

@@ -772,6 +772,40 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(37,datetime('now'));
   `))();
+  // Phase 4 · monthly renewal: proposed briefs from the past month's records; brief history gains the 'refresh' kind.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=38').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_growth_coach_briefs_v38 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, coach_revision INTEGER NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('approve','adjust','positioning','refresh')), brief_json TEXT NOT NULL, approved_by TEXT NOT NULL, approved_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_growth_coach_briefs_v38(id,organization_id,project_id,coach_revision,kind,brief_json,approved_by,approved_at)
+      SELECT id,organization_id,project_id,coach_revision,kind,brief_json,approved_by,approved_at FROM platform_growth_coach_briefs;
+    DROP TABLE platform_growth_coach_briefs;
+    ALTER TABLE platform_growth_coach_briefs_v38 RENAME TO platform_growth_coach_briefs;
+    CREATE INDEX platform_growth_coach_brief_scope ON platform_growth_coach_briefs(organization_id,project_id,id);
+    CREATE TABLE platform_coach_refreshes (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, month TEXT NOT NULL, base_revision INTEGER NOT NULL,
+      facts_json TEXT NOT NULL, brief_json TEXT NOT NULL, reasons_json TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('ai','template')),
+      state TEXT NOT NULL CHECK(state IN ('proposed','approved','dismissed')), revision INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT NOT NULL, updated_by TEXT NOT NULL, decided_by TEXT, decided_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,month),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(38,datetime('now'));
+  `))();
+  // Phase 4 · who looks after a weekly action or a content plan item, and by when. Internal only; nothing is sent.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=39').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_coach_assignments (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, item_kind TEXT NOT NULL CHECK(item_kind IN ('action','content')), item_id TEXT NOT NULL,
+      assignee_id TEXT NOT NULL REFERENCES platform_users(id), due_on TEXT, revision INTEGER NOT NULL DEFAULT 1,
+      assigned_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,item_kind,item_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_coach_assignment_assignee ON platform_coach_assignments(organization_id,project_id,assignee_id);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(39,datetime('now'));
+  `))();
   return db;
 }
 

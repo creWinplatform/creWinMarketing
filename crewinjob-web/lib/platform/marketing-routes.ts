@@ -121,7 +121,7 @@ export async function projectCampaignResponse(request: NextRequest, id?: string)
     if (request.method === 'POST' && !id) {
       const raw=object(await request.json()),input = campaignInput(raw, workspace.project.timezone, workspace.project.goals.map(goal => goal.id));
       const binding=segmentBinding(raw,scope.segments,input.goalId||'');
-      return response(store.saveCampaign({ ...buildCampaign(input), status: 'draft',...(binding?{segmentBinding:binding}:{}) }, true), 201);
+      return response(store.saveCampaign({ ...buildCampaign(input), status: 'draft',...(binding?{segmentBinding:binding}:{}),...coachRef(raw.coachRef) }, true), 201);
     }
     if (request.method === 'PATCH' && id) {
       const current = store.campaign(id);
@@ -130,7 +130,7 @@ export async function projectCampaignResponse(request: NextRequest, id?: string)
       const input = campaignInput({ name: current.name, goalId: current.goalId, objective: current.objective, channels: current.channels, content: current.content, ...raw }, workspace.project.timezone, workspace.project.goals.map(goal => goal.id));
       const binding=segmentBinding(raw,scope.segments,input.goalId||'',current.segmentBinding);
       const next: UnifiedCampaign = { ...buildCampaign(input), id: current.id, status: 'draft', createdAt: current.createdAt,
-        utm: current.utm, updatedAt: new Date().toISOString(),...(binding?{segmentBinding:binding}:{}) };
+        utm: current.utm, updatedAt: new Date().toISOString(),...(binding?{segmentBinding:binding}:{}),...coachRef(raw.coachRef,current.coachRef) };
       next.deliveries = next.deliveries.map((delivery, index) => ({ ...delivery, id: `${current.id}_d${index + 1}` }));
       return response(store.saveCampaign(next, false));
     }

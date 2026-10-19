@@ -124,6 +124,8 @@ export interface UnifiedCampaign {
   activeDispatchId?: number | null;
   /** Yalnızca backend'de olan (yerel kaydı olmayan) kampanya — panelden düzenlenemez/başlatılamaz/silinemez. */
   remoteOnly?: boolean;
+  /** Büyüme koçundan açıldıysa kaynağı (plan:…, setup:…, content:…). Yalnız standart projelerde. */
+  coachRef?: string;
   name: string;
   objective: CampaignObjective;
   status: CampaignStatus;

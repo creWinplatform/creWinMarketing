@@ -6,6 +6,7 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import { COACH_CHANNELS, COACH_PREFILL_KEY, type CoachChannel, type CoachContentItem, type CoachContentSnapshot } from '@/lib/platform/coach-types';
 import Msg from '@/components/Msg';
+import CoachAssign from './CoachAssign';
 
 type Form={id:string|null;revision:number;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string;plannedFor:string};
 const channelNames:Record<CoachChannel,[string,string]>={linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],seo:['Blog (SEO)','Blog (SEO)']};
@@ -33,7 +34,9 @@ export default function CoachContentPlan({workspace,lang}:{workspace:WorkspaceCo
     event.preventDefault();if(!form)return;const body={channel:form.channel,theme:form.theme,title:form.title,angle:form.angle,goalId:form.goalId||null,plannedFor:form.plannedFor};
     if(await run('form',form.id?{action:'update',id:form.id,expectedRevision:form.revision,...body}:{action:'add',month,...body},form.id?(tr?'Madde güncellendi. Değişen madde yeniden onay bekler.':'Item updated. A changed item needs approval again.'):(tr?'Madde eklendi; onaylandığında kullanılabilir.':'Item added; it can be used once approved.')))setForm(null);
   };
-  const handoff=(item:CoachContentItem)=>{if(!item.prefill)return;try{sessionStorage.setItem(COACH_PREFILL_KEY,JSON.stringify({...item.prefill,tab:'library',at:Date.now()}));}catch{/* The studio still opens without a pre-filled brief. */}};
+  // Email items open a campaign draft (audience, consent and approval live there); everything else opens the content studio.
+  const studio=(item:CoachContentItem)=>item.channel==='email'?'campaigns':'library';
+  const handoff=(item:CoachContentItem)=>{if(!item.prefill)return;try{sessionStorage.setItem(COACH_PREFILL_KEY,JSON.stringify({...item.prefill,tab:studio(item),at:Date.now()}));}catch{/* The studio still opens without a pre-filled brief. */}};
   const date=(value:string)=>new Date(`${value}T12:00:00Z`).toLocaleDateString(locale,{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
   const monthLabel=(value:string)=>new Date(`${value}-15T12:00:00Z`).toLocaleDateString(locale,{month:'long',year:'numeric',timeZone:'UTC'});
   const lastDay=(value:string)=>{const [year,index]=value.split('-').map(Number);return `${value}-${String(new Date(Date.UTC(year,index,0)).getUTCDate()).padStart(2,'0')}`;};
@@ -57,9 +60,10 @@ export default function CoachContentPlan({workspace,lang}:{workspace:WorkspaceCo
       <div className="coach-action-meta"><time dateTime={item.plannedFor}>{date(item.plannedFor)}</time><span className="studio-badge">{item.theme}</span><span className={`coach-state ${item.state==='approved'?'done':''}`}>{stateNames[item.state][idx]}</span><span>{sourceNames[item.source][idx]}</span></div>
       <h4>{item.title}</h4><p>{item.angle}</p>
       {item.goalId&&<p className="coach-muted">{tr?'Hedef: ':'Goal: '}{goalLabel(item.goalId)||item.goalId}</p>}
+      {item.state!=='dismissed'&&<CoachAssign kind="content" itemId={item.id} assignment={item.assignment} lang={lang} onSaved={()=>load(month)}/>}
       {data?.canWrite&&<div className="coach-action-buttons">
         {item.state==='suggested'&&<><button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={()=>void run(item.id,{action:'decide',id:item.id,expectedRevision:item.revision,decision:'approve'})}><Check size={15}/>{tr?'Onayla':'Approve'}</button><button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void run(item.id,{action:'decide',id:item.id,expectedRevision:item.revision,decision:'dismiss'})}><X size={15}/>{tr?'Çıkar':'Dismiss'}</button></>}
-        {item.state==='approved'&&<><a className="studio-secondary" href="/?tab=library" onClick={()=>handoff(item)}>{tr?'Taslak oluştur':'Create a draft'}<ArrowRight size={15}/></a>{item.taskId?<a className="studio-text-button" href="/?tab=calendar"><CalendarPlus size={15}/>{tr?'Takvimde':'In Calendar'}</a>:<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void run(item.id,{action:'schedule',id:item.id})}><CalendarPlus size={15}/>{tr?'Takvime ekle':'Add to Calendar'}</button>}</>}
+        {item.state==='approved'&&<><a className="studio-secondary" href={`/?tab=${studio(item)}`} onClick={()=>handoff(item)}>{item.channel==='email'?tr?'Kampanya taslağı oluştur':'Create a campaign draft':tr?'Taslak oluştur':'Create a draft'}<ArrowRight size={15}/></a>{item.taskId?<a className="studio-text-button" href="/?tab=calendar"><CalendarPlus size={15}/>{tr?'Takvimde':'In Calendar'}</a>:<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void run(item.id,{action:'schedule',id:item.id})}><CalendarPlus size={15}/>{tr?'Takvime ekle':'Add to Calendar'}</button>}</>}
         <button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>setForm({id:item.id,revision:item.revision,channel:item.channel,theme:item.theme,title:item.title,angle:item.angle,goalId:item.goalId||'',plannedFor:item.plannedFor})}><Pencil size={14}/>{tr?'Düzenle':'Edit'}</button>
       </div>}
     </>}

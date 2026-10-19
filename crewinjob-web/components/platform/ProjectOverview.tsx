@@ -4,6 +4,8 @@ import { ArrowRight, CalendarDays, FolderOpen, Megaphone, Target, RefreshCw, Plu
 import { CompassOverview } from './GrowthCompass';
 import GrowthCoach from './GrowthCoach';
 import CoachWeeklyReview from './CoachWeeklyReview';
+import CoachRefresh from './CoachRefresh';
+import CoachMyWork from './CoachMyWork';
 import type { Locale, ModuleId, WorkspaceContext } from '@/lib/platform/catalog';
 import type { WorkItem, MetricEntry } from '@/lib/platform/operations';
 import { projectRequest } from '@/lib/platform/client';
@@ -38,10 +40,10 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
     'project.update':['Proje güncellendi','Project updated'], 'organization.provision':['Çalışma alanı oluşturuldu','Workspace created'],
     'membership.create':['Ekip üyesi eklendi','Team member added'], 'membership.update':['Üyelik güncellendi','Membership updated'],
     'connection.save':['Bağlantı kaydedildi','Connection saved'], 'connection.revoke':['Bağlantı kaldırıldı','Connection revoked'],
-    'coach.answers':['Büyüme teşhisi yanıtlandı','Growth diagnosis answered'], 'coach.draft.ai':['AI strateji taslağı hazırlandı','AI strategy draft prepared'], 'coach.draft.template':['Başlangıç briefi hazırlandı','Starter brief prepared'], 'coach.draft.edit':['Brief taslağı düzenlendi','Brief draft edited'], 'coach.approve':['Strateji briefi onaylandı','Strategy brief approved'],
+    'coach.answers':['Büyüme teşhisi yanıtlandı','Growth diagnosis answered'], 'coach.draft.ai':['AI strateji taslağı hazırlandı','AI strategy draft prepared'], 'coach.draft.template':['Başlangıç briefi hazırlandı','Starter brief prepared'], 'coach.draft.edit':['Brief taslağı düzenlendi','Brief draft edited'], 'coach.approve':['Strateji briefi onaylandı','Strategy brief approved'], 'coach.refresh.template':['Aylık yenileme önerildi','Monthly renewal proposed'], 'coach.refresh.ai':['AI aylık yenileme önerdi','AI proposed a monthly renewal'], 'coach.refresh.approve':['Aylık yenileme onaylandı','Monthly renewal approved'], 'coach.refresh.dismiss':['Aylık yenileme reddedildi','Monthly renewal dismissed'],
     'coach.review.generate':['Haftalık özet hazırlandı','Weekly review prepared'], 'coach.review.add':['Plana eylem eklendi','Action added to the plan'], 'coach.review.move':['Plan eylemi taşındı','Plan action moved'], 'coach.review.accept':['Plan önerisi kabul edildi','Plan proposal accepted'], 'coach.review.reject':['Plan önerisi reddedildi','Plan proposal rejected'],
     'coach.content.approve':['İçerik planı maddesi onaylandı','Content plan item approved'], 'coach.content.schedule':['Plan maddesi takvime eklendi','Plan item added to Calendar'], 'coach.content.template':['İçerik planı önerildi','Content plan suggested'], 'coach.content.ai':['AI içerik planı önerdi','AI suggested a content plan'], 'coach.seo.brief.approve':['SEO briefi onaylandı','SEO brief approved'],
-    'coach.action.done':['Koç eylemi tamamlandı','Coach action done'], 'coach.action.skipped':['Koç eylemi ertelendi','Coach action skipped'], 'coach.action.open':['Koç eylemi yeniden açıldı','Coach action reopened'], 'coach.action.schedule':['Koç eylemi takvime eklendi','Coach action added to Calendar'],
+    'coach.action.done':['Koç eylemi tamamlandı','Coach action done'], 'coach.action.skipped':['Koç eylemi ertelendi','Coach action skipped'], 'coach.action.open':['Koç eylemi yeniden açıldı','Coach action reopened'], 'coach.action.schedule':['Koç eylemi takvime eklendi','Coach action added to Calendar'], 'coach.assign':['Koç işine sorumlu atandı','Owner assigned to coach work'], 'coach.unassign':['Koç işinden atama kaldırıldı','Assignment removed from coach work'],
   };
   return (
     <section className="studio-overview">
@@ -63,6 +65,8 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
           <div>
             <GrowthCoach key={coachKey} workspace={workspace} lang={lang} onChange={load}/>
             <CoachWeeklyReview workspace={workspace} lang={lang} onChange={() => { load(); setCoachKey(value => value + 1); }}/>
+            <CoachRefresh key={`refresh-${coachKey}`} workspace={workspace} lang={lang} onChange={() => { load(); setCoachKey(value => value + 1); }}/>
+            {workspace.project.productPack === 'standard' && <CoachMyWork lang={lang}/>}
             <section className="studio-band">
               <div className="studio-section-title"><h2>{tr ? 'Sıradaki işler' : 'Next up'}</h2><button className="studio-text-button" disabled={!enabled('calendar')} onClick={() => onNavigate('calendar')}>{tr ? 'Tüm işler' : 'All tasks'}<ArrowUpRight size={15} /></button></div>
               {tasks.slice(0,4).map(item => <div className="overview-work-row" key={item.id}><div className="work-day"><strong>{new Date(item.dueAt).toLocaleDateString(locale,{day:'2-digit',timeZone:workspace.project.timezone})}</strong><small>{new Date(item.dueAt).toLocaleDateString(locale,{month:'short',timeZone:workspace.project.timezone})}</small></div><div><h3>{item.title}</h3><p>{new Date(item.dueAt).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit',timeZone:workspace.project.timezone})}{item.note ? ` · ${item.note}` : ''}</p></div><span className="work-status">{item.status === 'in_progress' ? (tr ? 'Devam ediyor' : 'In progress') : (tr ? 'Planlandı' : 'Planned')}</span></div>)}

@@ -8,6 +8,7 @@ import { COACH_CHANNELS, COACH_CURRENT, COACH_HOURS, COACH_MARKETS, COACH_OBSTAC
 import Msg from '@/components/Msg';
 import { briefChangeLines } from './coach-changes';
 import { useCompassRefresh } from './GrowthCompass';
+import CoachAssign from './CoachAssign';
 
 type Pair=[string,string];
 type EditBrief=Omit<CoachBrief,'icp'>&{icp:{summary:string;pains:string}};
@@ -95,6 +96,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
     <h3>{show(action.title)}</h3>
     <p><strong>{tr?'Neden: ':'Why: '}</strong>{show(action.why)}</p>
     <details><summary>{tr?'Nasıl yapılır':'How to do it'}</summary><p>{show(action.how)}</p></details>
+    <CoachAssign kind="action" itemId={action.id} assignment={action.assignment} lang={lang} onSaved={()=>void load()}/>
     <div className="coach-action-buttons">
       {action.canAct?<a className="studio-secondary" href={action.href} onClick={()=>handoff(action)}>{openLabels[action.tool][idx]}<ArrowRight size={15}/></a>:<span className="coach-muted">{tr?'Bu araç için yetkili bir ekip üyesi gerekli.':'An authorized teammate is needed for this tool.'}</span>}
       {data?.canWrite&&<>

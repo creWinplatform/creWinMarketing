@@ -125,7 +125,7 @@ export default function ProjectDrafts({
     setForm({ ...empty, language: defaultLanguage, name: String(prefill.name || '').slice(0, 140), channel });
     setSelectedChannels([channel]);
     setBrief(prefill.brief.slice(0, 3000));
-    setCoachRef(typeof prefill.ref === 'string' && COACH_REF.test(prefill.ref) && !campaigns ? prefill.ref : '');
+    setCoachRef(typeof prefill.ref === 'string' && COACH_REF.test(prefill.ref) ? prefill.ref : '');
     setImage(null);setExtraImages([]);setImageChanged(false);
     setShowEditor(true);
     setNotice(tr ? 'Brief, büyüme koçundan dolduruldu. AI taslağı üretin veya kendiniz yazın; kaydetmeden hiçbir şey saklanmaz.' : 'The brief is pre-filled from the growth coach. Generate an AI draft or write your own; nothing is stored until you save.');
@@ -191,6 +191,7 @@ export default function ProjectDrafts({
             subject: form.subject,
             ctaUrl: form.ctaUrl,
           },
+          ...(!editingId && coachRef ? { coachRef } : {}),
         }
       : {
           content: form.text,

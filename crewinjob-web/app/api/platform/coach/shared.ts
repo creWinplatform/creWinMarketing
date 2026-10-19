@@ -1,5 +1,5 @@
 import { NextRequest,NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI,type GenerationConfig } from '@google/generative-ai';
 import { getPlatformAccess } from '@/lib/platform/workspace-server';
 import { hasSameRequestOrigin } from '@/lib/platform/request-origin';
 import { readBoundedJsonBytes } from '@/lib/platform/request-json';
@@ -11,9 +11,14 @@ export async function coachBody(request:NextRequest){
   let input:unknown;try{input=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readBoundedJsonBytes(request,98304)));}catch{throw new MarketingStoreError('Geçersiz istek.');}
   if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz istek.');return input as Record<string,unknown>;
 }
+// Gemini 2.5 and later spend "thinking" tokens from the output budget; without a cap long JSON answers were cut off
+// (finishReason MAX_TOKENS). Thinking is capped and added on top of the answer budget.
+const THINKING_BUDGET=1024;
 export const coachGemini=(maxOutputTokens=6000):CoachGenerator|undefined=>{
   const key=process.env.PLATFORM_GEMINI_API_KEY,modelId=process.env.PLATFORM_GEMINI_MODEL;if(!key||!modelId)return undefined;
-  const model=new GoogleGenerativeAI(key).getGenerativeModel({model:modelId,generationConfig:{temperature:0.4,maxOutputTokens,responseMimeType:'application/json'}});
+  const thinking=/gemini-(?:2\.5|[3-9])/.test(modelId);
+  const generationConfig={temperature:0.4,maxOutputTokens:maxOutputTokens+(thinking?THINKING_BUDGET:0),responseMimeType:'application/json',...(thinking?{thinkingConfig:{thinkingBudget:THINKING_BUDGET}}:{})} as GenerationConfig;
+  const model=new GoogleGenerativeAI(key).getGenerativeModel({model:modelId,generationConfig});
   return async prompt=>(await model.generateContent(prompt,{timeout:30000})).response.text();
 };
 export function coachRoute(run:(scope:MarketingScope,request:NextRequest)=>Promise<unknown>){
