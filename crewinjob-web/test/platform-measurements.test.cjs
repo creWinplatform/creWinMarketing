@@ -41,6 +41,9 @@ test('GA4 missing rows, thresholding, sampling and malformed metrics are not fab
  try{
   globalThis.fetch=async()=>Response.json(payload);assert.equal((await readGoogleMeasurement(input)).value,0);
   globalThis.fetch=async()=>Response.json({...payload,rows:[],rowCount:0});assert.equal((await readGoogleMeasurement(input)).status,'no_data');assert.equal((await readGoogleMeasurement(input)).value,null);
+  // Real GA4 answer for an event filter with no match: no rows and no metric headers. That is no data, not zero and not a failure.
+  globalThis.fetch=async()=>Response.json({metadata:{timeZone:'Europe/Istanbul'},kind:'analyticsData#runReport'});const unmatched=await readGoogleMeasurement({...input,definition:{metric:'eventCount',eventName:'never_fired'}});assert.equal(unmatched.status,'no_data');assert.equal(unmatched.value,null);assert.equal(unmatched.timezone,'Europe/Istanbul');
+  globalThis.fetch=async()=>Response.json({rows:payload.rows,rowCount:1,metadata:{timeZone:'UTC'}});await assert.rejects(()=>readGoogleMeasurement(input),'rows without metric headers are still rejected');
   for(const patch of [{subjectToThresholding:true},{dataLossFromOtherRow:true},{samplingMetadatas:[{}]}]){globalThis.fetch=async()=>Response.json({...payload,metadata:{timeZone:'UTC',...patch}});const value=await readGoogleMeasurement(input);assert.equal(value.status,'partial');assert.equal(value.value,null);}
   for(const patch of [{metricHeaders:[{name:'wrong'}]},{rowCount:2},{rows:[{metricValues:[{value:'NaN'}]}]},{metadata:{timeZone:'invalid-zone'}}]){globalThis.fetch=async()=>Response.json({...payload,...patch});await assert.rejects(()=>readGoogleMeasurement(input));}
  }finally{globalThis.fetch=original;}

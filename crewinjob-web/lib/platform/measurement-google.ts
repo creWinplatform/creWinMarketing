@@ -38,7 +38,9 @@ export const readGoogleMeasurement: GoogleMeasurementReader = async input => {
   if (!Array.isArray(rows)) throw new Error('Invalid provider rows.');
   const zone = ga ? timezone(payload.metadata?.timeZone) : 'America/Los_Angeles';
   if (ga) {
-    if (!Array.isArray(payload.metricHeaders) || payload.metricHeaders.length !== 1 || payload.metricHeaders[0].name !== input.definition.metric || rows.length > 1 || Number(payload.rowCount || 0) > 1) throw new Error('Invalid report shape.');
+    // A filter that matches nothing (e.g. an event name that never fired) comes back as 200 with no rows and no metric headers.
+    const empty = !rows.length && payload.metricHeaders === undefined && !Number(payload.rowCount || 0);
+    if (!empty && (!Array.isArray(payload.metricHeaders) || payload.metricHeaders.length !== 1 || payload.metricHeaders[0].name !== input.definition.metric || rows.length > 1 || Number(payload.rowCount || 0) > 1)) throw new Error('Invalid report shape.');
     const partial = payload.metadata?.subjectToThresholding === true || payload.metadata?.dataLossFromOtherRow === true || Boolean(payload.metadata?.samplingMetadatas?.length);
     if (!rows.length) return { status: 'no_data', value: null, reason: 'no_rows', rows: 0, timezone: zone, checkedAt };
     if (!Array.isArray(rows[0].metricValues) || rows[0].metricValues.length !== 1) throw new Error('Invalid metric.');
