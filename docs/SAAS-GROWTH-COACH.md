@@ -166,3 +166,103 @@ The helpers are `zonedDateKey`, `zonedInstant`, `zonedDayDiff`, `zonedShiftDays`
   - the editor saw the "available only to connection managers" note, with no Search Console phrases or numbers;
   - the editor could reject but not apply a weekly-review proposal;
   - the viewer saw every Phase 2 screen without action buttons. It covered EN/TR, 1440/375 and light/dark for the three screens: content plan → approve → Calendar → pre-filled draft; SEO topics without Search Console → brief → approve → pre-filled blog draft, plus the audit re-ranking on the fixture site; weekly review → accept a move proposal → "This week" updated. A real Search Console property and real Gemini output need customer-owned credentials and a configured AI key. They were not exercised; both are unit-tested with stubs only and remain an operator acceptance step.
+
+# Phase 3: learning loop, one guided start, review email, brand voice and competitors
+
+Same rules as Phases 1 and 2:
+- AI suggests, people approve; nothing is published or sent automatically.
+- Every AI call has a usage reservation and a rule-based starter.
+- Standard projects only; server-side scope and permission checks; TR/EN.
+
+## 3.1 Learning loop (Analytics → "Growth coach: what we learned")
+
+**What is tracked.** Drafts opened from the coach carry a `coachRef`: `plan:<id>` or `setup:<id>` for weekly actions, `content:<itemId>` for content plan items, `seo:<topicId>` for SEO briefs.
+- The ref travels in the same-tab pre-fill and is stored on the draft (`HistoryItem.coachRef`).
+- It is validated against `COACH_REF` in the content-history whitelist and kept on later edits.
+- Drafts made any other way carry none.
+
+**What is shown** (`lib/platform/coach-learning.ts`, read-only):
+- coach drafts → their social publications (`source_kind='content'`) → engagement that the provider actually reported (`platform_social_engagement`, state `ready`);
+- totals by channel and by theme. Interactions = likes, comments, shares, clicks, bookmarks and quotes added up; impressions and reach are kept apart. Unavailable engagement and rejected publications count as no data.
+
+**Naming a leader.** A channel or theme is named only when at least two groups have observed engagement and the top group has two observed publications. It is shown as an average per observed publication, labelled as an observation, not proof of cause.
+
+**Also on the page:** measurement trend for the last 8 weeks (first → last dated value) and the brief version history.
+
+**Brief versions** (schema 35, `platform_growth_coach_briefs`, append-only):
+- Every approval, accepted weekly-review plan change and applied positioning stores the brief it produced (`kind` = `approve|adjust|positioning`).
+- The migration backfills already approved briefs.
+- The coach dialog shows "changes since the previous version" (`diffBriefs`).
+- When a new draft is reviewed, it is compared with the approved brief.
+
+## 3.2 One guided start (Coach + Compass)
+
+**First visit, no brief yet.** The Compass knows the coach state (`coach.hasBrief`, `hasDraft`, `canDiagnose`). On the first visit of a member who can write, it opens the growth diagnosis instead of its own first-run dialog. Closing that start without a diagnosis defers the Compass first run, as closing the Compass does.
+
+**After approval.** The approved brief suggests a Compass path (`lib/platform/coach-compass.ts`):
+- Channels: LinkedIn → company page, Instagram, Facebook, X, email; search is left out.
+- Priority: search when the first channel is search; social when B2C starts on a social channel; otherwise leads.
+- Goal: the goal only if there is exactly one.
+
+On approval, only the approver's own Compass path is seeded, and only if they have none or only an empty deferral. Other members keep their choices; their Compass first run opens pre-filled from the brief, with a note saying so.
+
+## 3.3 Weekly review email (overview → Weekly review → Email digest)
+
+**Subscribing.** Opt-in per member, only with a verified account email (`platform_account_emails`). The subscription stores the language.
+
+**Sending.**
+- Only an approver (`campaign.approve`) queues this week's review for current subscribers.
+- `UNIQUE(review_id,user_id)` means no one gets the same review twice.
+- Before sending, the worker (`deliverNextCoachDigest`, called from `/api/platform/worker`) re-checks active membership, the subscription and the verified email; otherwise the delivery is `skipped`.
+- A delivery is marked `submitted` before the provider call and is never retried; it ends `sent` or `uncertain`.
+
+**Transport and safety.**
+- The transport is the platform's account-email SES configuration, without click or open tracking.
+- It is off unless `PLATFORM_COACH_DIGEST_ENABLED=1` and the account-email configuration is complete. While off, only the preview works.
+- The text is built only from the stored review facts and says "no data" plainly.
+
+**Schema 36:** `platform_coach_digest_subscriptions` and `platform_coach_digest_deliveries`.
+
+## 3.4 Brand voice and competitors (Project settings → Brand voice & competitors)
+
+**Brand voice workshop.** Tone adjectives, tone to avoid, form of address, preferred and avoided words, an example sentence → AI or starter brand voice guide → team edits.
+- "Apply to the product profile" writes `brandVoice` through `updateProject` and keeps its rule (`connections.manage`).
+- From then on, AI content drafts use the new voice.
+
+**Competitors.**
+- Up to five competitors, using only what the team writes: name, an optional address, what they say, strengths and weaknesses, plus "what makes you different".
+- **The address is a label: it is never visited or crawled.** AI output naming unknown competitors or containing links is rejected.
+
+**Positioning.** The comparison (their claim from your notes vs. your angle) suggests a positioning. Applying it to the approved brief needs `campaign.approve`, uses the coach `expectedRevision` and is stored as a `positioning` brief version.
+
+**Schema 37:** `platform_coach_brand` (one row per project, optimistic `revision`).
+
+## Phase 3 permissions
+
+| Action | Permission |
+|---|---|
+| Read "what we learned", brand workshop, digest preview | `read` |
+| Subscribe / unsubscribe to the review email (own, verified email) | `read` |
+| Draft and edit the brand voice; save competitor notes; suggest a comparison | `content.write` |
+| Apply the brand voice to the product profile | `connections.manage` |
+| Apply the suggested positioning to the brief; queue the review email | `campaign.approve` |
+
+## Phase 3 files and tests
+
+- **Server:** `lib/platform/coach-learning.ts`, `coach-compass.ts`, `coach-digest.ts`, `coach-brand.ts`.
+- **Routes:** `app/api/platform/coach/{learning,digest,brand}/route.ts`.
+- **UI:** `components/platform/CoachLearning.tsx`, `CoachBrandStudio.tsx`, `coach-changes.ts`.
+- **Changed:** `coach.ts` (versions, Compass seeding), `guidance.ts` (coach state and suggestion), `marketing-routes.ts` and `content-history.ts` (`coachRef`), the worker route, ProjectDrafts, ProjectReports, ProjectSettings, GrowthCompass, GrowthCoach and CoachWeeklyReview.
+- **Tests (in `test:platform`):** `test/platform-coach-learning.test.cjs`, `platform-coach-compass.test.cjs`, `platform-coach-digest.test.cjs` (stub SES client, no network), `platform-coach-brand.test.cjs` (competitor addresses provably not fetched).
+- `MAX_RECOVERY_SCHEMA` is 37.
+
+## Verification (Phase 3, October 19, 2026)
+
+- `npx tsc --noEmit -p .`, `npm run test:platform` and `npm run test:i18n` pass.
+- **Browser QA:** isolated fixture (`node scripts/preview-design.cjs --dev --coach`, temporary DB, AI key empty, email digest off), EN/TR, 1440/375, light/dark. Covered:
+  - the first visit opens only the diagnosis; approval seeds the Compass path;
+  - a draft opened from a weekly action stores its `coachRef` and appears in "what we learned" with the brief versions;
+  - brand voice draft → applied to the product profile;
+  - competitor notes → comparison → positioning applied and versioned;
+  - the review email preview, with sending shown as off.
+- **Not verified:** a real SES send (needs operator SES credentials), real provider engagement data and real Gemini output. All three are covered by stub-based tests only.

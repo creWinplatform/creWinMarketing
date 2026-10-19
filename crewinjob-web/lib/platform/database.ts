@@ -733,6 +733,45 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(34,datetime('now'));
   `))();
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=35').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_growth_coach_briefs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, coach_revision INTEGER NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('approve','adjust','positioning')), brief_json TEXT NOT NULL, approved_by TEXT NOT NULL, approved_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_growth_coach_brief_scope ON platform_growth_coach_briefs(organization_id,project_id,id);
+    INSERT INTO platform_growth_coach_briefs(organization_id,project_id,coach_revision,kind,brief_json,approved_by,approved_at)
+      SELECT organization_id,project_id,revision,'approve',brief_json,COALESCE(approved_by,updated_by),COALESCE(approved_at,updated_at) FROM platform_growth_coach WHERE brief_json IS NOT NULL;
+    INSERT INTO platform_migrations(version,applied_at) VALUES(35,datetime('now'));
+  `))();
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=36').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_coach_digest_subscriptions (
+      user_id TEXT NOT NULL REFERENCES platform_users(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      language TEXT NOT NULL CHECK(language IN ('tr','en')), created_at TEXT NOT NULL,
+      PRIMARY KEY(user_id,organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_coach_digest_deliveries (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, review_id TEXT NOT NULL REFERENCES platform_coach_reviews(id),
+      user_id TEXT NOT NULL REFERENCES platform_users(id), state TEXT NOT NULL CHECK(state IN ('queued','submitted','sent','uncertain','skipped')),
+      reason TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(review_id,user_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_coach_digest_queue ON platform_coach_digest_deliveries(state,created_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(36,datetime('now'));
+  `))();
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=37').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_coach_brand (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+      voice_answers_json TEXT, voice_draft TEXT, voice_source TEXT CHECK(voice_source IN ('ai','template','human')), voice_applied_at TEXT,
+      competitors_json TEXT, difference TEXT, analysis_json TEXT, analysis_source TEXT CHECK(analysis_source IN ('ai','template')),
+      updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(37,datetime('now'));
+  `))();
   return db;
 }
 

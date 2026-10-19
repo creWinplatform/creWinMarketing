@@ -16,6 +16,7 @@ import type { SmtpConfiguration } from './email-configuration';
 import type { SocialConfiguration } from './social-configuration';
 import { normalizePublicationImage } from './publication-image';
 import { readBoundedJsonBytes } from './request-json';
+import { COACH_REF } from './coach-types';
 
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const string = (value: unknown, maximum: number, fallback = '') => {
@@ -45,6 +46,13 @@ function campaignInput(raw: Record<string, unknown>, timezone: string, goalIds: 
     content: { text, subject: string(content.subject, 200), ctaUrl: ctaUrl || undefined }, timezone };
 }
 
+// Growth coach origin of a draft; optional, never required, kept on later edits.
+const coachRef = (value: unknown, current?: string) => {
+  if (value === undefined) return current ? { coachRef: current } : {};
+  if (value === '' || value === null) return {};
+  if (typeof value !== 'string' || !COACH_REF.test(value)) throw new MarketingStoreError('Geçersiz büyüme koçu bağlantısı.');
+  return { coachRef: value };
+};
 async function contentInput(raw: Record<string, unknown>, current?: HistoryItem): Promise<HistoryItem> {
   const content = string(raw.content, 100000, current?.content).trim();
   if (!content) throw new MarketingStoreError('İçerik gerekli.');
@@ -66,7 +74,7 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   if(images?.length&&imageData)throw new MarketingStoreError('Tek gorsel veya coklu gorsel secin; ikisini birlikte gondermeyin.');
   return { id: current?.id || `hist_${randomUUID()}`, timestamp: current?.timestamp || Date.now(),
     content, platform, language, prompt: string(raw.prompt, 3000, current?.prompt),
-    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}) };
+    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(coachRef(raw.coachRef,current?.coachRef)) };
 }
 
 async function context(request: NextRequest) {

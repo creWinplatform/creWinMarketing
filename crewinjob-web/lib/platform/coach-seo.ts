@@ -145,7 +145,7 @@ export class CoachSeo{
     const rows=this.db.prepare('SELECT id,cluster,intent,keywords_json,source,brief_json,brief_source,brief_state,revision,created_at FROM platform_coach_seo_topics WHERE organization_id=? AND project_id=? ORDER BY created_at,rowid').all(...this.args()) as TopicRow[];
     const manager=this.manager(),visible=rows.map(row=>({row,keywords:this.visible(JSON.parse(row.keywords_json) as CoachSeoKeyword[])})).filter(item=>item.keywords.length||item.row.brief_json);
     return {topics:visible.map(({row,keywords})=>{const value=row.brief_json?JSON.parse(row.brief_json) as CoachSeoBrief:null;return {id:row.id,cluster:row.cluster,intent:row.intent,keywords,source:row.source,revision:row.revision,brief:value,briefSource:row.brief_source,briefState:row.brief_state,
-        prefill:value&&row.brief_state==='approved'?{brief:briefText(value,lang),channel:'blog',name:value.title}:null};}),
+        prefill:value&&row.brief_state==='approved'?{brief:briefText(value,lang),channel:'blog',name:value.title,ref:`seo:${row.id}`}:null};}),
       generatedAt:rows.at(-1)?.created_at||null,hasBrief:Boolean(brief),language:brief?.language||null,aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.coach.can('content.write'),
       searchConsole:!connection?{state:'not_connected',from:null,to:null,checkedAt:null,queries:0,canRefresh:false}:!manager?{state:'restricted',from:null,to:null,checkedAt:null,queries:0,canRefresh:false}
         :{state:!current?'not_fetched':current.status,from:current?.date_from||null,to:current?.date_to||null,checkedAt:current?.checked_at||null,queries:current?.status==='ready'?JSON.parse(current.rows_json).length:0,canRefresh:true}};

@@ -22,6 +22,7 @@ import { metaConfiguration } from './meta-client';
 import { xConfiguration } from './x-client';
 import { COMPASS_CHANNELS,COMPASS_INTENTS,COMPASS_VERSION,GUIDE_IDS,connectionGuide,connectionGuideName,type GuideId,type CompassChannel } from './guidance-catalog';
 import type { CompassPreferences,CompassProvider,CompassSnapshot,CompassStep } from './guidance-types';
+import { coachState,compassFromBrief } from './coach-compass';
 const l=(tr:string,en:string):LocalizedText=>({tr,en});
 const ready=(test:()=>unknown)=>{try{test();return true;}catch{return false;}};
 const object=(raw:unknown):Record<string,unknown>=>raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:{};
@@ -133,6 +134,7 @@ export class GrowthCompass {
       step('measurement',l('Sonucu ölç ve sonraki adıma karar ver','Measure and choose the next step'),l('Hedefe bağlı tarihli ölçümler. Veri yoksa sonuç, artış veya ROI varsayılmaz.','Dated goal-linked measurements. Missing data does not imply results, uplift or ROI.'),Boolean(measurement.at),'/?tab=analytics','read',undefined,null,measurement.at);
     }
     const next=steps.find(item=>item.state!=='done');
-    return {version:COMPASS_VERSION,firstRun:!prefs,preferences:prefs,projectName:project.name,goals:project.goals.map(goal=>({id:goal.id,label:goal.label})),campaigns:campaigns.map(item=>({id:item.id,name:item.name})),boundCampaignId:chosen?.id||null,apps:apps.map(item=>({id:item.id,name:JSON.parse(item.config_json).name})),boundAppId:app?.id||null,providers,steps,nextStepId:next?.id||null,completed:steps.filter(item=>item.state==='done').length,total:steps.length,canManage,canWrite,liveEnabled:prefs?.intent==='mobile'?process.env.PLATFORM_MOBILE_SEND_ENABLED==='1':prefs?.intent==='retention'||prefs?.channels[0]==='email'?process.env.PLATFORM_EMAIL_PILOT_SEND_ENABLED==='1':process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED==='1',trialActive,updatedAt:new Date().toISOString()};
+    const coach=coachState(this.db,...this.args());
+    return {version:COMPASS_VERSION,firstRun:!prefs,preferences:prefs,coach:{hasBrief:Boolean(coach.brief),hasDraft:coach.hasDraft,canDiagnose:canWrite},suggestion:coach.brief?compassFromBrief(coach.brief,coach.answers,project.goals):null,projectName:project.name,goals:project.goals.map(goal=>({id:goal.id,label:goal.label})),campaigns:campaigns.map(item=>({id:item.id,name:item.name})),boundCampaignId:chosen?.id||null,apps:apps.map(item=>({id:item.id,name:JSON.parse(item.config_json).name})),boundAppId:app?.id||null,providers,steps,nextStepId:next?.id||null,completed:steps.filter(item=>item.state==='done').length,total:steps.length,canManage,canWrite,liveEnabled:prefs?.intent==='mobile'?process.env.PLATFORM_MOBILE_SEND_ENABLED==='1':prefs?.intent==='retention'||prefs?.channels[0]==='email'?process.env.PLATFORM_EMAIL_PILOT_SEND_ENABLED==='1':process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED==='1',trialActive,updatedAt:new Date().toISOString()};
   }
 }

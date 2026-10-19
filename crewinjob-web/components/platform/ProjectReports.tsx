@@ -12,6 +12,7 @@ import type { OperationsSummary } from './ProjectOverview';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import AutomaticMeasurements from './AutomaticMeasurements';
+import CoachLearning from './CoachLearning';
 import Msg from '@/components/Msg';
 export default function ProjectReports({
   workspace,
@@ -110,6 +111,7 @@ export default function ProjectReports({
           )}
         </div>
       </header>
+      {workspace.project.productPack === 'standard' && <CoachLearning workspace={workspace} lang={lang} />}
       <div className="product-data-modes" role="tablist" aria-label={tr ? 'Ölçüm kaynağı' : 'Measurement source'} onKeyDown={event => { if (['ArrowLeft','ArrowRight'].includes(event.key)) { event.preventDefault(); const next = mode === 'automatic' ? 'manual' : 'automatic'; setMode(next); (event.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next === 'automatic' ? 0 : 1]).focus(); } }}>
         <button role="tab" aria-selected={mode === 'automatic'} onClick={() => setMode('automatic')}>{tr ? 'Otomatik ölçümler' : 'Automatic measurements'}</button>
         <button role="tab" aria-selected={mode === 'manual'} onClick={() => setMode('manual')}>{tr ? 'Manuel kayıtlar' : 'Manual entries'}</button>

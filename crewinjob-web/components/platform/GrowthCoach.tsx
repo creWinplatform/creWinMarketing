@@ -4,8 +4,10 @@ import { ArrowRight, CalendarPlus, Check, ChevronLeft, Clock3, Lightbulb, Plus, 
 import type { LocalizedText, Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import { COACH_CHANNELS, COACH_CURRENT, COACH_HOURS, COACH_MARKETS, COACH_OBSTACLES, COACH_PREFILL_KEY, COACH_PRICES, COACH_SALES, COACH_SKILLS, COACH_TOOLS, type CoachAction, type CoachAnswers, type CoachBrief, type CoachChannel, type CoachSnapshot, type CoachTool } from '@/lib/platform/coach-types';
+import { COACH_CHANNELS, COACH_CURRENT, COACH_HOURS, COACH_MARKETS, COACH_OBSTACLES, COACH_PREFILL_KEY, COACH_PRICES, COACH_SALES, COACH_SKILLS, COACH_TOOLS, diffBriefs, type CoachAction, type CoachAnswers, type CoachBrief, type CoachChannel, type CoachSnapshot, type CoachTool } from '@/lib/platform/coach-types';
 import Msg from '@/components/Msg';
+import { briefChangeLines } from './coach-changes';
+import { useCompassRefresh } from './GrowthCompass';
 
 type Pair=[string,string];
 type EditBrief=Omit<CoachBrief,'icp'>&{icp:{summary:string;pains:string}};
@@ -29,13 +31,18 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
   const [data,setData]=useState<CoachSnapshot|null>(null),[error,setError]=useState(''),[dialogError,setDialogError]=useState(''),[notice,setNotice]=useState(''),[calendarNotice,setCalendarNotice]=useState(false),[busy,setBusy]=useState('');
   const [opened,setOpened]=useState(false),[view,setView]=useState<'questions'|'review'|'brief'>('questions'),[answers,setAnswers]=useState<CoachAnswers>(emptyAnswers),[language,setLanguage]=useState<'tr'|'en'>(workspace.project.language||lang),[edit,setEdit]=useState<EditBrief|null>(null);
-  const dialog=useRef<HTMLDialogElement>(null),previousFocus=useRef<HTMLElement|null>(null),request=useRef<AbortController|null>(null);
+  const dialog=useRef<HTMLDialogElement>(null),previousFocus=useRef<HTMLElement|null>(null),request=useRef<AbortController|null>(null),refreshCompass=useCompassRefresh(),firstStart=useRef(false);
   const show=(value:string|LocalizedText)=>typeof value==='string'?value:value[lang];
   const load=useCallback(()=>{
     request.current?.abort();const controller=new AbortController();request.current=controller;setError('');
     return projectRequest<CoachSnapshot>('/api/platform/coach',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(25000)])}).then(value=>{if(!controller.signal.aborted)setData(value);return value;}).catch(reason=>{if(!controller.signal.aborted)setError(reason.message);return null;});
   },[]);
   useEffect(()=>{void load();return()=>request.current?.abort();},[load]);
+  // Guided first start (set by the Compass on a member's first visit): open the diagnosis once, never over another dialog.
+  useEffect(()=>{
+    const start=()=>{const flag=window as Window&{__ryzevoCoachStart?:boolean};if(!flag.__ryzevoCoachStart||!data||!data.canWrite||data.brief||data.draft||opened)return;flag.__ryzevoCoachStart=false;firstStart.current=true;openQuestions();};
+    start();window.addEventListener('ryzevo:coach-start',start);return()=>window.removeEventListener('ryzevo:coach-start',start);
+  },[data]);
   useEffect(()=>{
     const element=dialog.current;if(!element)return;
     if(opened&&!element.open){previousFocus.current=document.activeElement as HTMLElement;element.showModal();}
@@ -48,7 +55,8 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   const openQuestions=()=>{setAnswers(data?.answers||emptyAnswers);setLanguage(data?.draft?.language||data?.brief?.language||workspace.project.language||lang);setDialogError('');setView('questions');setOpened(true);};
   const openReview=(brief:CoachBrief)=>{setEdit(toEdit(brief));setDialogError('');setView('review');setOpened(true);};
   const openBrief=()=>{setDialogError('');setView('brief');setOpened(true);};
-  const close=()=>{if(!busy)setOpened(false);};
+  // Closing the guided first start without a diagnosis defers the Compass first run, like closing the Compass itself.
+  const close=()=>{if(busy)return;setOpened(false);if(firstStart.current&&!data?.draft&&!data?.brief){firstStart.current=false;void projectRequest('/api/platform/compass',{method:'POST',body:JSON.stringify({action:'defer',expectedRevision:0})}).catch(()=>{}).finally(refreshCompass);}};
   const diagnose=async(mode:'ai'|'template',event?:FormEvent)=>{
     event?.preventDefault();if(!data||busy)return;setBusy(mode);setDialogError('');
     try{const value=await post<CoachSnapshot>({action:'diagnose',mode,language,answers,expectedRevision:data.revision});setData(value);if(value.draft)openReview(value.draft);}
@@ -57,7 +65,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   const saveBrief=async(action:'save'|'approve')=>{
     if(!data||!edit||busy)return;setBusy(action);setDialogError('');
     try{const value=await post<CoachSnapshot>({action,brief:fromEdit(edit),expectedRevision:data.revision});setData(value);
-      setCalendarNotice(false);onChange?.();if(action==='approve'){setOpened(false);setNotice(tr?'Strateji briefi onaylandı. Bu haftanın eylemleri aşağıda.':'Strategy brief approved. This week’s actions are below.');}
+      setCalendarNotice(false);onChange?.();if(action==='approve'){firstStart.current=false;refreshCompass();setOpened(false);setNotice(tr?'Strateji briefi onaylandı. Bu haftanın eylemleri aşağıda.':'Strategy brief approved. This week’s actions are below.');}
       else setNotice(tr?'Taslak kaydedildi. Onaylanana kadar haftalık plan değişmez.':'Draft saved. The weekly plan doesn’t change until it is approved.');}
     catch(reason){setDialogError(fail(reason));}finally{setBusy('');}
   };
@@ -102,7 +110,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
 
   return <section className="coach-panel" aria-labelledby="coach-panel-title">
     <div className="studio-section-title"><h2 id="coach-panel-title"><Lightbulb size={17}/>{brief?(tr?'Bu hafta':'This week'):(tr?'Büyüme koçu':'Growth coach')}</h2>
-      {brief&&<div className="coach-panel-tools">{data?.week&&<span className="studio-badge">{data.week<=4?(tr?`Hafta ${data.week} / 4`:`Week ${data.week} of 4`):(tr?'30 günlük dönem bitti':'30-day period ended')}</span>}<a className="studio-text-button" href="/?tab=calendar&planning=content">{tr?'İçerik planı':'Content plan'}<ArrowRight size={14}/></a><button type="button" className="studio-text-button" onClick={openBrief}>{tr?'Strateji briefi':'Strategy brief'}<ArrowRight size={14}/></button></div>}
+      {brief&&<div className="coach-panel-tools">{data?.week&&<span className="studio-badge">{data.week<=4?(tr?`Hafta ${data.week} / 4`:`Week ${data.week} of 4`):(tr?'30 günlük dönem bitti':'30-day period ended')}</span>}<a className="studio-text-button" href="/?tab=calendar&planning=content">{tr?'İçerik planı':'Content plan'}<ArrowRight size={14}/></a><a className="studio-text-button" href="/?tab=project&settings=brand">{tr?'Marka & rakipler':'Brand & competitors'}<ArrowRight size={14}/></a><button type="button" className="studio-text-button" onClick={openBrief}>{tr?'Strateji briefi':'Strategy brief'}<ArrowRight size={14}/></button></div>}
     </div>
     {error&&<div className="studio-error" role="alert"><Msg text={error}/><button type="button" className="icon-button" title={tr?'Yeniden dene':'Retry'} aria-label={tr?'Yeniden dene':'Retry'} onClick={()=>void load()}><RefreshCw size={16}/></button></div>}
     {notice&&<p className="studio-success" role="status"><Msg text={notice}/>{calendarNotice&&<> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}</a></>}</p>}
@@ -141,6 +149,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
               <button className="studio-primary" disabled={Boolean(busy)}>{busy?(tr?'Taslak hazırlanıyor…':'Preparing the draft…'):data.aiConfigured?(tr?'AI ile taslak hazırla':'Prepare with AI'):(tr?'Başlangıç briefini hazırla':'Prepare the starter brief')}<ArrowRight size={16}/></button></div></footer>
         </form>}
         {data&&view==='review'&&edit&&<form className="coach-review" onSubmit={event=>{event.preventDefault();void saveBrief(data.canApprove?'approve':'save');}}>
+          {brief&&(()=>{try{const lines=briefChangeLines(diffBriefs(brief,fromEdit(edit)),tr);return <div className="coach-changes" role="status"><strong>{tr?'Onaylı brief ile karşılaştırma':'Compared with the approved brief'}</strong><ul>{lines.map((line,index)=><li key={index}>{line}</li>)}</ul></div>;}catch{return null;}})()}
           <p className="coach-note"><Sparkles size={14}/>{data.draftSource==='ai'?(tr?'Bu bir AI önerisidir. Onaylamadan önce her satırı kontrol edin; müşterilerinizi sizden iyi bilmez.':'This is an AI suggestion. Check every line before approving; it doesn’t know your customers better than you do.'):(tr?'Yanıtlarınızdan kural tabanlı bir başlangıç. İşinize uyacak şekilde düzenleyin.':'A rule-based starter from your answers. Edit it to fit your business.')}</p>
           <fieldset disabled={Boolean(busy)}>
             <h3>{briefLabel('icp')}</h3>
@@ -172,6 +181,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
               {data.canApprove&&<button className="studio-primary" disabled={Boolean(busy)}><Check size={16}/>{busy==='approve'?(tr?'Onaylanıyor…':'Approving…'):(tr?'Briefi onayla':'Approve the brief')}</button>}</div></footer>
         </form>}
         {data&&view==='brief'&&brief&&<div className="coach-brief-view">
+          {data.previousBrief&&<div className="coach-changes"><strong>{tr?`Önceki sürüme göre değişenler (${data.versions} sürüm)`:`Changes since the previous version (${data.versions} versions)`}</strong><ul>{briefChangeLines(diffBriefs(data.previousBrief,brief),tr).map((line,index)=><li key={index}>{line}</li>)}</ul></div>}
           {data.approvedAt&&<p className="compass-intro">{tr?`Onay tarihi: ${date(data.approvedAt)}. AI içerik taslakları bu briefi ürün bağlamı olarak kullanır.`:`Approved on ${date(data.approvedAt)}. AI content drafts use this brief as product context.`}</p>}
           <section><h3>{briefLabel('icp')}</h3><p>{brief.icp.summary}</p><ul>{brief.icp.pains.map((item,index)=><li key={index}>{item}</li>)}</ul></section>
           <section><h3>{briefLabel('positioning')}</h3><p>{brief.positioning}</p></section>

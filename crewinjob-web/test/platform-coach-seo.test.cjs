@@ -112,5 +112,5 @@ test('schema33 is additive and repeatable',coachRun(async f=>{
   await f.approve();await seo(f).generate({mode:'template'});
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-seo-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeSeoCoachSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,32);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_seo_topics').get().n,0);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,34);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_seo_topics').get().n,0);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,37);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

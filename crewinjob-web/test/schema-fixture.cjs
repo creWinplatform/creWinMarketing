@@ -1,5 +1,8 @@
 // Disposable migration fixtures only; never loaded by application code.
-exports.removeReviewSchema=db=>db.exec('DROP TABLE IF EXISTS platform_coach_reviews; DELETE FROM platform_migrations WHERE version=34;');
+exports.removeBrandSchema=db=>db.exec('DROP TABLE IF EXISTS platform_coach_brand; DELETE FROM platform_migrations WHERE version=37;');
+exports.removeDigestSchema=db=>{exports.removeBrandSchema(db);db.exec('DROP TABLE IF EXISTS platform_coach_digest_deliveries; DROP TABLE IF EXISTS platform_coach_digest_subscriptions; DELETE FROM platform_migrations WHERE version=36;');};
+exports.removeBriefHistorySchema=db=>{exports.removeDigestSchema(db);db.exec('DROP TABLE IF EXISTS platform_growth_coach_briefs; DELETE FROM platform_migrations WHERE version=35;');};
+exports.removeReviewSchema=db=>{exports.removeBriefHistorySchema(db);db.exec('DROP TABLE IF EXISTS platform_coach_reviews; DELETE FROM platform_migrations WHERE version=34;');};
 exports.removeSeoCoachSchema=db=>{exports.removeReviewSchema(db);db.exec('DROP TABLE IF EXISTS platform_coach_seo_queries; DROP TABLE IF EXISTS platform_coach_seo_topics; DELETE FROM platform_migrations WHERE version=33;');};
 exports.removeContentPlanSchema=db=>{exports.removeSeoCoachSchema(db);db.exec('DROP TABLE IF EXISTS platform_coach_content_items; DELETE FROM platform_migrations WHERE version=32;');};
 exports.removeCoachSchema=db=>{exports.removeContentPlanSchema(db);db.exec('DROP TABLE IF EXISTS platform_growth_coach_actions; DROP TABLE IF EXISTS platform_growth_coach; DELETE FROM platform_migrations WHERE version=31;');};

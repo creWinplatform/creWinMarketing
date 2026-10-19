@@ -29,7 +29,7 @@ export type CoachAction={
   id:string;kind:'setup'|'plan';week:number|null;
   title:string|LocalizedText;why:string|LocalizedText;how:string|LocalizedText;minutes:number;
   tool:CoachTool;channel:CoachChannel|null;href:string;canAct:boolean;
-  prefill:{brief:string;channel:string;name:string}|null;
+  prefill:{brief:string;channel:string;name:string;ref:string}|null;
   state:'open'|'done'|'skipped';taskId:string|null;
 };
 export type CoachSnapshot={
@@ -37,7 +37,7 @@ export type CoachSnapshot={
   draft:CoachBrief|null;draftSource:'ai'|'template'|null;draftAt:string|null;
   brief:CoachBrief|null;approvedAt:string|null;
   week:number|null;weekKey:string;actions:CoachAction[];resolved:CoachAction[];remaining:number;
-  aiConfigured:boolean;canWrite:boolean;canApprove:boolean;
+  aiConfigured:boolean;canWrite:boolean;canApprove:boolean;previousBrief:CoachBrief|null;versions:number;
 };
 // Brief channel → content studio channel (blog for search/SEO work).
 export const coachDraftChannel=(channel:CoachChannel|null)=>channel==='seo'?'blog':channel||'linkedin';
@@ -46,7 +46,7 @@ export const COACH_PREFILL_KEY='ryzevo.coach.prefill';
 export type CoachContentItem={
   id:string;month:string;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string|null;plannedFor:string;
   state:'suggested'|'approved'|'dismissed';source:'ai'|'template'|'human';revision:number;taskId:string|null;approvedAt:string|null;
-  prefill:{brief:string;channel:string;name:string}|null;
+  prefill:{brief:string;channel:string;name:string;ref:string}|null;
 };
 export type CoachContentSnapshot={
   month:string;months:string[];today:string;items:CoachContentItem[];hasBrief:boolean;language:'tr'|'en'|null;briefChannels:CoachChannel[];
@@ -60,7 +60,7 @@ export type CoachSeoBrief={targetKeyword:string;intent:SeoIntent;title:string;ou
 export type CoachSeoTopic={
   id:string;cluster:string;intent:SeoIntent;keywords:CoachSeoKeyword[];source:'ai'|'template';revision:number;
   brief:CoachSeoBrief|null;briefSource:'ai'|'template'|'human'|null;briefState:'draft'|'approved'|null;
-  prefill:{brief:string;channel:string;name:string}|null;
+  prefill:{brief:string;channel:string;name:string;ref:string}|null;
 };
 export type CoachSeoSnapshot={
   topics:CoachSeoTopic[];generatedAt:string|null;hasBrief:boolean;language:'tr'|'en'|null;aiConfigured:boolean;canWrite:boolean;
@@ -78,3 +78,34 @@ export type CoachReviewFacts={
 export type CoachAdjustment={id:string;kind:'add'|'move'|'note';title:LocalizedText;why:LocalizedText;item:CoachPlanItem|null;actionId:string|null;toWeek:number|null;state:'proposed'|'accepted'|'rejected'};
 export type CoachReview={id:string;week:string;createdAt:string;revision:number;hasData:boolean;facts:CoachReviewFacts;adjustments:CoachAdjustment[]};
 export type CoachReviewSnapshot={review:CoachReview|null;history:{id:string;week:string;createdAt:string}[];hasBrief:boolean;planWeek:number|null;coachRevision:number;canWrite:boolean;canApprove:boolean};
+// Phase 3 · learning loop. Drafts opened from the coach carry a coachRef; everything else is read from records.
+export const COACH_REF=/^(plan|setup|content|seo):[A-Za-z0-9_:.-]{1,130}$/;
+export type CoachBriefChanges={channelsAdded:CoachChannel[];channelsRemoved:CoachChannel[];positioning:boolean;icp:boolean;planAdded:number;planRemoved:number;planMoved:number};
+const planKey=(item:CoachPlanItem)=>`${item.tool}\n${item.title}`;
+export function diffBriefs(before:CoachBrief,after:CoachBrief):CoachBriefChanges{
+  const was=new Set(before.channels.map(item=>item.id)),now=new Set(after.channels.map(item=>item.id)),old=new Map(before.plan.map(item=>[planKey(item),item.week])),next=new Map(after.plan.map(item=>[planKey(item),item.week]));
+  return {channelsAdded:[...now].filter(id=>!was.has(id)),channelsRemoved:[...was].filter(id=>!now.has(id)),positioning:before.positioning!==after.positioning,icp:before.icp.summary!==after.icp.summary||before.icp.pains.join('\n')!==after.icp.pains.join('\n'),
+    planAdded:[...next.keys()].filter(key=>!old.has(key)).length,planRemoved:[...old.keys()].filter(key=>!next.has(key)).length,planMoved:[...next].filter(([key,week])=>old.has(key)&&old.get(key)!==week).length};
+}
+export type CoachEngagement={observed:number;totals:Record<string,number>;interactions:number};
+export type CoachLearningGroup={key:string;label:string;drafts:number;published:number}&CoachEngagement;
+export type CoachLearningSnapshot={
+  drafts:{id:string;title:string;channel:string;source:'plan'|'setup'|'content'|'seo';theme:string;createdAt:string;published:number;rehearsed:number;engagement:CoachEngagement}[];
+  byChannel:CoachLearningGroup[];byTheme:CoachLearningGroup[];
+  leader:{dimension:'channel'|'theme';key:string;label:string;average:number;observed:number}|null;
+  measurements:{goal:LocalizedText;stage:LocalizedText;first:number;firstAt:string;last:number;lastAt:string;entries:number}[];
+  versions:{revision:number;kind:'approve'|'adjust'|'positioning';approvedAt:string;channels:CoachChannel[];planItems:number}[];
+  changes:CoachBriefChanges|null;hasBrief:boolean;
+};
+// Phase 3 · weekly-review email: opt-in per member; queued only by an approver; off unless the platform enables it.
+export type CoachDigestSnapshot={subscribed:boolean;language:'tr'|'en'|null;hasVerifiedEmail:boolean;enabled:boolean;canSend:boolean;recipients:number|null;reviewId:string|null;deliveries:Record<string,number>;preview:{subject:string;text:string}|null};
+// Phase 3 · brand voice workshop and competitor notes. Competitor data is only what the team writes; nothing is fetched.
+export type CoachVoiceAnswers={traits:string;avoid:string;address:'formal'|'informal'|'mixed';useWords:string;avoidWords:string;example:string};
+export type CoachCompetitor={name:string;url:string;says:string;strengths:string;weaknesses:string};
+export type CoachPositioning={rows:{name:string;theirClaim:string;ourAngle:string}[];positioning:string;notes:string};
+export type CoachBrandSnapshot={
+  revision:number;voiceAnswers:CoachVoiceAnswers|null;voiceDraft:string|null;voiceSource:'ai'|'template'|'human'|null;voiceAppliedAt:string|null;currentVoice:string;
+  competitors:CoachCompetitor[];difference:string;analysis:CoachPositioning|null;analysisSource:'ai'|'template'|null;
+  positioning:string|null;coachRevision:number;hasBrief:boolean;aiConfigured:boolean;canWrite:boolean;canApplyVoice:boolean;canApplyPositioning:boolean;
+};
+

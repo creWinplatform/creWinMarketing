@@ -1,10 +1,10 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Check, ClipboardList, RefreshCw, ShieldCheck, X } from 'lucide-react';
+import { Check, ClipboardList, Mail, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import type { CoachAdjustment, CoachReviewSnapshot } from '@/lib/platform/coach-types';
+import type { CoachAdjustment, CoachDigestSnapshot, CoachReviewSnapshot } from '@/lib/platform/coach-types';
 import Msg from '@/components/Msg';
 
 const sources:Record<string,[string,string]>={manual:['Manuel kayıt','Manual record'],ga4:['Google Analytics','Google Analytics'],search_console:['Search Console','Search Console'],product_webhook:['Ürün olayları','Product events']};
@@ -12,11 +12,14 @@ const channels:Record<string,[string,string]>={linkedin:['LinkedIn','LinkedIn'],
 
 export default function CoachWeeklyReview({workspace,lang,onChange}:{workspace:WorkspaceContext;lang:Locale;onChange?:()=>void}){
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
-  const [data,setData]=useState<CoachReviewSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState('');
+  const [digest,setDigest]=useState<CoachDigestSnapshot|null>(null),[data,setData]=useState<CoachReviewSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState('');
   const request=useRef<AbortController|null>(null);
   const load=useCallback(()=>{request.current?.abort();const controller=new AbortController();request.current=controller;
     projectRequest<CoachReviewSnapshot>('/api/platform/coach/review',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(25000)])}).then(value=>{if(!controller.signal.aborted)setData(value);}).catch(reason=>{if(!controller.signal.aborted)setError(reason.message);});},[]);
   useEffect(()=>{load();return()=>request.current?.abort();},[load]);
+  const loadDigest=useCallback(()=>{projectRequest<CoachDigestSnapshot>(`/api/platform/coach/digest?lang=${lang}`).then(setDigest).catch(()=>setDigest(null));},[lang]);
+  useEffect(()=>{if(data?.review?.id)loadDigest();},[data?.review?.id,loadDigest]);
+  const digestPost=async(key:string,body:object,message:(value:CoachDigestSnapshot&{queued?:number})=>string)=>{if(busy)return;setBusy(key);setError('');setNotice('');try{const value=await projectRequest<CoachDigestSnapshot|{queued:number;snapshot:CoachDigestSnapshot}>('/api/platform/coach/digest',{method:'POST',body:JSON.stringify(body)});const next='snapshot' in value?{...value.snapshot,queued:value.queued}:value;setDigest(next);setNotice(message(next));loadDigest();}catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}finally{setBusy('');}};
   const post=async(key:string,body:object,message:string)=>{if(busy)return;setBusy(key);setError('');setNotice('');try{setData(await projectRequest<CoachReviewSnapshot>('/api/platform/coach/review',{method:'POST',body:JSON.stringify(body)}));setNotice(message);onChange?.();}catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));load();}finally{setBusy('');}};
   const date=(value:string)=>new Date(value).toLocaleDateString(locale,{day:'numeric',month:'short',timeZone:workspace.project.timezone});
   const n=(value:number)=>value.toLocaleString(locale);
@@ -55,6 +58,16 @@ export default function CoachWeeklyReview({workspace,lang,onChange}:{workspace:W
         </li>)}</ul>}
       </section>
     </>}
+    {review&&digest&&<section className="coach-digest" aria-labelledby="coach-digest-title"><h3 id="coach-digest-title"><Mail size={14}/> {tr?'E-posta özeti':'Email digest'}</h3>
+      <div className="coach-action-buttons">
+        {digest.hasVerifiedEmail?<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void digestPost('subscribe',digest.subscribed?{action:'unsubscribe'}:{action:'subscribe',language:lang},value=>value.subscribed?(tr?'Haftalık özet e-postasına abone oldunuz. E-posta, onaylayıcı gönderdiğinde gelir.':'You subscribed to the weekly review email. It arrives when an approver sends it.'):(tr?'E-posta aboneliği kapatıldı.':'Email subscription turned off.'))}>{digest.subscribed?(tr?'E-posta aboneliğini kapat':'Turn off the email'):(tr?'Bu özeti e-postayla al':'Get this review by email')}</button>
+          :<span className="coach-muted">{tr?'Özeti e-postayla almak için hesap e-postanızı doğrulayın: ':'To get the review by email, verify your account email: '}<a href="/?tab=project&settings=team">{tr?'Hesap ayarları':'Account settings'}</a></span>}
+        {digest.canSend&&(digest.enabled?<button type="button" className="studio-secondary" disabled={Boolean(busy)||!digest.recipients} onClick={()=>{if(window.confirm(tr?`Bu özet ${digest.recipients} aboneye e-postayla gönderilsin mi? Aynı özet kimseye ikinci kez gitmez.`:`Email this review to ${digest.recipients} subscriber(s)? No one gets the same review twice.`))void digestPost('send',{action:'send',reviewId:review.id},value=>tr?`${value.queued??0} e-posta sıraya alındı; zaten gönderilmiş olanlar tekrar gönderilmez.`:`${value.queued??0} email(s) queued; anyone already sent this review is skipped.`);}}><Mail size={15}/>{tr?`${digest.recipients??0} aboneye gönder`:`Send to ${digest.recipients??0} subscriber(s)`}</button>
+          :<span className="coach-muted">{tr?'E-posta gönderimi bu platformda kapalı; yalnız önizleme kullanılabilir.':'Email sending is off on this platform; only the preview is available.'}</span>)}
+      </div>
+      {Object.keys(digest.deliveries).length>0&&<p className="coach-muted">{tr?'Bu özet için: ':'For this review: '}{Object.entries(digest.deliveries).map(([state,count])=>`${({queued:tr?'sırada':'queued',submitted:tr?'iletiliyor':'submitting',sent:tr?'gönderildi':'sent',uncertain:tr?'sonucu belirsiz':'uncertain',skipped:tr?'atlandı':'skipped'} as Record<string,string>)[state]||state}: ${count}`).join(' · ')}</p>}
+      {digest.preview&&<details><summary>{tr?'E-posta önizlemesi':'Email preview'}</summary><p className="coach-muted"><strong>{digest.preview.subject}</strong></p><pre className="coach-digest-preview">{digest.preview.text}</pre></details>}
+    </section>}
     <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Yalnız bu projenin kayıtlarından hazırlanır; tahmin, artış veya ROI hesaplanmaz. Plan değişiklikleri onayla uygulanır.':'Built only from this project’s records; no estimates, uplift or ROI. Plan changes apply only when approved.'}</p>
   </section>;
 }

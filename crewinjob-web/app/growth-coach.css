@@ -131,3 +131,30 @@
 }
 .coach-inline-button{display:inline-flex;min-height:28px;vertical-align:middle;margin-left:4px}
 .coach-source-note{color:var(--studio-muted)}
+/* Faz 3 · öğrenen döngü ve brief sürümleri */
+.coach-changes{border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:10px 12px;background:var(--studio-bg);font-size:12px;line-height:1.7}
+.coach-changes ul{margin:4px 0 0;padding-left:18px}
+.coach-learning>*+*{margin-top:14px}
+.coach-learning .studio-section-title h2{display:flex;align-items:center;gap:8px}
+.coach-learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.coach-learning h3{display:flex;align-items:center;gap:6px}
+@media (max-width:1180px){.coach-learning-grid{grid-template-columns:1fr}}
+/* Faz 3 · haftalık özet e-postası */
+.coach-digest{border-top:1px solid var(--studio-border);padding-top:12px;display:grid;gap:8px}
+.coach-digest h3{display:flex;align-items:center;gap:6px}
+.coach-digest details summary{font-size:12px;font-weight:600;cursor:pointer;min-height:32px;display:flex;align-items:center}
+.coach-digest-preview{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;background:var(--studio-bg);border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:10px;color:var(--studio-ink);max-height:360px;overflow:auto}
+/* Faz 3 · marka dili atölyesi ve rakipler */
+.coach-brand>*+*{margin-top:16px}
+.coach-brand-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:10px}
+.coach-brand-grid>.coach-options,.coach-brand-grid>.coach-footer-buttons{grid-column:1/-1}
+.coach-brand-draft{border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);padding:14px;background:var(--studio-surface);display:grid;gap:10px;margin-top:14px}
+.coach-competitors{display:grid;gap:12px;margin-top:10px}
+.coach-preline{white-space:pre-line}
+@media (max-width:640px){.coach-brand-grid{grid-template-columns:1fr}}
+
+.coach-brand .coach-action-buttons .studio-secondary,.coach-brand-draft>.studio-secondary{flex:0 1 auto;justify-content:center;justify-self:start}
+.coach-digest a{color:var(--studio-accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+@media (max-width:640px){.coach-learning-table td:nth-child(2){grid-column:auto}.coach-learning-table td:nth-child(2)::before{content:attr(data-label) ": ";color:var(--studio-muted)}}
+.coach-learning h3{font-size:13px;font-weight:650}
+.coach-brand .coach-keywords :is(td,th){text-align:left!important;white-space:normal}

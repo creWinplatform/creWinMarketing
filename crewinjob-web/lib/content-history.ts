@@ -29,6 +29,8 @@ export interface HistoryItem {
   suggestions?: string[];
   subline?:    string;
   metadata?: Record<string, unknown>;
+  /** Growth coach suggestion this draft was opened from (plan action, content plan item or SEO topic). */
+  coachRef?: string;
 }
 
 /** Görselle birlikte saklanan yeniden düzenleme verisi. */

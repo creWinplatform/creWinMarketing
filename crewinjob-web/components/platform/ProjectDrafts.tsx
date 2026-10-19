@@ -27,7 +27,7 @@ import { projectRequest,searchText } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import SegmentBindingPicker from './SegmentBindingPicker';
 import Msg from '@/components/Msg';
-import { COACH_PREFILL_KEY } from '@/lib/platform/coach-types';
+import { COACH_PREFILL_KEY, COACH_REF } from '@/lib/platform/coach-types';
 const CampaignReviewPanel=dynamic(()=>import('./CampaignReviewPanel'));
 const channels = [
   'email',
@@ -86,7 +86,7 @@ export default function ProjectDrafts({
     [page, setPage] = useState(1),
     [notice, setNotice] = useState('');
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['email']);
-  const [reviewId,setReviewId]=useState<string|null>(null);
+  const [reviewId,setReviewId]=useState<string|null>(null),[coachRef,setCoachRef]=useState('');
   const [image,setImage]=useState<{data:string;mime:string}|null>(null),[imageChanged,setImageChanged]=useState(false);
   const [extraImages,setExtraImages]=useState<{data:string;mime:string}[]>([]),[imageBusy,setImageBusy]=useState(false);
   const draftImages=image?[image,...extraImages]:[];
@@ -116,7 +116,7 @@ export default function ProjectDrafts({
   // Growth coach handoff: a one-time brief for this tool, kept in this tab only. Nothing is generated or saved until the user acts.
   useEffect(() => {
     if (!canWrite) return;
-    let prefill: { tab?: unknown; brief?: unknown; channel?: unknown; name?: unknown; at?: unknown } | null = null;
+    let prefill: { tab?: unknown; brief?: unknown; channel?: unknown; name?: unknown; ref?: unknown; at?: unknown } | null = null;
     try { prefill = JSON.parse(sessionStorage.getItem(COACH_PREFILL_KEY) || 'null'); sessionStorage.removeItem(COACH_PREFILL_KEY); } catch { prefill = null; }
     if (!prefill || prefill.tab !== (campaigns ? 'campaigns' : 'library') || typeof prefill.brief !== 'string' || !(Date.now() - Number(prefill.at) < 600000)) return;
     const channel = channels.includes(String(prefill.channel)) ? String(prefill.channel) : 'email';
@@ -125,6 +125,7 @@ export default function ProjectDrafts({
     setForm({ ...empty, language: defaultLanguage, name: String(prefill.name || '').slice(0, 140), channel });
     setSelectedChannels([channel]);
     setBrief(prefill.brief.slice(0, 3000));
+    setCoachRef(typeof prefill.ref === 'string' && COACH_REF.test(prefill.ref) && !campaigns ? prefill.ref : '');
     setImage(null);setExtraImages([]);setImageChanged(false);
     setShowEditor(true);
     setNotice(tr ? 'Brief, büyüme koçundan dolduruldu. AI taslağı üretin veya kendiniz yazın; kaydetmeden hiçbir şey saklanmaz.' : 'The brief is pre-filled from the growth coach. Generate an AI draft or write your own; nothing is stored until you save.');
@@ -163,6 +164,7 @@ export default function ProjectDrafts({
         channel: item.platform,
       });
     setEditingId(clone ? null : item.id);
+    setCoachRef('');
     setShowEditor(true);
     setError('');
     setNotice('');
@@ -196,6 +198,7 @@ export default function ProjectDrafts({
           language: form.language,
           headline: form.name,
           prompt: brief,
+          ...(!editingId && coachRef ? { coachRef } : {}),
           ...(imageChanged?(draftImages.length>1?{imageData:'',images:draftImages}:{imageData:image?.data||'',imageMime:image?.mime||'',images:[]}):{}),
         };
     const url = editingId
@@ -292,6 +295,7 @@ export default function ProjectDrafts({
             disabled={busy || aiBusy}
             className="studio-primary"
             onClick={() => {
+              setCoachRef('');
               setReviewId(null);
               setForm({ ...empty, language: defaultLanguage });
               setSelectedChannels(['email']);

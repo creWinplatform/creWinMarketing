@@ -9,6 +9,7 @@ import { MarketingStoreError } from './errors';
 import { ProjectOperations } from './operations';
 import { compassSiteReceipt } from './guidance';
 import { COACH_CHANNELS,COACH_CURRENT,COACH_HOURS,COACH_MARKETS,COACH_OBSTACLES,COACH_PRICES,COACH_SALES,COACH_SKILLS,COACH_TOOLS,coachDraftChannel,type CoachAction,type CoachAnswers,type CoachBrief,type CoachChannel,type CoachPlanItem,type CoachSnapshot,type CoachTool } from './coach-types';
+import { compassFromBrief,seedCompassFromBrief } from './coach-compass';
 
 type Lang='tr'|'en';
 type Row={revision:number;answers_json:string;draft_json:string|null;draft_source:'ai'|'template'|null;draft_at:string|null;brief_json:string|null;approved_at:string|null};
@@ -145,6 +146,7 @@ export class GrowthCoach{
       this.authorize('campaign.approve');const row=this.expect(expectedRevision);if(!row?.brief_json)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);
       const brief=normalizeCoachBrief(mutate(JSON.parse(row.brief_json) as CoachBrief)),now=new Date().toISOString();
       this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),now,this.scope.subject,...this.args());
+      this.version(row.revision+1,brief,operation==='coach.positioning'?'positioning':'adjust',now);
       this.audit(operation);return row.revision+1;
     }).immediate();
   }
@@ -191,9 +193,15 @@ export class GrowthCoach{
     return this.db.transaction(()=>{
       this.authorize('campaign.approve');const row=this.expect(raw.expectedRevision);if(!row)throw new MarketingStoreError('Önce büyüme teşhisini tamamlayın.',404);
       const now=new Date().toISOString();this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,draft_json=NULL,draft_source=NULL,draft_at=NULL,approved_by=?,approved_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),this.scope.subject,now,now,this.scope.subject,...this.args());
-      this.audit('coach.approve');return this.read();
+      this.version(row.revision+1,brief,'approve',now);this.audit('coach.approve');
+      // One guided start: the approver's Compass path follows the approved brief unless they already chose one.
+      seedCompassFromBrief(this.db,this.scope.subject,...this.args(),compassFromBrief(brief,JSON.parse(row.answers_json) as CoachAnswers,this.repo.workspace(this.scope.subject,...this.args())!.project.goals));
+      return this.read();
     }).immediate();
   }
+  // Append-only brief history: every approval or approved plan change keeps the version it produced.
+  private version(revision:number,brief:CoachBrief,kind:'approve'|'adjust'|'positioning',at:string){this.db.prepare('INSERT INTO platform_growth_coach_briefs(organization_id,project_id,coach_revision,kind,brief_json,approved_by,approved_at) VALUES(?,?,?,?,?,?,?)').run(...this.args(),revision,kind,JSON.stringify(brief),this.scope.subject,at);}
+  versions(limit=10){return (this.db.prepare('SELECT coach_revision,kind,brief_json,approved_at FROM platform_growth_coach_briefs WHERE organization_id=? AND project_id=? ORDER BY id DESC LIMIT ?').all(...this.args(),limit) as {coach_revision:number;kind:'approve'|'adjust'|'positioning';brief_json:string;approved_at:string}[]).map(row=>({revision:row.coach_revision,kind:row.kind,approvedAt:row.approved_at,brief:JSON.parse(row.brief_json) as CoachBrief}));}
   private actionRows(){return new Map((this.db.prepare('SELECT action_id,state,week,task_id FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=?').all(...this.args()) as ActionRow[]).map(row=>[row.action_id,row]));}
   private connected(){return new Set((this.db.prepare('SELECT c.provider,s.platform FROM platform_connections c LEFT JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1').all(...this.args()) as {provider:string;platform:string|null}[]).map(item=>item.provider==='social'?item.platform:item.provider));}
   private candidates(brief:CoachBrief,week:number,connected:Set<string|null>):Candidate[]{
@@ -225,16 +233,16 @@ export class GrowthCoach{
       // Done comes from the team's own mark, a completed linked Calendar task, or (for connection items) a saved active connection.
       const state=stored?.state==='done'||task?.status==='completed'||item.kind==='plan'&&item.tool==='connections'&&connected.has(item.channel)?'done':stored?.state==='skipped'&&stored.week===weekKey?'skipped':'open';
       const pick=(value:string|LocalizedText)=>typeof value==='string'?value:value[brief.language];
-      const prefill=item.tool==='library'||item.tool==='campaigns'?{brief:`${pick(item.title)}\n${pick(item.why)}`.slice(0,3000),channel:item.tool==='campaigns'?item.channel&&item.channel!=='seo'?item.channel:'email':coachDraftChannel(item.channel),name:pick(item.title).slice(0,140)}:null;
+      const prefill=item.tool==='library'||item.tool==='campaigns'?{brief:`${pick(item.title)}\n${pick(item.why)}`.slice(0,3000),channel:item.tool==='campaigns'?item.channel&&item.channel!=='seo'?item.channel:'email':coachDraftChannel(item.channel),name:pick(item.title).slice(0,140),ref:item.id}:null;
       return {...item,href,canAct:modules.some(module=>module.id===TOOL_TAB[item.tool])&&this.can(TOOL_PERMISSION[item.tool]),prefill,state,taskId:task&&!['cancelled'].includes(task.status)?task.id:null};
     });
     return {row,brief,week,weekKey,all};
   }
   read():CoachSnapshot{
-    this.authorize();const {row,brief,week,weekKey,all}=this.derive(),states=this.actionRows(),open=all.filter(item=>item.state==='open');
+    this.authorize();const {row,brief,week,weekKey,all}=this.derive(),states=this.actionRows(),open=all.filter(item=>item.state==='open'),versions=this.versions(2);
     return {revision:row?.revision||0,answers:row?JSON.parse(row.answers_json):null,draft:row?.draft_json?JSON.parse(row.draft_json):null,draftSource:row?.draft_source||null,draftAt:row?.draft_at||null,brief,approvedAt:row?.approved_at||null,week,weekKey,
       actions:open.slice(0,3),resolved:all.filter(item=>item.state!=='open'&&states.get(item.id)?.week===weekKey),remaining:open.length,
-      aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.can('content.write'),canApprove:this.can('campaign.approve')};
+      aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.can('content.write'),canApprove:this.can('campaign.approve'),previousBrief:versions[1]?.brief||null,versions:versions.length};
   }
   private action(id:unknown){const action=this.derive().all.find(item=>item.id===id);if(typeof id!=='string'||!action)throw new MarketingStoreError('Bu hafta için böyle bir eylem bulunamadı.',404);return action;}
   act(raw:Record<string,unknown>){

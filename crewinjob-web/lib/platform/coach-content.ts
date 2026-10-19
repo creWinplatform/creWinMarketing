@@ -129,7 +129,7 @@ export class CoachContentPlan{
     this.coach.authorize();const month=this.month(rawMonth),{brief}=this.coach.approved(),project=this.project(),tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task]));
     const items=this.rows(month).map((row):CoachContentItem=>({id:row.id,month:row.month,channel:row.channel,theme:row.theme,title:row.title,angle:row.angle,goalId:row.goal_id,plannedFor:row.planned_for,state:row.state,source:row.source,revision:row.revision,
       taskId:row.task_id&&tasks.has(row.task_id)&&tasks.get(row.task_id)!.status!=='cancelled'?row.task_id:null,approvedAt:row.approved_at,
-      prefill:row.state==='approved'?{brief:[row.title,row.angle,row.theme].join('\n').slice(0,3000),channel:coachDraftChannel(row.channel),name:row.title}:null}));
+      prefill:row.state==='approved'?{brief:[row.title,row.angle,row.theme].join('\n').slice(0,3000),channel:coachDraftChannel(row.channel),name:row.title,ref:`content:${row.id}`}:null}));
     return {month,months:this.months(),today:zonedDateKey(new Date(),this.coach.timeZone()),items,hasBrief:Boolean(brief),language:brief?.language||null,briefChannels:brief?.channels.map(item=>item.id)||[],
       goals:project.goals.map(goal=>({id:goal.id,label:goal.label})),aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.coach.can('content.write')};
   }

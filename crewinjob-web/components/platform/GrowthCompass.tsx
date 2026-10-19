@@ -11,6 +11,9 @@ import Msg from '@/components/Msg';
 type Draft = Pick<CompassPreferences,'intent'|'experience'|'goalId'|'campaignId'|'appId'|'channels'|'obstacles'>;
 type Context = { data:CompassSnapshot|null; error:string; loading:boolean; refresh:()=>void; open:()=>void; guide:(id:GuideId)=>void };
 const CompassContext=createContext<Context|null>(null);
+// First-run path pre-filled from the approved strategy brief when there is one.
+const initial=(data:CompassSnapshot|null):Draft=>data?.suggestion?{...empty,intent:data.suggestion.intent,channels:data.suggestion.channels.length?data.suggestion.channels:empty.channels,goalId:data.suggestion.goalId}:{...empty,goalId:data?.goals.length===1?data.goals[0].id:''};
+export function useCompassRefresh(){return useContext(CompassContext)?.refresh||(()=>{});}
 const empty:Draft={intent:'leads',experience:'guided',goalId:'',campaignId:'',appId:'',channels:['linkedin_company'],obstacles:{}};
 const channelNames:Record<string,[string,string]>={linkedin_company:['LinkedIn şirket','LinkedIn company'],linkedin_person:['LinkedIn kişisel','LinkedIn personal'],facebook:['Facebook Sayfası','Facebook Page'],instagram:['Instagram','Instagram'],twitter:['X','X'],email:['E-posta','Email']};
 const labels={done:['Doğrulandı','Verified'],todo:['Sırada','Next'],blocked:['Ön koşul var','Prerequisite'],unknown:['Doğrulanmadı','Unverified']} as const;
@@ -29,7 +32,10 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
   useEffect(()=>{refresh();const onFocus=()=>{if(document.visibilityState==='visible')refresh();};window.addEventListener('focus',onFocus);return()=>{request.current?.abort();window.removeEventListener('focus',onFocus);};},[refresh]);
   useEffect(()=>{
     if(!data||firstConsidered.current)return;firstConsidered.current=true;
-    if(data.firstRun&&!callbackVisit.current){setDraft({...empty,goalId:data.goals.length===1?data.goals[0].id:''});setView('setup');setOpened(true);}
+    if(data.firstRun&&!callbackVisit.current){
+      // One guided start: with no strategy brief yet, a member who can write starts with the growth diagnosis instead of a second dialog.
+      if(data.coach.canDiagnose&&!data.coach.hasBrief&&!data.coach.hasDraft){(window as Window&{__ryzevoCoachStart?:boolean}).__ryzevoCoachStart=true;window.dispatchEvent(new Event('ryzevo:coach-start'));return;}
+      setDraft(initial(data));setView('setup');setOpened(true);}
   },[data]);
   useEffect(()=>{
     const element=dialog.current;if(!element)return;
@@ -44,7 +50,7 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
     if(!opened)return;dialog.current?.querySelector<HTMLElement>('#compass-title')?.focus();
     dialog.current?.querySelector<HTMLElement>('.compass-scroll')?.scrollTo(0,0);
   },[opened,view,guideId]);
-  const open=()=>{setNotice('');setView(data?.preferences?'plan':'setup');draftRevision.current=data?.preferences?.revision||0;setDraft(data?.preferences||{...empty,goalId:data?.goals.length===1?data.goals[0].id:''});setOpened(true);refresh();};
+  const open=()=>{setNotice('');setView(data?.preferences?'plan':'setup');draftRevision.current=data?.preferences?.revision||0;setDraft(data?.preferences||initial(data));setOpened(true);refresh();};
   const guide=(id:GuideId)=>{setGuideId(id);setNotice('');setView('guide');setOpened(true);refresh();};
   const post=async(body:object)=>projectRequest<CompassSnapshot>('/api/platform/compass',{method:'POST',body:JSON.stringify(body)});
   const save=async(input:Draft,revision=data?.preferences?.revision||0)=>{
@@ -72,7 +78,7 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
     <dialog ref={dialog} className="growth-compass" aria-labelledby="compass-title" aria-describedby="compass-description" onCancel={event=>{event.preventDefault();void close();}}>
       <header className="compass-header"><span className="compass-symbol"><Compass size={23}/></span><div><p>{data?.projectName||'Ryzevo'}</p><h2 id="compass-title" tabIndex={-1}>{view==='setup'?(tr?'Senin büyüme rotan':'Your growth path'):view==='guide'?connectionGuideName(guideId,lang):(tr?'Büyüme pusulası':'Growth compass')}</h2></div><button type="button" className="icon-button" disabled={busy} aria-label={tr?'Pusulayı kapat':'Close compass'} title={tr?'Pusulayı kapat':'Close compass'} onClick={()=>void close()}><X size={19}/></button></header>
       <div className="compass-scroll">
-        <p id="compass-description" className="compass-intro">{view==='setup'?(tr?'Önce tek bir sonuç seçelim. Mevcut hedeflerin ve araçlarınla, kaldığın yerden ilerle.':'Start with one outcome. Continue from your existing goals and tools.'):view==='guide'?currentGuide.purpose[lang]:(tr?'Tamamlanan adımlar proje kayıtlarından doğrulanır. Okumak veya sonraya bırakmak bir işlemi tamamlamaz.':'Completed steps are verified from project records. Reading or deferring does not complete an action.')}</p>
+        <p id="compass-description" className="compass-intro">{view==='setup'?(data?.suggestion&&!data.preferences?(tr?'Rota, onaylı strateji briefinden önceden dolduruldu. İstersen değiştir.':'Your path is pre-filled from the approved strategy brief. Change it if you like.'):(tr?'Önce tek bir sonuç seçelim. Mevcut hedeflerin ve araçlarınla, kaldığın yerden ilerle.':'Start with one outcome. Continue from your existing goals and tools.')):view==='guide'?currentGuide.purpose[lang]:(tr?'Tamamlanan adımlar proje kayıtlarından doğrulanır. Okumak veya sonraya bırakmak bir işlemi tamamlamaz.':'Completed steps are verified from project records. Reading or deferring does not complete an action.')}</p>
         {error&&<div role="alert" className="studio-error"><Msg text={error}/><button type="button" className="icon-button" title={tr?'Yenile':'Refresh'} aria-label={tr?'Yenile':'Refresh'} onClick={refresh}><RefreshCw size={16}/></button></div>}
         {notice&&<p className="compass-notice" role="status"><Msg text={notice}/> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}<ArrowRight size={13}/></a></p>}
         {!data&&<p role="status">{loading?(tr?'Rotan hazırlanıyor…':'Preparing your path…'):(tr?'Pusula yüklenemedi. Araçları kullanmaya devam edebilirsin.':'Compass unavailable. You can keep using your tools.')}</p>}
