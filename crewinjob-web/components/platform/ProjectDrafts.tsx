@@ -27,6 +27,7 @@ import { projectRequest,searchText } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import SegmentBindingPicker from './SegmentBindingPicker';
 import Msg from '@/components/Msg';
+import { COACH_PREFILL_KEY } from '@/lib/platform/coach-types';
 const CampaignReviewPanel=dynamic(()=>import('./CampaignReviewPanel'));
 const channels = [
   'email',
@@ -112,6 +113,22 @@ export default function ProjectDrafts({
   useEffect(() => {
     void load();
   }, [load]);
+  // Growth coach handoff: a one-time brief for this tool, kept in this tab only. Nothing is generated or saved until the user acts.
+  useEffect(() => {
+    if (!canWrite) return;
+    let prefill: { tab?: unknown; brief?: unknown; channel?: unknown; name?: unknown; at?: unknown } | null = null;
+    try { prefill = JSON.parse(sessionStorage.getItem(COACH_PREFILL_KEY) || 'null'); sessionStorage.removeItem(COACH_PREFILL_KEY); } catch { prefill = null; }
+    if (!prefill || prefill.tab !== (campaigns ? 'campaigns' : 'library') || typeof prefill.brief !== 'string' || !(Date.now() - Number(prefill.at) < 600000)) return;
+    const channel = channels.includes(String(prefill.channel)) ? String(prefill.channel) : 'email';
+    setReviewId(null);
+    setEditingId(null);
+    setForm({ ...empty, language: defaultLanguage, name: String(prefill.name || '').slice(0, 140), channel });
+    setSelectedChannels([channel]);
+    setBrief(prefill.brief.slice(0, 3000));
+    setImage(null);setExtraImages([]);setImageChanged(false);
+    setShowEditor(true);
+    setNotice(tr ? 'Brief, büyüme koçunun bu haftaki eyleminden dolduruldu. AI taslağı üretin veya kendiniz yazın; kaydetmeden hiçbir şey saklanmaz.' : 'The brief is pre-filled from this week’s growth coach action. Generate an AI draft or write your own; nothing is stored until you save.');
+  }, [canWrite, campaigns]);
   const edit = (item: Draft, clone = false) => {
     setReviewId(null);
     const media='name' in item?[]:item.images?.length?item.images:item.imageData?[{data:item.imageData,mime:item.imageMime||'image/jpeg'}]:[];

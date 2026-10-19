@@ -678,6 +678,23 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(30,datetime('now'));
   `))();
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=31').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_growth_coach (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+      answers_json TEXT NOT NULL, draft_json TEXT, draft_source TEXT CHECK(draft_source IN ('ai','template')), draft_at TEXT,
+      brief_json TEXT, approved_by TEXT, approved_at TEXT, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_growth_coach_actions (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, action_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('open','done','skipped')), week TEXT NOT NULL, task_id TEXT,
+      actor_id TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,action_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(31,datetime('now'));
+  `))();
   return db;
 }
 

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, CalendarDays, FolderOpen, Megaphone, Target, RefreshCw, Plus, CircleDashed, ArrowUpRight } from 'lucide-react';
 import { CompassOverview } from './GrowthCompass';
+import GrowthCoach from './GrowthCoach';
 import type { Locale, ModuleId, WorkspaceContext } from '@/lib/platform/catalog';
 import type { WorkItem, MetricEntry } from '@/lib/platform/operations';
 import { projectRequest } from '@/lib/platform/client';
@@ -36,6 +37,8 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
     'project.update':['Proje güncellendi','Project updated'], 'organization.provision':['Çalışma alanı oluşturuldu','Workspace created'],
     'membership.create':['Ekip üyesi eklendi','Team member added'], 'membership.update':['Üyelik güncellendi','Membership updated'],
     'connection.save':['Bağlantı kaydedildi','Connection saved'], 'connection.revoke':['Bağlantı kaldırıldı','Connection revoked'],
+    'coach.answers':['Büyüme teşhisi yanıtlandı','Growth diagnosis answered'], 'coach.draft.ai':['AI strateji taslağı hazırlandı','AI strategy draft prepared'], 'coach.draft.template':['Başlangıç briefi hazırlandı','Starter brief prepared'], 'coach.draft.edit':['Brief taslağı düzenlendi','Brief draft edited'], 'coach.approve':['Strateji briefi onaylandı','Strategy brief approved'],
+    'coach.action.done':['Koç eylemi tamamlandı','Coach action done'], 'coach.action.skipped':['Koç eylemi ertelendi','Coach action skipped'], 'coach.action.open':['Koç eylemi yeniden açıldı','Coach action reopened'], 'coach.action.schedule':['Koç eylemi takvime eklendi','Coach action added to Calendar'],
   };
   return (
     <section className="studio-overview">
@@ -55,6 +58,7 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
         ].map(item => <button key={item.tab} className="studio-stat" disabled={!enabled(item.tab as ModuleId)} onClick={() => onNavigate(item.tab as ModuleId)}><div><span>{item.label}</span><strong>{item.value.toLocaleString(locale)}</strong><small>{tr ? 'Projeye ait kayıtlar' : 'Project records'}</small></div><item.Icon size={18} /></button>)}</div>
         <div className="studio-overview-grid">
           <div>
+            <GrowthCoach workspace={workspace} lang={lang} onChange={load}/>
             <section className="studio-band">
               <div className="studio-section-title"><h2>{tr ? 'Sıradaki işler' : 'Next up'}</h2><button className="studio-text-button" disabled={!enabled('calendar')} onClick={() => onNavigate('calendar')}>{tr ? 'Tüm işler' : 'All tasks'}<ArrowUpRight size={15} /></button></div>
               {tasks.slice(0,4).map(item => <div className="overview-work-row" key={item.id}><div className="work-day"><strong>{new Date(item.dueAt).toLocaleDateString(locale,{day:'2-digit',timeZone:workspace.project.timezone})}</strong><small>{new Date(item.dueAt).toLocaleDateString(locale,{month:'short',timeZone:workspace.project.timezone})}</small></div><div><h3>{item.title}</h3><p>{new Date(item.dueAt).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit',timeZone:workspace.project.timezone})}{item.note ? ` · ${item.note}` : ''}</p></div><span className="work-status">{item.status === 'in_progress' ? (tr ? 'Devam ediyor' : 'In progress') : (tr ? 'Planlandı' : 'Planned')}</span></div>)}

@@ -6,6 +6,7 @@ import './ryzevo-tokens.css';
 import './ryzevo.css';
 import './mobile-growth.css';
 import './growth-compass.css';
+import './growth-coach.css';
 import './accessibility.css';
 import { LangProvider } from '@/lib/lang';
 import { requestLang } from '@/lib/i18n/server';

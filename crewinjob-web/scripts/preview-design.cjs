@@ -25,6 +25,7 @@ if(!hssQa)operations.saveMetric({goalId:'demo',stageIndex:0,value:12,observedAt:
 async function start() {
 const encryptionKey=randomBytes(32).toString('hex');
 const organizationQa=process.argv.includes('--linkedin-organizations'),identityQa=process.argv.includes('--identity'),usageQa=process.argv.includes('--usage'),billingQa=process.argv.includes('--billing'),billingChecksQa=process.argv.includes('--billing-checks'),plansQa=process.argv.includes('--plans'),qaHost=compassQa||mobileQa||hssQa||socialExtensionsQa||organizationQa||identityQa||usageQa||billingQa||plansQa||billingChecksQa?'127.0.0.2':'127.0.0.1';let selectionPortal;
+if(process.argv.includes('--coach')){for(const role of ['editor','viewer'])repo.addMember(fixture.userId,fixture.organizationId,fixture.projectId,{username:`coach-${role}`,password:'design-fixture-only-123',role});console.log('Growth coach QA: owner design-fixture, coach-editor and coach-viewer. Rule-based starter only; AI key stays empty.');}
 if(compassQa){repo.addMember(fixture.userId,fixture.organizationId,fixture.projectId,{username:'compass-viewer',password:'design-fixture-only-123',role:'viewer'});console.log('Compass QA: first-run owner design-fixture and viewer compass-viewer. No provider grants or real sends.');}
 if(billingChecksQa){
   const {ProjectBilling}=load('billing.ts'),scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId};
