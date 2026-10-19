@@ -50,7 +50,8 @@ function extract() {
     if (!pairs.has(tr)) pairs.set(tr, en);
   };
   for (const file of DIRS.flatMap(dir => walk(path.join(ROOT, dir), []))) {
-    const source = fs.readFileSync(file, 'utf8');
+    // CRLF checkouts must give the same result as LF ones: the message-context window is measured in characters.
+    const source = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
     const scan = (patterns, swap) => {
       for (const pattern of patterns) for (const match of source.matchAll(pattern)) {
         const context = source.slice(Math.max(0, match.index - 200), match.index + 20);
