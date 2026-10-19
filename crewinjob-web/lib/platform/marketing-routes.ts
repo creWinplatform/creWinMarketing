@@ -55,7 +55,7 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   let images=current?.images;
   if(raw.images!==undefined){
     if(!Array.isArray(raw.images)||raw.images.length>5)throw new MarketingStoreError('En fazla 5 gorsel secin.');
-    if(raw.images.length&&platform!=='instagram')throw new MarketingStoreError('Coklu gorsel yalniz Instagram icin destekleniyor.');
+    if(raw.images.length&&platform!=='instagram')throw new MarketingStoreError('Çoklu görsel yalnız Instagram için destekleniyor.');
     const {normalizePublicationImages}=await import('./publication-image');
     images=raw.images.length?(await normalizePublicationImages(raw.images)).map(image=>({data:image.data,mime:'image/jpeg'})):undefined;
   }

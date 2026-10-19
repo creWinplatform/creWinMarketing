@@ -11,7 +11,7 @@ const ROOT = path.resolve(__dirname, '..');
 // ../crewinjob-agent: panelin çağırdığı ajan modülleri (kuyruk nedenleri, hata metinleri arayüzde görünür)
 const DIRS = ['lib', 'app/api', '../crewinjob-agent/modules', '../crewinjob-agent/pipeline.js'];
 const FILES = ['middleware.ts'];
-const TURKISH = /[çğıöşüÇĞİÖŞÜ]|\b(ve|veya|için|bir|yok|ile|bulunamadı|gerekli|geçersiz|değil|olmalı|zorunlu|henüz)\b|\b\w+(?:amadı|emedi|ılamadı|ilemedi|edildi|ildi|ıldı|uldu|üldü)\b/u;
+const TURKISH = /[çğıöşüÇĞİÖŞÜ]|\b(ve|veya|için|bir|yok|ile|bulunamadı|gerekli|geçersiz|değil|olmalı|zorunlu|henüz|adet|karakter|durum|tarama|kodu)\b|\b\w+(?:amadı|emedi|ılamadı|ilemedi|edildi|ildi|ıldı|uldu|üldü|undu|ündü|iyor|ıyor|uyor|üyor)\b/iu;
 // Mesaj bağlamları: new XError('…'), error/message/reason/detail/warning: '…' ve denetim bulgusu alanları
 // (title, category, recommendation, evidence, limitations, note …) — arayüz bunları translateMessage ile gösterir.
 const CONTEXT = /(?:Error\(\s*|\b(?:error|message|reason|detail|warning|title|category|recommendation|evidence|limitations?|dataNote|note|verificationMessage|summary|label)\s*:\s*)(['"`])((?:\\.|(?!\1)[^\\\n])*)\1/g;

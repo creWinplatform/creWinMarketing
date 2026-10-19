@@ -148,7 +148,7 @@ export class SocialPublications {
   }
   async refreshEngagement(id:string,read:EngagementReader=readPublicationEngagement){
     this.authorize(true);assertProjectWork(this.db,this.scope);
-    const row=this.row(id);if(!this.engagementSupported(row))throw new MarketingStoreError('Bu yayin icin etkilesim olcumu desteklenmiyor.',409);
+    const row=this.row(id);if(!this.engagementSupported(row))throw new MarketingStoreError('Bu yayın için etkileşim ölçümü desteklenmiyor.',409);
     const connection=this.connection(row.connection_id),revision=hash(connection.encrypted_credentials),snapshot=this.snapshot(row),lease=randomUUID(),config=this.config(connection.platform);
     if(connection.account_id!==snapshot.accountId||connection.accountType!==snapshot.accountType||connection.platform!==(snapshot.platform||'linkedin'))throw new MarketingStoreError('Yayin hesabi degisti. Olcum alinmadi.',409);
     const claimed=this.db.transaction(()=>{
