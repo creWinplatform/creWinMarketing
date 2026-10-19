@@ -4,6 +4,9 @@ import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
 import type { StatsResponse } from '@/lib/types';
 
 type SubTab = 'whatsapp' | 'telegram_channel' | 'telegram_bot' | 'notify_wa' | 'notify_tg' | 'notify_email' | 'notify_job_match';
@@ -14,9 +17,9 @@ interface Props {
 
 // ── E-posta re-aktivasyon ────────────────────────────────────────────────────
 const EMAIL_BUCKETS = [
-  { value: 'zero', labelTr: '🚫 Hiç Başlamamış (%0)',   labelEn: '🚫 Never Started (0%)',   color: 'bg-red-500' },
-  { value: 'low',   labelTr: '⚠️ Eksik Profil (%1–49)', labelEn: '⚠️ Incomplete Profile (1–49%)', color: 'bg-amber-500' },
-  { value: 'mid',   labelTr: '🔶 Aktivasyona Yakın (%50–79)', labelEn: '🔶 Near Activation (50–79%)', color: 'bg-yellow-500' },
+  { value: 'zero', labelTr: '🚫 Hiç Başlamamış (%0)',   labelEn: '🚫 Never started (0%)',   color: 'bg-red-500' },
+  { value: 'low',   labelTr: '⚠️ Eksik Profil (%1–49)', labelEn: '⚠️ Incomplete profile (1–49%)', color: 'bg-amber-500' },
+  { value: 'mid',   labelTr: '🔶 Aktivasyona Yakın (%50–79)', labelEn: '🔶 Near activation (50–79%)', color: 'bg-yellow-500' },
 ] as const;
 
 interface JobListing {
@@ -33,10 +36,10 @@ interface JobListing {
 
 // "Size Uygun İlanlar" kampanyasında tüm profil doluluklarını hedefleyebiliriz
 const JOB_MATCH_BUCKETS = [
-  { value: 'zero', labelTr: '🚫 Hiç Başlamamış (%0)',             labelEn: '🚫 Never Started (0%)',         color: 'bg-red-500' },
-  { value: 'low',  labelTr: '⚠️ Yarım Bırakmış (%1–49)',          labelEn: '⚠️ Started Incomplete (1–49%)',  color: 'bg-amber-500' },
-  { value: 'mid',  labelTr: '🔶 Aktivasyona Yakın (%50–79)',       labelEn: '🔶 Near Activation (50–79%)',    color: 'bg-yellow-500' },
-  { value: 'high', labelTr: '✅ Activated Seafarer (%80+)',         labelEn: '✅ Activated Seafarer (80%+)',  color: 'bg-emerald-500' },
+  { value: 'zero', labelTr: '🚫 Hiç Başlamamış (%0)',             labelEn: '🚫 Never started (0%)',         color: 'bg-red-500' },
+  { value: 'low',  labelTr: '⚠️ Yarım Bırakmış (%1–49)',          labelEn: '⚠️ Started, incomplete (1–49%)',  color: 'bg-amber-500' },
+  { value: 'mid',  labelTr: '🔶 Aktivasyona Yakın (%50–79)',       labelEn: '🔶 Near activation (50–79%)',    color: 'bg-yellow-500' },
+  { value: 'high', labelTr: '✅ Activated Seafarer (%80+)',         labelEn: '✅ Activated seafarer (80%+)',  color: 'bg-emerald-500' },
 ] as const;
 
 interface EmailRecipient {
@@ -89,16 +92,16 @@ function daysAgo(iso: string | null, lang: 'tr' | 'en'): string {
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
 const WA_AUDIENCES = [
-  { value: 'seafarer_global', labelTr: '🌍 Global Seafarers',                  labelEn: '🌍 Global Seafarers' },
-  { value: 'seafarer_tr',     labelTr: '🇹🇷 Türk Gemi Adamları',               labelEn: '🇹🇷 Turkish Seafarers' },
-  { value: 'shipowner',       labelTr: '🚢 Armatörler & Crew Manager',          labelEn: '🚢 Shipowners & Crew Manager' },
-  { value: 'cadet',           labelTr: '🎓 Cadet & Genç Denizci',              labelEn: '🎓 Cadet & Young Seafarer' },
+  { value: 'seafarer_global', labelTr: '🌍 Global Seafarers',                  labelEn: '🌍 Global seafarers' },
+  { value: 'seafarer_tr',     labelTr: '🇹🇷 Türk Gemi Adamları',               labelEn: '🇹🇷 Turkish seafarers' },
+  { value: 'shipowner',       labelTr: '🚢 Armatörler & Crew Manager',          labelEn: '🚢 Shipowners & crew managers' },
+  { value: 'cadet',           labelTr: '🎓 Cadet & Genç Denizci',              labelEn: '🎓 Cadets & young seafarers' },
 ];
 
 const WA_OBJECTIVES = [
-  { value: 'registration',    labelTr: '📝 Yeni Seafarer Kaydı',               labelEn: '📝 New Seafarer Registration' },
-  { value: 'job_apply',       labelTr: '💼 İlan Başvurusu',                    labelEn: '💼 Job Application' },
-  { value: 'company_signup',  labelTr: '🏢 Firma / Armatör Kaydı (B2B)',       labelEn: '🏢 Company / Shipowner Signup (B2B)' },
+  { value: 'registration',    labelTr: '📝 Yeni Seafarer Kaydı',               labelEn: '📝 New seafarer sign-ups' },
+  { value: 'job_apply',       labelTr: '💼 İlan Başvurusu',                    labelEn: '💼 Job applications' },
+  { value: 'company_signup',  labelTr: '🏢 Firma / Armatör Kaydı (B2B)',       labelEn: '🏢 Company / shipowner sign-up (B2B)' },
 ];
 
 const WA_PLATFORMS = [
@@ -109,17 +112,17 @@ const WA_PLATFORMS = [
 
 // ── Telegram Kanal ────────────────────────────────────────────────────────────
 const TG_CONTENT_TYPES = [
-  { value: 'weekly_plan',      labelTr: '📅 Haftalık İçerik Takvimi',           labelEn: '📅 Weekly Content Calendar' },
-  { value: 'daily_post',       labelTr: '📢 Günlük İlan Post Şablonları',       labelEn: '📢 Daily Job Post Templates' },
-  { value: 'sponsored_post',   labelTr: '🤝 Sponsorlu Post Şablonları',         labelEn: '🤝 Sponsored Post Templates' },
-  { value: 'channel_strategy', labelTr: '🚀 Kanal Büyütme Stratejisi',          labelEn: '🚀 Channel Growth Strategy' },
-  { value: 'growth_plan',      labelTr: '📈 90 Günlük Büyüme Planı',           labelEn: '📈 90-Day Growth Plan' },
+  { value: 'weekly_plan',      labelTr: '📅 Haftalık İçerik Takvimi',           labelEn: '📅 Weekly content calendar' },
+  { value: 'daily_post',       labelTr: '📢 Günlük İlan Post Şablonları',       labelEn: '📢 Daily job post templates' },
+  { value: 'sponsored_post',   labelTr: '🤝 Sponsorlu Post Şablonları',         labelEn: '🤝 Sponsored post templates' },
+  { value: 'channel_strategy', labelTr: '🚀 Kanal Büyütme Stratejisi',          labelEn: '🚀 Channel growth strategy' },
+  { value: 'growth_plan',      labelTr: '📈 90 Günlük Büyüme Planı',           labelEn: '📈 90-day growth plan' },
 ];
 
 const TG_NICHES = [
-  { value: 'all',       labelTr: '⚓ Tüm Seafarerlar',   labelEn: '⚓ All Seafarers' },
-  { value: 'officers',  labelTr: '🎖️ Deck Officers',    labelEn: '🎖️ Deck Officers' },
-  { value: 'engineers', labelTr: '⚙️ Engine Officers',  labelEn: '⚙️ Engine Officers' },
+  { value: 'all',       labelTr: '⚓ Tüm Seafarerlar',   labelEn: '⚓ All seafarers' },
+  { value: 'officers',  labelTr: '🎖️ Deck Officers',    labelEn: '🎖️ Deck officers' },
+  { value: 'engineers', labelTr: '⚙️ Engine Officers',  labelEn: '⚙️ Engine officers' },
   { value: 'cadets',    labelTr: '🎓 Cadetler',          labelEn: '🎓 Cadets' },
   { value: 'offshore',  labelTr: '🛢️ Offshore',         labelEn: '🛢️ Offshore' },
 ];
@@ -133,23 +136,24 @@ const TG_CHANNEL_LANGS = [
 
 // ── Telegram Bot ──────────────────────────────────────────────────────────────
 const BOT_TYPES = [
-  { value: 'registration', labelTr: '📝 Kayıt Botu (Yeni Kullanıcı)',  labelEn: '📝 Registration Bot (New User)' },
-  { value: 'job_search',   labelTr: '🔍 İş Arama Botu',                labelEn: '🔍 Job Search Bot' },
-  { value: 'company',      labelTr: '🏢 Firma / B2B Lead Botu',        labelEn: '🏢 Company / B2B Lead Bot' },
-  { value: 'full',         labelTr: '⚡ Tam Özellikli Bot (Hepsi)',     labelEn: '⚡ Full-Featured Bot (All)' },
+  { value: 'registration', labelTr: '📝 Kayıt Botu (Yeni Kullanıcı)',  labelEn: '📝 Registration bot (new users)' },
+  { value: 'job_search',   labelTr: '🔍 İş Arama Botu',                labelEn: '🔍 Job search bot' },
+  { value: 'company',      labelTr: '🏢 Firma / B2B Lead Botu',        labelEn: '🏢 Company / B2B lead bot' },
+  { value: 'full',         labelTr: '⚡ Tam Özellikli Bot (Hepsi)',     labelEn: '⚡ Full-featured bot (all)' },
 ];
 
 const BOT_FEATURES = [
-  { value: 'job_search',  labelTr: '🔍 İlan Arama',            labelEn: '🔍 Job Search' },
-  { value: 'cv_tips',     labelTr: '📄 CV Tavsiyeleri',         labelEn: '📄 CV Tips' },
-  { value: 'salary_info', labelTr: '💰 Maaş Rehberi',          labelEn: '💰 Salary Guide' },
-  { value: 'alerts',      labelTr: '🔔 Uyarı/Bildirim Sistemi',labelEn: '🔔 Alert/Notification System' },
-  { value: 'stcw',        labelTr: '📋 STCW Bilgisi',          labelEn: '📋 STCW Info' },
-  { value: 'multilang',   labelTr: '🌍 Çok Dil Desteği',       labelEn: '🌍 Multi-Language Support' },
+  { value: 'job_search',  labelTr: '🔍 İlan Arama',            labelEn: '🔍 Job search' },
+  { value: 'cv_tips',     labelTr: '📄 CV Tavsiyeleri',         labelEn: '📄 CV tips' },
+  { value: 'salary_info', labelTr: '💰 Maaş Rehberi',          labelEn: '💰 Salary guide' },
+  { value: 'alerts',      labelTr: '🔔 Uyarı/Bildirim Sistemi',labelEn: '🔔 Alert/notification system' },
+  { value: 'stcw',        labelTr: '📋 STCW Bilgisi',          labelEn: '📋 STCW info' },
+  { value: 'multilang',   labelTr: '🌍 Çok Dil Desteği',       labelEn: '🌍 Multi-language support' },
 ];
 
 export default function MessagingTab({ stats }: Props) {
   const { lang } = useLang();
+  const locale = localeTag(lang);
   const [subTab,   setSubTab]   = useState<SubTab>('whatsapp');
   const [language, setLanguage] = useState<'tr' | 'en'>('en');
   const [output,   setOutput]   = useState('');
@@ -480,7 +484,7 @@ export default function MessagingTab({ stats }: Props) {
         html         = genData.html     ?? '';
         groupCtaPath = genData.ctaPath  ?? '';
       } catch (e) {
-        setBatchProgress(prev => ({ ...prev!, [l]: { status: { error: e instanceof Error ? e.message : 'AI generation failed' } } }));
+        setBatchProgress(prev => ({ ...prev!, [l]: { status: { error: e instanceof Error ? e.message : (lang === 'tr' ? 'AI içerik üretemedi' : "Couldn't generate the content") } } }));
         continue;
       }
 
@@ -505,7 +509,7 @@ export default function MessagingTab({ stats }: Props) {
         totalFailed += groupFailed;
         setBatchProgress(prev => ({ ...prev!, [l]: { status: 'done', sent: groupSent, failed: groupFailed } }));
       } catch (e) {
-        setBatchProgress(prev => ({ ...prev!, [l]: { status: { error: e instanceof Error ? e.message : 'Send failed' } } }));
+        setBatchProgress(prev => ({ ...prev!, [l]: { status: { error: e instanceof Error ? e.message : (lang === 'tr' ? 'Gönderim başarısız' : 'Send failed') } } }));
       }
     }
 
@@ -640,25 +644,25 @@ export default function MessagingTab({ stats }: Props) {
   };
 
   const generateLabel = () => {
-    if (loading) return lang === 'tr' ? 'Üretiliyor...' : 'Generating...';
-    if (subTab === 'whatsapp')         return lang === 'tr' ? '📲 WhatsApp Kampanyası Üret' : '📲 Generate WhatsApp Campaign';
-    if (subTab === 'telegram_channel') return lang === 'tr' ? '📢 Telegram İçeriği Üret'   : '📢 Generate Telegram Content';
-    return lang === 'tr' ? '🤖 Telegram Bot Tasarımı Üret' : '🤖 Generate Telegram Bot Design';
+    if (loading) return lang === 'tr' ? 'Üretiliyor…' : 'Generating…';
+    if (subTab === 'whatsapp')         return lang === 'tr' ? '📲 WhatsApp Kampanyası Üret' : '📲 Generate WhatsApp campaign';
+    if (subTab === 'telegram_channel') return lang === 'tr' ? '📢 Telegram İçeriği Üret'   : '📢 Generate Telegram content';
+    return lang === 'tr' ? '🤖 Telegram Bot Tasarımı Üret' : '🤖 Generate Telegram bot design';
   };
 
   const SUB_TABS: { id: SubTab; icon: string; label: string; color: string; group_tr: string; group_en: string }[] = [
-    { id: 'whatsapp',         icon: '📲', label: 'Click-to-WhatsApp',                               color: 'bg-green-500',   group_tr: 'Yeni Kullanıcı (İçerik)', group_en: 'New User (Content)' },
-    { id: 'telegram_channel', icon: '📢', label: lang === 'tr' ? 'Telegram Kanal' : 'Telegram Channel', color: 'bg-sky-500',     group_tr: 'Yeni Kullanıcı (İçerik)', group_en: 'New User (Content)' },
-    { id: 'telegram_bot',     icon: '🤖', label: 'Telegram Bot',                                    color: 'bg-indigo-500',  group_tr: 'Yeni Kullanıcı (İçerik)', group_en: 'New User (Content)' },
-    { id: 'notify_wa',        icon: '📩', label: lang === 'tr' ? 'WA Bildirim Gönder' : 'Send WA Notification', color: 'bg-emerald-600', group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
-    { id: 'notify_tg',        icon: '✈️', label: lang === 'tr' ? 'TG Kanal Gönder'   : 'Send TG Channel',        color: 'bg-cyan-600',    group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
-    { id: 'notify_email',     icon: '📧', label: lang === 'tr' ? 'E-posta Re-aktivasyon'  : 'Email Reactivation',  color: 'bg-amber-600',   group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
-    { id: 'notify_job_match', icon: '💼', label: lang === 'tr' ? 'İş Eşleşme Maili'       : 'Job Match Email',      color: 'bg-teal-600',    group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing User (Send)' },
+    { id: 'whatsapp',         icon: '📲', label: 'Click-to-WhatsApp',                               color: 'bg-green-500',   group_tr: 'Yeni Kullanıcı (İçerik)', group_en: 'New users (content)' },
+    { id: 'telegram_channel', icon: '📢', label: lang === 'tr' ? 'Telegram Kanal' : 'Telegram channel', color: 'bg-sky-500',     group_tr: 'Yeni Kullanıcı (İçerik)', group_en: 'New users (content)' },
+    { id: 'telegram_bot',     icon: '🤖', label: 'Telegram Bot',                                    color: 'bg-indigo-500',  group_tr: 'Yeni Kullanıcı (İçerik)', group_en: 'New users (content)' },
+    { id: 'notify_wa',        icon: '📩', label: lang === 'tr' ? 'WA Bildirim Gönder' : 'Send WA notification', color: 'bg-emerald-600', group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing users (send)' },
+    { id: 'notify_tg',        icon: '✈️', label: lang === 'tr' ? 'TG Kanal Gönder'   : 'Send to TG channel',     color: 'bg-cyan-600',    group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing users (send)' },
+    { id: 'notify_email',     icon: '📧', label: lang === 'tr' ? 'E-posta Re-aktivasyon'  : 'Email reactivation',  color: 'bg-amber-600',   group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing users (send)' },
+    { id: 'notify_job_match', icon: '💼', label: lang === 'tr' ? 'İş Eşleşme Maili'       : 'Job match email',      color: 'bg-teal-600',    group_tr: 'Mevcut Kullanıcı (Gönder)', group_en: 'Existing users (send)' },
   ];
 
   const groups = lang === 'tr'
     ? ['Yeni Kullanıcı (İçerik)', 'Mevcut Kullanıcı (Gönder)'] as const
-    : ['New User (Content)', 'Existing User (Send)'] as const;
+    : ['New users (content)', 'Existing users (send)'] as const;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -673,7 +677,7 @@ export default function MessagingTab({ stats }: Props) {
           <p className="text-slate-500 dark:text-slate-400 text-sm">
             {lang === 'tr'
               ? 'Yeni kullanıcılara ulaşmak için Click-to-WA reklamları, Telegram kanal içerikleri ve bot akışları üretir.'
-              : 'Generates Click-to-WA ads, Telegram channel content, and bot flows to reach new users.'}
+              : 'Generates Click-to-WA ads, Telegram channel content and bot flows to reach new users.'}
           </p>
         </div>
 
@@ -728,24 +732,24 @@ export default function MessagingTab({ stats }: Props) {
                 <p className="leading-relaxed">
                   {lang === 'tr'
                     ? 'Facebook/Instagram reklamında "WhatsApp\'ta Yaz" butonu → kullanıcı kendi isteğiyle başlatıyor → bot karşılıyor → crewinjob.com\'a kayıt.'
-                    : 'Facebook/Instagram ad "Message on WhatsApp" button → user initiates voluntarily → bot greets → registration on crewinjob.com.'}
+                    : '"Message on WhatsApp" button in a Facebook/Instagram ad → the user starts the chat → the bot greets them → sign-up on crewinjob.com.'}
                 </p>
               </div>
             </div>
 
-            <Field label={lang === 'tr' ? 'Hedef Kitle' : 'Target Audience'}>
+            <Field label={lang === 'tr' ? 'Hedef Kitle' : 'Target audience'}>
               <select value={waAudience} onChange={e => setWaAudience(e.target.value)} className={selectClass}>
                 {WA_AUDIENCES.map(a => <option key={a.value} value={a.value}>{lang === 'tr' ? a.labelTr : a.labelEn}</option>)}
               </select>
             </Field>
 
-            <Field label={lang === 'tr' ? 'Kampanya Amacı' : 'Campaign Objective'}>
+            <Field label={lang === 'tr' ? 'Kampanya Amacı' : 'Campaign objective'}>
               <select value={waObjective} onChange={e => setWaObjective(e.target.value)} className={selectClass}>
                 {WA_OBJECTIVES.map(o => <option key={o.value} value={o.value}>{lang === 'tr' ? o.labelTr : o.labelEn}</option>)}
               </select>
             </Field>
 
-            <Field label={lang === 'tr' ? 'Reklam Platformu' : 'Ad Platform'}>
+            <Field label={lang === 'tr' ? 'Reklam Platformu' : 'Ad platform'}>
               <div className="grid grid-cols-3 gap-1.5">
                 {WA_PLATFORMS.map(p => (
                   <button key={p.value} onClick={() => setWaAdPlatform(p.value)}
@@ -758,7 +762,7 @@ export default function MessagingTab({ stats }: Props) {
               </div>
             </Field>
 
-            <Field label={lang === 'tr' ? 'WhatsApp Numarası' : 'WhatsApp Number'}>
+            <Field label={lang === 'tr' ? 'WhatsApp Numarası' : 'WhatsApp number'}>
               <input type="text" value={waNumber} onChange={e => setWaNumber(e.target.value)}
                 placeholder="+90 XXX XXX XX XX"
                 className={selectClass} />
@@ -767,9 +771,9 @@ export default function MessagingTab({ stats }: Props) {
               </p>
             </Field>
 
-            <Field label={lang === 'tr' ? 'Özel Hedef (opsiyonel)' : 'Custom Goal (optional)'}>
+            <Field label={lang === 'tr' ? 'Özel Hedef (opsiyonel)' : 'Custom goal (optional)'}>
               <textarea value={waCustomGoal} onChange={e => setWaCustomGoal(e.target.value)}
-                placeholder={lang === 'tr' ? 'Örn: 500 yeni Filipino seafarer kaydı, CPL < $1' : 'E.g.: 500 new Filipino seafarer registrations, CPL < $1'}
+                placeholder={lang === 'tr' ? 'Örn: 500 yeni Filipino seafarer kaydı, CPL < $1' : 'e.g. 500 new Filipino seafarer sign-ups, CPL < $1'}
                 rows={2} className={`${selectClass} resize-none`} />
             </Field>
           </>
@@ -781,22 +785,22 @@ export default function MessagingTab({ stats }: Props) {
             <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-700 rounded-lg p-3 text-xs text-sky-800 dark:text-sky-300 flex gap-2">
               <span className="text-base shrink-0">📢</span>
               <div>
-                <p className="font-semibold mb-1">{lang === 'tr' ? 'Telegram Kanal Stratejisi' : 'Telegram Channel Strategy'}</p>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'Telegram Kanal Stratejisi' : 'Telegram channel strategy'}</p>
                 <p className="leading-relaxed">
                   {lang === 'tr'
                     ? 'Günlük ilan akışı, sponsorlu postlar ve 0→10K abone büyüme planı. Tamamen ücretsiz broadcast.'
-                    : 'Daily job feed, sponsored posts, and 0→10K subscriber growth plan. Completely free broadcast.'}
+                    : 'Daily job posting feed, sponsored posts and a 0→10K subscriber growth plan. Broadcasting is free.'}
                 </p>
               </div>
             </div>
 
-            <Field label={lang === 'tr' ? 'İçerik Tipi' : 'Content Type'}>
+            <Field label={lang === 'tr' ? 'İçerik Tipi' : 'Content type'}>
               <select value={tgContentType} onChange={e => setTgContentType(e.target.value)} className={selectClass}>
                 {TG_CONTENT_TYPES.map(c => <option key={c.value} value={c.value}>{lang === 'tr' ? c.labelTr : c.labelEn}</option>)}
               </select>
             </Field>
 
-            <Field label={lang === 'tr' ? 'Hedef Kitle (Niche)' : 'Target Audience (Niche)'}>
+            <Field label={lang === 'tr' ? 'Hedef Kitle (Niche)' : 'Target audience (niche)'}>
               <div className="grid grid-cols-2 gap-1.5">
                 {TG_NICHES.map(n => (
                   <button key={n.value} onClick={() => setTgNiche(n.value)}
@@ -809,7 +813,7 @@ export default function MessagingTab({ stats }: Props) {
               </div>
             </Field>
 
-            <Field label={lang === 'tr' ? 'Kanal Dili' : 'Channel Language'}>
+            <Field label={lang === 'tr' ? 'Kanal Dili' : 'Channel language'}>
               <div className="grid grid-cols-2 gap-1.5">
                 {TG_CHANNEL_LANGS.map(l => (
                   <button key={l.value} onClick={() => setTgChannelLang(l.value)}
@@ -822,7 +826,7 @@ export default function MessagingTab({ stats }: Props) {
               </div>
             </Field>
 
-            <Field label={lang === 'tr' ? 'Kanal Adresi (opsiyonel)' : 'Channel Handle (optional)'}>
+            <Field label={lang === 'tr' ? 'Kanal Adresi (opsiyonel)' : 'Channel handle (optional)'}>
               <input type="text" value={tgHandle} onChange={e => setTgHandle(e.target.value)}
                 placeholder="@crewinjob_jobs"
                 className={selectClass} />
@@ -836,28 +840,28 @@ export default function MessagingTab({ stats }: Props) {
             <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-700 rounded-lg p-3 text-xs text-indigo-800 dark:text-indigo-300 flex gap-2">
               <span className="text-base shrink-0">🤖</span>
               <div>
-                <p className="font-semibold mb-1">{lang === 'tr' ? 'Telegram Bot Tasarımı' : 'Telegram Bot Design'}</p>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'Telegram Bot Tasarımı' : 'Telegram bot design'}</p>
                 <p className="leading-relaxed">
                   {lang === 'tr'
                     ? 'Kullanıcı botu açar → rütbe/gemi tipi soruları → kişiselleştirilmiş ilan özeti → crewinjob.com kayıt linki. Tam diyalog scripti + teknik dokümantasyon.'
-                    : 'User opens bot → rank/vessel type questions → personalized job summary → crewinjob.com registration link. Full dialogue script + technical documentation.'}
+                    : 'User opens the bot → rank/vessel type questions → personalized job posting summary → crewinjob.com sign-up link. Full dialogue script + technical documentation.'}
                 </p>
               </div>
             </div>
 
-            <Field label={lang === 'tr' ? 'Bot Tipi' : 'Bot Type'}>
+            <Field label={lang === 'tr' ? 'Bot Tipi' : 'Bot type'}>
               <select value={botType} onChange={e => setBotType(e.target.value)} className={selectClass}>
                 {BOT_TYPES.map(b => <option key={b.value} value={b.value}>{lang === 'tr' ? b.labelTr : b.labelEn}</option>)}
               </select>
             </Field>
 
-            <Field label={lang === 'tr' ? 'Bot Adresi (opsiyonel)' : 'Bot Handle (optional)'}>
+            <Field label={lang === 'tr' ? 'Bot Adresi (opsiyonel)' : 'Bot handle (optional)'}>
               <input type="text" value={botHandle} onChange={e => setBotHandle(e.target.value)}
                 placeholder="@CrewinJobsBot"
                 className={selectClass} />
             </Field>
 
-            <Field label={lang === 'tr' ? 'Ek Özellikler' : 'Additional Features'}>
+            <Field label={lang === 'tr' ? 'Ek Özellikler' : 'Additional features'}>
               <div className="grid grid-cols-2 gap-1.5">
                 {BOT_FEATURES.map(f => (
                   <button key={f.value} onClick={() => toggleFeature(f.value)}
@@ -883,7 +887,7 @@ export default function MessagingTab({ stats }: Props) {
             <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg p-3 text-xs text-emerald-800 dark:text-emerald-300 flex gap-2">
               <span className="text-base shrink-0">📩</span>
               <div>
-                <p className="font-semibold mb-1">{lang === 'tr' ? 'WhatsApp Bildirim Gönder' : 'Send WhatsApp Notification'}</p>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'WhatsApp Bildirim Gönder' : 'Send WhatsApp notification'}</p>
                 <p className="leading-relaxed">
                   {lang === 'tr'
                     ? <>Mevcut kullanıcılara doğrudan WhatsApp mesajı. Önce <code>WHATSAPP_PHONE_NUMBER_ID</code> ve <code>WHATSAPP_ACCESS_TOKEN</code> ayarlayın.</>
@@ -899,11 +903,13 @@ export default function MessagingTab({ stats }: Props) {
 
             {msgConfig && !msgConfig.whatsapp.configured && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-xs text-red-700 dark:text-red-300">
-                ⚠️ <strong>.env.local</strong> {lang === 'tr' ? 'içinde' : ':'} <code>WHATSAPP_PHONE_NUMBER_ID</code> {lang === 'tr' ? 've' : 'and'} <code>WHATSAPP_ACCESS_TOKEN</code> {lang === 'tr' ? 'tanımlanmamış.' : 'not configured.'}
+                {lang === 'tr'
+                  ? <>⚠️ <strong>.env.local</strong> içinde <code>WHATSAPP_PHONE_NUMBER_ID</code> ve <code>WHATSAPP_ACCESS_TOKEN</code> tanımlanmamış.</>
+                  : <>⚠️ <code>WHATSAPP_PHONE_NUMBER_ID</code> and <code>WHATSAPP_ACCESS_TOKEN</code> aren&apos;t set in <strong>.env.local</strong>.</>}
               </div>
             )}
 
-            <Field label={lang === 'tr' ? 'Gönderim Modu' : 'Send Mode'}>
+            <Field label={lang === 'tr' ? 'Gönderim Modu' : 'Send mode'}>
               <div className="grid grid-cols-2 gap-1.5">
                 {([['single', lang === 'tr' ? 'Tekli' : 'Single'], ['broadcast', lang === 'tr' ? 'Toplu' : 'Broadcast']] as const).map(([v, l]) => (
                   <button key={v} onClick={() => setMsgMode(v)}
@@ -917,23 +923,23 @@ export default function MessagingTab({ stats }: Props) {
             </Field>
 
             <Field label={msgMode === 'broadcast'
-              ? (lang === 'tr' ? 'Telefon Numaraları (her satıra bir tane)' : 'Phone Numbers (one per line)')
-              : (lang === 'tr' ? 'Telefon Numarası' : 'Phone Number')}>
+              ? (lang === 'tr' ? 'Telefon Numaraları (her satıra bir tane)' : 'Phone numbers (one per line)')
+              : (lang === 'tr' ? 'Telefon Numarası' : 'Phone number')}>
               <textarea value={msgNumbers} onChange={e => setMsgNumbers(e.target.value)}
-                placeholder={msgMode === 'broadcast' ? '+905XXXXXXXXX\n+905XXXXXXXXX\n...' : '+905XXXXXXXXX'}
+                placeholder={msgMode === 'broadcast' ? '+905XXXXXXXXX\n+905XXXXXXXXX\n…' : '+905XXXXXXXXX'}
                 rows={msgMode === 'broadcast' ? 5 : 2}
                 className={`${selectClass} resize-none font-mono text-xs`} />
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {lang === 'tr' ? 'E.164 format — ülke kodu dahil (+90...)' : 'E.164 format — include country code (+90...)'}
+                {lang === 'tr' ? 'E.164 format — ülke kodu dahil (+90…)' : 'E.164 format — include the country code (+90…)'}
               </p>
             </Field>
 
             <Field label={lang === 'tr' ? 'Mesaj' : 'Message'}>
               <textarea value={msgText} onChange={e => setMsgText(e.target.value)}
-                placeholder={lang === 'tr' ? "Merhaba! crewinjob.com'da yeni ilanlar sizi bekliyor. Hemen bakın: crewinjob.com" : "Hello! New job listings are waiting for you on crewinjob.com. Check now: crewinjob.com"}
+                placeholder={lang === 'tr' ? "Merhaba! crewinjob.com'da yeni ilanlar sizi bekliyor. Hemen bakın: crewinjob.com" : "Hello! New job postings are waiting for you on crewinjob.com. Take a look: crewinjob.com"}
                 rows={4} className={`${selectClass} resize-none`} />
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {msgText.length} {lang === 'tr' ? 'karakter — WhatsApp limiti 4096' : 'characters — WhatsApp limit 4096'}
+                {msgText.length.toLocaleString(locale)} {lang === 'tr' ? 'karakter — WhatsApp limiti 4096' : 'characters — WhatsApp limit 4,096'}
               </p>
             </Field>
           </>
@@ -945,22 +951,24 @@ export default function MessagingTab({ stats }: Props) {
             <div className="bg-cyan-50 dark:bg-cyan-900/20 border border-cyan-200 dark:border-cyan-700 rounded-lg p-3 text-xs text-cyan-800 dark:text-cyan-300 flex gap-2">
               <span className="text-base shrink-0">✈️</span>
               <div>
-                <p className="font-semibold mb-1">{lang === 'tr' ? 'Telegram Gönder' : 'Send Telegram'}</p>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'Telegram Gönder' : 'Send to Telegram'}</p>
                 <p className="leading-relaxed">
                   {lang === 'tr'
                     ? <>{`Kanala, gruba veya tek kullanıcıya mesaj. `}<code>TELEGRAM_BOT_TOKEN</code>{` ve `}<code>TELEGRAM_CHANNEL_ID</code>{` gerekli.`}</>
-                    : <>Message to channel, group, or individual user. <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHANNEL_ID</code> required.</>}
+                    : <>Message a channel, a group or a single user. <code>TELEGRAM_BOT_TOKEN</code> and <code>TELEGRAM_CHANNEL_ID</code> are required.</>}
                 </p>
               </div>
             </div>
 
             {msgConfig && !msgConfig.telegram.configured && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-xs text-red-700 dark:text-red-300">
-                ⚠️ <strong>.env.local</strong> {lang === 'tr' ? 'içinde' : ':'} <code>TELEGRAM_BOT_TOKEN</code> {lang === 'tr' ? 'tanımlanmamış.' : 'not configured.'}
+                {lang === 'tr'
+                  ? <>⚠️ <strong>.env.local</strong> içinde <code>TELEGRAM_BOT_TOKEN</code> tanımlanmamış.</>
+                  : <>⚠️ <code>TELEGRAM_BOT_TOKEN</code> isn&apos;t set in <strong>.env.local</strong>.</>}
               </div>
             )}
 
-            <Field label={lang === 'tr' ? 'Gönderim Modu' : 'Send Mode'}>
+            <Field label={lang === 'tr' ? 'Gönderim Modu' : 'Send mode'}>
               <div className="grid grid-cols-3 gap-1.5">
                 {([
                   ['channel',   lang === 'tr' ? 'Kanal'  : 'Channel'],
@@ -987,7 +995,7 @@ export default function MessagingTab({ stats }: Props) {
                 ? (lang === 'tr' ? "Chat ID'ler (her satıra bir tane)" : 'Chat IDs (one per line)')
                 : (lang === 'tr' ? 'Chat ID veya @handle' : 'Chat ID or @handle')}>
                 <textarea value={msgChatIds} onChange={e => setMsgChatIds(e.target.value)}
-                  placeholder={msgMode === 'broadcast' ? '-1001234567890\n-1009876543210\n...' : '@crewinjob veya -1001234567890'}
+                  placeholder={msgMode === 'broadcast' ? '-1001234567890\n-1009876543210\n…' : (lang === 'tr' ? '@crewinjob veya -1001234567890' : '@crewinjob or -1001234567890')}
                   rows={msgMode === 'broadcast' ? 5 : 2}
                   className={`${selectClass} resize-none font-mono text-xs`} />
               </Field>
@@ -995,7 +1003,7 @@ export default function MessagingTab({ stats }: Props) {
 
             <Field label={lang === 'tr' ? 'Mesaj (düz metin)' : 'Message (plain text)'}>
               <textarea value={msgText} onChange={e => setMsgText(e.target.value)}
-                placeholder={"Yeni ilanlar! crewinjob.com'da arama yapın 👇\nhttps://crewinjob.com"}
+                placeholder={lang === 'tr' ? "Yeni ilanlar! crewinjob.com'da arama yapın 👇\nhttps://crewinjob.com" : 'New job postings! Search on crewinjob.com 👇\nhttps://crewinjob.com'}
                 rows={5} className={`${selectClass} resize-none font-mono text-xs`} />
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
                 {lang === 'tr'
@@ -1012,22 +1020,24 @@ export default function MessagingTab({ stats }: Props) {
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300 flex gap-2">
               <span className="text-base shrink-0">📧</span>
               <div>
-                <p className="font-semibold mb-1">{lang === 'tr' ? 'E-posta Re-aktivasyon Kampanyası' : 'Email Reactivation Campaign'}</p>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'E-posta Re-aktivasyon Kampanyası' : 'Email reactivation campaign'}</p>
                 <p className="leading-relaxed">
                   {lang === 'tr'
                     ? <>Profili yarım bırakan kullanıcılara AI ile içerik üretip SMTP üzerinden gönderir. Önce <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code> ayarlayın.</>
-                    : <>Generates AI content for users who left their profile incomplete and sends via SMTP. First set <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code>.</>}
+                    : <>Generates AI content for users who left their profile incomplete and sends it via SMTP. First set <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code>.</>}
                 </p>
               </div>
             </div>
 
             {msgConfig && !msgConfig.email.configured && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-xs text-red-700 dark:text-red-300">
-                ⚠️ <strong>.env.local</strong> {lang === 'tr' ? 'içinde' : ':'} <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code> {lang === 'tr' ? 'tanımlanmamış.' : 'not configured.'}
+                {lang === 'tr'
+                  ? <>⚠️ <strong>.env.local</strong> içinde <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code>, <code>SMTP_FROM_EMAIL</code> tanımlanmamış.</>
+                  : <>⚠️ <code>SMTP_HOST</code>, <code>SMTP_USER</code>, <code>SMTP_PASSWORD</code> and <code>SMTP_FROM_EMAIL</code> aren&apos;t set in <strong>.env.local</strong>.</>}
               </div>
             )}
 
-            <Field label={lang === 'tr' ? 'Hedef Segment' : 'Target Segment'}>
+            <Field label={lang === 'tr' ? 'Hedef Segment' : 'Target segment'}>
               <div className="flex flex-col gap-1.5">
                 {EMAIL_BUCKETS.map(b => (
                   <button key={b.value}
@@ -1037,14 +1047,14 @@ export default function MessagingTab({ stats }: Props) {
                     }`}>
                     <span>{lang === 'tr' ? b.labelTr : b.labelEn}</span>
                     {stats?.seafarers?.fillRateBuckets && (
-                      <span className="font-bold">{(stats.seafarers.fillRateBuckets[b.value] ?? 0).toLocaleString('tr-TR')}</span>
+                      <span className="font-bold">{(stats.seafarers.fillRateBuckets[b.value] ?? 0).toLocaleString(locale)}</span>
                     )}
                   </button>
                 ))}
               </div>
             </Field>
 
-            <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content Language'}>
+            <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content language'}>
               <div className="grid grid-cols-3 gap-1.5">
                 {EMAIL_LANGUAGES.map(l => (
                   <button key={l.value} onClick={() => setEmailLanguage(l.value)}
@@ -1061,17 +1071,17 @@ export default function MessagingTab({ stats }: Props) {
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
                 {lang === 'tr'
                   ? 'Segment yüklenince uyruğa göre baskın dil otomatik seçilir. Manuel değiştirebilirsiniz.'
-                  : 'After loading the segment, the dominant language is auto-selected from nationality. You can override it.'}
+                  : 'After the segment loads, the dominant language is selected automatically from nationality. You can change it.'}
               </p>
             </Field>
 
             <button onClick={generateEmail} disabled={emailGenLoading}
               className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
               {emailGenLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {emailGenLoading ? (lang === 'tr' ? 'Üretiliyor...' : 'Generating...') : (lang === 'tr' ? '✨ E-posta İçeriği Üret' : '✨ Generate Email Content')}
+              {emailGenLoading ? (lang === 'tr' ? 'Üretiliyor…' : 'Generating…') : (lang === 'tr' ? '✨ E-posta İçeriği Üret' : '✨ Generate email content')}
             </button>
             {emailGenError && (
-              <p className="text-xs text-red-600 dark:text-red-400">{emailGenError}</p>
+              <p className="text-xs text-red-600 dark:text-red-400"><Msg text={emailGenError} /></p>
             )}
 
             <Field label={lang === 'tr' ? 'Konu' : 'Subject'}>
@@ -1080,16 +1090,16 @@ export default function MessagingTab({ stats }: Props) {
                 className={selectClass} />
             </Field>
 
-            <Field label={lang === 'tr' ? `Alıcılar — ${bucketCount.toLocaleString('tr-TR')} kişilik segment` : `Recipients — ${bucketCount.toLocaleString('tr-TR')}-person segment`}>
+            <Field label={lang === 'tr' ? `Alıcılar — ${bucketCount.toLocaleString(locale)} kişilik segment` : `Recipients — segment of ${bucketCount.toLocaleString(locale)}`}>
               <div className="flex items-center gap-2 mb-1.5">
                 <button onClick={loadSegmentRecipients} disabled={segmentLoading}
                   className="text-[11px] px-2.5 py-1.5 rounded-lg font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 flex items-center gap-1.5">
                   {segmentLoading && <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />}
                   {segmentLoading
                     ? (segmentProgress
-                        ? `${segmentProgress.loaded.toLocaleString('tr-TR')}${segmentProgress.total ? ' / ' + segmentProgress.total.toLocaleString('tr-TR') : ''} ${lang === 'tr' ? 'yüklendi' : 'loaded'}`
-                        : (lang === 'tr' ? 'Yükleniyor...' : 'Loading...'))
-                    : (lang === 'tr' ? '📥 Segmentten Yükle' : '📥 Load from Segment')}
+                        ? `${segmentProgress.loaded.toLocaleString(locale)}${segmentProgress.total ? ' / ' + segmentProgress.total.toLocaleString(locale) : ''} ${lang === 'tr' ? 'yüklendi' : 'loaded'}`
+                        : (lang === 'tr' ? 'Yükleniyor…' : 'Loading…'))
+                    : (lang === 'tr' ? '📥 Segmentten Yükle' : '📥 Load from segment')}
                 </button>
                 {recipientDetails.length > 0 && !segmentLoading && (
                   <button onClick={() => { setRecipientDetails([]); setMinStaleDays(0); setSegmentProgress(null); setBatchProgress(null); }}
@@ -1100,7 +1110,7 @@ export default function MessagingTab({ stats }: Props) {
               </div>
               {segmentError && (
                 <p className="text-[10px] text-red-600 dark:text-red-400 mb-1.5 leading-relaxed">
-                  ⚠️ {segmentError}
+                  ⚠️ <Msg text={segmentError} />
                 </p>
               )}
 
@@ -1111,6 +1121,7 @@ export default function MessagingTab({ stats }: Props) {
                       {lang === 'tr' ? 'En az' : 'At least'}
                     </label>
                     <input type="number" min={0} value={minStaleDays}
+                      aria-label={lang === 'tr' ? 'Güncellenmeyen gün sayısı' : 'Days since last update'}
                       onChange={e => setMinStaleDays(Math.max(0, Number(e.target.value) || 0))}
                       className="w-16 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-1 text-xs bg-white dark:bg-slate-700 dark:text-slate-100" />
                     <label className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
@@ -1123,9 +1134,10 @@ export default function MessagingTab({ stats }: Props) {
                       {visibleRecipients.map(r => (
                         <label key={r.email} className="flex items-center gap-2 px-2.5 py-1.5 text-xs border-b border-slate-100 dark:border-slate-700 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer">
                           <input type="checkbox" checked={r.include} onChange={() => toggleRecipient(r.email)}
+                            aria-label={r.fullName || r.email}
                             className="w-3.5 h-3.5 accent-amber-600 shrink-0" />
                           <span className="flex-1 truncate text-slate-700 dark:text-slate-200">{r.fullName || r.email}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">%{Math.round(r.fillRate)}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">{lang === 'tr' ? `%${Math.round(r.fillRate)}` : `${Math.round(r.fillRate)}%`}</span>
                           <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 w-16 text-right">{daysAgo(r.lastActiveAt, lang)}</span>
                         </label>
                       ))}
@@ -1137,16 +1149,17 @@ export default function MessagingTab({ stats }: Props) {
                     </div>
                   </div>
                   <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                    {visibleRecipients.filter(r => r.include).length} / {visibleRecipients.length} {lang === 'tr' ? 'işaretli — gönderim bu listeye gidecek' : 'checked — sending goes to this list'}
+                    {visibleRecipients.filter(r => r.include).length.toLocaleString(locale)} / {visibleRecipients.length.toLocaleString(locale)} {lang === 'tr' ? 'işaretli — gönderim bu listeye gidecek' : 'selected — the campaign goes to this list'}
                   </p>
                 </div>
               ) : (
                 <>
                   <textarea value={emailRecipients} onChange={e => setEmailRecipients(e.target.value)}
-                    placeholder="ali@example.com&#10;veli@example.com&#10;..."
+                    placeholder="ali@example.com&#10;veli@example.com&#10;…"
+                    aria-label={lang === 'tr' ? 'Alıcı e-postaları' : 'Recipient emails'}
                     rows={5} className={`${selectClass} resize-none font-mono text-xs`} />
                   <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                    {emailRecipients.split('\n').map(s => s.trim()).filter(Boolean).length} {lang === 'tr' ? 'alıcı — her satıra bir e-posta' : 'recipients — one email per line'}
+                    {emailRecipients.split('\n').map(s => s.trim()).filter(Boolean).length.toLocaleString(locale)} {lang === 'tr' ? 'alıcı — her satıra bir e-posta' : 'recipients — one email per line'}
                   </p>
                 </>
               )}
@@ -1156,7 +1169,7 @@ export default function MessagingTab({ stats }: Props) {
             {recipientDetails.length > 0 && langDistribution.length > 0 && (
               <div className="flex flex-col gap-1.5">
                 <p className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  🌍 {lang === 'tr' ? 'Dil Dağılımı (nationality)' : 'Language Distribution (nationality)'}
+                  🌍 {lang === 'tr' ? 'Dil Dağılımı (nationality)' : 'Language distribution (nationality)'}
                 </p>
                 <div className="flex flex-col gap-1">
                   {langDistribution.map(({ lang: l, count, pct, info }) => (
@@ -1165,15 +1178,15 @@ export default function MessagingTab({ stats }: Props) {
                       <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                         <div className="h-2 bg-amber-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
-                      <span className="text-slate-500 dark:text-slate-400 w-8 text-right">{pct}%</span>
-                      <span className="text-slate-400 dark:text-slate-500 w-8 text-right">{count}</span>
+                      <span className="text-slate-500 dark:text-slate-400 w-8 text-right">{lang === 'tr' ? `%${pct}` : `${pct}%`}</span>
+                      <span className="text-slate-400 dark:text-slate-500 w-8 text-right">{count.toLocaleString(locale)}</span>
                     </div>
                   ))}
                 </div>
                 <p className="text-[10px] text-slate-400 dark:text-slate-500">
                   {lang === 'tr'
                     ? 'Nationality bilinmiyorsa İngilizce (en) grubuna düşer. "Dil Bazlı Gönder" her gruba ayrı mail üretir.'
-                    : 'Unknown nationality falls into English (en). "Send by Language" generates a separate email per group.'}
+                    : 'Unknown nationalities fall into the English (en) group. "Send by language groups" generates a separate email per group.'}
                 </p>
               </div>
             )}
@@ -1186,29 +1199,29 @@ export default function MessagingTab({ stats }: Props) {
             <div className="bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700 rounded-lg p-3 text-xs text-teal-800 dark:text-teal-300 flex gap-2">
               <span className="text-base shrink-0">💼</span>
               <div>
-                <p className="font-semibold mb-1">{lang === 'tr' ? 'Size Uygun İlanlar Maili' : 'Matching Job Listings Email'}</p>
+                <p className="font-semibold mb-1">{lang === 'tr' ? 'Size Uygun İlanlar Maili' : 'Matching job postings email'}</p>
                 <p className="leading-relaxed">
                   {lang === 'tr'
                     ? 'Güncel iş ilanlarını seçili segmente mail olarak gönderir. Kişisel eşleşme için backend\'de userId desteği gerekir.'
-                    : 'Sends current job listings to the selected segment. Personalized matching requires userId support in the backend.'}
+                    : 'Sends current job postings to the selected segment by email. Personalized matching requires userId support in the backend.'}
                 </p>
               </div>
             </div>
 
             {msgConfig && !msgConfig.email.configured && (
               <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-xs text-red-700 dark:text-red-300">
-                ⚠️ SMTP yapılandırması eksik.
+                ⚠️ {lang === 'tr' ? 'SMTP yapılandırması eksik.' : 'SMTP configuration is missing.'}
               </div>
             )}
 
             {/* 1 — İlanları yükle */}
-            <Field label={lang === 'tr' ? '1. İş İlanlarını Yükle' : '1. Load Job Listings'}>
+            <Field label={lang === 'tr' ? '1. İş İlanlarını Yükle' : '1. Load job postings'}>
               <button onClick={loadJobListings} disabled={jobListLoading}
                 className="w-full text-sm px-3 py-2.5 rounded-lg font-medium bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white flex items-center justify-center gap-2">
                 {jobListLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                {jobListLoading ? (lang === 'tr' ? 'Yükleniyor...' : 'Loading...') : (lang === 'tr' ? '🔄 İlanları Çek' : '🔄 Fetch Listings')}
+                {jobListLoading ? (lang === 'tr' ? 'Yükleniyor…' : 'Loading…') : (lang === 'tr' ? '🔄 İlanları Çek' : '🔄 Fetch job postings')}
               </button>
-              {jobListError && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">{jobListError}</p>}
+              {jobListError && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1"><Msg text={jobListError} /></p>}
               {jobListings.length > 0 && (
                 <div className="border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden mt-1.5">
                   {jobListings.map((j, i) => (
@@ -1228,7 +1241,7 @@ export default function MessagingTab({ stats }: Props) {
             {/* 2 — Dil + önizleme oluştur */}
             {jobListings.length > 0 && (
               <>
-                <Field label={lang === 'tr' ? '2. E-posta Dili' : '2. Email Language'}>
+                <Field label={lang === 'tr' ? '2. E-posta Dili' : '2. Email language'}>
                   <div className="grid grid-cols-3 gap-1.5">
                     {EMAIL_LANGUAGES.map(l => (
                       <button key={l.value} onClick={() => setJobMatchLang(l.value)}
@@ -1247,14 +1260,14 @@ export default function MessagingTab({ stats }: Props) {
                 <button onClick={buildJobMatchEmail} disabled={jobMatchRenderLoading}
                   className="w-full bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
                   {jobMatchRenderLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                  {jobMatchRenderLoading ? (lang === 'tr' ? 'Oluşturuluyor...' : 'Rendering...') : (lang === 'tr' ? '✉️ E-posta Önizlemesi Oluştur' : '✉️ Build Email Preview')}
+                  {jobMatchRenderLoading ? (lang === 'tr' ? 'Oluşturuluyor…' : 'Building…') : (lang === 'tr' ? '✉️ E-posta Önizlemesi Oluştur' : '✉️ Build email preview')}
                 </button>
               </>
             )}
 
             {/* 3 — Alıcıları yükle */}
             {jobMatchHtml && (
-              <Field label={lang === 'tr' ? '3. Hedef Segment' : '3. Target Segment'}>
+              <Field label={lang === 'tr' ? '3. Hedef Segment' : '3. Target segment'}>
                 <div className="flex flex-col gap-1.5 mb-1.5">
                   {JOB_MATCH_BUCKETS.map(b => (
                     <button key={b.value} onClick={() => { setJobMatchBucket(b.value); setJobMatchRecipients([]); setJobMatchSegProgress(null); }}
@@ -1263,7 +1276,7 @@ export default function MessagingTab({ stats }: Props) {
                       }`}>
                       <span>{lang === 'tr' ? b.labelTr : b.labelEn}</span>
                       {stats?.seafarers?.fillRateBuckets && (
-                        <span className="font-bold">{(stats.seafarers.fillRateBuckets[b.value] ?? 0).toLocaleString('tr-TR')}</span>
+                        <span className="font-bold">{(stats.seafarers.fillRateBuckets[b.value] ?? 0).toLocaleString(locale)}</span>
                       )}
                     </button>
                   ))}
@@ -1274,9 +1287,9 @@ export default function MessagingTab({ stats }: Props) {
                     {jobMatchSegLoading && <div className="w-3 h-3 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />}
                     {jobMatchSegLoading
                       ? (jobMatchSegProgress
-                          ? `${jobMatchSegProgress.loaded.toLocaleString('tr-TR')}${jobMatchSegProgress.total ? ' / ' + jobMatchSegProgress.total.toLocaleString('tr-TR') : ''} ${lang === 'tr' ? 'yüklendi' : 'loaded'}`
-                          : (lang === 'tr' ? 'Yükleniyor...' : 'Loading...'))
-                      : (lang === 'tr' ? '📥 Segmentten Yükle' : '📥 Load from Segment')}
+                          ? `${jobMatchSegProgress.loaded.toLocaleString(locale)}${jobMatchSegProgress.total ? ' / ' + jobMatchSegProgress.total.toLocaleString(locale) : ''} ${lang === 'tr' ? 'yüklendi' : 'loaded'}`
+                          : (lang === 'tr' ? 'Yükleniyor…' : 'Loading…'))
+                      : (lang === 'tr' ? '📥 Segmentten Yükle' : '📥 Load from segment')}
                   </button>
                   {jobMatchRecipients.length > 0 && !jobMatchSegLoading && (
                     <button onClick={() => { setJobMatchRecipients([]); setJobMatchSegProgress(null); }}
@@ -1285,10 +1298,10 @@ export default function MessagingTab({ stats }: Props) {
                     </button>
                   )}
                 </div>
-                {jobMatchSegError && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">⚠️ {jobMatchSegError}</p>}
+                {jobMatchSegError && <p className="text-[10px] text-red-600 dark:text-red-400 mt-1">⚠️ <Msg text={jobMatchSegError} /></p>}
                 {jobMatchRecipients.length > 0 && (
                   <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                    {jobMatchRecipients.filter(r => r.include).length.toLocaleString('tr-TR')} {lang === 'tr' ? 'alıcı hazır' : 'recipients ready'}
+                    {jobMatchRecipients.filter(r => r.include).length.toLocaleString(locale)} {lang === 'tr' ? 'alıcı hazır' : 'recipients ready'}
                   </p>
                 )}
               </Field>
@@ -1298,7 +1311,7 @@ export default function MessagingTab({ stats }: Props) {
 
         {/* Output language — only for content generation tabs (email has its own extended selector) */}
         {!['notify_wa', 'notify_tg', 'notify_email', 'notify_job_match'].includes(subTab) && (
-          <Field label={lang === 'tr' ? 'Çıktı Dili' : 'Output Language'}>
+          <Field label={lang === 'tr' ? 'Çıktı Dili' : 'Output language'}>
             <div className="grid grid-cols-2 gap-2">
               {([
                 { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -1336,7 +1349,7 @@ export default function MessagingTab({ stats }: Props) {
             {sendLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             {subTab === 'notify_wa'
               ? (lang === 'tr' ? '📩 WhatsApp Gönder' : '📩 Send WhatsApp')
-              : (lang === 'tr' ? '✈️ Telegram Gönder' : '✈️ Send Telegram')}
+              : (lang === 'tr' ? '✈️ Telegram Gönder' : '✈️ Send to Telegram')}
           </button>
         )}
 
@@ -1351,7 +1364,7 @@ export default function MessagingTab({ stats }: Props) {
                 className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
               >
                 {batchLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                🌍 {lang === 'tr' ? 'Dil Bazlı Toplu Gönder' : 'Send by Language Groups'}
+                🌍 {lang === 'tr' ? 'Dil Bazlı Toplu Gönder' : 'Send by language groups'}
               </button>
             )}
             <button
@@ -1360,7 +1373,7 @@ export default function MessagingTab({ stats }: Props) {
               className="w-full bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
             >
               {emailSendLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {lang === 'tr' ? '📧 Kampanyayı Gönder (tek dil)' : '📧 Send Campaign (single language)'}
+              {lang === 'tr' ? '📧 Kampanyayı Gönder (tek dil)' : '📧 Send campaign (single language)'}
             </button>
           </div>
         )}
@@ -1373,7 +1386,7 @@ export default function MessagingTab({ stats }: Props) {
               <p className="text-xs text-teal-700 dark:text-teal-400 text-center">
                 🎯 {lang === 'tr'
                   ? 'Her seafarer kendi profiline uygun ilanlarla kişisel mail alır'
-                  : 'Each seafarer receives personalized job matches based on their profile'}
+                  : 'Each seafarer gets a personal email with job postings that match their profile'}
               </p>
             )}
             <button
@@ -1383,7 +1396,7 @@ export default function MessagingTab({ stats }: Props) {
               {jobMatchSendLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
               {jobMatchSendLoading
                 ? (lang === 'tr' ? 'Kişiselleştirip gönderiliyor…' : 'Personalizing & sending…')
-                : (lang === 'tr' ? '💼 İş Eşleşme Mailini Gönder' : '💼 Send Job Match Email')}
+                : (lang === 'tr' ? '💼 İş Eşleşme Mailini Gönder' : '💼 Send job match email')}
             </button>
           </div>
         )}
@@ -1395,14 +1408,14 @@ export default function MessagingTab({ stats }: Props) {
         {!['notify_wa', 'notify_tg', 'notify_email', 'notify_job_match'].includes(subTab) && (
           <>
             <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
-              {subTab === 'whatsapp'         && <><span>📲</span> {lang === 'tr' ? 'Click-to-WhatsApp Kampanya Paketi' : 'Click-to-WhatsApp Campaign Package'}</>}
-              {subTab === 'telegram_channel' && <><span>📢</span> {lang === 'tr' ? 'Telegram Kanal İçeriği' : 'Telegram Channel Content'}</>}
-              {subTab === 'telegram_bot'     && <><span>🤖</span> {lang === 'tr' ? 'Telegram Bot Tasarım Dokümanı' : 'Telegram Bot Design Document'}</>}
+              {subTab === 'whatsapp'         && <><span>📲</span> {lang === 'tr' ? 'Click-to-WhatsApp Kampanya Paketi' : 'Click-to-WhatsApp campaign package'}</>}
+              {subTab === 'telegram_channel' && <><span>📢</span> {lang === 'tr' ? 'Telegram Kanal İçeriği' : 'Telegram channel content'}</>}
+              {subTab === 'telegram_bot'     && <><span>🤖</span> {lang === 'tr' ? 'Telegram Bot Tasarım Dokümanı' : 'Telegram bot design document'}</>}
             </h3>
             <OutputPanel
               content={output}
               loading={loading}
-              error={error}
+              error={translateMessage(error, lang)}
               platform={subTab === 'whatsapp' ? 'facebook' : 'instagram'}
               contentType={
                 subTab === 'whatsapp'         ? 'click_to_whatsapp' :
@@ -1418,13 +1431,13 @@ export default function MessagingTab({ stats }: Props) {
         {subTab === 'notify_email' && (
           <div className="flex flex-col gap-4">
             <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2">
-              <span>📧</span> {lang === 'tr' ? 'E-posta Önizleme' : 'Email Preview'}
+              <span>📧</span> {lang === 'tr' ? 'E-posta Önizleme' : 'Email preview'}
             </h3>
 
             {emailGenLoading && (
               <div className="flex items-center gap-3 py-10 text-slate-400 dark:text-slate-500 text-sm justify-center">
                 <div className="w-5 h-5 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                {lang === 'tr' ? 'AI içerik üretiyor...' : 'AI is generating content...'}
+                {lang === 'tr' ? 'AI içerik üretiyor…' : 'AI is generating content…'}
               </div>
             )}
 
@@ -1447,7 +1460,7 @@ export default function MessagingTab({ stats }: Props) {
               <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-300 dark:text-slate-600">
                 <span className="text-5xl">📧</span>
                 <p className="text-xs text-center">
-                  {lang === 'tr' ? 'Sol taraftan segment seçip "E-posta İçeriği Üret" butonuna tıklayın' : 'Select a segment on the left and click "Generate Email Content"'}
+                  {lang === 'tr' ? 'Sol taraftan segment seçip "E-posta İçeriği Üret" butonuna tıklayın' : 'Select a segment on the left and click "Generate email content"'}
                 </p>
               </div>
             )}
@@ -1456,9 +1469,9 @@ export default function MessagingTab({ stats }: Props) {
             {batchProgress && (
               <div className="rounded-xl p-4 border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 flex flex-col gap-2">
                 <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 flex items-center gap-1.5">
-                  🌍 {lang === 'tr' ? 'Dil Bazlı Gönderim' : 'Language Group Send'}
+                  🌍 {lang === 'tr' ? 'Dil Bazlı Gönderim' : 'Sending by language group'}
                   {batchLoading
-                    ? <span className="font-normal text-indigo-500">&nbsp;— {lang === 'tr' ? 'devam ediyor...' : 'in progress...'}</span>
+                    ? <span className="font-normal text-indigo-500">&nbsp;— {lang === 'tr' ? 'devam ediyor…' : 'in progress…'}</span>
                     : <span className="font-normal text-indigo-500">&nbsp;— {lang === 'tr' ? 'tamamlandı' : 'complete'}</span>}
                 </p>
                 <div className="flex flex-col gap-1.5">
@@ -1484,12 +1497,12 @@ export default function MessagingTab({ stats }: Props) {
                         )}
                         {s === 'done' && (
                           <span className="text-green-600 font-medium">
-                            ✓ {state.sent} {lang === 'tr' ? 'gönderildi' : 'sent'}
-                            {(state.failed ?? 0) > 0 && <span className="text-amber-600"> · {state.failed} {lang === 'tr' ? 'hata' : 'failed'}</span>}
+                            ✓ {(state.sent ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'gönderildi' : 'sent'}
+                            {(state.failed ?? 0) > 0 && <span className="text-amber-600"> · {(state.failed ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'hata' : 'failed'}</span>}
                           </span>
                         )}
                         {typeof s === 'object' && 'error' in s && (
-                          <span className="text-red-600 truncate max-w-[140px]" title={s.error}>❌ {s.error}</span>
+                          <span className="text-red-600 truncate max-w-[140px]" title={translateMessage(s.error, lang)}>❌ <Msg text={s.error} /></span>
                         )}
                       </div>
                     );
@@ -1501,9 +1514,9 @@ export default function MessagingTab({ stats }: Props) {
             {emailSendLoading && (
               <div className="flex items-center gap-3 py-4 text-slate-400 dark:text-slate-500 text-sm">
                 <div className="w-5 h-5 border-2 border-amber-700 border-t-transparent rounded-full animate-spin" />
-                {lang === 'tr' ? 'Gönderiliyor...' : 'Sending...'}
+                {lang === 'tr' ? 'Gönderiliyor…' : 'Sending…'}
                 {emailSendProgress && emailSendProgress.total > 0 && (
-                  <span className="text-xs">{emailSendProgress.done}/{emailSendProgress.total}</span>
+                  <span className="text-xs">{emailSendProgress.done.toLocaleString(locale)}/{emailSendProgress.total.toLocaleString(locale)}</span>
                 )}
               </div>
             )}
@@ -1519,7 +1532,7 @@ export default function MessagingTab({ stats }: Props) {
                     <span className="text-lg">❌</span>
                     <div>
                       <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim başarısız' : 'Send failed'}</p>
-                      <p className="text-xs mt-1 opacity-80">{emailSendResult.error}</p>
+                      <p className="text-xs mt-1 opacity-80"><Msg text={emailSendResult.error} /></p>
                     </div>
                   </div>
                 ) : (
@@ -1529,9 +1542,9 @@ export default function MessagingTab({ stats }: Props) {
                       <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim tamamlandı' : 'Send complete'}</p>
                       {emailSendResult.sent !== undefined && (
                         <div className="mt-2 flex gap-4 text-xs">
-                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{emailSendResult.sent}</strong></span>
+                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{emailSendResult.sent.toLocaleString(locale)}</strong></span>
                           {(emailSendResult.failed ?? 0) > 0 && (
-                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{emailSendResult.failed}</strong></span>
+                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{(emailSendResult.failed ?? 0).toLocaleString(locale)}</strong></span>
                           )}
                         </div>
                       )}
@@ -1547,13 +1560,13 @@ export default function MessagingTab({ stats }: Props) {
         {subTab === 'notify_job_match' && (
           <div className="flex flex-col gap-4">
             <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2">
-              <span>💼</span> {lang === 'tr' ? 'İş Eşleşme E-postası Önizleme' : 'Job Match Email Preview'}
+              <span>💼</span> {lang === 'tr' ? 'İş Eşleşme E-postası Önizleme' : 'Job match email preview'}
             </h3>
 
             {(jobMatchRenderLoading) && (
               <div className="flex items-center gap-3 py-10 text-slate-400 dark:text-slate-500 text-sm justify-center">
                 <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-                {lang === 'tr' ? 'E-posta oluşturuluyor...' : 'Building email...'}
+                {lang === 'tr' ? 'E-posta oluşturuluyor…' : 'Building the email…'}
               </div>
             )}
 
@@ -1577,7 +1590,7 @@ export default function MessagingTab({ stats }: Props) {
                 <p className="text-xs text-center max-w-xs">
                   {lang === 'tr'
                     ? '1. İlanları çek → 2. Dili seç → 3. E-posta önizlemesi oluştur'
-                    : '1. Fetch listings → 2. Select language → 3. Build email preview'}
+                    : '1. Fetch job postings → 2. Select a language → 3. Build the email preview'}
                 </p>
               </div>
             )}
@@ -1585,7 +1598,7 @@ export default function MessagingTab({ stats }: Props) {
             {jobMatchSendLoading && (
               <div className="flex items-center gap-3 py-4 text-slate-400 dark:text-slate-500 text-sm">
                 <div className="w-5 h-5 border-2 border-teal-700 border-t-transparent rounded-full animate-spin" />
-                {lang === 'tr' ? 'Gönderiliyor...' : 'Sending...'}
+                {lang === 'tr' ? 'Gönderiliyor…' : 'Sending…'}
               </div>
             )}
 
@@ -1600,7 +1613,7 @@ export default function MessagingTab({ stats }: Props) {
                     <span className="text-lg">❌</span>
                     <div>
                       <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim başarısız' : 'Send failed'}</p>
-                      <p className="text-xs mt-1 opacity-80">{jobMatchSendResult.error}</p>
+                      <p className="text-xs mt-1 opacity-80"><Msg text={jobMatchSendResult.error} /></p>
                     </div>
                   </div>
                 ) : (
@@ -1610,9 +1623,9 @@ export default function MessagingTab({ stats }: Props) {
                       <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim tamamlandı' : 'Send complete'}</p>
                       {jobMatchSendResult.sent !== undefined && (
                         <div className="mt-2 flex gap-4 text-xs">
-                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{jobMatchSendResult.sent}</strong></span>
+                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{jobMatchSendResult.sent.toLocaleString(locale)}</strong></span>
                           {(jobMatchSendResult.failed ?? 0) > 0 && (
-                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{jobMatchSendResult.failed}</strong></span>
+                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{(jobMatchSendResult.failed ?? 0).toLocaleString(locale)}</strong></span>
                           )}
                         </div>
                       )}
@@ -1629,14 +1642,14 @@ export default function MessagingTab({ stats }: Props) {
           <div className="flex flex-col gap-4">
             <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2">
               {subTab === 'notify_wa'
-                ? <><span>📩</span> {lang === 'tr' ? 'WhatsApp Gönderim Durumu' : 'WhatsApp Send Status'}</>
-                : <><span>✈️</span> {lang === 'tr' ? 'Telegram Gönderim Durumu' : 'Telegram Send Status'}</>}
+                ? <><span>📩</span> {lang === 'tr' ? 'WhatsApp Gönderim Durumu' : 'WhatsApp send status'}</>
+                : <><span>✈️</span> {lang === 'tr' ? 'Telegram Gönderim Durumu' : 'Telegram send status'}</>}
             </h3>
 
             {/* Info box */}
             <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-5 text-sm text-slate-600 dark:text-slate-300 flex flex-col gap-3">
               <p className="font-semibold text-slate-700 dark:text-slate-200">
-                {lang === 'tr' ? 'Nasıl çalışır?' : 'How does it work?'}
+                {lang === 'tr' ? 'Nasıl çalışır?' : 'How it works'}
               </p>
               {subTab === 'notify_wa' ? (
                 <ol className="list-decimal list-inside space-y-1.5 text-xs leading-relaxed">
@@ -1651,10 +1664,10 @@ export default function MessagingTab({ stats }: Props) {
                   ) : (
                     <>
                       <li>Add <code>WHATSAPP_PHONE_NUMBER_ID</code> and <code>WHATSAPP_ACCESS_TOKEN</code> to <strong>.env.local</strong></li>
-                      <li>Get Phone Number ID and System User token from Meta Business Manager → WhatsApp → API Setup</li>
+                      <li>Get the Phone Number ID and a System User token from Meta Business Manager → WhatsApp → API Setup</li>
                       <li>Enter recipient numbers and message text on the left</li>
                       <li>Click the <strong>"Send WhatsApp"</strong> button</li>
-                      <li>Result will appear here (sent / failed count)</li>
+                      <li>The result appears here (sent / failed count)</li>
                     </>
                   )}
                 </ol>
@@ -1670,10 +1683,10 @@ export default function MessagingTab({ stats }: Props) {
                     </>
                   ) : (
                     <>
-                      <li>Create bot with @BotFather → get <code>TELEGRAM_BOT_TOKEN</code></li>
-                      <li>Add bot as admin to your channel</li>
+                      <li>Create a bot with @BotFather → get the <code>TELEGRAM_BOT_TOKEN</code></li>
+                      <li>Add the bot to your channel as an admin</li>
                       <li><code>TELEGRAM_CHANNEL_ID</code> = @crewinjob_jobs or -100... numeric ID</li>
-                      <li>Mode: <strong>Channel</strong> = auto from env; <strong>Single</strong> = enter chat_id; <strong>Broadcast</strong> = line-by-line chat_id list</li>
+                      <li>Mode: <strong>Channel</strong> = channel ID from env automatically; <strong>Single</strong> = enter a chat_id; <strong>Broadcast</strong> = chat_id list, one per line</li>
                       <li>Messages are sent as plain text (&lt; &gt; &amp; are escaped); links become clickable automatically</li>
                     </>
                   )}
@@ -1685,7 +1698,7 @@ export default function MessagingTab({ stats }: Props) {
             {sendLoading && (
               <div className="flex items-center gap-3 py-6 text-slate-400 dark:text-slate-500 text-sm">
                 <div className="w-5 h-5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-                {lang === 'tr' ? 'Gönderiliyor...' : 'Sending...'}
+                {lang === 'tr' ? 'Gönderiliyor…' : 'Sending…'}
               </div>
             )}
 
@@ -1700,7 +1713,7 @@ export default function MessagingTab({ stats }: Props) {
                     <span className="text-lg">❌</span>
                     <div>
                       <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim başarısız' : 'Send failed'}</p>
-                      <p className="text-xs mt-1 opacity-80">{sendResult.error}</p>
+                      <p className="text-xs mt-1 opacity-80"><Msg text={sendResult.error} /></p>
                     </div>
                   </div>
                 ) : (
@@ -1710,9 +1723,9 @@ export default function MessagingTab({ stats }: Props) {
                       <p className="font-semibold text-sm">{lang === 'tr' ? 'Gönderim tamamlandı' : 'Send complete'}</p>
                       {sendResult.sent !== undefined && (
                         <div className="mt-2 flex gap-4 text-xs">
-                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{sendResult.sent}</strong></span>
+                          <span>✓ {lang === 'tr' ? 'Gönderilen' : 'Sent'}: <strong>{sendResult.sent.toLocaleString(locale)}</strong></span>
                           {(sendResult.failed ?? 0) > 0 && (
-                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{sendResult.failed}</strong></span>
+                            <span className="text-amber-600 dark:text-amber-400">✗ {lang === 'tr' ? 'Başarısız' : 'Failed'}: <strong>{(sendResult.failed ?? 0).toLocaleString(locale)}</strong></span>
                           )}
                         </div>
                       )}

@@ -106,7 +106,7 @@ function runCli(action: string, input: Record<string, unknown> = {}): Promise<Re
           reject(new Error(tail || execErr.message));
           return;
         }
-        reject(new Error('CLI çıktısı JSON değil: ' + (stdout || '').slice(0, 200)));
+        reject(new Error(`CLI çıktısı JSON değil: ${(stdout || '').slice(0, 200)}`));
       }
     );
   });

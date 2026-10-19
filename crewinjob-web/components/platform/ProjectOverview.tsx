@@ -5,6 +5,8 @@ import { CompassOverview } from './GrowthCompass';
 import type { Locale, ModuleId, WorkspaceContext } from '@/lib/platform/catalog';
 import type { WorkItem, MetricEntry } from '@/lib/platform/operations';
 import { projectRequest } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 export type OperationsSummary = {
   campaigns: number; content: number; tasks: WorkItem[]; metrics: MetricEntry[];
@@ -13,7 +15,7 @@ export type OperationsSummary = {
   plan: string; billingEnabled: boolean; aiConfigured: boolean; publishingEnabled: boolean;
 };
 export default function ProjectOverview({ workspace, lang, onNavigate }: { workspace: WorkspaceContext; lang: Locale; onNavigate: (id: ModuleId) => void }) {
-  const tr = lang === 'tr', locale = tr ? 'tr-TR' : 'en-GB';
+  const tr = lang === 'tr', locale = localeTag(lang);
   const [data, setData] = useState<OperationsSummary | null>(null), [error, setError] = useState(''), [refreshing, setRefreshing] = useState(false);
   const request = useRef<AbortController | null>(null);
   const load = () => {
@@ -41,10 +43,10 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
         <div><p className="overview-intro-date">{new Date().toLocaleDateString(locale, { day:'numeric', month:'long', weekday:'long', timeZone:workspace.project.timezone })}</p><h1>{tr ? 'Çalışma merkezi' : 'Workspace overview'}</h1><p className="studio-subtitle">{tr ? 'Bugünün öncelikleri ve ürününüzün büyüme yolculuğu.' : 'Today’s priorities and your product’s growth journey.'}</p></div>
         <div className="overview-header-actions"><button className="icon-button" disabled={refreshing} title={tr ? 'Yenile' : 'Refresh'} aria-label={tr ? 'Yenile' : 'Refresh'} onClick={load}><RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} /></button>{enabled('campaigns') && canWrite && <button className="studio-primary" title={tr ? 'Yeni kampanya' : 'New campaign'} onClick={() => onNavigate('campaigns')}><Plus size={17} />{tr ? 'Yeni kampanya' : 'New campaign'}</button>}</div>
       </header>
-      {error && <div className="studio-error" role="alert">{error}<button className="icon-button" title={tr ? 'Yeniden dene' : 'Retry'} aria-label={tr ? 'Yeniden dene' : 'Retry'} onClick={load}><RefreshCw size={17} /></button></div>}
+      {error && <div className="studio-error" role="alert"><Msg text={error}/><button className="icon-button" title={tr ? 'Yeniden dene' : 'Retry'} aria-label={tr ? 'Yeniden dene' : 'Retry'} onClick={load}><RefreshCw size={17} /></button></div>}
       {!data && !error && <div className="studio-skeleton" role="status">{tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…'}</div>}
       {data && <>
-        <div className="ryz-focus-bar"><div><h2>{tasks.length ? (tr ? `${tasks.length} iş sıradaki adımını bekliyor.` : `${tasks.length} tasks are ready for the next step.`) : (tr ? 'Bugünün yönünü sen belirle.' : 'Set the direction for today.')}</h2><p>{tasks.length ? tasks[0].title : (tr ? 'Bir taslakla başla veya büyüme hedefini netleştir.' : 'Start with a draft or refine your growth goal.')}</p></div><button className="studio-text-button" disabled={!enabled(tasks.length ? 'calendar' : 'project')} onClick={() => onNavigate(tasks.length ? 'calendar' : 'project')}>{tr ? 'Devam et' : 'Continue'}<ArrowRight size={15} /></button></div>
+        <div className="ryz-focus-bar"><div><h2>{tasks.length ? (tr ? `${tasks.length} iş sıradaki adımını bekliyor.` : (tasks.length === 1 ? '1 task is ready for the next step.' : `${tasks.length} tasks are ready for the next step.`)) : (tr ? 'Bugünün yönünü sen belirle.' : 'Set the direction for today.')}</h2><p>{tasks.length ? tasks[0].title : (tr ? 'Bir taslakla başla veya büyüme hedefini netleştir.' : 'Start with a draft or refine your growth goal.')}</p></div><button className="studio-text-button" disabled={!enabled(tasks.length ? 'calendar' : 'project')} onClick={() => onNavigate(tasks.length ? 'calendar' : 'project')}>{tr ? 'Devam et' : 'Continue'}<ArrowRight size={15} /></button></div>
         <div className="studio-stats">{[
           { label: tr ? 'Kampanya taslağı' : 'Campaign drafts', value:data.campaigns, Icon:Megaphone, tab:'campaigns' },
           { label: tr ? 'İçerik kütüphanesi' : 'Content library', value:data.content, Icon:FolderOpen, tab:'library' },

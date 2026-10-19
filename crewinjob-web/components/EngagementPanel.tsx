@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getHistory, updateMetrics, removePost, addPost, fetchPostMetrics, refreshMetrics, parsePostUrl, type PostHistoryItem } from '@/lib/post-history';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 const PLATFORM_META: Record<string, { icon: string; label: string; color: string }> = {
   twitter:   { icon: '🐦', label: 'Twitter / X', color: 'bg-slate-900 text-white' },
@@ -25,6 +27,7 @@ export default function EngagementPanel({ compact = false }: Props) {
   const [refreshAll,  setRefreshAll]  = useState(false);
   const [trackUrl,    setTrackUrl]    = useState('');
   const [trackError,  setTrackError]  = useState('');
+  const [trackErrorSource, setTrackErrorSource] = useState('');
   const [tracking,    setTracking]    = useState(false);
   const [trackOk,     setTrackOk]     = useState(false);
 
@@ -50,9 +53,9 @@ export default function EngagementPanel({ compact = false }: Props) {
   // Metrik çekme PostHistory ile ortak (lib/post-history)
   const refreshOne = async (item: PostHistoryItem) => {
     setRefreshing(item.id);
-    setTrackError('');
+    setTrackError(''); setTrackErrorSource('');
     const m = await fetchPostMetrics(item);
-    if ('error' in m) setTrackError(`${PLATFORM_META[item.platform]?.label || item.platform}: ${m.error}`);
+    if ('error' in m) { setTrackErrorSource(PLATFORM_META[item.platform]?.label || item.platform); setTrackError(m.error); }
     else await updateMetrics(item.id, m);
     reload();
     setRefreshing(null);
@@ -73,7 +76,7 @@ export default function EngagementPanel({ compact = false }: Props) {
 
   // Manuel URL ile post ekle
   const handleTrack = async () => {
-    setTrackError('');
+    setTrackError(''); setTrackErrorSource('');
     const url = trackUrl.trim();
     if (!url) { setTrackError(lang === 'tr' ? 'URL girin' : 'Enter a URL'); return; }
     const parsed = parsePostUrl(url);
@@ -101,7 +104,7 @@ export default function EngagementPanel({ compact = false }: Props) {
     if (m < 60) return lang === 'tr' ? `${m} dk önce` : `${m}m ago`;
     if (h < 24) return lang === 'tr' ? `${h} sa önce` : `${h}h ago`;
     if (d < 30) return lang === 'tr' ? `${d} gün önce` : `${d}d ago`;
-    return new Date(ts).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US');
+    return new Date(ts).toLocaleDateString(localeTag(lang));
   };
 
   return (
@@ -112,7 +115,7 @@ export default function EngagementPanel({ compact = false }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              📊 {lang === 'tr' ? 'Etkileşim Takibi' : 'Engagement Tracking'}
+              📊 {lang === 'tr' ? 'Etkileşim Takibi' : 'Engagement tracking'}
             </h3>
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
               {items.length} {lang === 'tr' ? 'paylaşım izleniyor' : 'posts tracked'}
@@ -125,8 +128,8 @@ export default function EngagementPanel({ compact = false }: Props) {
               className="text-xs bg-ocean hover:bg-ocean-dark disabled:opacity-50 text-white px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5 transition-colors"
             >
               {refreshAll
-                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yenileniyor...' : 'Refreshing...'}</>
-                : `🔄 ${lang === 'tr' ? 'Tümünü Yenile' : 'Refresh All'}`}
+                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yenileniyor…' : 'Refreshing…'}</>
+                : `🔄 ${lang === 'tr' ? 'Tümünü Yenile' : 'Refresh all'}`}
             </button>
           )}
         </div>
@@ -143,7 +146,7 @@ export default function EngagementPanel({ compact = false }: Props) {
           ].map(s => (
             <div key={s.label} className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-3 flex flex-col items-center gap-0.5 border border-slate-100 dark:border-slate-600">
               <span className="text-base">{s.icon}</span>
-              <span className="text-lg font-bold text-slate-700 dark:text-slate-200">{s.val.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}</span>
+              <span className="text-lg font-bold text-slate-700 dark:text-slate-200">{s.val.toLocaleString(localeTag(lang))}</span>
               <span className="text-[10px] text-slate-400 dark:text-slate-500">{s.label}</span>
             </div>
           ))}
@@ -153,7 +156,7 @@ export default function EngagementPanel({ compact = false }: Props) {
       {/* ── Manuel URL ile post ekle ── */}
       <div className="bg-white dark:bg-slate-700/40 border border-dashed border-slate-200 dark:border-slate-600 rounded-xl p-3 flex flex-col gap-2">
         <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-          🔗 {lang === 'tr' ? 'Post URL\'si ile Takip Et' : 'Track by Post URL'}
+          🔗 {lang === 'tr' ? 'Post URL\'si ile Takip Et' : 'Track by post URL'}
         </p>
         <p className="text-[10px] text-slate-400 dark:text-slate-500">
           {lang === 'tr'
@@ -164,7 +167,7 @@ export default function EngagementPanel({ compact = false }: Props) {
           <input
             type="url"
             value={trackUrl}
-            onChange={e => { setTrackUrl(e.target.value); setTrackError(''); }}
+            onChange={e => { setTrackUrl(e.target.value); setTrackError(''); setTrackErrorSource(''); }}
             onKeyDown={e => { if (e.key === 'Enter') handleTrack(); }}
             placeholder={lang === 'tr' ? 'https://twitter.com/... veya linkedin.com/...' : 'https://twitter.com/... or linkedin.com/...'}
             className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 placeholder-slate-400"
@@ -179,7 +182,7 @@ export default function EngagementPanel({ compact = false }: Props) {
               : trackOk ? '✅' : (lang === 'tr' ? '+ Ekle' : '+ Add')}
           </button>
         </div>
-        {trackError && <p className="text-[10px] text-red-500">{trackError}</p>}
+        {trackError && <p className="text-[10px] text-red-500">{trackErrorSource ? `${trackErrorSource}: ` : ''}<Msg text={trackError} /></p>}
       </div>
 
       {/* ── Post listesi ── */}
@@ -223,6 +226,8 @@ export default function EngagementPanel({ compact = false }: Props) {
                     <button
                       onClick={() => refreshOne(item)}
                       disabled={refreshing === item.id}
+                      title={lang === 'tr' ? 'Metrikleri yenile' : 'Refresh metrics'}
+                      aria-label={lang === 'tr' ? 'Metrikleri yenile' : 'Refresh metrics'}
                       className="text-[11px] bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 hover:border-ocean hover:text-ocean text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded font-medium transition-colors disabled:opacity-50"
                     >
                       {refreshing === item.id
@@ -231,6 +236,8 @@ export default function EngagementPanel({ compact = false }: Props) {
                     </button>
                     <button
                       onClick={() => handleRemove(item.id)}
+                      title={lang === 'tr' ? 'Kaydı kaldır' : 'Remove entry'}
+                      aria-label={lang === 'tr' ? 'Kaydı kaldır' : 'Remove entry'}
                       className="text-[11px] text-slate-400 hover:text-red-500 px-1 transition-colors"
                     >✕</button>
                   </div>
@@ -258,7 +265,7 @@ export default function EngagementPanel({ compact = false }: Props) {
                     <div key={s.label} className="bg-white dark:bg-slate-800 py-2 flex flex-col items-center justify-center">
                       <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wide">{s.icon} {s.label}</span>
                       <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                        {!m ? <span className="text-slate-300 dark:text-slate-600">—</span> : (s.val ?? 0).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}
+                        {!m ? <span className="text-slate-300 dark:text-slate-600">—</span> : (s.val ?? 0).toLocaleString(localeTag(lang))}
                       </span>
                     </div>
                   ))}
@@ -278,8 +285,8 @@ export default function EngagementPanel({ compact = false }: Props) {
                     className="w-full text-[11px] py-1.5 text-ocean hover:bg-ocean/5 bg-slate-50 dark:bg-slate-800 font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1"
                   >
                     {refreshing === item.id
-                      ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yükleniyor...' : 'Loading...'}</>
-                      : (lang === 'tr' ? '🔄 Metrikleri Getir' : '🔄 Fetch Metrics')}
+                      ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yükleniyor…' : 'Loading…'}</>
+                      : (lang === 'tr' ? '🔄 Metrikleri getir' : '🔄 Fetch metrics')}
                   </button>
                 )}
               </div>

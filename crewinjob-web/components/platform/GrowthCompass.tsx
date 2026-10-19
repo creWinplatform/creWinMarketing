@@ -3,8 +3,10 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, ty
 import { ArrowRight, Check, ChevronLeft, Compass, ExternalLink, Flag, HelpCircle, Link2, LockKeyhole, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
 import { COMPASS_CHANNELS, COMPASS_INTENTS, COMPASS_PATHS, CONNECTION_GUIDES, connectionGuide, connectionGuideName, type CompassIntent, type GuideId } from '@/lib/platform/guidance-catalog';
 import type { CompassPreferences, CompassSnapshot } from '@/lib/platform/guidance-types';
+import Msg from '@/components/Msg';
 
 type Draft = Pick<CompassPreferences,'intent'|'experience'|'goalId'|'campaignId'|'appId'|'channels'|'obstacles'>;
 type Context = { data:CompassSnapshot|null; error:string; loading:boolean; refresh:()=>void; open:()=>void; guide:(id:GuideId)=>void };
@@ -48,18 +50,18 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
   const save=async(input:Draft,revision=data?.preferences?.revision||0)=>{
     if(!data||busy)return;setBusy(true);setError('');setNotice('');
     try{const value=await post({...input,action:'save',expectedRevision:revision});setData(value);setDraft(value.preferences!);draftRevision.current=value.preferences!.revision;setView('plan');}
-    catch(reason){setError(reason instanceof Error?reason.message:'Request failed.');}
+    catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}
     finally{setBusy(false);}
   };
   const close=async()=>{
     if(busy)return;
-    if(data?.firstRun){setBusy(true);setError('');try{setData(await post({action:'defer',expectedRevision:0}));setOpened(false);}catch(reason){setError(reason instanceof Error?reason.message:'Request failed.');}finally{setBusy(false);}}
+    if(data?.firstRun){setBusy(true);setError('');try{setData(await post({action:'defer',expectedRevision:0}));setOpened(false);}catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}finally{setBusy(false);}}
     else setOpened(false);
   };
   const handoff=async()=>{
     if(busy)return;setBusy(true);setError('');setNotice('');
     try{const value=await projectRequest<{created:boolean}>('/api/platform/compass',{method:'POST',body:JSON.stringify({action:'handoff',provider:guideId})});setNotice(value.created?(tr?'Kurulum işi Takvim’e eklendi. Kimseye otomatik mesaj gönderilmedi.':'Setup task added to Calendar. No automatic message was sent.'):(tr?'Bu bağlantının açık işi zaten Takvim’de. İkinci bir iş oluşturulmadı.':'An open task already exists in Calendar. No duplicate was created.'));}
-    catch(reason){setError(reason instanceof Error?reason.message:'Request failed.');}finally{setBusy(false);}
+    catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}finally{setBusy(false);}
   };
   const currentGuide=connectionGuide(guideId)!,provider=data?.providers.find(item=>item.id===guideId),next=data?.steps.find(item=>item.id===data.nextStepId);
   const edit=()=>{setDraft(data?.preferences||empty);draftRevision.current=data?.preferences?.revision||0;setView('setup');setNotice('');};
@@ -71,8 +73,8 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
       <header className="compass-header"><span className="compass-symbol"><Compass size={23}/></span><div><p>{data?.projectName||'Ryzevo'}</p><h2 id="compass-title" tabIndex={-1}>{view==='setup'?(tr?'Senin büyüme rotan':'Your growth path'):view==='guide'?connectionGuideName(guideId,lang):(tr?'Büyüme pusulası':'Growth compass')}</h2></div><button type="button" className="icon-button" disabled={busy} aria-label={tr?'Pusulayı kapat':'Close compass'} title={tr?'Pusulayı kapat':'Close compass'} onClick={()=>void close()}><X size={19}/></button></header>
       <div className="compass-scroll">
         <p id="compass-description" className="compass-intro">{view==='setup'?(tr?'Önce tek bir sonuç seçelim. Mevcut hedeflerin ve araçlarınla, kaldığın yerden ilerle.':'Start with one outcome. Continue from your existing goals and tools.'):view==='guide'?currentGuide.purpose[lang]:(tr?'Tamamlanan adımlar proje kayıtlarından doğrulanır. Okumak veya sonraya bırakmak bir işlemi tamamlamaz.':'Completed steps are verified from project records. Reading or deferring does not complete an action.')}</p>
-        {error&&<div role="alert" className="studio-error">{error}<button type="button" className="icon-button" title={tr?'Yenile':'Refresh'} aria-label={tr?'Yenile':'Refresh'} onClick={refresh}><RefreshCw size={16}/></button></div>}
-        {notice&&<p className="compass-notice" role="status">{notice} <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}<ArrowRight size={13}/></a></p>}
+        {error&&<div role="alert" className="studio-error"><Msg text={error}/><button type="button" className="icon-button" title={tr?'Yenile':'Refresh'} aria-label={tr?'Yenile':'Refresh'} onClick={refresh}><RefreshCw size={16}/></button></div>}
+        {notice&&<p className="compass-notice" role="status"><Msg text={notice}/> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}<ArrowRight size={13}/></a></p>}
         {!data&&<p role="status">{loading?(tr?'Rotan hazırlanıyor…':'Preparing your path…'):(tr?'Pusula yüklenemedi. Araçları kullanmaya devam edebilirsin.':'Compass unavailable. You can keep using your tools.')}</p>}
         {data&&view==='setup'&&<form onSubmit={event=>{event.preventDefault();void save(draft,draftRevision.current);}}>
           <fieldset className="compass-choices" disabled={busy}><legend>{tr?'İlk önceliğin ne?':'What is your first priority?'}</legend>{COMPASS_INTENTS.map(intent=><label key={intent} className={draft.intent===intent?'selected':''}><input type="radio" name="compass-intent" value={intent} checked={draft.intent===intent} onChange={()=>selectIntent(intent)}/><span><strong>{COMPASS_PATHS[intent].label[lang]}</strong><small>{COMPASS_PATHS[intent].outcome[lang]}</small></span><ArrowRight size={15}/></label>)}</fieldset>
@@ -91,7 +93,7 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
                 <div className="compass-step-heading"><h3>{step.label[lang]}</h3><span>{labels[step.state][idx]}</span></div>
                 <p>{step.detail[lang]}</p>
                 {step.reason&&<p className="compass-prerequisite"><LockKeyhole size={13}/>{step.reason[lang]}</p>}
-                {step.evidenceAt&&<time dateTime={step.evidenceAt}>{new Date(step.evidenceAt).toLocaleString(tr?'tr-TR':'en-GB')}</time>}
+                {step.evidenceAt&&<time dateTime={step.evidenceAt}>{new Date(step.evidenceAt).toLocaleString(localeTag(lang))}</time>}
                 <div className="compass-step-actions">
                   {step.provider&&<button className="studio-text-button" onClick={()=>guide(step.provider!)}><HelpCircle size={14}/>{tr?'Hesap / izin rehberi':'Account / access guide'}</button>}
                   {step.id==='channels'||step.id==='goal'&&data.goals.length>0?
@@ -105,7 +107,7 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
         </>}
         {data&&view==='guide'&&<>
           <button className="studio-text-button compass-back" onClick={()=>setView(data.preferences?'plan':'setup')}><ChevronLeft size={15}/>{tr?'Rotama dön':'Back to my path'}</button>
-          {provider&&<p className="compass-provider-state"><Link2 size={16}/>{providerLabels[provider.state][idx]}{provider.checkedAt&&<time dateTime={provider.checkedAt}>{new Date(provider.checkedAt).toLocaleString(tr?'tr-TR':'en-GB')}</time>}</p>}
+          {provider&&<p className="compass-provider-state"><Link2 size={16}/>{providerLabels[provider.state][idx]}{provider.checkedAt&&<time dateTime={provider.checkedAt}>{new Date(provider.checkedAt).toLocaleString(localeTag(lang))}</time>}</p>}
           <div className="compass-guide-columns"><section><h3>{tr?'Başlamadan önce':'Before you start'}</h3><ul>{currentGuide.needs.map((item,index)=><li key={index}>{item[lang]}</li>)}</ul></section><section><h3>{tr?'İzlenecek sıra':'Next steps'}</h3><ol>{currentGuide.steps.map((item,index)=><li key={index}>{item[lang]}</li>)}</ol></section></div>
           <div className="compass-troubleshooting">{currentGuide.troubleshooting.map((item,index)=><details key={index}><summary>{item.problem[lang]}</summary><p>{item.solution[lang]}</p></details>)}</div>
           <div className="compass-form-row"><label>{tr?'Nerede takıldın?':'What is blocking you?'}<select aria-label={tr?'Nerede takıldın?':'What is blocking you?'} disabled={busy||!data.preferences} value={data.preferences?.obstacles[guideId]||''} onChange={event=>{const obstacles={...data.preferences!.obstacles};if(event.target.value)obstacles[guideId]=event.target.value as 'unknown';else delete obstacles[guideId];void save({...data.preferences!,obstacles}).then(()=>{setGuideId(guideId);setView('guide');});}}><option value="">{tr?'Engel seçilmedi':'No blocker selected'}</option><option value="unknown">{tr?'Nereden başlayacağımı bilmiyorum':'I do not know where to start'}</option><option value="no_account">{tr?'Henüz hesabım / sayfam yok':'I do not have an account / page'}</option><option value="need_access">{tr?'Hesap var, yetkim yok':'The account exists; I need access'}</option><option value="later">{tr?'Sonraya bırakacağım':'I will do this later'}</option></select></label><div className="compass-handoff"><button className="studio-secondary" disabled={busy||!data.canWrite} onClick={()=>void handoff()}><Flag size={15}/>{tr?'Kurulum işi oluştur':'Create setup task'}</button><small>{tr?'Mevcut Takvim’de izlenir; otomatik atama veya mesaj yok.':'Tracked in the existing Calendar; no automatic assignment or message.'}</small></div></div>

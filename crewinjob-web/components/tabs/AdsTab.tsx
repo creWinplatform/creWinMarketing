@@ -3,33 +3,35 @@ import { useState } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
 
 type SubTab = 'facebook' | 'google' | 'instagram' | 'linkedin';
 
 const FB_OBJECTIVES = [
-  { value: 'lead_generation', labelTr: '🎯 Lead Generation (Form Doldurtma)',  labelEn: '🎯 Lead Generation (Form Fill)' },
-  { value: 'traffic',         labelTr: '🌐 Traffic (Site Trafiği)',             labelEn: '🌐 Traffic (Website)' },
-  { value: 'conversions',     labelTr: '💰 Conversions (Satış/Kayıt)',          labelEn: '💰 Conversions (Sales/Signup)' },
+  { value: 'lead_generation', labelTr: '🎯 Lead Generation (Form Doldurtma)',  labelEn: '🎯 Lead generation (form fill)' },
+  { value: 'traffic',         labelTr: '🌐 Traffic (Site Trafiği)',             labelEn: '🌐 Traffic (website)' },
+  { value: 'conversions',     labelTr: '💰 Conversions (Satış/Kayıt)',          labelEn: '💰 Conversions (sales/sign-ups)' },
   { value: 'engagement',      labelTr: '❤️ Engagement (Etkileşim)',             labelEn: '❤️ Engagement' },
-  { value: 'awareness',       labelTr: '👁️ Awareness (Marka Bilinirliği)',      labelEn: '👁️ Awareness (Brand)' },
+  { value: 'awareness',       labelTr: '👁️ Awareness (Marka Bilinirliği)',      labelEn: '👁️ Awareness (brand)' },
 ];
 
 const FB_AUDIENCES = [
-  { value: 'seafarer_global', labelTr: '🌍 Global Seafarers (Filipinler, Hindistan, vb.)', labelEn: '🌍 Global Seafarers (Philippines, India, etc.)' },
-  { value: 'seafarer_tr',     labelTr: '🇹🇷 Türk Gemi Adamları',                           labelEn: '🇹🇷 Turkish Seafarers' },
-  { value: 'shipowner',       labelTr: '🚢 Armatörler & Crew Manager (B2B)',               labelEn: '🚢 Shipowners & Crew Manager (B2B)' },
-  { value: 'retention',       labelTr: '🔄 Retention (Yarım Profil Kullanıcıları)',        labelEn: '🔄 Retention (Incomplete Profiles)' },
+  { value: 'seafarer_global', labelTr: '🌍 Global gemi adamları (Filipinler, Hindistan vb.)', labelEn: '🌍 Global seafarers (Philippines, India, etc.)' },
+  { value: 'seafarer_tr',     labelTr: '🇹🇷 Türk gemi adamları',                           labelEn: '🇹🇷 Turkish seafarers' },
+  { value: 'shipowner',       labelTr: '🚢 Armatörler ve crew manager\'lar (B2B)',         labelEn: '🚢 Shipowners & crew managers (B2B)' },
+  { value: 'retention',       labelTr: '🔄 Retention (yarım profilli kullanıcılar)',       labelEn: '🔄 Retention (incomplete profiles)' },
 ];
 
 const GOOGLE_TYPES = [
-  { value: 'search',          labelTr: '🔍 Search (Arama Reklamı)',    labelEn: '🔍 Search Ad' },
-  { value: 'display',         labelTr: '🖼️ Display (Banner)',          labelEn: '🖼️ Display (Banner)' },
-  { value: 'youtube',         labelTr: '▶️ YouTube Video',             labelEn: '▶️ YouTube Video' },
-  { value: 'performance_max', labelTr: '⚡ Performance Max (Otomatik)', labelEn: '⚡ Performance Max (Auto)' },
+  { value: 'search',          labelTr: '🔍 Search (Arama reklamı)',    labelEn: '🔍 Search ad' },
+  { value: 'display',         labelTr: '🖼️ Display (Banner)',          labelEn: '🖼️ Display (banner)' },
+  { value: 'youtube',         labelTr: '▶️ YouTube video',             labelEn: '▶️ YouTube video' },
+  { value: 'performance_max', labelTr: '⚡ Performance Max (Otomatik)', labelEn: '⚡ Performance Max (automated)' },
 ];
 
 const GOOGLE_COUNTRIES = [
-  { value: 'all',         labelTr: '🌍 Global (Top Seafarer Ülkeleri)', labelEn: '🌍 Global (Top Seafarer Countries)' },
+  { value: 'all',         labelTr: '🌍 Global (başlıca gemi adamı ülkeleri)', labelEn: '🌍 Global (top seafarer countries)' },
   { value: 'Turkey',      labelTr: '🇹🇷 Türkiye',                       labelEn: '🇹🇷 Turkey' },
   { value: 'Philippines', labelTr: '🇵🇭 Filipinler',                    labelEn: '🇵🇭 Philippines' },
   { value: 'India',       labelTr: '🇮🇳 Hindistan',                     labelEn: '🇮🇳 India' },
@@ -38,53 +40,53 @@ const GOOGLE_COUNTRIES = [
 ];
 
 const IG_OBJECTIVES = [
-  { value: 'lead_generation', labelTr: '🎯 Lead Generation',                  labelEn: '🎯 Lead Generation' },
-  { value: 'traffic',         labelTr: '🌐 Traffic (Profil / Site)',           labelEn: '🌐 Traffic (Profile / Site)' },
-  { value: 'conversions',     labelTr: '💰 Conversions (Kayıt)',               labelEn: '💰 Conversions (Signup)' },
-  { value: 'engagement',      labelTr: '❤️ Engagement (Beğeni, Yorum)',        labelEn: '❤️ Engagement (Likes, Comments)' },
-  { value: 'awareness',       labelTr: '👁️ Awareness (Erişim)',               labelEn: '👁️ Awareness (Reach)' },
-  { value: 'video_views',     labelTr: '▶️ Video Views (Reels İzlenme)',       labelEn: '▶️ Video Views (Reels)' },
+  { value: 'lead_generation', labelTr: '🎯 Lead Generation (Potansiyel kayıt)', labelEn: '🎯 Lead generation' },
+  { value: 'traffic',         labelTr: '🌐 Traffic (Profil / Site)',           labelEn: '🌐 Traffic (profile / site)' },
+  { value: 'conversions',     labelTr: '💰 Conversions (Kayıt)',               labelEn: '💰 Conversions (sign-ups)' },
+  { value: 'engagement',      labelTr: '❤️ Engagement (Beğeni, Yorum)',        labelEn: '❤️ Engagement (likes, comments)' },
+  { value: 'awareness',       labelTr: '👁️ Awareness (Erişim)',               labelEn: '👁️ Awareness (reach)' },
+  { value: 'video_views',     labelTr: '▶️ Video Views (Reels İzlenme)',       labelEn: '▶️ Video views (Reels)' },
 ];
 
 const IG_FORMATS = [
   { value: 'reels',    labelTr: '🎬 Reels (15–30 sn video)',       labelEn: '🎬 Reels (15–30 sec video)' },
   { value: 'stories',  labelTr: '📱 Stories (9:16 tam ekran)',      labelEn: '📱 Stories (9:16 full screen)' },
-  { value: 'feed',     labelTr: '🖼️ Feed (Kare / Dikey görsel)',    labelEn: '🖼️ Feed (Square / Vertical)' },
+  { value: 'feed',     labelTr: '🖼️ Feed (Kare / Dikey görsel)',    labelEn: '🖼️ Feed (square / vertical)' },
   { value: 'carousel', labelTr: '🃏 Carousel (4–10 kart)',          labelEn: '🃏 Carousel (4–10 cards)' },
 ];
 
 const IG_AUDIENCES = [
-  { value: 'seafarer_global', labelTr: '🌍 Global Seafarers',              labelEn: '🌍 Global Seafarers' },
-  { value: 'seafarer_tr',     labelTr: '🇹🇷 Türk Gemi Adamları',            labelEn: '🇹🇷 Turkish Seafarers' },
-  { value: 'shipowner',       labelTr: '🚢 Armatörler & Crew Manager',      labelEn: '🚢 Shipowners & Crew Manager' },
-  { value: 'retention',       labelTr: '🔄 Retention (Yarım Profil)',       labelEn: '🔄 Retention (Incomplete Profile)' },
+  { value: 'seafarer_global', labelTr: '🌍 Global gemi adamları',          labelEn: '🌍 Global seafarers' },
+  { value: 'seafarer_tr',     labelTr: '🇹🇷 Türk gemi adamları',            labelEn: '🇹🇷 Turkish seafarers' },
+  { value: 'shipowner',       labelTr: '🚢 Armatörler ve crew manager\'lar', labelEn: '🚢 Shipowners & crew managers' },
+  { value: 'retention',       labelTr: '🔄 Retention (yarım profil)',       labelEn: '🔄 Retention (incomplete profile)' },
 ];
 
 const LI_OBJECTIVES = [
-  { value: 'lead_gen',            labelTr: '📋 Lead Gen Form (InMail/Feed)',   labelEn: '📋 Lead Gen Form (InMail/Feed)' },
-  { value: 'website_visits',      labelTr: '🌐 Website Visits',               labelEn: '🌐 Website Visits' },
-  { value: 'brand_awareness',     labelTr: '👁️ Brand Awareness',              labelEn: '👁️ Brand Awareness' },
-  { value: 'engagement',          labelTr: '❤️ Engagement',                   labelEn: '❤️ Engagement' },
-  { value: 'website_conversions', labelTr: '💰 Website Conversions',          labelEn: '💰 Website Conversions' },
-  { value: 'job_applicants',      labelTr: '👔 Job Applicants',               labelEn: '👔 Job Applicants' },
+  { value: 'lead_gen',            labelTr: '📋 Lead Gen Form (InMail/Feed)',                  labelEn: '📋 Lead gen form (InMail/feed)' },
+  { value: 'website_visits',      labelTr: '🌐 Website Visits (Site ziyaretleri)',           labelEn: '🌐 Website visits' },
+  { value: 'brand_awareness',     labelTr: '👁️ Brand Awareness (Marka bilinirliği)',         labelEn: '👁️ Brand awareness' },
+  { value: 'engagement',          labelTr: '❤️ Engagement (Etkileşim)',                      labelEn: '❤️ Engagement' },
+  { value: 'website_conversions', labelTr: '💰 Website Conversions (Site dönüşümleri)',      labelEn: '💰 Website conversions' },
+  { value: 'job_applicants',      labelTr: '👔 Job Applicants (İlan başvuruları)',           labelEn: '👔 Job applicants' },
 ];
 
 const LI_AD_FORMATS = [
-  { value: 'single_image',  labelTr: '🖼️ Single Image Ad',        labelEn: '🖼️ Single Image Ad' },
-  { value: 'carousel',      labelTr: '🃏 Carousel Ad',             labelEn: '🃏 Carousel Ad' },
-  { value: 'video',         labelTr: '▶️ Video Ad',                labelEn: '▶️ Video Ad' },
-  { value: 'message',       labelTr: '💬 Message Ad (InMail)',     labelEn: '💬 Message Ad (InMail)' },
-  { value: 'conversation',  labelTr: '🔀 Conversation Ad',         labelEn: '🔀 Conversation Ad' },
-  { value: 'document',      labelTr: '📄 Document Ad (PDF/PPT)',   labelEn: '📄 Document Ad (PDF/PPT)' },
-  { value: 'spotlight',     labelTr: '✨ Spotlight Ad (Dynamic)',  labelEn: '✨ Spotlight Ad (Dynamic)' },
-  { value: 'text',          labelTr: '📝 Text Ad',                 labelEn: '📝 Text Ad' },
+  { value: 'single_image',  labelTr: '🖼️ Single Image Ad (Tek görsel)',         labelEn: '🖼️ Single image ad' },
+  { value: 'carousel',      labelTr: '🃏 Carousel Ad (Kaydırmalı)',             labelEn: '🃏 Carousel ad' },
+  { value: 'video',         labelTr: '▶️ Video Ad (Video reklam)',              labelEn: '▶️ Video ad' },
+  { value: 'message',       labelTr: '💬 Message Ad (InMail mesajı)',           labelEn: '💬 Message ad (InMail)' },
+  { value: 'conversation',  labelTr: '🔀 Conversation Ad (Sohbet reklamı)',     labelEn: '🔀 Conversation ad' },
+  { value: 'document',      labelTr: '📄 Document Ad (PDF/PPT belge)',          labelEn: '📄 Document ad (PDF/PPT)' },
+  { value: 'spotlight',     labelTr: '✨ Spotlight Ad (Dinamik)',               labelEn: '✨ Spotlight ad (dynamic)' },
+  { value: 'text',          labelTr: '📝 Text Ad (Metin reklamı)',              labelEn: '📝 Text ad' },
 ];
 
 const LI_TARGETING = [
-  { value: 'shipowner',       labelTr: '🚢 Armatörler & Crew Managers (B2B)',   labelEn: '🚢 Shipowners & Crew Managers (B2B)' },
-  { value: 'seafarer_senior', labelTr: '⚓ Kıdemli Deniz Subayları',            labelEn: '⚓ Senior Naval Officers' },
-  { value: 'seafarer_cadet',  labelTr: '🎓 Genç Denizci & Cadetler',            labelEn: '🎓 Junior Seafarers & Cadets' },
-  { value: 'hr_maritime',     labelTr: '🤝 Denizcilik İK & Manning Ajansları',  labelEn: '🤝 Maritime HR & Manning Agencies' },
+  { value: 'shipowner',       labelTr: '🚢 Armatörler ve crew manager\'lar (B2B)', labelEn: '🚢 Shipowners & crew managers (B2B)' },
+  { value: 'seafarer_senior', labelTr: '⚓ Kıdemli gemi zabitleri',             labelEn: '⚓ Senior ship officers' },
+  { value: 'seafarer_cadet',  labelTr: '🎓 Genç denizciler ve stajyerler',      labelEn: '🎓 Junior seafarers & cadets' },
+  { value: 'hr_maritime',     labelTr: '🤝 Denizcilik İK ve manning ajansları', labelEn: '🤝 Maritime HR & manning agencies' },
 ];
 
 const PLATFORM_TABS: { id: SubTab; label: string; color: string }[] = [
@@ -152,28 +154,28 @@ export default function AdsTab() {
       if (data.error) throw new Error(data.error);
       setOutput(data.content);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t('Hata oluştu', 'An error occurred'));
+      setError(e instanceof Error ? e.message : t('Bir hata oluştu.', 'Something went wrong.'));
     } finally {
       setLoading(false);
     }
   };
 
   const generateLabel = () => {
-    if (loading) return t('Kampanya planı hazırlanıyor...', 'Preparing campaign plan...');
+    if (loading) return t('Kampanya planı hazırlanıyor…', 'Preparing the campaign plan…');
     const labels: Record<SubTab, string> = {
-      facebook:  `📘 ${t('Facebook Kampanyası Üret', 'Generate Facebook Campaign')}`,
-      google:    `🔍 ${t('Google Kampanyası Üret',   'Generate Google Campaign')}`,
-      instagram: `📸 ${t('Instagram Kampanyası Üret','Generate Instagram Campaign')}`,
-      linkedin:  `💼 ${t('LinkedIn Kampanyası Üret', 'Generate LinkedIn Campaign')}`,
+      facebook:  `📘 ${t('Facebook kampanyası üret', 'Generate Facebook campaign')}`,
+      google:    `🔍 ${t('Google kampanyası üret',   'Generate Google campaign')}`,
+      instagram: `📸 ${t('Instagram kampanyası üret','Generate Instagram campaign')}`,
+      linkedin:  `💼 ${t('LinkedIn kampanyası üret', 'Generate LinkedIn campaign')}`,
     };
     return labels[subTab];
   };
 
   const campaignPlanLabel: Record<SubTab, string> = {
-    facebook:  t('Facebook Kampanya Planı',  'Facebook Campaign Plan'),
-    google:    t('Google Kampanya Planı',    'Google Campaign Plan'),
-    instagram: t('Instagram Kampanya Planı', 'Instagram Campaign Plan'),
-    linkedin:  t('LinkedIn Kampanya Planı',  'LinkedIn Campaign Plan'),
+    facebook:  t('Facebook kampanya planı',  'Facebook campaign plan'),
+    google:    t('Google kampanya planı',    'Google campaign plan'),
+    instagram: t('Instagram kampanya planı', 'Instagram campaign plan'),
+    linkedin:  t('LinkedIn kampanya planı',  'LinkedIn campaign plan'),
   };
 
   return (
@@ -182,12 +184,12 @@ export default function AdsTab() {
 
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1 flex items-center gap-2">
-            <span>📣</span> {t('Reklam Kampanyası', 'Ad Campaign')}
+            <span>📣</span> {t('Reklam kampanyası', 'Ad campaign')}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
             {t(
-              'Facebook, Google, Instagram & LinkedIn kampanya planı + reklam metinleri otomatik üretir.',
-              'Automatically generates Facebook, Google, Instagram & LinkedIn campaign plans + ad copy.',
+              'Facebook, Google, Instagram ve LinkedIn için kampanya planı ve reklam metni taslakları hazırlar.',
+              'Drafts Facebook, Google, Instagram and LinkedIn campaign plans and ad copy for your review.',
             )}
           </p>
         </div>
@@ -211,20 +213,20 @@ export default function AdsTab() {
         {/* ── Facebook form ── */}
         {subTab === 'facebook' && (
           <>
-            <Field label={t('Kampanya Amacı', 'Campaign Objective')}>
+            <Field label={t('Kampanya amacı', 'Campaign objective')}>
               <select value={fbObjective} onChange={e => setFbObjective(e.target.value)} className={selectClass}>
                 {FB_OBJECTIVES.map(o => <option key={o.value} value={o.value}>{lang === 'tr' ? o.labelTr : o.labelEn}</option>)}
               </select>
             </Field>
-            <Field label={t('Hedef Kitle', 'Target Audience')}>
+            <Field label={t('Hedef kitle', 'Target audience')}>
               <select value={fbAudience} onChange={e => setFbAudience(e.target.value)} className={selectClass}>
                 {FB_AUDIENCES.map(a => <option key={a.value} value={a.value}>{lang === 'tr' ? a.labelTr : a.labelEn}</option>)}
               </select>
             </Field>
             <BudgetField budget={fbBudget} onChange={setFbBudget} lang={lang} />
-            <Field label={t('Özel Hedef (opsiyonel)', 'Custom Goal (optional)')}>
+            <Field label={t('Özel hedef (opsiyonel)', 'Custom goal (optional)')}>
               <textarea value={fbCustomGoal} onChange={e => setFbCustomGoal(e.target.value)}
-                placeholder={t('Örn: 2 ay içinde 1000 yeni gemi adamı kaydı, CPL <$2', 'e.g. 1000 new seafarer signups in 2 months, CPL <$2')}
+                placeholder={t('Örn: 2 ay içinde 1000 yeni gemi adamı kaydı, CPL <$2', 'e.g. 1,000 new seafarer sign-ups in 2 months, CPL <$2')}
                 rows={2} className={`${selectClass} resize-none`} />
             </Field>
           </>
@@ -233,22 +235,22 @@ export default function AdsTab() {
         {/* ── Google form ── */}
         {subTab === 'google' && (
           <>
-            <Field label={t('Kampanya Tipi', 'Campaign Type')}>
+            <Field label={t('Kampanya tipi', 'Campaign type')}>
               <select value={gType} onChange={e => setGType(e.target.value)} className={selectClass}>
                 {GOOGLE_TYPES.map(gt => <option key={gt.value} value={gt.value}>{lang === 'tr' ? gt.labelTr : gt.labelEn}</option>)}
               </select>
             </Field>
-            <Field label={t('Hedef Ülke', 'Target Country')}>
+            <Field label={t('Hedef ülke', 'Target country')}>
               <select value={gCountry} onChange={e => setGCountry(e.target.value)} className={selectClass}>
                 {GOOGLE_COUNTRIES.map(c => <option key={c.value} value={c.value}>{lang === 'tr' ? c.labelTr : c.labelEn}</option>)}
               </select>
             </Field>
-            <Field label={t('Tohum Keyword\'ler (opsiyonel)', 'Seed Keywords (optional)')}>
+            <Field label={t('Tohum anahtar kelimeler (opsiyonel)', 'Seed keywords (optional)')}>
               <input type="text" value={gKeywords} onChange={e => setGKeywords(e.target.value)}
                 placeholder={t('Örn: chief officer jobs, bulk carrier', 'e.g. chief officer jobs, bulk carrier')}
                 className={selectClass} />
               <p className="text-[10px] text-slate-400 dark:text-slate-500">
-                {t('Boş bırakırsanız maritime sektörü için akıllı öneri yapılır.', 'Leave empty for smart maritime keyword suggestions.')}
+                {t('Boş bırakırsanız denizcilik sektörü için anahtar kelime önerilir.', 'Leave empty to get maritime keyword suggestions.')}
               </p>
             </Field>
             <BudgetField budget={gBudget} onChange={setGBudget} lang={lang} />
@@ -258,12 +260,12 @@ export default function AdsTab() {
         {/* ── Instagram form ── */}
         {subTab === 'instagram' && (
           <>
-            <Field label={t('Kampanya Amacı', 'Campaign Objective')}>
+            <Field label={t('Kampanya amacı', 'Campaign objective')}>
               <select value={igObjective} onChange={e => setIgObjective(e.target.value)} className={selectClass}>
                 {IG_OBJECTIVES.map(o => <option key={o.value} value={o.value}>{lang === 'tr' ? o.labelTr : o.labelEn}</option>)}
               </select>
             </Field>
-            <Field label={t('Reklam Formatı', 'Ad Format')}>
+            <Field label={t('Reklam formatı', 'Ad format')}>
               <div className="grid grid-cols-2 gap-1.5">
                 {IG_FORMATS.map(f => (
                   <button
@@ -280,13 +282,13 @@ export default function AdsTab() {
                 ))}
               </div>
             </Field>
-            <Field label={t('Hedef Kitle', 'Target Audience')}>
+            <Field label={t('Hedef kitle', 'Target audience')}>
               <select value={igAudience} onChange={e => setIgAudience(e.target.value)} className={selectClass}>
                 {IG_AUDIENCES.map(a => <option key={a.value} value={a.value}>{lang === 'tr' ? a.labelTr : a.labelEn}</option>)}
               </select>
             </Field>
             <BudgetField budget={igBudget} onChange={setIgBudget} lang={lang} />
-            <Field label={t('Özel Hedef (opsiyonel)', 'Custom Goal (optional)')}>
+            <Field label={t('Özel hedef (opsiyonel)', 'Custom goal (optional)')}>
               <textarea value={igCustomGoal} onChange={e => setIgCustomGoal(e.target.value)}
                 placeholder={t('Örn: 10K Reels görüntüleme, CPV < $0.02', 'e.g. 10K Reels views, CPV < $0.02')}
                 rows={2} className={`${selectClass} resize-none`} />
@@ -297,17 +299,17 @@ export default function AdsTab() {
         {/* ── LinkedIn form ── */}
         {subTab === 'linkedin' && (
           <>
-            <Field label={t('Kampanya Objective', 'Campaign Objective')}>
+            <Field label={t('Kampanya amacı', 'Campaign objective')}>
               <select value={liObjective} onChange={e => setLiObjective(e.target.value)} className={selectClass}>
                 {LI_OBJECTIVES.map(o => <option key={o.value} value={o.value}>{lang === 'tr' ? o.labelTr : o.labelEn}</option>)}
               </select>
             </Field>
-            <Field label="Ad Format">
+            <Field label={t('Reklam formatı', 'Ad format')}>
               <select value={liAdFormat} onChange={e => setLiAdFormat(e.target.value)} className={selectClass}>
                 {LI_AD_FORMATS.map(f => <option key={f.value} value={f.value}>{lang === 'tr' ? f.labelTr : f.labelEn}</option>)}
               </select>
             </Field>
-            <Field label={t('Hedef Profil', 'Target Profile')}>
+            <Field label={t('Hedef profil', 'Target profile')}>
               <div className="flex flex-col gap-1.5">
                 {LI_TARGETING.map(lt => (
                   <button
@@ -325,7 +327,7 @@ export default function AdsTab() {
               </div>
             </Field>
             <BudgetField budget={liBudget} onChange={setLiBudget} lang={lang} />
-            <Field label={t('Özel Hedef (opsiyonel)', 'Custom Goal (optional)')}>
+            <Field label={t('Özel hedef (opsiyonel)', 'Custom goal (optional)')}>
               <textarea value={liCustomGoal} onChange={e => setLiCustomGoal(e.target.value)}
                 placeholder={t('Örn: 50 qualified B2B lead, CPL <$30', 'e.g. 50 qualified B2B leads, CPL <$30')}
                 rows={2} className={`${selectClass} resize-none`} />
@@ -334,7 +336,7 @@ export default function AdsTab() {
         )}
 
         {/* Content language */}
-        <Field label={t('İçerik Dili', 'Content Language')}>
+        <Field label={t('İçerik dili', 'Content language')}>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -382,7 +384,7 @@ export default function AdsTab() {
         <OutputPanel
           content={output}
           loading={loading}
-          error={error}
+          error={error ? translateMessage(error, lang) : ''}
           platform={subTab}
           contentType={`${subTab}_ads`}
           autoSaveHistory={{ prompt: `${t('Reklam Kampanyası', 'Ad Campaign')} · ${subTab}`, language }}
@@ -394,14 +396,14 @@ export default function AdsTab() {
 
 function BudgetField({ budget, onChange, lang }: { budget: number; onChange: (v: number) => void; lang: 'tr' | 'en' }) {
   return (
-    <Field label={lang === 'tr' ? 'Aylık Bütçe (USD)' : 'Monthly Budget (USD)'}>
+    <Field label={lang === 'tr' ? 'Aylık bütçe (USD)' : 'Monthly budget (USD)'}>
       <div className="flex gap-2 items-center">
         <input
           type="range" min={100} max={5000} step={100} value={budget}
           onChange={e => onChange(Number(e.target.value))}
           className="flex-1 accent-ocean"
         />
-        <span className="text-sm font-bold text-ocean min-w-[70px] text-right">${budget}</span>
+        <span className="text-sm font-bold text-ocean min-w-[70px] text-right">${budget.toLocaleString(localeTag(lang))}</span>
       </div>
       <p className="text-[10px] text-slate-400 dark:text-slate-500">
         ≈ ${(budget / 30).toFixed(0)}/{lang === 'tr' ? 'gün' : 'day'}

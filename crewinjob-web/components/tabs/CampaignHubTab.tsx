@@ -5,6 +5,8 @@ import CampaignManagerTab from '@/components/tabs/CampaignManagerTab';
 import LifecycleDraftPanel from '@/components/tabs/LifecycleDraftPanel';
 import ProspectFinderPanel from '@/components/prospects/ProspectFinderPanel';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 import type {
   CampaignAudience,
   CampaignAudienceType,
@@ -87,8 +89,8 @@ const SOCIAL = ['twitter', 'linkedin', 'facebook', 'instagram', 'tiktok'];
 const PAID: AdPlatform[] = ['meta', 'linkedin', 'google'];
 const BUCKETS: Array<{ id: FillBucket; tr: string; en: string }> = [
   { id: 'zero', tr: '%0 boş profil', en: '0% empty profile' },
-  { id: 'low', tr: '%1-49 eksik profil', en: '1-49% profile' },
-  { id: 'mid', tr: '%50-79 aktivasyona yakın', en: '50-79% near activation' },
+  { id: 'low', tr: '%1–49 eksik profil', en: '1–49% incomplete profile' },
+  { id: 'mid', tr: '%50–79 aktivasyona yakın', en: '50–79% near activation' },
   { id: 'high', tr: '%80+ Activated Seafarer', en: '80%+ Activated Seafarer' },
 ];
 
@@ -270,6 +272,20 @@ function statusLabel(value: CampaignStatus, lang: 'tr' | 'en') {
   return labels[value]?.[lang === 'tr' ? 0 : 1] || value;
 }
 
+// Gönderim ve kanal durumları API'den enum olarak gelir; yalnızca ekrandaki etiket çevrilir
+const RUN_STATUS_LABEL: Record<string, [string, string]> = {
+  queued: ['Kuyrukta', 'Queued'], processing: ['İşleniyor', 'Processing'], completed: ['Tamamlandı', 'Completed'], cancelled: ['Durduruldu', 'Cancelled'], failed: ['Başarısız', 'Failed'],
+  pending: ['Bekliyor', 'Pending'], running: ['Çalışıyor', 'Running'], succeeded: ['Başarılı', 'Succeeded'], skipped: ['Atlandı', 'Skipped'],
+};
+function runStatusLabel(value: string, lang: 'tr' | 'en') {
+  return RUN_STATUS_LABEL[value]?.[lang === 'tr' ? 0 : 1] || value;
+}
+// Yüzde: Türkçede "%40", İngilizcede "40%"
+function percentText(value: number, lang: 'tr' | 'en', digits = 0) {
+  const number = value.toLocaleString(localeTag(lang), { maximumFractionDigits: digits });
+  return lang === 'tr' ? `%${number}` : `${number}%`;
+}
+
 function emailPreviewSource(value: string) {
   const body = isHtmlContent(value)
     ? value
@@ -360,15 +376,16 @@ export default function CampaignHubTab() {
         fetch('/api/campaigns/audiences', { cache: 'no-store' }),
       ]);
       const [campaignData, audienceData] = await Promise.all([campaignRes.json(), audienceRes.json()]);
-      if (!campaignRes.ok) throw new Error(campaignData.error || 'Kampanyalar yüklenemedi');
-      if (!audienceRes.ok) throw new Error(audienceData.error || 'Kayıtlı kitleler yüklenemedi');
+      if (!campaignRes.ok) throw new Error(campaignData.error || t('Kampanyalar yüklenemedi.', "Couldn't load campaigns."));
+      if (!audienceRes.ok) throw new Error(audienceData.error || t('Kayıtlı kitleler yüklenemedi.', "Couldn't load saved audiences."));
       setCampaigns(campaignData.items || []);
       setSavedAudiences(audienceData.items || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kampanyalar yüklenemedi');
+      setError(err instanceof Error ? err.message : t('Kampanyalar yüklenemedi.', "Couldn't load campaigns."));
     } finally {
       setLoading(false);
     }
+    // Dil değişimi listeyi yeniden çekmez; mesaj <Msg> ile ekranda çevrilir
   }, []);
 
   useEffect(() => { void load(); }, [load]);
@@ -499,12 +516,12 @@ export default function CampaignHubTab() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Kitle kaydedilemedi');
+      if (!res.ok) throw new Error(data.error || t('Kitle kaydedilemedi.', "Couldn't save the audience."));
       setSavedAudiences(items => [data, ...items]);
       setSelectedAudienceId(data.id);
       setAudienceName(data.name);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kitle kaydedilemedi');
+      setError(err instanceof Error ? err.message : t('Kitle kaydedilemedi.', "Couldn't save the audience."));
     } finally { setAudienceBusy(false); }
   };
 
@@ -514,12 +531,12 @@ export default function CampaignHubTab() {
     try {
       const res = await fetch(`/api/campaigns/audiences/${selectedAudienceId}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Kitle silinemedi');
+      if (!res.ok) throw new Error(data.error || t('Kitle silinemedi.', "Couldn't delete the audience."));
       setSavedAudiences(items => items.filter(item => item.id !== selectedAudienceId));
       setSelectedAudienceId('');
       setAudienceName('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kitle silinemedi');
+      setError(err instanceof Error ? err.message : t('Kitle silinemedi.', "Couldn't delete the audience."));
     } finally { setAudienceBusy(false); }
   };
 
@@ -538,12 +555,12 @@ export default function CampaignHubTab() {
         body: JSON.stringify(currentAudience()),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Hedef kitle hesaplanamadı');
+      if (!res.ok) throw new Error(data.error || t('Hedef kitle hesaplanamadı.', "Couldn't calculate the target audience."));
       setAudienceCount(data.estimatedTotal);
       setAudienceIsEstimate(Boolean(data.isEstimate));
       setAudienceDistribution(data.distributions || null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Hedef kitle hesaplanamadı');
+      setError(err instanceof Error ? err.message : t('Hedef kitle hesaplanamadı.', "Couldn't calculate the target audience."));
     } finally {
       setPreviewing(false);
     }
@@ -640,7 +657,7 @@ export default function CampaignHubTab() {
     });
     const preflightBody = await preflight.json().catch(() => ({})) as Record<string, unknown>;
     if (!preflight.ok || preflightBody.allowed === false || preflightBody.canDispatch === false || preflightBody.valid === false) {
-      setError(String(preflightBody.error || preflightBody.message || 'Prospect kampanyası ön kontrolünden geçemedi.'));
+      setError(String(preflightBody.error || preflightBody.message || t('Prospect kampanyası ön kontrolünden geçemedi.', "The prospect campaign didn't pass the preflight check.")));
       return;
     }
     setView('flows');
@@ -664,9 +681,9 @@ export default function CampaignHubTab() {
       setInvalidProspectRows(parsed.invalid);
       setProspectSource('csv');
       clearAudiencePreview();
-      if (!parsed.rows.length) setError('CSV içinde geçerli bir prospect e-postası bulunamadı.');
+      if (!parsed.rows.length) setError(t('CSV içinde geçerli bir prospect e-postası bulunamadı.', 'No valid prospect email found in the CSV.'));
     } catch {
-      setError('Prospect CSV dosyası okunamadı.');
+      setError(t('Prospect CSV dosyası okunamadı.', "Couldn't read the prospect CSV file."));
     }
   };
 
@@ -700,7 +717,7 @@ export default function CampaignHubTab() {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || (targetId ? 'Kampanya güncellenemedi' : 'Kampanya oluşturulamadı'));
+      if (!res.ok) throw new Error(data.error || (targetId ? t('Kampanya güncellenemedi.', "Couldn't update the campaign.") : t('Kampanya oluşturulamadı.', "Couldn't create the campaign.")));
       setCampaigns(items => {
         const campaign = data as UnifiedCampaign;
         const exists = items.some(item => item.id === campaign.id);
@@ -709,15 +726,15 @@ export default function CampaignHubTab() {
       setShowCreate(false); resetForm(); setSelected(targetId || data.id);
       void load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : targetId ? 'Kampanya güncellenemedi' : 'Kampanya oluşturulamadı');
+      setError(err instanceof Error ? err.message : targetId ? t('Kampanya güncellenemedi.', "Couldn't update the campaign.") : t('Kampanya oluşturulamadı.', "Couldn't create the campaign."));
     } finally { setBusyId(null); }
   };
 
   // Sunucunun kodlu hatalarını TR/EN mesaja çevirir
   const launchErrorMessage = (data: { error?: string; code?: string }) => {
-    if (data.code === 'non_contiguous_buckets') return t('Seçili profil segmentleri bitişik değil (ör. %0 ve %80+). Arka plan e-posta gönderimi tek bir doluluk aralığı kullanır; bitişik segmentler seçin veya her aralık için ayrı kampanya oluşturun.', 'The selected profile segments are not contiguous (e.g. 0% and 80%+). Background email dispatch uses a single completion range; select adjacent segments or create a separate campaign per range.');
+    if (data.code === 'non_contiguous_buckets') return t('Seçili profil segmentleri bitişik değil (ör. %0 ve %80+). Arka plan e-posta gönderimi tek bir doluluk aralığı kullanır; bitişik segmentler seçin veya her aralık için ayrı kampanya oluşturun.', "The selected profile segments aren't contiguous (e.g. 0% and 80%+). Background email dispatch uses a single completion range; select adjacent segments or create a separate campaign per range.");
     if (data.code === 'remote_only') return t('Bu kampanya yalnızca backend\'de kayıtlı; backend yönetiminden yönetin.', 'This campaign exists only in the backend; manage it there.');
-    return data.error || t('Kampanya çalıştırılamadı', 'Campaign could not be launched');
+    return data.error || t('Kampanya çalıştırılamadı.', "Couldn't launch the campaign.");
   };
 
   const launch = async (id: string) => {
@@ -733,7 +750,7 @@ export default function CampaignHubTab() {
       if (!res.ok) throw new Error(launchErrorMessage(data));
       await load(); setSelected(id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kampanya çalıştırılamadı');
+      setError(err instanceof Error ? err.message : t('Kampanya çalıştırılamadı.', "Couldn't launch the campaign."));
     } finally { setBusyId(null); }
   };
 
@@ -748,24 +765,24 @@ export default function CampaignHubTab() {
         method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.code ? launchErrorMessage(data) : data.error || 'Kampanya iptal edilemedi');
+      if (!res.ok) throw new Error(data.code ? launchErrorMessage(data) : data.error || t('Kampanya iptal edilemedi.', "Couldn't cancel the campaign."));
       await load();
-    } catch (err) { setError(err instanceof Error ? err.message : 'Kampanya iptal edilemedi'); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('Kampanya iptal edilemedi.', "Couldn't cancel the campaign.")); }
     finally { setBusyId(null); }
   };
 
   const remove = async (id: string) => {
     const campaign = campaigns.find(item => item.id === id);
-    if (!campaign || !window.confirm(t(`"${campaign.name}" kampanyası silinsin mi? Bu işlem geri alınamaz.`, `Delete "${campaign.name}"? This cannot be undone.`))) return;
+    if (!campaign || !window.confirm(t(`"${campaign.name}" kampanyası silinsin mi? Bu işlem geri alınamaz.`, `Delete "${campaign.name}"? This can't be undone.`))) return;
     setBusyId(`delete:${id}`); setError('');
     try {
       const res = await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.code ? launchErrorMessage(data) : data.error || 'Kampanya silinemedi');
+      if (!res.ok) throw new Error(data.code ? launchErrorMessage(data) : data.error || t('Kampanya silinemedi.', "Couldn't delete the campaign."));
       if (selected === id) setSelected(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Kampanya silinemedi');
+      setError(err instanceof Error ? err.message : t('Kampanya silinemedi.', "Couldn't delete the campaign."));
     } finally { setBusyId(null); }
   };
 
@@ -812,14 +829,14 @@ export default function CampaignHubTab() {
     <div className="flex flex-col gap-5">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{t('Kampanya Merkezi', 'Campaign Center')}</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{t('Kampanya merkezi', 'Campaign hub')}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{t('Doğru kitleyi sosyal, mesajlaşma ve reklam kanallarında tek akıştan yönetin.', 'Reach the right audience across social, messaging and paid channels.')}</p>
         </div>
-        <div className="inline-flex border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-white dark:bg-slate-800">
-          <button onClick={() => setView('flows')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'flows' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Kampanya Akışları', 'Campaign Flows')}</button>
-          <button onClick={() => setView('paid')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'paid' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Ücretli Reklamlar', 'Paid Ads')}</button>
-          <button onClick={() => setView('lifecycle')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'lifecycle' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Lifecycle', 'Lifecycle')}</button>
-          <button onClick={() => setView('prospects')} className={`px-3 py-1.5 text-sm rounded-md ${view === 'prospects' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('AI Prospect Finder', 'AI Prospect Finder')}</button>
+        <div className="inline-flex flex-wrap gap-1 max-w-full border border-slate-200 dark:border-slate-700 rounded-lg p-1 bg-white dark:bg-slate-800">
+          <button onClick={() => setView('flows')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'flows' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Kampanya akışları', 'Campaign flows')}</button>
+          <button onClick={() => setView('paid')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'paid' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Ücretli reklamlar', 'Paid ads')}</button>
+          <button onClick={() => setView('lifecycle')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'lifecycle' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Lifecycle', 'Lifecycle')}</button>
+          <button onClick={() => setView('prospects')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'prospects' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('AI Prospect Finder', 'AI Prospect Finder')}</button>
         </div>
       </div>
 
@@ -843,12 +860,12 @@ export default function CampaignHubTab() {
 
       {view === 'paid' ? <CampaignManagerTab /> : view === 'lifecycle' ? <LifecycleDraftPanel lang={lang} /> : view === 'prospects' ? <ProspectFinderPanel lang={lang} onUseInCampaign={useProspectsInCampaign} /> : (
         <>
-          {error && <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg text-sm">{error}</div>}
+          {error && <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg text-sm"><Msg text={error} /></div>}
 
           {!showCreate && (
             <div className="flex justify-between items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4">
               <div className="text-sm text-slate-500 dark:text-slate-400">{campaigns.length} {t('kampanya', 'campaigns')}</div>
-              <button onClick={() => setShowCreate(true)} className="bg-ocean hover:bg-ocean-dark text-white text-sm font-semibold px-4 py-2 rounded-lg">+ {t('Yeni Kampanya', 'New Campaign')}</button>
+              <button onClick={() => setShowCreate(true)} className="bg-ocean hover:bg-ocean-dark text-white text-sm font-semibold px-4 py-2 rounded-lg">+ {t('Yeni kampanya', 'New campaign')}</button>
             </div>
           )}
 
@@ -862,7 +879,7 @@ export default function CampaignHubTab() {
                 <button type="button" onClick={() => { setShowCreate(false); resetForm(); }} className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 dark:border-slate-600 dark:text-slate-300">{t('Vazgeç', 'Discard')}</button>
               </div>
               <div className="grid grid-cols-4 border-b border-slate-200 dark:border-slate-700">
-                {[t('Hedef', 'Goal'), t('Kitle', 'Audience'), t('Kanallar', 'Channels'), t('İçerik & Yayın', 'Content & Launch')].map((label, index) => (
+                {[t('Hedef', 'Goal'), t('Kitle', 'Audience'), t('Kanallar', 'Channels'), t('İçerik ve yayın', 'Content & launch')].map((label, index) => (
                   <button key={label} onClick={() => index + 1 <= step && setStep(index + 1)} className={`py-3 text-xs sm:text-sm font-medium border-b-2 ${step === index + 1 ? 'border-ocean text-ocean' : 'border-transparent text-slate-400'}`}>{index + 1}. {label}</button>
                 ))}
               </div>
@@ -913,7 +930,7 @@ export default function CampaignHubTab() {
                       <input value={audienceName} onChange={event => setAudienceName(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder={t('Örn: Filipinli eksik profiller', 'e.g. Incomplete profiles from PH')} />
                     </div>
                     <div className="flex gap-2">
-                      <button type="button" onClick={saveCurrentAudience} disabled={audienceBusy || !audienceName.trim() || audienceType !== 'seafarers'} className="text-sm bg-ocean text-white px-3 py-2 rounded-lg disabled:opacity-40">{audienceBusy ? t('İşleniyor...', 'Working...') : t('Kaydet', 'Save')}</button>
+                      <button type="button" onClick={saveCurrentAudience} disabled={audienceBusy || !audienceName.trim() || audienceType !== 'seafarers'} className="text-sm bg-ocean text-white px-3 py-2 rounded-lg disabled:opacity-40">{audienceBusy ? t('İşleniyor…', 'Working…') : t('Kaydet', 'Save')}</button>
                       {selectedAudienceId && <button type="button" onClick={removeSavedAudience} disabled={audienceBusy} className="text-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg disabled:opacity-40">{t('Sil', 'Delete')}</button>}
                     </div>
                   </div>
@@ -928,7 +945,7 @@ export default function CampaignHubTab() {
                         {([['seafarers', t('Gemi adamları', 'Seafarers')], ['maritime_businesses', t('Kayıtlı şirketler', 'Registered companies')], ['company_prospects', t('Yeni prospectler', 'New prospects')]] as const).map(([value, label]) => <button key={value} type="button" onClick={() => chooseAudienceType(value)} className={`px-3 py-1.5 text-xs font-medium ${audienceType === value ? 'bg-ocean text-white' : 'text-slate-500 dark:text-slate-300'}`}>{label}</button>)}
                       </div>
                     </div>
-                    {audienceType === 'maritime_businesses' && <div className="mt-3 flex items-center gap-3 flex-wrap"><p className="text-xs text-amber-700 dark:text-amber-300">{t('Bu seçenek yalnızca Crewinjob’a kayıtlı şirketleri temsil eder. Listeyi backend şirket audience endpoint’i geldiğinde filtreleyebileceğiz.', 'This option represents companies already registered on Crewinjob. It will become dynamic when the backend company audience endpoint is available.')}</p><button type="button" onClick={previewAudience} disabled={previewing} className="text-xs border border-ocean text-ocean px-3 py-1.5 disabled:opacity-50">{previewing ? t('Sayılıyor...', 'Counting...') : t('Firma listesini say', 'Count company list')}</button></div>}
+                    {audienceType === 'maritime_businesses' && <div className="mt-3 flex items-center gap-3 flex-wrap"><p className="text-xs text-amber-700 dark:text-amber-300">{t('Bu seçenek yalnızca Crewinjob’a kayıtlı şirketleri temsil eder. Listeyi backend şirket audience endpoint’i geldiğinde filtreleyebileceğiz.', 'This option represents companies already registered on Crewinjob. It will become dynamic when the backend company audience endpoint is available.')}</p><button type="button" onClick={previewAudience} disabled={previewing} className="text-xs border border-ocean text-ocean px-3 py-1.5 disabled:opacity-50">{previewing ? t('Sayılıyor…', 'Counting…') : t('Firma listesini say', 'Count company list')}</button></div>}
                     {audienceType === 'company_prospects' && <div className="mt-3 border border-amber-200 dark:border-amber-900/70 bg-amber-50/70 dark:bg-amber-950/20 p-4 space-y-4">
                       <div className="flex items-start justify-between gap-3 flex-wrap"><div><p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('Yeni şirket prospect havuzu', 'New company prospect pool')}</p><p className="text-xs text-slate-600 dark:text-slate-300 mt-1">{t('Crewinjob’da henüz kayıtlı olmayan şirketleri ayrı bir lead listesi olarak içeri al.', 'Import companies that are not yet registered on Crewinjob as a separate lead list.')}</p></div><span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">{t('İzin ve kaynak kontrolü gerekli', 'Consent and source review required')}</span></div>
                       <div className="grid md:grid-cols-3 gap-3">
@@ -936,7 +953,7 @@ export default function CampaignHubTab() {
                       </div>
                       {prospectSource === 'csv' && <div className="border border-dashed border-amber-300 dark:border-amber-800 p-3"><label className="text-xs font-semibold text-slate-700 dark:text-slate-200 block mb-2">{t('Prospect CSV dosyası', 'Prospect CSV file')}</label><input type="file" accept=".csv,.txt,text/csv,text/plain" onChange={event => { const file = event.target.files?.[0]; if (file) void importProspects(file); event.target.value = ''; }} className="block w-full text-sm text-slate-600 dark:text-slate-300" /><p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">{t('Başlıklar: companyName, email, country, companyType, website. Her satır bir şirket olmalı.', 'Headers: companyName, email, country, companyType, website. One company per row.')}</p>{prospectRows.length > 0 && <p className="text-xs text-green-700 dark:text-green-300 mt-2">{prospectRows.length} {t('geçerli lead içe aktarıldı', 'valid leads imported')}{invalidProspectRows ? ` · ${invalidProspectRows} ${t('satır atlandı', 'rows skipped')}` : ''}</p>}</div>}
                       <div className="grid md:grid-cols-2 gap-3"><div><label className="text-xs text-slate-500 block mb-1">{t('Şirket tipi', 'Company type')}</label><input value={prospectCompanyTypes} onChange={event => { setProspectCompanyTypes(event.target.value); clearAudiencePreview(); }} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder={t('Crewing, armatör, ship manager', 'Crewing, shipowner, ship manager')} /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Hedef ülke kodları', 'Target country codes')}</label><input value={countries} onChange={event => { setCountries(event.target.value); clearAudiencePreview(); }} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="TR, NL, GR, SG" /></div></div>
-                      <div className="flex items-center gap-3 flex-wrap"><button type="button" onClick={previewAudience} disabled={previewing || audienceEmailCount === 0} className="text-xs border border-ocean text-ocean px-3 py-1.5 disabled:opacity-50">{previewing ? t('Sayılıyor...', 'Counting...') : t('Lead listesini say', 'Count lead list')}</button>{audienceEmailCount > 0 && <span className="text-xs font-semibold text-green-700 dark:text-green-300">{audienceEmailCount} {t('benzersiz e-posta', 'unique emails')}</span>}</div>
+                      <div className="flex items-center gap-3 flex-wrap"><button type="button" onClick={previewAudience} disabled={previewing || audienceEmailCount === 0} className="text-xs border border-ocean text-ocean px-3 py-1.5 disabled:opacity-50">{previewing ? t('Sayılıyor…', 'Counting…') : t('Lead listesini say', 'Count lead list')}</button>{audienceEmailCount > 0 && <span className="text-xs font-semibold text-green-700 dark:text-green-300">{audienceEmailCount} {t('benzersiz e-posta', 'unique emails')}</span>}</div>
                       <p className="text-[11px] text-amber-800 dark:text-amber-300">{t('CRM ve harici lead kaynakları şu an pasif. Bu liste kampanyaya yalnızca sen eklediğinde girer; backend yayınında izin, duplicate ve kaynak doğrulaması ayrıca yapılmalı.', 'CRM and external lead sources are currently inactive. This list enters a campaign only when you add it; backend release must also validate consent, duplicates and source.')}</p>
                     </div>}
                   </div>
@@ -944,18 +961,18 @@ export default function CampaignHubTab() {
                   <div className={audienceType !== 'seafarers' ? 'hidden' : ''}>
                     <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">{t('Profil segmentleri', 'Profile segments')}</p>
                     {BUCKETS.map(bucket => <Check key={bucket.id} checked={buckets.includes(bucket.id)} onChange={() => { toggle(buckets, bucket.id, setBuckets); clearAudiencePreview(); }} label={lang === 'tr' ? bucket.tr : bucket.en} />)}
-                    {nonContiguousBuckets && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t('Seçili segmentler bitişik değil. Şablonlu e-posta (arka plan gönderimi) tek bir doluluk aralığı kullandığı için bu seçimle gönderilemez; bitişik segmentler seçin veya ayrı kampanyalar oluşturun.', 'The selected segments are not contiguous. Templated (background) email dispatch uses a single completion range, so it cannot be sent with this selection; choose adjacent segments or create separate campaigns.')}</p>}
-                    <button onClick={previewAudience} disabled={previewing} className="mt-3 text-sm border border-ocean text-ocean px-3 py-2 rounded-lg disabled:opacity-50">{previewing ? t('Hesaplanıyor...', 'Calculating...') : t('Kitleyi Hesapla', 'Calculate Audience')}</button>
-                    {audienceCount !== null && <p className="text-sm font-semibold text-green-600 mt-2">{audienceIsEstimate ? '≈ ' : ''}{audienceCount.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')} {t(audienceIsEstimate ? 'tahmini hedef profil' : 'hedef profil', audienceIsEstimate ? 'estimated target profiles' : 'target profiles')}</p>}
+                    {nonContiguousBuckets && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t('Seçili segmentler bitişik değil. Şablonlu e-posta (arka plan gönderimi) tek bir doluluk aralığı kullandığı için bu seçimle gönderilemez; bitişik segmentler seçin veya ayrı kampanyalar oluşturun.', "The selected segments aren't contiguous. Templated (background) email dispatch uses a single completion range, so it can't be sent with this selection; choose adjacent segments or create separate campaigns.")}</p>}
+                    <button onClick={previewAudience} disabled={previewing} className="mt-3 text-sm border border-ocean text-ocean px-3 py-2 rounded-lg disabled:opacity-50">{previewing ? t('Hesaplanıyor…', 'Calculating…') : t('Kitleyi hesapla', 'Calculate audience')}</button>
+                    {audienceCount !== null && <p className="text-sm font-semibold text-green-600 mt-2">{audienceIsEstimate ? '≈ ' : ''}{audienceCount.toLocaleString(localeTag(lang))} {t(audienceIsEstimate ? 'tahmini hedef profil' : 'hedef profil', audienceIsEstimate ? 'estimated target profiles' : 'target profiles')}</p>}
                     {audienceDistribution && (
                       <div className="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 space-y-3">
                         <p className="text-[11px] text-slate-400">{t('Dağılımlar Crewin tarafından sunucuda toplu olarak hesaplanır; kullanıcı listesi tarayıcıya indirilmez.', 'Distributions are aggregated by Crewin on the server; user lists are not downloaded to the browser.')}</p>
-                        <div><b>{t('Aktivite (son 30 gün)', 'Activity (last 30 days)')}:</b> {t('Aktif', 'Active')} {audienceDistribution.activity.active.toLocaleString()} · {t('Pasif', 'Inactive')} {audienceDistribution.activity.inactive.toLocaleString()} · {t('Bilinmiyor', 'Unknown')} {audienceDistribution.activity.unknown.toLocaleString()}</div>
-                        <div><b>{t('Ulaşılabilir kanal', 'Reachable channel')}:</b> Email {audienceDistribution.channelReachability.email.toLocaleString()} · WhatsApp {audienceDistribution.channelReachability.whatsapp.toLocaleString()} · Telegram {audienceDistribution.channelReachability.telegram.toLocaleString()} · Push {audienceDistribution.channelReachability.push.toLocaleString()}</div>
-                        {audienceDistribution.profileCompletion.length > 0 && <div><b>{t('Profil doluluğu', 'Profile completion')}:</b> {audienceDistribution.profileCompletion.map(item => `${item.name} ${item.count.toLocaleString()}`).join(' · ')}</div>}
-                        {audienceDistribution.countries.length > 0 && <div><b>{t('Ülke', 'Country')}:</b> {audienceDistribution.countries.map(item => `${item.name} ${item.count.toLocaleString()}`).join(' · ')}</div>}
-                        {audienceDistribution.nationalities.length > 0 && <div><b>{t('Uyruk', 'Nationality')}:</b> {audienceDistribution.nationalities.map(item => `${item.name} ${item.count.toLocaleString()}`).join(' · ')}</div>}
-                        {audienceDistribution.positions.length > 0 && <div><b>{t('Pozisyon', 'Position')}:</b> {audienceDistribution.positions.map(item => `${item.name} ${item.count.toLocaleString()}`).join(' · ')}</div>}
+                        <div><b>{t('Aktivite (son 30 gün)', 'Activity (last 30 days)')}:</b> {t('Aktif', 'Active')} {audienceDistribution.activity.active.toLocaleString(localeTag(lang))} · {t('Pasif', 'Inactive')} {audienceDistribution.activity.inactive.toLocaleString(localeTag(lang))} · {t('Bilinmiyor', 'Unknown')} {audienceDistribution.activity.unknown.toLocaleString(localeTag(lang))}</div>
+                        <div><b>{t('Ulaşılabilir kanal', 'Reachable channel')}:</b> {t('E-posta', 'Email')} {audienceDistribution.channelReachability.email.toLocaleString(localeTag(lang))} · WhatsApp {audienceDistribution.channelReachability.whatsapp.toLocaleString(localeTag(lang))} · Telegram {audienceDistribution.channelReachability.telegram.toLocaleString(localeTag(lang))} · Push {audienceDistribution.channelReachability.push.toLocaleString(localeTag(lang))}</div>
+                        {audienceDistribution.profileCompletion.length > 0 && <div><b>{t('Profil doluluğu', 'Profile completion')}:</b> {audienceDistribution.profileCompletion.map(item => `${item.name} ${item.count.toLocaleString(localeTag(lang))}`).join(' · ')}</div>}
+                        {audienceDistribution.countries.length > 0 && <div><b>{t('Ülke', 'Country')}:</b> {audienceDistribution.countries.map(item => `${item.name} ${item.count.toLocaleString(localeTag(lang))}`).join(' · ')}</div>}
+                        {audienceDistribution.nationalities.length > 0 && <div><b>{t('Uyruk', 'Nationality')}:</b> {audienceDistribution.nationalities.map(item => `${item.name} ${item.count.toLocaleString(localeTag(lang))}`).join(' · ')}</div>}
+                        {audienceDistribution.positions.length > 0 && <div><b>{t('Pozisyon', 'Position')}:</b> {audienceDistribution.positions.map(item => `${item.name} ${item.count.toLocaleString(localeTag(lang))}`).join(' · ')}</div>}
                       </div>
                     )}
                   </div>
@@ -963,7 +980,7 @@ export default function CampaignHubTab() {
                     <div><label className="text-xs text-slate-500 block mb-1">{t('Ülke kodları', 'Country codes')}</label><input value={countries} onChange={e => { setCountries(e.target.value); clearAudiencePreview(); }} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder="TR, PH, IN" /></div>
                     <div><label className="text-xs text-slate-500 block mb-1">{t('Uyruklar', 'Nationalities')}</label><input value={nationalities} onChange={e => { setNationalities(e.target.value); clearAudiencePreview(); }} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder={t('Türk, Filipinli', 'Turkish, Filipino')} /></div>
                     <div><label className="text-xs text-slate-500 block mb-1">{t('Pozisyonlar', 'Positions')}</label><input value={positions} onChange={e => { setPositions(e.target.value); clearAudiencePreview(); }} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder={t('Kaptan, Baş Mühendis', 'Captain, Chief Engineer')} /></div>
-                    <div className="grid sm:grid-cols-2 gap-3"><label className="text-xs text-slate-500">{t('Aktivite', 'Activity')}<select value={activity} onChange={e => { setActivity(e.target.value as CampaignAudience['activity']); clearAudiencePreview(); }} className="mt-1 w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"><option value="all">{t('Tümü', 'All')}</option><option value="active">{t('Aktif', 'Active')}</option><option value="inactive">{t('Pasif', 'Inactive')}</option></select></label><div><span className="text-xs text-slate-500 block mb-1">{t('Ulaşılabilir kanal', 'Reachable channel')}</span><div className="grid grid-cols-2">{(['email', 'whatsapp', 'telegram', 'push'] as const).map(item => <Check key={item} checked={reachableChannels.includes(item)} onChange={() => { toggle(reachableChannels, item, setReachableChannels); clearAudiencePreview(); }} label={item === 'email' ? 'E-mail' : item[0].toUpperCase() + item.slice(1)} />)}</div></div></div>
+                    <div className="grid sm:grid-cols-2 gap-3"><label className="text-xs text-slate-500">{t('Aktivite', 'Activity')}<select value={activity} onChange={e => { setActivity(e.target.value as CampaignAudience['activity']); clearAudiencePreview(); }} className="mt-1 w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"><option value="all">{t('Tümü', 'All')}</option><option value="active">{t('Aktif', 'Active')}</option><option value="inactive">{t('Pasif', 'Inactive')}</option></select></label><div><span className="text-xs text-slate-500 block mb-1">{t('Ulaşılabilir kanal', 'Reachable channel')}</span><div className="grid grid-cols-2">{(['email', 'whatsapp', 'telegram', 'push'] as const).map(item => <Check key={item} checked={reachableChannels.includes(item)} onChange={() => { toggle(reachableChannels, item, setReachableChannels); clearAudiencePreview(); }} label={item === 'email' ? t('E-posta', 'Email') : item[0].toUpperCase() + item.slice(1)} />)}</div></div></div>
                     <div><label className="text-xs text-slate-500 block mb-1">{audienceType === 'maritime_businesses' ? t('Kayıtlı şirket e-postaları', 'Registered company emails') : audienceType === 'company_prospects' ? t('Ek prospect e-postaları', 'Additional prospect emails') : t('Ek e-postalar', 'Additional emails')}</label><textarea value={manualEmails} onChange={e => { setManualEmails(e.target.value); clearAudiencePreview(); }} rows={3} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder={audienceType === 'maritime_businesses' ? t('Crewinjob’a kayıtlı şirket e-postaları; her satıra bir tane', 'Registered Crewinjob company emails; one per line') : audienceType === 'company_prospects' ? t('CSV dışında eklemek istediğin lead e-postaları', 'Lead emails to add beyond the CSV') : t('Her satıra bir e-posta', 'One email per line')} /></div>
                   </div>
                   </div>
@@ -971,7 +988,7 @@ export default function CampaignHubTab() {
 
                 {step === 3 && <div className="grid md:grid-cols-3 gap-6">
                   <div><p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">{t('Organik sosyal', 'Organic social')}</p>{SOCIAL.map(item => <Check key={item} checked={social.includes(item)} onChange={() => toggle(social, item, setSocial)} label={item === 'twitter' ? 'X / Twitter' : item[0].toUpperCase() + item.slice(1)} />)}</div>
-                  <div><p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">{t('Doğrudan mesajlaşma', 'Direct messaging')}</p><Check checked={email} onChange={() => setEmail(!email)} label="E-posta" /><Check checked={whatsapp} onChange={() => setWhatsapp(!whatsapp)} label="WhatsApp" /><Check checked={telegram} onChange={() => setTelegram(!telegram)} label="Telegram" />{whatsapp && <textarea value={whatsappNumbers} onChange={e => setWhatsappNumbers(e.target.value)} rows={3} className="mt-2 w-full text-sm border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg p-2" placeholder={t('İzinli telefonlar, her satıra bir tane', 'Opted-in phone numbers, one per line')} />}{whatsapp && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{t('WhatsApp serbest metni yalnızca son 24 saatte size yazmış kişilere ulaşır; pazarlama için onaylı template gerekir.', 'WhatsApp free text only reaches people who messaged you in the last 24 hours; marketing requires approved templates.')}</p>}{telegram && <textarea value={telegramIds} onChange={e => setTelegramIds(e.target.value)} rows={3} className="mt-2 w-full text-sm border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg p-2" placeholder={t('İzinli chat ID; boşsa varsayılan kanal', 'Opted-in chat IDs; blank uses default channel')} />}{(whatsapp || (telegram && splitLines(telegramIds).length > 0)) && <Check checked={consent} onChange={() => setConsent(!consent)} label={t('Alıcı iletişim izinleri doğrulandı', 'Recipient consent is verified')} />}</div>
+                  <div><p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">{t('Doğrudan mesajlaşma', 'Direct messaging')}</p><Check checked={email} onChange={() => setEmail(!email)} label={t('E-posta', 'Email')} /><Check checked={whatsapp} onChange={() => setWhatsapp(!whatsapp)} label="WhatsApp" /><Check checked={telegram} onChange={() => setTelegram(!telegram)} label="Telegram" />{whatsapp && <textarea value={whatsappNumbers} onChange={e => setWhatsappNumbers(e.target.value)} rows={3} className="mt-2 w-full text-sm border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg p-2" placeholder={t('İzinli telefonlar, her satıra bir tane', 'Opted-in phone numbers, one per line')} />}{whatsapp && <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">{t('WhatsApp serbest metni yalnızca son 24 saatte size yazmış kişilere ulaşır; pazarlama için onaylı template gerekir.', 'WhatsApp free text only reaches people who messaged you in the last 24 hours; marketing requires approved templates.')}</p>}{telegram && <textarea value={telegramIds} onChange={e => setTelegramIds(e.target.value)} rows={3} className="mt-2 w-full text-sm border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg p-2" placeholder={t('İzinli chat ID; boşsa varsayılan kanal', 'Opted-in chat IDs; blank uses default channel')} />}{(whatsapp || (telegram && splitLines(telegramIds).length > 0)) && <Check checked={consent} onChange={() => setConsent(!consent)} label={t('Alıcı iletişim izinleri doğrulandı', 'Recipient consent is verified')} />}</div>
                   <div><p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">{t('Ücretli erişim', 'Paid reach')}</p>{PAID.map(item => <Check key={item} checked={paid.includes(item)} onChange={() => toggle(paid, item, setPaid)} label={item === 'meta' ? 'Meta Ads' : item === 'linkedin' ? 'LinkedIn Ads' : 'Google Ads'} />)}{paid.length > 0 && <div className="mt-3"><label className="text-xs text-slate-500">{t('Platform başına günlük bütçe', 'Daily budget per platform')} (${dailyBudget})</label><input type="range" min={5} max={500} value={dailyBudget} onChange={e => setDailyBudget(Number(e.target.value))} className="w-full accent-ocean" /></div>}<p className="text-xs text-slate-400 mt-3">{t('Bağlı olmayan reklam hesapları çalıştırmada atlanır; sahte sonuç üretilmez.', 'Unconnected ad accounts are skipped; no mock result is counted.')}</p></div>
                 </div>}
 
@@ -980,19 +997,19 @@ export default function CampaignHubTab() {
                     <div><label className="text-xs text-slate-500 block mb-1">{t('Mesaj', 'Message')}</label><textarea value={content} onChange={e => setContent(e.target.value)} rows={7} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder={t('Her kanal için temel kampanya mesajı', 'Base campaign message for every channel')} /></div>
                     <div><label className="text-xs text-slate-500 block mb-1">{t('E-posta konusu', 'Email subject')}</label><input value={subject} onChange={e => setSubject(e.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" /></div>
                     {email && <div><label className="text-xs text-slate-500 block mb-1">{t('E-posta şablonu', 'Email template')}</label>{templateCatalogAvailable && templates.some(item => item.channel === 'email') ? <select value={templateId} onChange={e => setTemplateId(e.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2"><option value="">{t('Şablon seçin', 'Select a template')}</option>{templates.filter(item => item.channel === 'email').map(item => <option key={item.id} value={item.id}>{item.name}{item.language ? ` (${item.language})` : ''}</option>)}</select> : <input value={templateId} onChange={e => setTemplateId(e.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder={t('Backend şablon kimliği', 'Backend template ID')} />}<p className="text-xs text-slate-400 mt-1">{templateCatalogAvailable ? t('Aktif backend şablonları listeleniyor.', 'Active backend templates are listed.') : t('Şablon kataloğu yayınlanana kadar kimliği elle girebilirsiniz.', 'Enter the ID manually until the template catalog is available.')}</p></div>}
-                    {(['email', 'whatsapp', 'telegram'] as const).filter(channel => ({ email, whatsapp, telegram })[channel]).map(channel => { const options = integrations.filter(item => item.channel === channel); const configured = options.filter(item => item.isConfigured !== false); return <div key={channel}><label className="text-xs text-slate-500 block mb-1">{channel === 'email' ? 'E-posta' : channel === 'whatsapp' ? 'WhatsApp' : 'Telegram'} {t('entegrasyonu', 'integration')}</label>{integrationCatalogAvailable && options.length > 0 ? <><select value={integrationIds[channel] || ''} onChange={e => setIntegrationIds(current => ({ ...current, [channel]: e.target.value }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2"><option value="">{configured.length ? t('Entegrasyon seçin', 'Select an integration') : t('Yapılandırılmış entegrasyon yok', 'No configured integration')}</option>{options.map(item => <option key={item.id} value={item.id} disabled={item.isConfigured === false}>{item.name}{item.provider ? ` (${item.provider})` : ''}{item.isConfigured === false ? t(' - test, göndermez', ' - test, no delivery') : ''}</option>)}</select>{configured.length === 0 && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('Backend test entegrasyonu hazır; gerçek gönderim sağlayıcı yapılandırması bekliyor.', 'Backend test integration is available; real delivery awaits provider configuration.')}</p>}</> : <input value={integrationIds[channel] || ''} onChange={e => setIntegrationIds(current => ({ ...current, [channel]: e.target.value }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder={t('Backend entegrasyon kimliği', 'Backend integration ID')} />}</div>; })}
+                    {(['email', 'whatsapp', 'telegram'] as const).filter(channel => ({ email, whatsapp, telegram })[channel]).map(channel => { const options = integrations.filter(item => item.channel === channel); const configured = options.filter(item => item.isConfigured !== false); return <div key={channel}><label className="text-xs text-slate-500 block mb-1">{channel === 'email' ? t('E-posta', 'Email') : channel === 'whatsapp' ? 'WhatsApp' : 'Telegram'} {t('entegrasyonu', 'integration')}</label>{integrationCatalogAvailable && options.length > 0 ? <><select value={integrationIds[channel] || ''} onChange={e => setIntegrationIds(current => ({ ...current, [channel]: e.target.value }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2"><option value="">{configured.length ? t('Entegrasyon seçin', 'Select an integration') : t('Yapılandırılmış entegrasyon yok', 'No configured integration')}</option>{options.map(item => <option key={item.id} value={item.id} disabled={item.isConfigured === false}>{item.name}{item.provider ? ` (${item.provider})` : ''}{item.isConfigured === false ? t(' - test, göndermez', ' - test, no delivery') : ''}</option>)}</select>{configured.length === 0 && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('Backend test entegrasyonu hazır; gerçek gönderim sağlayıcı yapılandırması bekliyor.', 'Backend test integration is available; real delivery awaits provider configuration.')}</p>}</> : <input value={integrationIds[channel] || ''} onChange={e => setIntegrationIds(current => ({ ...current, [channel]: e.target.value }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" placeholder={t('Backend entegrasyon kimliği', 'Backend integration ID')} />}</div>; })}
                   </div>
                   <div className="space-y-3">{dispatchBucketBlocked && <p className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 px-3 py-2 rounded-lg text-xs">{t('Şablonlu e-posta arka planda tek bir doluluk aralığıyla gönderilir; seçili segmentler bitişik değil. Kitle adımında bitişik segmentler seçin veya ayrı kampanyalar oluşturun.', 'Templated email is dispatched in the background with a single completion range; the selected segments are not contiguous. Choose adjacent segments in the Audience step or create separate campaigns.')}</p>}<div><label className="text-xs text-slate-500 block mb-1">{t('Hedef bağlantı', 'Destination URL')}</label><input value={ctaUrl} onChange={e => setCtaUrl(e.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Yayın zamanı (boşsa hemen çalıştırmaya hazır)', 'Launch time (blank means ready to launch)')}</label><input type="datetime-local" value={launchAt} onChange={e => setLaunchAt(e.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" /></div>{email && channelCount === 1 && <div className="border border-cyan-200 dark:border-cyan-900 rounded-lg p-3"><Check checked={pilotMode} onChange={() => setPilotMode(value => !value)} label={t('Pilot gönderimi', 'Pilot delivery')} />{pilotMode && <div className="mt-2 pl-6"><label className="text-xs text-slate-500 block mb-1">{t('Maksimum alıcı', 'Maximum recipients')}</label><input type="number" min={1} max={500} value={pilotMaxRecipients} onChange={e => setPilotMaxRecipients(Math.min(500, Math.max(1, Number(e.target.value) || 1)))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2" /><p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{t('Yalnız backend allowlist’indeki test adreslerine gönderilir.', 'Delivery is limited to backend allowlisted test addresses.')}</p></div>}</div>}<div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm text-slate-600 dark:text-slate-300"><p><b>{t('Kitle:', 'Audience:')}</b> {audienceCount ?? t('hesaplanmadı', 'not calculated')}</p><p><b>{t('Kanallar:', 'Channels:')}</b> {channelCount}</p><p><b>UTM:</b> {t('Her bağlantıya otomatik eklenecek', 'Automatically added to each URL')}</p></div></div>
                 </div>}
               </div>
               <div className="flex justify-between px-5 py-4 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
                 <button onClick={() => step === 1 ? (setShowCreate(false), resetForm()) : setStep(step - 1)} className="text-sm px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-600 dark:text-slate-300">{step === 1 ? t('Kapat', 'Close') : t('Geri', 'Back')}</button>
-                {step < 4 ? <button onClick={() => setStep(step + 1)} disabled={!canNext} className="text-sm px-5 py-2 bg-ocean text-white rounded-lg disabled:opacity-40">{t('Devam', 'Continue')}</button> : <button onClick={save} disabled={!canNext || busyId === 'create' || (editingId !== null && busyId === editingId)} className="text-sm px-5 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-40">{busyId === 'create' || (editingId !== null && busyId === editingId) ? t('Kaydediliyor...', 'Saving...') : editingId ? t('Değişiklikleri Kaydet', 'Save changes') : launchAt ? t('Zamanla', 'Schedule') : t('Kampanyayı Hazırla', 'Prepare Campaign')}</button>}
+                {step < 4 ? <button onClick={() => setStep(step + 1)} disabled={!canNext} className="text-sm px-5 py-2 bg-ocean text-white rounded-lg disabled:opacity-40">{t('Devam', 'Continue')}</button> : <button onClick={save} disabled={!canNext || busyId === 'create' || (editingId !== null && busyId === editingId)} className="text-sm px-5 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg disabled:opacity-40">{busyId === 'create' || (editingId !== null && busyId === editingId) ? t('Kaydediliyor…', 'Saving…') : editingId ? t('Değişiklikleri kaydet', 'Save changes') : launchAt ? t('Zamanla', 'Schedule') : t('Kampanyayı hazırla', 'Prepare campaign')}</button>}
               </div>
             </section>
           )}
 
-          {loading ? <div className="py-12 text-center text-sm text-slate-400">{t('Kampanyalar yükleniyor...', 'Loading campaigns...')}</div> : campaigns.length === 0 && !showCreate ? <div className="py-12 text-center border-y border-slate-200 dark:border-slate-700"><p className="font-semibold text-slate-700 dark:text-slate-200">{t('Henüz birleşik kampanya yok.', 'No unified campaigns yet.')}</p><p className="text-sm text-slate-400 mt-1">{t('İlk kampanyada mevcut sosyal ve mesajlaşma kanallarınızı birlikte kullanabilirsiniz.', 'Use your existing social and messaging channels together in the first campaign.')}</p></div> : (
+          {loading ? <div className="py-12 text-center text-sm text-slate-400">{t('Kampanyalar yükleniyor…', 'Loading campaigns…')}</div> : campaigns.length === 0 && !showCreate ? <div className="py-12 text-center border-y border-slate-200 dark:border-slate-700"><p className="font-semibold text-slate-700 dark:text-slate-200">{t('Henüz birleşik kampanya yok.', 'No unified campaigns yet.')}</p><p className="text-sm text-slate-400 mt-1">{t('İlk kampanyada mevcut sosyal ve mesajlaşma kanallarınızı birlikte kullanabilirsiniz.', 'Use your existing social and messaging channels together in the first campaign.')}</p></div> : (
             <div className="divide-y divide-slate-200 dark:divide-slate-700 border-y border-slate-200 dark:border-slate-700">
               {campaigns.map(campaign => {
                 const ok = campaign.deliveries.filter(item => item.status === 'succeeded').length;
@@ -1001,11 +1018,11 @@ export default function CampaignHubTab() {
                 const remoteOnlyTitle = t('Bu kampanya yalnızca backend\'de kayıtlı; backend yönetiminden yönetin.', 'This campaign exists only in the backend; manage it there.');
                 return <div key={campaign.id} className="py-4">
                   <div className="flex items-center gap-4 flex-wrap">
-                    <button onClick={() => setSelected(selected === campaign.id ? null : campaign.id)} className="text-left flex-1 min-w-[240px]"><div className="flex items-center gap-2 flex-wrap"><span className="font-semibold text-slate-800 dark:text-slate-100">{campaign.name}</span><span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[campaign.status]}`}>{statusLabel(campaign.status, lang)}</span>{remoteOnly && <span title={remoteOnlyTitle} className="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">{t('Yalnız backend', 'Backend only')}</span>}</div><p className="text-xs text-slate-400 mt-1">{objectiveLabel(campaign.objective, lang)} · {campaign.deliveries.length} {t('kanal', 'channels')} · {ok}/{campaign.deliveries.length} {t('başarılı', 'successful')}{campaign.launchAt ? ` · ${new Date(campaign.launchAt).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}` : ''}</p></button>
-                    {['ready', 'partial', 'failed'].includes(campaign.status) && <button onClick={() => launch(campaign.id)} disabled={busyId === campaign.id || remoteOnly} title={remoteOnly ? remoteOnlyTitle : undefined} className="text-sm bg-green-600 text-white font-semibold px-3 py-2 rounded-lg disabled:opacity-50">{busyId === campaign.id ? t('Çalışıyor...', 'Running...') : campaign.status === 'ready' ? t('Şimdi Başlat', 'Launch Now') : t('Başarısızları Dene', 'Retry Failed')}</button>}
+                    <button onClick={() => setSelected(selected === campaign.id ? null : campaign.id)} className="text-left flex-1 min-w-[240px]"><div className="flex items-center gap-2 flex-wrap"><span className="font-semibold text-slate-800 dark:text-slate-100">{campaign.name}</span><span className={`text-[11px] px-2 py-0.5 rounded-full ${STATUS_STYLE[campaign.status]}`}>{statusLabel(campaign.status, lang)}</span>{remoteOnly && <span title={remoteOnlyTitle} className="text-[11px] px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">{t('Yalnız backend', 'Backend only')}</span>}</div><p className="text-xs text-slate-400 mt-1">{objectiveLabel(campaign.objective, lang)} · {campaign.deliveries.length} {t('kanal', 'channels')} · {ok}/{campaign.deliveries.length} {t('başarılı', 'successful')}{campaign.launchAt ? ` · ${new Date(campaign.launchAt).toLocaleString(localeTag(lang))}` : ''}</p></button>
+                    {['ready', 'partial', 'failed'].includes(campaign.status) && <button onClick={() => launch(campaign.id)} disabled={busyId === campaign.id || remoteOnly} title={remoteOnly ? remoteOnlyTitle : undefined} className="text-sm bg-green-600 text-white font-semibold px-3 py-2 rounded-lg disabled:opacity-50">{busyId === campaign.id ? t('Çalışıyor…', 'Running…') : campaign.status === 'ready' ? t('Şimdi başlat', 'Launch now') : t('Başarısızları yeniden dene', 'Retry failed')}</button>}
                     {['running', 'ready', 'scheduled', 'partial', 'failed'].includes(campaign.status) && <button onClick={() => cancel(campaign.id)} disabled={busyId === campaign.id || remoteOnly} title={remoteOnly ? remoteOnlyTitle : undefined} className="text-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg disabled:opacity-50">{campaign.status === 'running' ? t('Durdur', 'Stop') : t('İptal', 'Cancel')}</button>}
-                    <button onClick={() => editCampaign(campaign)} disabled={busyId !== null || remoteOnly || ['running', 'completed'].includes(campaign.status)} title={remoteOnly ? remoteOnlyTitle : campaign.status === 'running' ? t('Önce devam eden gönderimi durdurun.', 'Stop the active delivery first.') : campaign.status === 'completed' ? t('Tamamlanan kampanya düzenlenemez.', 'Completed campaigns cannot be edited.') : undefined} className="text-sm border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-40">{t('Düzenle', 'Edit')}</button>
-                    <button onClick={() => void remove(campaign.id)} disabled={busyId !== null || remoteOnly || campaign.status === 'running'} title={remoteOnly ? remoteOnlyTitle : campaign.status === 'running' ? t('Önce devam eden gönderimi durdurun.', 'Stop the active delivery first.') : undefined} className="text-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-40">{busyId === `delete:${campaign.id}` ? t('Siliniyor...', 'Deleting...') : t('Sil', 'Delete')}</button>
+                    <button onClick={() => editCampaign(campaign)} disabled={busyId !== null || remoteOnly || ['running', 'completed'].includes(campaign.status)} title={remoteOnly ? remoteOnlyTitle : campaign.status === 'running' ? t('Önce devam eden gönderimi durdurun.', 'Stop the active delivery first.') : campaign.status === 'completed' ? t('Tamamlanan kampanya düzenlenemez.', "Completed campaigns can't be edited.") : undefined} className="text-sm border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-40">{t('Düzenle', 'Edit')}</button>
+                    <button onClick={() => void remove(campaign.id)} disabled={busyId !== null || remoteOnly || campaign.status === 'running'} title={remoteOnly ? remoteOnlyTitle : campaign.status === 'running' ? t('Önce devam eden gönderimi durdurun.', 'Stop the active delivery first.') : undefined} className="text-sm border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg disabled:cursor-not-allowed disabled:opacity-40">{busyId === `delete:${campaign.id}` ? t('Siliniyor…', 'Deleting…') : t('Sil', 'Delete')}</button>
                   </div>
                   {campaign.status === 'running' && <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">{t('Gönderim devam ediyor. Düzenlemek veya silmek için önce kampanyayı durdurun.', 'Delivery is in progress. Stop the campaign before editing or deleting it.')}</p>}
                   {selectedCampaign?.id === campaign.id && <div className="mt-4 space-y-4">
@@ -1014,7 +1031,7 @@ export default function CampaignHubTab() {
                         [t('Hedef', 'Goal'), objectiveLabel(campaign.objective, lang)],
                         [t('Kitle', 'Audience'), campaign.audience.audienceType === 'company_prospects' ? t('Yeni prospectler', 'New prospects') : campaign.audience.audienceType === 'maritime_businesses' ? t('Kayıtlı şirketler', 'Registered companies') : t('Gemi adamları', 'Seafarers')],
                         [t('Kanal', 'Channel'), campaign.deliveries.map(item => item.channel).join(', ') || t('Tanımsız', 'Not set')],
-                        [t('Oluşturulma', 'Created'), new Date(campaign.createdAt).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US')],
+                        [t('Oluşturulma', 'Created'), new Date(campaign.createdAt).toLocaleDateString(localeTag(lang))],
                       ].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-slate-200 bg-white px-3 py-3 dark:border-slate-700 dark:bg-slate-800"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="mt-1 break-words text-sm font-semibold text-slate-800 dark:text-slate-100">{value}</p></div>)}
                     </div>
                     {campaign.content && <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
@@ -1047,22 +1064,22 @@ export default function CampaignHubTab() {
                     {campaign.dispatch && <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
                       <div className="flex items-center justify-between gap-3">
                         <div><p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('Gönderim durumu', 'Delivery status')}</p><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t('Kampanyanın arka plandaki ilerlemesi.', 'Background progress for this campaign.')}</p></div>
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">{campaign.dispatch.status}</span>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-700 dark:text-slate-300">{runStatusLabel(campaign.dispatch.status, lang)}</span>
                       </div>
-                      <div className="mt-4 flex items-center gap-3"><div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700"><div className="h-2 rounded-full bg-cyan-500 transition-all" style={{ width: `${Math.min(100, Math.max(0, campaign.dispatch.progressPercent || 0))}%` }} /></div><span className="text-sm font-semibold text-slate-700 dark:text-slate-200">%{Math.round(campaign.dispatch.progressPercent || 0)}</span></div>
-                      <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-5 xl:grid-cols-10">{[[t('Toplam', 'Total'), campaign.dispatch.totalRecipients ?? campaign.dispatch.estimatedRecipients], [t('Kuyruk', 'Queued'), campaign.dispatch.queued], [t('İşleniyor', 'Processing'), campaign.dispatch.processing], [t('Gönderildi', 'Sent'), campaign.dispatch.sent], [t('Teslim', 'Delivered'), campaign.dispatch.delivered], [t('Açıldı', 'Opened'), campaign.dispatch.opened], [t('Tıklandı', 'Clicked'), campaign.dispatch.clicked], [t('İşlenen', 'Processed'), campaign.dispatch.processed], [t('Başarısız', 'Failed'), campaign.dispatch.failed], [t('Atlandı', 'Skipped'), campaign.dispatch.skipped]].map(([label, value]) => <div key={String(label)}><span className="block text-slate-400">{label}</span><b className="mt-1 block text-slate-800 dark:text-slate-100">{value ?? '–'}</b></div>)}</div>
-                      {campaign.dispatch.lastError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{campaign.dispatch.lastError}</p>}
+                      <div className="mt-4 flex items-center gap-3"><div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700"><div className="h-2 rounded-full bg-cyan-500 transition-all" style={{ width: `${Math.min(100, Math.max(0, campaign.dispatch.progressPercent || 0))}%` }} /></div><span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{percentText(Math.round(campaign.dispatch.progressPercent || 0), lang)}</span></div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-5 xl:grid-cols-10">{[[t('Toplam', 'Total'), campaign.dispatch.totalRecipients ?? campaign.dispatch.estimatedRecipients], [t('Kuyruk', 'Queued'), campaign.dispatch.queued], [t('İşleniyor', 'Processing'), campaign.dispatch.processing], [t('Gönderildi', 'Sent'), campaign.dispatch.sent], [t('Teslim', 'Delivered'), campaign.dispatch.delivered], [t('Açıldı', 'Opened'), campaign.dispatch.opened], [t('Tıklandı', 'Clicked'), campaign.dispatch.clicked], [t('İşlenen', 'Processed'), campaign.dispatch.processed], [t('Başarısız', 'Failed'), campaign.dispatch.failed], [t('Atlandı', 'Skipped'), campaign.dispatch.skipped]].map(([label, value]) => <div key={String(label)}><span className="block text-slate-400">{label}</span><b className="mt-1 block text-slate-800 dark:text-slate-100">{typeof value === 'number' ? value.toLocaleString(localeTag(lang)) : value ?? '–'}</b></div>)}</div>
+                      {campaign.dispatch.lastError && <p className="mt-3 text-xs text-red-600 dark:text-red-400"><Msg text={campaign.dispatch.lastError} /></p>}
                     </section>}
                     <div className="border-y border-slate-200 dark:border-slate-700 py-3">
-                      <div className="flex items-center gap-2 mb-3"><span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t('Kampanya Dönüşümü', 'Campaign Conversion')}</span>{conversionLoading && <span className="text-xs text-slate-400">{t('Yükleniyor...', 'Loading...')}</span>}</div>
+                      <div className="flex items-center gap-2 mb-3"><span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{t('Kampanya dönüşümü', 'Campaign conversion')}</span>{conversionLoading && <span className="text-xs text-slate-400">{t('Yükleniyor…', 'Loading…')}</span>}</div>
                       {reportPilotDispatchId && <p className="text-[11px] text-slate-400 mb-2">{t('Pilot gönderim: rapor pilot kimliği, backend kampanya kimliği ve dispatch kimliğiyle sorgulanır.', 'Pilot delivery: the report is queried by the pilot id, backend campaign id and dispatch id.')}</p>}
                       {!conversionLoading && !reportAvailable && (conversion?.reason === 'backend_not_ready' || delivery?.reason === 'backend_not_ready') && <p className="text-xs text-amber-600 dark:text-amber-400">{t('Dönüşüm ve teslim raporu backend yayını bekliyor.', 'Conversion and delivery reports are waiting for the backend release.')}</p>}
                       {!conversionLoading && !reportAvailable && (conversion?.reason === 'permission_denied' || delivery?.reason === 'permission_denied') && <p className="text-xs text-amber-600 dark:text-amber-400">{t('Bu raporu görüntülemek için yetki gerekiyor.', 'Permission is required to view this report.')}</p>}
-                      {!conversionLoading && !reportAvailable && (conversion?.reason === 'backend_error' || delivery?.reason === 'backend_error') && <p className="text-xs text-red-600 dark:text-red-400">{conversion?.error || delivery?.error || t('Kampanya raporu alınamadı.', 'Campaign report could not be loaded.')}</p>}
-                      {reportAvailable && <><div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-6 gap-3 text-xs">{reportMetrics.map(([label, value]) => <div key={label}><span className="text-slate-400 block">{label}</span><b>{value === undefined ? '–' : value.toLocaleString()}</b></div>)}</div><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 text-xs mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">{reportRates.map(([label, value]) => <div key={label}><span className="text-slate-400 block">{label}</span><b>{value === undefined ? '–' : `%${value.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US', { maximumFractionDigits: 1 })}`}</b></div>)}</div></>}
-                      {reportAvailable && (conversion?.result?.dataNote || delivery?.result?.dataNote) && <div className="text-xs text-slate-400 mt-3 space-y-1">{conversion?.result?.dataNote && <p>{conversion.result.dataNote}</p>}{delivery?.result?.dataNote && delivery.result.dataNote !== conversion?.result?.dataNote && <p>{delivery.result.dataNote}</p>}</div>}
+                      {!conversionLoading && !reportAvailable && (conversion?.reason === 'backend_error' || delivery?.reason === 'backend_error') && <p className="text-xs text-red-600 dark:text-red-400"><Msg text={conversion?.error || delivery?.error || t('Kampanya raporu alınamadı.', "Couldn't load the campaign report.")} /></p>}
+                      {reportAvailable && <><div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-6 gap-3 text-xs">{reportMetrics.map(([label, value]) => <div key={label}><span className="text-slate-400 block">{label}</span><b>{value === undefined ? '–' : value.toLocaleString(localeTag(lang))}</b></div>)}</div><div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 text-xs mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">{reportRates.map(([label, value]) => <div key={label}><span className="text-slate-400 block">{label}</span><b>{value === undefined ? '–' : percentText(value, lang, 1)}</b></div>)}</div></>}
+                      {reportAvailable && (conversion?.result?.dataNote || delivery?.result?.dataNote) && <div className="text-xs text-slate-400 mt-3 space-y-1">{conversion?.result?.dataNote && <p><Msg text={conversion.result.dataNote} /></p>}{delivery?.result?.dataNote && delivery.result.dataNote !== conversion?.result?.dataNote && <p><Msg text={delivery.result.dataNote} /></p>}</div>}
                     </div>
-                    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-400"><th className="pb-2">{t('Kanal', 'Channel')}</th><th className="pb-2">{t('Durum', 'Status')}</th><th className="pb-2">{t('Gönderilen', 'Sent')}</th><th className="pb-2">{t('Deneme', 'Attempts')}</th><th className="pb-2">{t('Sonuç', 'Result')}</th></tr></thead><tbody>{campaign.deliveries.map(delivery => <tr key={delivery.id} className="border-t border-slate-100 dark:border-slate-800"><td className="py-2 font-medium text-slate-700 dark:text-slate-200">{delivery.channel}</td><td className="py-2 text-slate-500">{delivery.status}</td><td className="py-2 text-slate-500">{delivery.sentCount ?? '-'}</td><td className="py-2 text-slate-500">{delivery.attempts}</td><td className="py-2 text-xs text-slate-500 max-w-sm truncate" title={delivery.error}>{delivery.error || delivery.url || delivery.externalId || '-'}</td></tr>)}</tbody></table></div>
+                    <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="text-left text-xs text-slate-400"><th className="pb-2">{t('Kanal', 'Channel')}</th><th className="pb-2">{t('Durum', 'Status')}</th><th className="pb-2">{t('Gönderilen', 'Sent')}</th><th className="pb-2">{t('Deneme', 'Attempts')}</th><th className="pb-2">{t('Sonuç', 'Result')}</th></tr></thead><tbody>{campaign.deliveries.map(delivery => <tr key={delivery.id} className="border-t border-slate-100 dark:border-slate-800"><td className="py-2 font-medium text-slate-700 dark:text-slate-200">{delivery.channel}</td><td className="py-2 text-slate-500">{runStatusLabel(delivery.status, lang)}</td><td className="py-2 text-slate-500">{delivery.sentCount ?? '-'}</td><td className="py-2 text-slate-500">{delivery.attempts}</td><td className="py-2 text-xs text-slate-500 max-w-sm truncate" title={delivery.error}>{delivery.error ? <Msg text={delivery.error} /> : delivery.url || delivery.externalId || '-'}</td></tr>)}</tbody></table></div>
                   </div>}
                 </div>;
               })}

@@ -10,7 +10,9 @@ import {
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import type { OperationsSummary } from './ProjectOverview';
 import { projectRequest } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
 import AutomaticMeasurements from './AutomaticMeasurements';
+import Msg from '@/components/Msg';
 export default function ProjectReports({
   workspace,
   lang,
@@ -71,7 +73,7 @@ export default function ProjectReports({
       setNote('');
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setBusy(false);
     }
@@ -116,7 +118,7 @@ export default function ProjectReports({
       {mode === 'manual' && <>
       {error && (
         <p className="studio-error" role="alert">
-          {error}
+          <Msg text={error} />
         </p>
       )}
       <div className="studio-data-notice">
@@ -236,12 +238,12 @@ export default function ProjectReports({
                   <span>{label[lang]}</span>
                   <strong>
                     {metric
-                      ? metric.value.toLocaleString(tr ? 'tr-TR' : 'en-GB')
+                      ? metric.value.toLocaleString(localeTag(lang))
                       : '—'}
                   </strong>
                   <small>
                     {metric
-                      ? `${new Date(metric.observedAt).toLocaleDateString(tr ? 'tr-TR' : 'en-GB')} · ${tr ? 'Manuel' : 'Manual'}`
+                      ? `${new Date(metric.observedAt).toLocaleDateString(localeTag(lang))} · ${tr ? 'Manuel' : 'Manual'}`
                       : tr
                         ? 'Veri yok'
                         : 'No data'}
@@ -299,10 +301,10 @@ export default function ProjectReports({
                             entry.stageIndex}
                         </small>
                       </td>
-                      <td>{entry.value.toLocaleString()}</td>
+                      <td>{entry.value.toLocaleString(localeTag(lang))}</td>
                       <td>
                         {new Date(entry.observedAt).toLocaleDateString(
-                          tr ? 'tr-TR' : 'en-GB',
+                          localeTag(lang),
                         )}
                       </td>
                       <td>
@@ -343,7 +345,9 @@ export default function ProjectReports({
                                 setError(
                                   reason instanceof Error
                                     ? reason.message
-                                    : 'Request failed.',
+                                    : tr
+                                      ? 'İstek tamamlanamadı.'
+                                      : 'Request failed.',
                                 );
                               } finally {
                                 setBusy(false);

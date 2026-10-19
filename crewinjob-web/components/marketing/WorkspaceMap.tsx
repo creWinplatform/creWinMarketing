@@ -1,24 +1,29 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarDays, ChartNoAxesCombined, Fingerprint, Mail, Megaphone, PenLine, Search, Share2, Target, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUpRight, CalendarDays, Fingerprint, Mail, Megaphone, PenLine, Search, Share2, Target, X } from 'lucide-react';
+import type { Lang } from '@/lib/i18n/shared';
 
 // Landing hero: ürünün çevresinde modül haritası. Düğüme tıklanınca harita o modüle yakınlaşır ve
 // örnek ekranı açılır. Tüm veriler örnektir ("Örnek proje verileri"); gerçek müşteri verisi yoktur.
+// Metinler iki dillidir: { tr, en }. Dil, sayfadan (sunucu) prop olarak gelir.
 
 type ModuleKey = 'measure' | 'profile' | 'goals' | 'content' | 'campaign' | 'social' | 'email' | 'seo' | 'calendar';
+type L = { tr: string; en: string };
+type T = (tr: string, en: string) => string;
+const l = (tr: string, en: string): L => ({ tr, en });
 
 type ModuleDef = {
   key: ModuleKey;
   n: string;
   icon: ReactNode;
-  title: string;
-  sub: string;
+  title: L;
+  sub: L;
   x: number; // sahne içinde yüzde: satırlar dikeyde ayrık, aynı satırdakiler yatayda ayrık kalır
   y: number;
-  detailTitle: string;
-  detailText: string;
-  points: string[];
-  screen: (name: string) => ReactNode;
+  detailTitle: L;
+  detailText: L;
+  points: L[];
+  screen: (name: string, t: T) => ReactNode;
 };
 
 const Tiles = ({ items }: { items: Array<{ l: string; v: string; s: string; tone?: 'none' | 'goal' }> }) => (
@@ -32,62 +37,71 @@ const DEFAULT_NAME = 'Northstar';
 const NAME_KEY = 'ryzevo_demo_product_name';
 
 const MODULES: ModuleDef[] = [
-  { key: 'measure', n: '', icon: <Target size={16} />, title: 'Ürünün', sub: 'Hedef: ücretli müşteri · Ölçüm: 3 aşama', x: 50, y: 50,
-    detailTitle: 'Veriye dayalı ölçüm', detailText: 'Bağlanan kaynaklardan veya tarihli manuel kayıtlardan ürünün kendi dönüşüm aşamalarını izleme. Bağlanmamış servisler için veri üretilmez.',
-    points: ['Tarihli, kaynağı belli kayıtlar', 'Kendi aşamaların', 'Veri yok ≠ sıfır'],
-    screen: () => <><div className="rm-scr-top"><span>Analitik</span><span>Örnek</span></div><h4>Büyüme raporu</h4><p className="rm-sub">Manuel ölçüm kayıtları</p>
-      <Tiles items={[{ l: 'Kayıt', v: '42', s: '14.10' }, { l: 'İlk kullanım', v: '18', s: '14.10' }, { l: 'Aktivasyon', v: '7', s: '14.10' }]} />
-      <Tiles items={[{ l: 'Talep', v: '—', s: 'Veri yok', tone: 'none' }, { l: 'Demo', v: '—', s: 'Veri yok', tone: 'none' }, { l: 'Müşteri', v: '—', s: 'Veri yok', tone: 'none' }]} /></> },
-  { key: 'profile', n: '01', icon: <Fingerprint size={I} />, title: 'Çalışma alanı', sub: 'marka dili, kitle, roller', x: 21, y: 30,
-    detailTitle: 'Ürüne özel çalışma alanı', detailText: 'Marka dili, hedef kitle, büyüme hedefleri, dönüşüm aşamaları ve ekip rolleri. Çalışma alanı senin ürününle başlar.',
-    points: ['Proje profili ve marka dili', 'Hedef kitle tanımı', 'Ekip rolleri: sahip, editör, inceleyen'],
-    screen: name => <><div className="rm-scr-top"><span>Proje ayarları</span><span>Örnek</span></div><h4>Proje profili</h4><p className="rm-sub">{name} · product.example</p>
-      <div className="rm-f"><label>Hedef kitle</label><div>Küçük ekiplerle çalışan ürün yöneticileri</div></div>
-      <div className="rm-f"><label>Marka dili</label><div className="rm-chips"><span className="on">Net</span><span className="on">Güven veren</span><span>Esprili</span></div></div>
-      <div className="rm-f"><label>Roller</label><div className="rm-chips"><span>Sahip</span><span>Editör</span><span>İnceleyen</span></div></div></> },
-  { key: 'goals', n: '02', icon: <Target size={I} />, title: 'Büyüme hedefleri', sub: 'kendi aşamaların', x: 25, y: 9,
-    detailTitle: 'Büyüme hedefleri', detailText: 'Her işletmenin büyüme tanımı farklıdır. Aşamaları sen yazarsın; ölçümler ve modüller bu hedefe göre çalışır.',
-    points: ['Kendi dönüşüm aşamaların', 'Hedef aşaması ve metrik tanımı', 'Veri yoksa tahmin değil, açıklık'],
-    screen: () => <><div className="rm-scr-top"><span>Hedefler</span><span>Örnek</span></div><h4>Ürün aktivasyonu</h4><p className="rm-sub">Yeni kullanıcılar</p>
-      <div className="rm-f"><label>Aşamalar</label><div className="rm-chips"><span>Deneme</span><span>Aktivasyon</span><span className="on">Ücretli müşteri</span></div></div>
-      <Tiles items={[{ l: 'Deneme', v: '—', s: 'Henüz ölçüm yok', tone: 'none' }, { l: 'Aktivasyon', v: '—', s: 'Henüz ölçüm yok', tone: 'none' }, { l: 'Ücretli', v: '—', s: 'Hedef', tone: 'goal' }]} /></> },
-  { key: 'content', n: '03', icon: <PenLine size={I} />, title: 'AI içerik stüdyosu', sub: 'fikir, taslak, kütüphane', x: 76, y: 11,
-    detailTitle: 'AI içerik stüdyosu', detailText: 'İçerik fikirleri ve taslak üretimi, içerik kütüphanesi ve kanal bazlı hazırlık. AI kullanımı sağlayıcı yapılandırması gerektirir.',
-    points: ['Fikir ve taslak üretimi', 'İçerik kütüphanesi', 'Kanal bazlı hazırlık'],
-    screen: () => <><div className="rm-scr-top"><span>İçerik kütüphanesi</span><span>Örnek</span></div><h4>Yeni ekipler için ürün demosu</h4><p className="rm-sub">linkedin · 14.10.2026 · Taslak</p>
-      <div className="rm-f"><label>Metin</label><div className="rm-ta">İyi fikirleri işe dönüştürün. Ürününüzü ve ekibinizin önceliklerini tek bir çalışma alanında buluşturun.</div></div>
-      <div className="rm-tool"><span>AI ile fikir üret</span><span>Yeniden yaz</span><span className="pri">İncelemeye gönder</span></div></> },
-  { key: 'campaign', n: '04', icon: <Megaphone size={I} />, title: 'Kampanyalar', sub: 'inceleme, onay, gönderim', x: 79, y: 31,
-    detailTitle: 'Kampanya yönetimi', detailText: 'Hedef ve kitle bağlantısı, içerik inceleme, onay ve kontrollü gönderim akışları. Her çıkış bir insan kararı.',
-    points: ['Hedef ve kitle bağlantısı', 'İnceleme ve onay', 'Kontrollü gönderim'],
-    screen: () => <><div className="rm-scr-top"><span>Kampanyalar</span><span>Örnek</span></div><h4>İnceleme ve onay</h4><p className="rm-sub">Yeni ekipler için ürün demosu · linkedin</p>
-      <ul className="rm-rev"><li><i className="ok">✓</i><span>Marka diline uygun</span><small>profil</small></li><li><i className="ok">✓</i><span>Hedefe bağlı</span><small>aktivasyon</small></li><li><i /><span>Görsel önizleme</span><small>linkedin</small></li><li><i /><span>Onay</span><small>ekip lideri</small></li></ul>
-      <div className="rm-tool"><span>Düzenleme iste</span><span className="pri">Onayla</span></div><div className="rm-gate">Standart pilot: otomatik gönderim kapalı.</div></> },
-  { key: 'social', n: '05', icon: <Share2 size={I} />, title: 'Sosyal yayınlar', sub: 'önizleme, plan, prova', x: 80, y: 70,
-    detailTitle: 'Sosyal yayınlar', detailText: 'Desteklenen hesaplarda yayın hazırlığı, görsel önizleme, planlama, prova ve yayın bazlı etkileşim takibi.',
-    points: ['Görsel önizleme ve prova', 'Planlama', 'Yayın bazlı etkileşim takibi'],
-    screen: () => <><div className="rm-scr-top"><span>Sosyal yayınlar</span><span>Örnek</span></div><h4>Yayın hazırlığı</h4><p className="rm-sub">instagram · 1080×1350 · prova hazır</p>
-      <div className="rm-f"><label>Plan</label><div>16.10.2026 · 09:00 · onay bekliyor</div></div>
-      <div className="rm-f"><label>Durum</label><div className="rm-chips"><span className="on">Önizleme</span><span className="on">Prova</span><span>Yayın</span></div></div>
-      <div className="rm-gate">Bağlantı eklemek yayın yetkisinin doğrulandığı anlamına gelmez.</div></> },
-  { key: 'email', n: '06', icon: <Mail size={I} />, title: 'E-posta operasyonları', sub: 'SES, şablon, izin', x: 75, y: 91,
-    detailTitle: 'E-posta operasyonları', detailText: 'Amazon SES bağlantısı, şablonlar, iletişim izinleri ve kontrollü pilot gönderimler.',
-    points: ['SES bağlantısı ve şablonlar', 'İletişim izinleri', 'Kontrollü pilot gönderim'],
-    screen: () => <><div className="rm-scr-top"><span>E-posta</span><span>Örnek</span></div><h4>İlk değer: yeni kullanıcı aktivasyonu</h4><p className="rm-sub">email · şablon · taslak</p>
-      <div className="rm-f"><label>Alıcı izni</label><div>İzinli liste · doğrulandı</div></div>
-      <div className="rm-f"><label>Gönderim</label><div>Pilot · kontrollü · toplu gönderim kapalı</div></div></> },
-  { key: 'seo', n: '07', icon: <Search size={I} />, title: 'SEO operasyon merkezi', sub: 'denetim, bulgu, iş kartı', x: 25, y: 91,
-    detailTitle: 'SEO operasyon merkezi', detailText: 'Site denetimi, URL envanteri, bulgular, öneriler ve sorumlu ekibe atanabilen iş kartları.',
-    points: ['Site denetimi ve URL envanteri', 'Bulgular ve öneriler', 'Sorumlu ekibe iş kartı'],
-    screen: () => <><div className="rm-scr-top"><span>SEO</span><span>Örnek</span></div><h4>Bulgular</h4><p className="rm-sub">product.example · 48 URL</p>
-      <div className="rm-seo"><div><span>H1 hiyerarşisi net değil</span><span>İŞ KARTI</span></div><div><span>Meta açıklama eksik · 6 sayfa</span><span>ÖNERİ</span></div><div><span>Sitemap güncel</span><span>TAMAM</span></div></div></> },
-  { key: 'calendar', n: '08', icon: <CalendarDays size={I} />, title: 'Takvim ve işler', sub: 'sorumlu, tarih, bağlam', x: 22, y: 70,
-    detailTitle: 'Takvim ve iş yönetimi', detailText: 'Yapılacak işleri, sorumlulukları ve tarihleri aynı bağlamda takip etme. Takvim otomatik yayın anlamına gelmez.',
-    points: ['İşler ve sorumlular', 'Tarihler ve bağlam', 'Günün ajandası'],
-    screen: () => <><div className="rm-scr-top"><span>Takvim</span><span>Örnek</span></div><h4>Ekim 2026</h4><p className="rm-sub">2 bekleyen iş</p>
+  { key: 'measure', n: '', icon: <Target size={16} />, title: l('Ürünün', 'Your product'), sub: l('Hedef: ücretli müşteri · Ölçüm: 3 aşama', 'Goal: paying customer · Measurement: 3 stages'), x: 50, y: 50,
+    detailTitle: l('Veriye dayalı ölçüm', 'Data-based measurement'),
+    detailText: l('Bağlanan kaynaklardan veya tarihli manuel kayıtlardan ürünün kendi dönüşüm aşamalarını izleme. Bağlanmamış servisler için veri üretilmez.', 'Track your product’s own conversion stages from connected sources or dated manual records. No data is generated for services that aren’t connected.'),
+    points: [l('Tarihli, kaynağı belli kayıtlar', 'Dated records with a known source'), l('Kendi aşamaların', 'Your own stages'), l('Veri yok ≠ sıfır', 'No data ≠ zero')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>{t('Analitik', 'Analytics')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('Büyüme raporu', 'Growth report')}</h4><p className="rm-sub">{t('Manuel ölçüm kayıtları', 'Manual measurement records')}</p>
+      <Tiles items={[{ l: t('Kayıt', 'Sign-ups'), v: '42', s: t('14.10', '14 Oct') }, { l: t('İlk kullanım', 'First use'), v: '18', s: t('14.10', '14 Oct') }, { l: t('Aktivasyon', 'Activation'), v: '7', s: t('14.10', '14 Oct') }]} />
+      <Tiles items={[{ l: t('Talep', 'Leads'), v: '—', s: t('Veri yok', 'No data'), tone: 'none' }, { l: 'Demo', v: '—', s: t('Veri yok', 'No data'), tone: 'none' }, { l: t('Müşteri', 'Customers'), v: '—', s: t('Veri yok', 'No data'), tone: 'none' }]} /></> },
+  { key: 'profile', n: '01', icon: <Fingerprint size={I} />, title: l('Çalışma alanı', 'Workspace'), sub: l('marka dili, kitle, roller', 'brand voice, audience, roles'), x: 21, y: 30,
+    detailTitle: l('Ürüne özel çalışma alanı', 'A workspace for your product'),
+    detailText: l('Marka dili, hedef kitle, büyüme hedefleri, dönüşüm aşamaları ve ekip rolleri. Çalışma alanı senin ürününle başlar.', 'Brand voice, target audience, growth goals, conversion stages and team roles. The workspace starts with your product.'),
+    points: [l('Proje profili ve marka dili', 'Project profile and brand voice'), l('Hedef kitle tanımı', 'Target audience definition'), l('Ekip rolleri: sahip, editör, inceleyen', 'Team roles: owner, editor, reviewer')],
+    screen: (name, t) => <><div className="rm-scr-top"><span>{t('Proje ayarları', 'Project settings')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('Proje profili', 'Project profile')}</h4><p className="rm-sub">{name} · product.example</p>
+      <div className="rm-f"><label>{t('Hedef kitle', 'Target audience')}</label><div>{t('Küçük ekiplerle çalışan ürün yöneticileri', 'Product managers working with small teams')}</div></div>
+      <div className="rm-f"><label>{t('Marka dili', 'Brand voice')}</label><div className="rm-chips"><span className="on">{t('Net', 'Clear')}</span><span className="on">{t('Güven veren', 'Reassuring')}</span><span>{t('Esprili', 'Playful')}</span></div></div>
+      <div className="rm-f"><label>{t('Roller', 'Roles')}</label><div className="rm-chips"><span>{t('Sahip', 'Owner')}</span><span>{t('Editör', 'Editor')}</span><span>{t('İnceleyen', 'Reviewer')}</span></div></div></> },
+  { key: 'goals', n: '02', icon: <Target size={I} />, title: l('Büyüme hedefleri', 'Growth goals'), sub: l('kendi aşamaların', 'your own stages'), x: 25, y: 9,
+    detailTitle: l('Büyüme hedefleri', 'Growth goals'),
+    detailText: l('Her işletmenin büyüme tanımı farklıdır. Aşamaları sen yazarsın; ölçümler ve modüller bu hedefe göre çalışır.', 'Every business defines growth differently. You write the stages; measurements and modules work toward that goal.'),
+    points: [l('Kendi dönüşüm aşamaların', 'Your own conversion stages'), l('Hedef aşaması ve metrik tanımı', 'Goal stage and metric definition'), l('Veri yoksa tahmin değil, açıklık', 'No data means clarity, not guesses')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>{t('Hedefler', 'Goals')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('Ürün aktivasyonu', 'Product activation')}</h4><p className="rm-sub">{t('Yeni kullanıcılar', 'New users')}</p>
+      <div className="rm-f"><label>{t('Aşamalar', 'Stages')}</label><div className="rm-chips"><span>{t('Deneme', 'Trial')}</span><span>{t('Aktivasyon', 'Activation')}</span><span className="on">{t('Ücretli müşteri', 'Paying customer')}</span></div></div>
+      <Tiles items={[{ l: t('Deneme', 'Trial'), v: '—', s: t('Henüz ölçüm yok', 'Not measured yet'), tone: 'none' }, { l: t('Aktivasyon', 'Activation'), v: '—', s: t('Henüz ölçüm yok', 'Not measured yet'), tone: 'none' }, { l: t('Ücretli', 'Paying'), v: '—', s: t('Hedef', 'Goal'), tone: 'goal' }]} /></> },
+  { key: 'content', n: '03', icon: <PenLine size={I} />, title: l('AI içerik stüdyosu', 'AI content studio'), sub: l('fikir, taslak, kütüphane', 'ideas, drafts, library'), x: 76, y: 11,
+    detailTitle: l('AI içerik stüdyosu', 'AI content studio'),
+    detailText: l('İçerik fikirleri ve taslak üretimi, içerik kütüphanesi ve kanal bazlı hazırlık. AI kullanımı sağlayıcı yapılandırması gerektirir.', 'Content ideas and draft generation, a content library and channel-specific preparation. AI features require a configured AI provider.'),
+    points: [l('Fikir ve taslak üretimi', 'Idea and draft generation'), l('İçerik kütüphanesi', 'Content library'), l('Kanal bazlı hazırlık', 'Channel-specific preparation')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>{t('İçerik kütüphanesi', 'Content library')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('Yeni ekipler için ürün demosu', 'Product demo for new teams')}</h4><p className="rm-sub">{t('linkedin · 14.10.2026 · Taslak', 'linkedin · 14 Oct 2026 · Draft')}</p>
+      <div className="rm-f"><label>{t('Metin', 'Copy')}</label><div className="rm-ta">{t('İyi fikirleri işe dönüştürün. Ürününüzü ve ekibinizin önceliklerini tek bir çalışma alanında buluşturun.', 'Turn good ideas into work. Bring your product and your team’s priorities together in one workspace.')}</div></div>
+      <div className="rm-tool"><span>{t('AI ile fikir üret', 'Generate ideas with AI')}</span><span>{t('Yeniden yaz', 'Rewrite')}</span><span className="pri">{t('İncelemeye gönder', 'Submit for review')}</span></div></> },
+  { key: 'campaign', n: '04', icon: <Megaphone size={I} />, title: l('Kampanyalar', 'Campaigns'), sub: l('inceleme, onay, gönderim', 'review, approval, sending'), x: 79, y: 31,
+    detailTitle: l('Kampanya yönetimi', 'Campaign management'),
+    detailText: l('Hedef ve kitle bağlantısı, içerik inceleme, onay ve kontrollü gönderim akışları. Her çıkış bir insan kararı.', 'Goal and audience links, content review, approval and controlled sending. Every release is a human decision.'),
+    points: [l('Hedef ve kitle bağlantısı', 'Goal and audience links'), l('İnceleme ve onay', 'Review and approval'), l('Kontrollü gönderim', 'Controlled sending')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>{t('Kampanyalar', 'Campaigns')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('İnceleme ve onay', 'Review and approval')}</h4><p className="rm-sub">{t('Yeni ekipler için ürün demosu · linkedin', 'Product demo for new teams · linkedin')}</p>
+      <ul className="rm-rev"><li><i className="ok">✓</i><span>{t('Marka diline uygun', 'Matches the brand voice')}</span><small>{t('profil', 'profile')}</small></li><li><i className="ok">✓</i><span>{t('Hedefe bağlı', 'Linked to a goal')}</span><small>{t('aktivasyon', 'activation')}</small></li><li><i /><span>{t('Görsel önizleme', 'Visual preview')}</span><small>linkedin</small></li><li><i /><span>{t('Onay', 'Approval')}</span><small>{t('ekip lideri', 'team lead')}</small></li></ul>
+      <div className="rm-tool"><span>{t('Düzenleme iste', 'Request changes')}</span><span className="pri">{t('Onayla', 'Approve')}</span></div><div className="rm-gate">{t('Standart pilot: otomatik gönderim kapalı.', 'Standard pilot: automatic sending is off.')}</div></> },
+  { key: 'social', n: '05', icon: <Share2 size={I} />, title: l('Sosyal yayınlar', 'Social publishing'), sub: l('önizleme, plan, prova', 'preview, schedule, rehearsal'), x: 80, y: 70,
+    detailTitle: l('Sosyal yayınlar', 'Social publishing'),
+    detailText: l('Desteklenen hesaplarda yayın hazırlığı, görsel önizleme, planlama, prova ve yayın bazlı etkileşim takibi.', 'Publication prep for supported accounts, visual previews, scheduling, rehearsals and per-post engagement tracking.'),
+    points: [l('Görsel önizleme ve prova', 'Visual preview and rehearsal'), l('Planlama', 'Scheduling'), l('Yayın bazlı etkileşim takibi', 'Per-post engagement tracking')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>{t('Sosyal yayınlar', 'Social publishing')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('Yayın hazırlığı', 'Publication prep')}</h4><p className="rm-sub">{t('instagram · 1080×1350 · prova hazır', 'instagram · 1080×1350 · rehearsal ready')}</p>
+      <div className="rm-f"><label>{t('Plan', 'Schedule')}</label><div>{t('16.10.2026 · 09:00 · onay bekliyor', '16 Oct 2026 · 09:00 · awaiting approval')}</div></div>
+      <div className="rm-f"><label>{t('Durum', 'Status')}</label><div className="rm-chips"><span className="on">{t('Önizleme', 'Preview')}</span><span className="on">{t('Prova', 'Rehearsal')}</span><span>{t('Yayın', 'Publish')}</span></div></div>
+      <div className="rm-gate">{t('Bağlantı eklemek yayın yetkisinin doğrulandığı anlamına gelmez.', 'Adding a connection doesn’t mean publishing access has been verified.')}</div></> },
+  { key: 'email', n: '06', icon: <Mail size={I} />, title: l('E-posta operasyonları', 'Email operations'), sub: l('SES, şablon, izin', 'SES, templates, consent'), x: 75, y: 91,
+    detailTitle: l('E-posta operasyonları', 'Email operations'),
+    detailText: l('Amazon SES bağlantısı, şablonlar, iletişim izinleri ve kontrollü pilot gönderimler.', 'Amazon SES connection, templates, contact consent and controlled pilot sends.'),
+    points: [l('SES bağlantısı ve şablonlar', 'SES connection and templates'), l('İletişim izinleri', 'Contact consent'), l('Kontrollü pilot gönderim', 'Controlled pilot sending')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>{t('E-posta', 'Email')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('İlk değer: yeni kullanıcı aktivasyonu', 'First value: new user activation')}</h4><p className="rm-sub">{t('email · şablon · taslak', 'email · template · draft')}</p>
+      <div className="rm-f"><label>{t('Alıcı izni', 'Recipient consent')}</label><div>{t('İzinli liste · doğrulandı', 'Consented list · verified')}</div></div>
+      <div className="rm-f"><label>{t('Gönderim', 'Sending')}</label><div>{t('Pilot · kontrollü · toplu gönderim kapalı', 'Pilot · controlled · bulk sending off')}</div></div></> },
+  { key: 'seo', n: '07', icon: <Search size={I} />, title: l('SEO operasyon merkezi', 'SEO operations hub'), sub: l('denetim, bulgu, iş kartı', 'audit, findings, work items'), x: 25, y: 91,
+    detailTitle: l('SEO operasyon merkezi', 'SEO operations hub'),
+    detailText: l('Site denetimi, URL envanteri, bulgular, öneriler ve sorumlu ekibe atanabilen iş kartları.', 'Site audits, URL inventory, findings, recommendations and work items you can assign to the responsible team.'),
+    points: [l('Site denetimi ve URL envanteri', 'Site audit and URL inventory'), l('Bulgular ve öneriler', 'Findings and recommendations'), l('Sorumlu ekibe iş kartı', 'Work items for the responsible team')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>SEO</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('Bulgular', 'Findings')}</h4><p className="rm-sub">{t('product.example · 48 URL', 'product.example · 48 URLs')}</p>
+      <div className="rm-seo"><div><span>{t('H1 hiyerarşisi net değil', 'Unclear H1 hierarchy')}</span><span>{t('İŞ KARTI', 'WORK ITEM')}</span></div><div><span>{t('Meta açıklama eksik · 6 sayfa', 'Missing meta description · 6 pages')}</span><span>{t('ÖNERİ', 'SUGGESTION')}</span></div><div><span>{t('Sitemap güncel', 'Sitemap up to date')}</span><span>{t('TAMAM', 'OK')}</span></div></div></> },
+  { key: 'calendar', n: '08', icon: <CalendarDays size={I} />, title: l('Takvim ve işler', 'Calendar and tasks'), sub: l('sorumlu, tarih, bağlam', 'owner, date, context'), x: 22, y: 70,
+    detailTitle: l('Takvim ve iş yönetimi', 'Calendar and task management'),
+    detailText: l('Yapılacak işleri, sorumlulukları ve tarihleri aynı bağlamda takip etme. Takvim otomatik yayın anlamına gelmez.', 'Track tasks, owners and dates in the same context. The calendar doesn’t mean automatic publishing.'),
+    points: [l('İşler ve sorumlular', 'Tasks and owners'), l('Tarihler ve bağlam', 'Dates and context'), l('Günün ajandası', 'Today’s agenda')],
+    screen: (_, t) => <><div className="rm-scr-top"><span>{t('Takvim', 'Calendar')}</span><span>{t('Örnek', 'Sample')}</span></div><h4>{t('Ekim 2026', 'October 2026')}</h4><p className="rm-sub">{t('2 bekleyen iş', '2 open tasks')}</p>
       <div className="rm-cal"><span>13</span><span>14</span><span className="d">15</span><span className="d">16</span><span>17</span><span>18</span><span>19</span></div>
-      <div className="rm-rows"><div className="rm-row"><div className="rm-d"><b>15</b>Eki</div><div><b>İlk kampanya içeriğini gözden geçir</b><small>Örnek proje iş planı</small></div><span className="rm-st">● Planlandı</span></div>
-      <div className="rm-row"><div className="rm-d"><b>16</b>Eki</div><div><b>Ürün demosu davetini hazırla</b><small>Örnek proje iş planı</small></div><span className="rm-st">● Devam ediyor</span></div></div></> },
+      <div className="rm-rows"><div className="rm-row"><div className="rm-d"><b>15</b>{t('Eki', 'Oct')}</div><div><b>{t('İlk kampanya içeriğini gözden geçir', 'Review the first campaign content')}</b><small>{t('Örnek proje iş planı', 'Sample project work plan')}</small></div><span className="rm-st">● {t('Planlandı', 'Scheduled')}</span></div>
+      <div className="rm-row"><div className="rm-d"><b>16</b>{t('Eki', 'Oct')}</div><div><b>{t('Ürün demosu davetini hazırla', 'Prepare the product demo invitation')}</b><small>{t('Örnek proje iş planı', 'Sample project work plan')}</small></div><span className="rm-st">● {t('Devam ediyor', 'In progress')}</span></div></div></> },
 ];
 
 const CORE = MODULES[0];
@@ -102,7 +116,9 @@ function curve(m: ModuleDef): string {
     : `M${x1} ${y1} C${x1} ${y1 + dy * 0.55}, ${x2} ${y2 - dy * 0.55}, ${x2} ${y2}`;
 }
 
-export default function WorkspaceMap() {
+export default function WorkspaceMap({ lang = 'tr' }: { lang?: Lang }) {
+  const t: T = (tr, en) => (lang === 'en' ? en : tr);
+  const tx = (value: L) => value[lang];
   const [active, setActive] = useState<ModuleKey | null>(null);
   const [hover, setHover] = useState<ModuleKey | null>(null);
   const [animate, setAnimate] = useState(false);
@@ -204,9 +220,9 @@ export default function WorkspaceMap() {
       onClick={e => open(m.key, inList ? null : e.currentTarget)}
       onMouseEnter={() => setHover(m.key)} onMouseLeave={() => setHover(null)}
       onFocus={() => setHover(m.key)} onBlur={() => setHover(null)}
-      aria-label={`${m.title} modülünü aç`} aria-expanded={active === m.key}>
+      aria-label={t(`${tx(m.title)} modülünü aç`, `Open the ${tx(m.title)} module`)} aria-expanded={active === m.key}>
       <span className="rm-ic" aria-hidden="true">{m.icon}</span>
-      <span className="rm-node-text"><b>{m.key === 'measure' ? `${m.title}: ${shownName}` : m.title}</b><small>{m.n && <em>{m.n}</em>}{m.sub}</small></span>
+      <span className="rm-node-text"><b>{m.key === 'measure' ? `${tx(m.title)}: ${shownName}` : tx(m.title)}</b><small>{m.n && <em>{m.n}</em>}{tx(m.sub)}</small></span>
       <span className="rm-node-go" aria-hidden="true"><ArrowUpRight size={14} /></span>
     </button>
   );
@@ -215,11 +231,13 @@ export default function WorkspaceMap() {
     <section className="rm-hero" id="map" aria-labelledby="rm-title">
       <div className="rm-wrap"><div className="rm-hero-top">
         <span className="rm-k" lang="en">Grow with intent.</span>
-        <h1 id="rm-title">Ürününe özel bir <span className="g">büyüme</span> çalışma alanı.</h1>
-        <p className="rm-lead">AI destekli içeriklerini, kampanyalarını, SEO çalışmalarını ve ekibini aynı hedef etrafında buluştur. Bu harita senin çalışma alanın: ürünün ortada, her modül ona bağlı.</p>
-        <label className="rm-name"><span>Ürününün adı</span><input id="rm-product-name" type="text" value={name} maxLength={24} placeholder={DEFAULT_NAME} autoComplete="off" spellCheck={false} onChange={e => changeName(e.target.value)} aria-describedby="rm-name-hint" /><small id="rm-name-hint">Harita senin ürününle güncellenir. Yalnızca bu tarayıcıda kalır.</small></label>
-        <div className="rm-ctas"><a className="rm-btn rm-btn-lime" href="#flow">Ürünü keşfet</a><a className="rm-btn rm-btn-line" href="/join">Davetle katıl <ArrowUpRight size={16} /></a></div>
-        <p className="rm-hint"><i aria-hidden="true">↗</i><span>Haritada bir düğüme tıkla; o modülün gerçek ekranına yakınlaş.</span></p>
+        {lang === 'en'
+          ? <h1 id="rm-title">A <span className="g">growth</span> workspace built around your product.</h1>
+          : <h1 id="rm-title">Ürününe özel bir <span className="g">büyüme</span> çalışma alanı.</h1>}
+        <p className="rm-lead">{t('AI destekli içeriklerini, kampanyalarını, SEO çalışmalarını ve ekibini aynı hedef etrafında buluştur. Bu harita senin çalışma alanın: ürünün ortada, her modül ona bağlı.', 'Bring your AI-assisted content, campaigns, SEO work and team together around one goal. This map is your workspace: your product sits at the center, and every module connects to it.')}</p>
+        <label className="rm-name"><span>{t('Ürününün adı', 'Your product’s name')}</span><input id="rm-product-name" type="text" value={name} maxLength={24} placeholder={DEFAULT_NAME} autoComplete="off" spellCheck={false} onChange={e => changeName(e.target.value)} aria-describedby="rm-name-hint" /><small id="rm-name-hint">{t('Harita senin ürününle güncellenir. Yalnızca bu tarayıcıda kalır.', 'The map updates with your product. It stays in this browser only.')}</small></label>
+        <div className="rm-ctas"><a className="rm-btn rm-btn-lime" href="#flow">{t('Ürünü keşfet', 'Explore the product')}</a><a className="rm-btn rm-btn-line" href="/join">{t('Davetle katıl', 'Join by invite')} <ArrowUpRight size={16} /></a></div>
+        <p className="rm-hint"><i aria-hidden="true">↗</i><span>{t('Haritada bir düğüme tıkla; o modülün gerçek ekranına yakınlaş.', 'Click any node on the map to zoom into that module’s real screen.')}</span></p>
       </div></div>
 
       <div className="rm-map-wrap">
@@ -232,7 +250,7 @@ export default function WorkspaceMap() {
           {MODULES.map(m => renderNode(m))}
         </div>
 
-        <div className="rm-map-list" aria-label="Modüller">
+        <div className="rm-map-list" aria-label={t('Modüller', 'Modules')}>
           {MODULES.map(m => renderNode(m, true))}
         </div>
 
@@ -240,19 +258,19 @@ export default function WorkspaceMap() {
           <div className="rm-detail-bar">
             <span className="rm-detail-idx">{idx >= 0 ? `${idx + 1} / ${ORDER.length}` : ''}</span>
             <div className="rm-detail-nav">
-              <button type="button" onClick={() => step(-1)} aria-label="Önceki modül"><ArrowLeft size={16} /></button>
-              <button type="button" onClick={() => step(1)} aria-label="Sonraki modül"><ArrowRight size={16} /></button>
-              <button type="button" className="rm-back" ref={backRef} onClick={close}><X size={15} /> Haritaya dön</button>
+              <button type="button" onClick={() => step(-1)} aria-label={t('Önceki modül', 'Previous module')}><ArrowLeft size={16} /></button>
+              <button type="button" onClick={() => step(1)} aria-label={t('Sonraki modül', 'Next module')}><ArrowRight size={16} /></button>
+              <button type="button" className="rm-back" ref={backRef} onClick={close}><X size={15} /> {t('Haritaya dön', 'Back to map')}</button>
             </div>
           </div>
           {current && (
             <div className="rm-detail-body" key={current.key}>
-              <div><span className="rm-k">Modül {current.n && `· ${current.n}`}</span><h3>{current.detailTitle}</h3><p>{current.detailText}</p><ul className="rm-points">{current.points.map(p => <li key={p}>{p}</li>)}</ul><p className="rm-detail-keys">Esc: kapat · ← →: modüller arasında geç</p></div>
-              <div className="rm-screen">{current.screen(shownName)}</div>
+              <div><span className="rm-k">{t('Modül', 'Module')} {current.n && `· ${current.n}`}</span><h3>{tx(current.detailTitle)}</h3><p>{tx(current.detailText)}</p><ul className="rm-points">{current.points.map(p => <li key={p.tr}>{tx(p)}</li>)}</ul><p className="rm-detail-keys">{t('Esc: kapat · ← →: modüller arasında geç', 'Esc: close · ← →: switch modules')}</p></div>
+              <div className="rm-screen">{current.screen(shownName, t)}</div>
             </div>
           )}
         </div>
-        <div className="rm-mapcap"><span>Çalışma alanı haritası · her modül ürünün hedefine bağlı</span><span>Örnek proje verileri</span></div>
+        <div className="rm-mapcap"><span>{t('Çalışma alanı haritası · her modül ürünün hedefine bağlı', 'Workspace map · every module connects to your product’s goal')}</span><span>{t('Örnek proje verileri', 'Sample project data')}</span></div>
       </div>
     </section>
   );

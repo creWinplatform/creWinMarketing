@@ -155,7 +155,7 @@ export class SocialPublications {
       this.authorize(true);const current=this.engagement(row);
       if(current.attemptedAt&&Date.now()-Date.parse(current.attemptedAt)<60000)return false;
       const day=new Date().toISOString().slice(0,10),usage=this.db.prepare("SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource='social_metrics'").get(...this.args(),day) as {count:number}|undefined;
-      if((usage?.count||0)>=100)throw new MarketingStoreError('Gunluk etkilesim yenileme sinirina ulasildi.',429);
+      if((usage?.count||0)>=100)throw new MarketingStoreError('Günlük etkileşim yenileme sınırına ulaşıldı.',429);
       this.db.prepare("INSERT INTO platform_usage VALUES(?,?,?,'social_metrics',1) ON CONFLICT(organization_id,project_id,period,resource) DO UPDATE SET count=count+1").run(...this.args(),day);
       this.db.prepare("INSERT INTO platform_social_engagement(job_id,organization_id,project_id,attempted_at,state,lease_token,lease_until) VALUES(?,?,?,?,'refreshing',?,?) ON CONFLICT(job_id) DO UPDATE SET attempted_at=excluded.attempted_at,state='refreshing',lease_token=excluded.lease_token,lease_until=excluded.lease_until").run(id,...this.args(),new Date().toISOString(),lease,new Date(Date.now()+60000).toISOString());return true;
     }).immediate();

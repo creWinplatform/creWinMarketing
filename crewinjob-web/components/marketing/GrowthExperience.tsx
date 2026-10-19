@@ -1,8 +1,10 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Pause, Play } from 'lucide-react';
+import { useLang } from '@/lib/lang';
 
 export default function GrowthExperience() {
+  const { lang } = useLang();
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<{ select: (index:number) => void; pause: (value:boolean) => void; dispose: () => void } | null>(null);
   const controls = useRef({ paused:false, selected:0 });
@@ -25,9 +27,9 @@ export default function GrowthExperience() {
   return <div className="ryz-experience">
     <div className="ryz-scene-host" ref={host} aria-hidden="true" />
     {failed && <div className="ryz-scene-fallback" aria-hidden="true"><img src="/brand/ryzevo-brand-board.png" alt="" /></div>}
-    <div className="ryz-scene-controls" aria-label="Büyüme aşamaları">
-      <div role="group" aria-label="Aşama seçimi">{['Araştır', 'Üret', 'Büyüt'].map((label,index) => <button key={label} aria-pressed={selected===index} onClick={() => { controls.current.selected = index; setSelected(index); scene.current?.select(index); }}><span>0{index+1}</span>{label}</button>)}</div>
-      <button className="ryz-scene-pause" title={paused ? 'Animasyonu başlat' : 'Animasyonu duraklat'} aria-label={paused ? 'Animasyonu başlat' : 'Animasyonu duraklat'} aria-pressed={paused} onClick={() => { controls.current.paused = !paused; setPaused(!paused); scene.current?.pause(!paused); }}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>
+    <div className="ryz-scene-controls" aria-label={lang === 'tr' ? 'Büyüme aşamaları' : 'Growth stages'}>
+      <div role="group" aria-label={lang === 'tr' ? 'Aşama seçimi' : 'Stage selection'}>{(lang === 'tr' ? ['Araştır', 'Üret', 'Büyüt'] : ['Research', 'Create', 'Grow']).map((label,index) => <button key={label} aria-pressed={selected===index} onClick={() => { controls.current.selected = index; setSelected(index); scene.current?.select(index); }}><span>0{index+1}</span>{label}</button>)}</div>
+      <button className="ryz-scene-pause" title={paused ? (lang === 'tr' ? 'Animasyonu başlat' : 'Play animation') : (lang === 'tr' ? 'Animasyonu duraklat' : 'Pause animation')} aria-label={paused ? (lang === 'tr' ? 'Animasyonu başlat' : 'Play animation') : (lang === 'tr' ? 'Animasyonu duraklat' : 'Pause animation')} aria-pressed={paused} onClick={() => { controls.current.paused = !paused; setPaused(!paused); scene.current?.pause(!paused); }}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>
     </div>
   </div>;
 }

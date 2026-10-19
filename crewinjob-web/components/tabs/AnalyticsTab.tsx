@@ -1,13 +1,15 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 type Range = '7' | '30' | '90';
 type Lang = 'tr' | 'en';
 
 // TR/EN metin seçici ve sayı/tarih yerel ayarı
 const L = (lang: Lang, tr: string, en: string) => lang === 'tr' ? tr : en;
-const localeOf = (lang: Lang) => lang === 'tr' ? 'tr-TR' : 'en-GB';
+const localeOf = (lang: Lang) => localeTag(lang);
 // Backend boş hata döndürdüğünde render sırasında çevrilen yer tutucu
 const UNKNOWN_ERROR = '__unknown__';
 
@@ -253,7 +255,7 @@ function Spinner({ size = 4 }: { size?: number }) {
   );
 }
 
-function ChangeBadge({ curr, prev, invert = false }: { curr: number; prev: number; invert?: boolean }) {
+function ChangeBadge({ curr, prev, invert = false, lang }: { curr: number; prev: number; invert?: boolean; lang: Lang }) {
   const ch = pctChange(curr, prev);
   if (!ch) return null;
   const good = invert ? !ch.up : ch.up;
@@ -261,15 +263,15 @@ function ChangeBadge({ curr, prev, invert = false }: { curr: number; prev: numbe
     <span className={`inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded-full ${
       good ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-      {ch.up ? '↑' : '↓'}{Math.abs(ch.val)}%
+      {ch.up ? '↑' : '↓'}{pct(Math.abs(ch.val), lang)}
     </span>
   );
 }
 
 function MetricCard({
-  label, value, curr, prev, invert = false, accent = false,
+  label, value, curr, prev, invert = false, accent = false, lang,
 }: {
-  label: string; value: string;
+  label: string; value: string; lang: Lang;
   curr?: number; prev?: number; invert?: boolean; accent?: boolean;
 }) {
   return (
@@ -285,7 +287,7 @@ function MetricCard({
       </div>
       {curr !== undefined && prev !== undefined && (
         <div className="mt-1.5 h-5 flex items-center">
-          <ChangeBadge curr={curr} prev={prev} invert={invert} />
+          <ChangeBadge curr={curr} prev={prev} invert={invert} lang={lang} />
         </div>
       )}
     </div>
@@ -339,16 +341,16 @@ function DeviceBars({ rows, lang }: { rows: BarRow[]; lang: Lang }) {
   return (
     <div className="space-y-2">
       {rows.map((r, i) => {
-        const pct = Math.round((r.value / total) * 100);
+        const share = Math.round((r.value / total) * 100);
         const key = r.name.toLowerCase();
         return (
           <div key={i} className="flex items-center gap-2 text-xs">
             <span>{DEVICE_ICONS[key] ?? '🖥️'}</span>
             <span className="text-slate-600 dark:text-slate-400 w-20 shrink-0">{DEVICE_LABELS[key]?.[lang === 'tr' ? 0 : 1] ?? r.name}</span>
             <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-1.5 min-w-0">
-              <div className={`${DEVICE_COLORS[i] ?? 'bg-slate-400'} h-1.5 rounded-full`} style={{ width: `${pct}%` }} />
+              <div className={`${DEVICE_COLORS[i] ?? 'bg-slate-400'} h-1.5 rounded-full`} style={{ width: `${share}%` }} />
             </div>
-            <span className="text-slate-500 w-8 text-right shrink-0 font-medium">{pct}%</span>
+            <span className="text-slate-500 w-8 text-right shrink-0 font-medium">{pct(share, lang)}</span>
           </div>
         );
       })}
@@ -419,7 +421,7 @@ function QueryTable({ rows, lang }: { rows: ReturnType<typeof parseGscRows>; lan
       <table className="w-full text-xs">
         <thead>
           <tr className="text-slate-400 border-b border-slate-100 dark:border-slate-700">
-            <th className="text-left py-2 px-1 font-medium">{L(lang, 'Arama Sorgusu', 'Search Query')}</th>
+            <th className="text-left py-2 px-1 font-medium">{L(lang, 'Arama sorgusu', 'Search query')}</th>
             <th className="text-right py-2 px-1 font-medium">{L(lang, 'Tıklama', 'Clicks')}</th>
             <th className="text-right py-2 px-1 font-medium">{L(lang, 'Gösterim', 'Impressions')}</th>
             <th className="text-right py-2 px-1 font-medium">CTR</th>
@@ -435,7 +437,7 @@ function QueryTable({ rows, lang }: { rows: ReturnType<typeof parseGscRows>; lan
               <td className="py-2 px-1 text-right text-slate-500">{pct(r.ctr, lang)}</td>
               <td className="py-2 px-1 text-right">
                 <span className={`font-medium ${r.position <= 3 ? 'text-green-600 dark:text-green-400' : r.position <= 10 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`}>
-                  #{r.position}
+                  #{fmt(r.position, lang)}
                 </span>
               </td>
             </tr>
@@ -515,15 +517,15 @@ function GrowthReports({
   const waitingForBackend = acquisition?.reason === 'backend_not_ready' && activationTrend?.reason === 'backend_not_ready';
   const funnel = summary ? [
     { label: L(lang, 'Kayıt', 'Registrations'), value: summary.registrations, color: 'bg-blue-500' },
-    { label: L(lang, 'Attribution Bulunan', 'Attributed'), value: summary.attributedRegistrations, color: 'bg-cyan-500' },
-    { label: L(lang, 'Activated Seafarer', 'Activated Seafarers'), value: summary.activatedSeafarers, color: 'bg-green-500' },
+    { label: L(lang, 'Attribution bulunan', 'Attributed'), value: summary.attributedRegistrations, color: 'bg-cyan-500' },
+    { label: L(lang, 'Activated Seafarer', 'Activated seafarers'), value: summary.activatedSeafarers, color: 'bg-green-500' },
   ].filter((stage): stage is { label: string; value: number; color: string } => stage.value !== undefined) : [];
   const funnelMax = Math.max(funnel[0]?.value || 0, 1);
 
   return (
     <section className="border-t border-slate-200 dark:border-slate-700 pt-5 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
-        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{L(lang, 'Edinimden Aktivasyona', 'Acquisition to Activation')}</h3>
+        <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{L(lang, 'Edinimden aktivasyona', 'Acquisition to activation')}</h3>
         {loading && <Spinner size={3} />}
         {!loading && backendReady && <span className="text-xs text-green-600 dark:text-green-400">{L(lang, 'Crewin verisi', 'Crewin data')}</span>}
         {!loading && acquisition?.reason === 'backend_not_ready' && activationTrend?.available && <span className="text-xs text-amber-600 dark:text-amber-400">{L(lang, 'Edinim raporu backend bekliyor', 'Acquisition report awaiting backend')}</span>}
@@ -545,21 +547,21 @@ function GrowthReports({
         <div className="border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 rounded-lg">
           {L(lang,
             'Crewin edinim ve aktivasyon raporları backend yayını tamamlandığında bu bölüm otomatik dolacak. GA4 UTM performansı çalışmaya devam ediyor.',
-            'This section fills in automatically once the Crewin acquisition and activation reports are live on the backend. GA4 UTM performance keeps working.')}
+            'This section fills in once the Crewin acquisition and activation reports are live on the backend. GA4 UTM performance keeps working.')}
         </div>
       )}
       {error && !loading && (
-        <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300 rounded-lg">{error}</div>
+        <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300 rounded-lg"><Msg text={error} /></div>
       )}
 
       {summary && acquisition?.available && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <SmallMetric label={L(lang, 'Kayıt', 'Registrations')} value={fmtOptional(summary.registrations, lang)} />
-            <SmallMetric label={L(lang, 'Attribution Var', 'Attributed')} value={fmtOptional(summary.attributedRegistrations, lang)} />
-            <SmallMetric label={L(lang, 'Attribution Yok', 'Unattributed')} value={fmtOptional(summary.unattributedRegistrations, lang)} />
-            <SmallMetric label={L(lang, 'Activated Seafarer', 'Activated Seafarers')} value={fmtOptional(summary.activatedSeafarers, lang)} />
-            <SmallMetric label={L(lang, 'Aktivasyon Oranı', 'Activation Rate')} value={pctOptional(summary.activationRate, lang)} />
+            <SmallMetric label={L(lang, 'Attribution var', 'Attributed')} value={fmtOptional(summary.attributedRegistrations, lang)} />
+            <SmallMetric label={L(lang, 'Attribution yok', 'Unattributed')} value={fmtOptional(summary.unattributedRegistrations, lang)} />
+            <SmallMetric label={L(lang, 'Activated Seafarer', 'Activated seafarers')} value={fmtOptional(summary.activatedSeafarers, lang)} />
+            <SmallMetric label={L(lang, 'Aktivasyon oranı', 'Activation rate')} value={pctOptional(summary.activationRate, lang)} />
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 border-y border-slate-200 dark:border-slate-700 py-4">
             {funnel.map(stage => <div key={stage.label} className="min-w-0"><div className="flex justify-between gap-2 text-xs mb-2"><span className="text-slate-500 dark:text-slate-400 truncate">{stage.label}</span><b className="text-slate-800 dark:text-slate-100">{fmt(stage.value, lang)}</b></div><div className="h-2 bg-slate-100 dark:bg-slate-700 overflow-hidden"><div className={`h-2 ${stage.color}`} style={{ width: `${stage.value > 0 ? Math.max((stage.value / funnelMax) * 100, 2) : 0}%` }} /></div></div>)}
@@ -569,8 +571,8 @@ function GrowthReports({
 
       {(acquisitionResult?.dataNote || activationTrend?.result?.dataNote) && (
         <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
-          {acquisitionResult?.dataNote && <p>{acquisitionResult.dataNote}</p>}
-          {activationTrend?.result?.dataNote && activationTrend.result.dataNote !== acquisitionResult?.dataNote && <p>{activationTrend.result.dataNote}</p>}
+          {acquisitionResult?.dataNote && <p><Msg text={acquisitionResult.dataNote} /></p>}
+          {activationTrend?.result?.dataNote && activationTrend.result.dataNote !== acquisitionResult?.dataNote && <p><Msg text={activationTrend.result.dataNote} /></p>}
         </div>
       )}
 
@@ -598,10 +600,10 @@ function GrowthReports({
 
       {trendRows.length > 0 && (
         <div>
-          <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">{L(lang, 'Aktivasyon Trendi', 'Activation Trend')}</div>
+          <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">{L(lang, 'Aktivasyon trendi', 'Activation trend')}</div>
           <div className="overflow-x-auto border-y border-slate-200 dark:border-slate-700">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-slate-400"><th className="py-2 px-2">{L(lang, 'Tarih', 'Date')}</th><th className="py-2 px-2 text-right">{L(lang, 'Kayıt', 'Registrations')}</th>{hasStartedProfiles && <th className="py-2 px-2 text-right">{L(lang, 'Profil Başlatan', 'Started Profiles')}</th>}<th className="py-2 px-2 text-right">{L(lang, 'Aktive', 'Activated')}</th><th className="py-2 px-2 text-right">{L(lang, 'Oran', 'Rate')}</th></tr></thead>
+              <thead><tr className="text-left text-xs text-slate-400"><th className="py-2 px-2">{L(lang, 'Tarih', 'Date')}</th><th className="py-2 px-2 text-right">{L(lang, 'Kayıt', 'Registrations')}</th>{hasStartedProfiles && <th className="py-2 px-2 text-right">{L(lang, 'Profil başlatan', 'Started profiles')}</th>}<th className="py-2 px-2 text-right">{L(lang, 'Aktive', 'Activated')}</th><th className="py-2 px-2 text-right">{L(lang, 'Oran', 'Rate')}</th></tr></thead>
               <tbody>{trendRows.map((row, index) => <tr key={row.date || row.day || index} className="border-t border-slate-100 dark:border-slate-800"><td className="py-2 px-2 text-slate-700 dark:text-slate-200">{fmtDate(row.date || row.day, lang)}</td><td className="py-2 px-2 text-right">{fmtOptional(row.registrations, lang)}</td>{hasStartedProfiles && <td className="py-2 px-2 text-right">{fmtOptional(row.startedProfiles, lang)}</td>}<td className="py-2 px-2 text-right">{fmtOptional(row.activatedSeafarers, lang)}</td><td className="py-2 px-2 text-right">{pctOptional(row.activationRate, lang)}</td></tr>)}</tbody>
             </table>
           </div>
@@ -614,11 +616,11 @@ function GrowthReports({
 // ── Setup guide ───────────────────────────────────────────────────────────────
 
 const SETUP_STEPS: Array<{ step: string; title: [string, string]; desc: [string, string] }> = [
-  { step: '1', title: ['Google Cloud Service Account Oluştur', 'Create a Google Cloud Service Account'], desc: ['console.cloud.google.com → IAM → Service Accounts → Yeni hesap oluştur', 'console.cloud.google.com → IAM → Service Accounts → Create account'] },
-  { step: '2', title: ['Analytics Viewer Rolü Ver', 'Grant the Analytics Viewer role'],                  desc: ['GA4 Admin → Mülk erişim yönetimi → Hesabı ekle → Viewer rolü seç', 'GA4 Admin → Property access management → Add account → choose Viewer'] },
-  { step: '3', title: ['JSON Key İndir', 'Download the JSON key'],                                       desc: ['Service Account → Keys → Add Key → JSON → indir', 'Service Account → Keys → Add Key → JSON → download'] },
-  { step: '4', title: ['GA4 Property ID Al', 'Get the GA4 Property ID'],                                 desc: ['GA4 Admin → Mülk → Mülk bilgileri → Property ID (sadece rakamlar, G- değil)', 'GA4 Admin → Property → Property details → Property ID (digits only, not G-)'] },
-  { step: '5', title: [".env.local'a Ekle", 'Add to .env.local'],                                        desc: ["GOOGLE_SERVICE_ACCOUNT_JSON='{\"type\":\"service_account\",...}'\nGA4_PROPERTY_ID=123456789", "GOOGLE_SERVICE_ACCOUNT_JSON='{\"type\":\"service_account\",...}'\nGA4_PROPERTY_ID=123456789"] },
+  { step: '1', title: ['Google Cloud service account oluştur', 'Create a Google Cloud service account'], desc: ['console.cloud.google.com → IAM → Service Accounts → Yeni hesap oluştur', 'console.cloud.google.com → IAM → Service Accounts → Create account'] },
+  { step: '2', title: ['Analytics Viewer rolü ver', 'Grant the Analytics Viewer role'],                  desc: ['GA4 Admin → Mülk erişim yönetimi → Hesabı ekle → Viewer rolü seç', 'GA4 Admin → Property access management → Add account → choose Viewer'] },
+  { step: '3', title: ['JSON key indir', 'Download the JSON key'],                                       desc: ['Service Account → Keys → Add Key → JSON → indir', 'Service Account → Keys → Add Key → JSON → download'] },
+  { step: '4', title: ['GA4 Property ID al', 'Get the GA4 property ID'],                                 desc: ['GA4 Admin → Mülk → Mülk bilgileri → Property ID (sadece rakamlar, G- değil)', 'GA4 Admin → Property → Property details → Property ID (digits only, not G-)'] },
+  { step: '5', title: [".env.local'a ekle", 'Add to .env.local'],                                        desc: ["GOOGLE_SERVICE_ACCOUNT_JSON='{\"type\":\"service_account\",...}'\nGA4_PROPERTY_ID=123456789", "GOOGLE_SERVICE_ACCOUNT_JSON='{\"type\":\"service_account\",...}'\nGA4_PROPERTY_ID=123456789"] },
 ];
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -695,16 +697,16 @@ export default function AnalyticsTab() {
   useEffect(() => { loadGrowth(appliedGrowthFilters); }, [appliedGrowthFilters, loadGrowth]);
 
   const RANGES: { key: Range; label: string }[] = [
-    { key: '7',  label: L(lang, '7 Gün', '7 Days')   },
-    { key: '30', label: L(lang, '30 Gün', '30 Days') },
-    { key: '90', label: L(lang, '90 Gün', '90 Days') },
+    { key: '7',  label: L(lang, '7 gün', '7 days')   },
+    { key: '30', label: L(lang, '30 gün', '30 days') },
+    { key: '90', label: L(lang, '90 gün', '90 days') },
   ];
   // Boş hata mesajı yer tutucusunu seçili dilde göster
   const errorText = (value: string, tr: string, en: string) => value === UNKNOWN_ERROR ? L(lang, tr, en) : value;
 
   const Header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">📊 {L(lang, 'crewinjob.com Analitik', 'crewinjob.com Analytics')}</h2>
+      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">📊 {L(lang, 'crewinjob.com analitik', 'crewinjob.com analytics')}</h2>
       <div className="flex items-center gap-2">
         <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
           {RANGES.map(({ key, label }) => (
@@ -726,14 +728,14 @@ export default function AnalyticsTab() {
     </div>
   );
 
-  const growthReports = <GrowthReports lang={lang} error={errorText(growthError, 'Crewin growth raporu alınamadı.', 'Crewin growth report could not be loaded.')} acquisition={acquisition} activationTrend={activationTrend} loading={growthLoading} filters={growthFilters} onFiltersChange={setGrowthFilters} onApply={() => setAppliedGrowthFilters({ ...growthFilters })} onClear={() => { const next = rangeFilters(range); setGrowthFilters(next); setAppliedGrowthFilters(next); }} />;
+  const growthReports = <GrowthReports lang={lang} error={errorText(growthError, 'Crewin growth raporu alınamadı.', "Couldn't load the Crewin growth report.")} acquisition={acquisition} activationTrend={activationTrend} loading={growthLoading} filters={growthFilters} onFiltersChange={setGrowthFilters} onApply={() => setAppliedGrowthFilters({ ...growthFilters })} onClear={() => { const next = rangeFilters(range); setGrowthFilters(next); setAppliedGrowthFilters(next); }} />;
 
   if (loading && !data) return (
     <div className="space-y-6">
       {Header}
       {growthReports}
       <div className="flex items-center gap-3 text-slate-400 py-8">
-        <Spinner size={5} /> {L(lang, 'GA4 verileri yükleniyor...', 'Loading GA4 data...')}
+        <Spinner size={5} /> {L(lang, 'GA4 verileri yükleniyor…', 'Loading GA4 data…')}
       </div>
     </div>
   );
@@ -761,7 +763,7 @@ export default function AnalyticsTab() {
       {Header}
       {growthReports}
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-sm text-red-700 dark:text-red-300 flex items-center gap-3">
-        <span>❌ {errorText(error, 'Bilinmeyen hata', 'Unknown error')}</span>
+        <span>❌ <Msg text={errorText(error, 'Bilinmeyen hata', 'Unknown error')} /></span>
         <button onClick={() => loadGa4(range)} className="underline shrink-0">{L(lang, 'Tekrar dene', 'Retry')}</button>
       </div>
     </div>
@@ -791,12 +793,12 @@ export default function AnalyticsTab() {
       {/* ── GA4 Metric cards ───────────────────────────────────────────────── */}
       {ov && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <MetricCard label={L(lang, 'Oturum', 'Sessions')}                  value={fmt(ov.sessions, lang)}         accent curr={ov.sessions}    prev={prev?.sessions ?? 0} />
-          <MetricCard label={L(lang, 'Aktif Kullanıcı', 'Active Users')}     value={fmt(ov.activeUsers, lang)}      curr={ov.activeUsers}   prev={prev?.activeUsers ?? 0} />
-          <MetricCard label={L(lang, 'Yeni Kullanıcı', 'New Users')}         value={fmt(ov.newUsers, lang)}         curr={ov.newUsers}      prev={prev?.newUsers ?? 0} />
-          <MetricCard label={L(lang, 'Etkileşim Oranı', 'Engagement Rate')} value={pct(ov.engagementRate, lang)} />
-          <MetricCard label={L(lang, 'Hemen Çıkma', 'Bounce Rate')}          value={pct(ov.bounceRate, lang)}       curr={ov.bounceRate}    prev={prev?.bounceRate ?? 0} invert />
-          <MetricCard label={L(lang, 'Ort. Süre', 'Avg. Duration')}          value={fmtDur(ov.avgDuration, lang)}   curr={ov.avgDuration}   prev={prev?.avgDuration ?? 0} />
+          <MetricCard lang={lang} label={L(lang, 'Oturum', 'Sessions')}                  value={fmt(ov.sessions, lang)}         accent curr={ov.sessions}    prev={prev?.sessions ?? 0} />
+          <MetricCard lang={lang} label={L(lang, 'Aktif kullanıcı', 'Active users')}     value={fmt(ov.activeUsers, lang)}      curr={ov.activeUsers}   prev={prev?.activeUsers ?? 0} />
+          <MetricCard lang={lang} label={L(lang, 'Yeni kullanıcı', 'New users')}         value={fmt(ov.newUsers, lang)}         curr={ov.newUsers}      prev={prev?.newUsers ?? 0} />
+          <MetricCard lang={lang} label={L(lang, 'Etkileşim oranı', 'Engagement rate')} value={pct(ov.engagementRate, lang)} />
+          <MetricCard lang={lang} label={L(lang, 'Hemen çıkma', 'Bounce rate')}          value={pct(ov.bounceRate, lang)}       curr={ov.bounceRate}    prev={prev?.bounceRate ?? 0} invert />
+          <MetricCard lang={lang} label={L(lang, 'Ort. süre', 'Avg. duration')}          value={fmtDur(ov.avgDuration, lang)}   curr={ov.avgDuration}   prev={prev?.avgDuration ?? 0} />
         </div>
       )}
 
@@ -804,7 +806,7 @@ export default function AnalyticsTab() {
       {trend.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
           <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'Günlük Trend', 'Daily Trend')}</div>
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'Günlük trend', 'Daily trend')}</div>
             <div className="flex items-center gap-4 text-xs text-slate-500">
               <span className="flex items-center gap-1.5">
                 <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#3b82f6" strokeWidth="2" /></svg>
@@ -818,7 +820,7 @@ export default function AnalyticsTab() {
           </div>
           <AreaChart data={trend} lang={lang} />
           <div className="flex justify-between text-xs text-slate-400 mt-2">
-            <span>{trend[0]?.date}</span><span>{trend[trend.length - 1]?.date}</span>
+            <span>{fmtDate(trend[0]?.date, lang)}</span><span>{fmtDate(trend[trend.length - 1]?.date, lang)}</span>
           </div>
         </div>
       )}
@@ -826,12 +828,12 @@ export default function AnalyticsTab() {
       {/* ── GA4 Bottom panels ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-          <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'En Çok Görüntülenen Sayfalar', 'Top Pages')}</div>
+          <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'En çok görüntülenen sayfalar', 'Top pages')}</div>
           <BarList lang={lang} rows={pages} label={L(lang, 'görüntülenme', 'views')} color="bg-blue-500" />
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 space-y-5">
           <div>
-            <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'Trafik Kaynakları', 'Traffic Sources')}</div>
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'Trafik kaynakları', 'Traffic sources')}</div>
             <BarList lang={lang} rows={sources} label={L(lang, 'oturum', 'sessions')} color="bg-violet-500" />
           </div>
           {devices.length > 0 && (
@@ -858,12 +860,12 @@ export default function AnalyticsTab() {
       {campaignRows.length > 0 && (
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-            <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'UTM Kampanya Performansı', 'UTM Campaign Performance')}</div>
+            <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'UTM kampanya performansı', 'UTM campaign performance')}</div>
             <span className="text-xs text-slate-400">{L(lang, 'Oturum · aktif kullanıcı', 'Sessions · active users')}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-slate-400 border-b border-slate-100 dark:border-slate-700"><th className="py-2">{L(lang, 'Kampanya', 'Campaign')}</th><th className="py-2 text-right">{L(lang, 'Oturum', 'Sessions')}</th><th className="py-2 text-right">{L(lang, 'Aktif Kullanıcı', 'Active Users')}</th></tr></thead>
+              <thead><tr className="text-left text-xs text-slate-400 border-b border-slate-100 dark:border-slate-700"><th className="py-2">{L(lang, 'Kampanya', 'Campaign')}</th><th className="py-2 text-right">{L(lang, 'Oturum', 'Sessions')}</th><th className="py-2 text-right">{L(lang, 'Aktif kullanıcı', 'Active users')}</th></tr></thead>
               <tbody>{campaignRows.map(row => <tr key={row.name} className="border-b border-slate-50 dark:border-slate-800"><td className="py-2 text-slate-700 dark:text-slate-200 font-medium">{row.name}</td><td className="py-2 text-right text-slate-600 dark:text-slate-300">{fmt(row.value, lang)}</td><td className="py-2 text-right text-slate-500">{fmt(row.sub || 0, lang)}</td></tr>)}</tbody>
             </table>
           </div>
@@ -875,7 +877,7 @@ export default function AnalyticsTab() {
       {/* ── Search Console section ─────────────────────────────────────────── */}
       <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
         <div className="flex items-center gap-3 mb-4">
-          <div className="text-base font-bold text-slate-900 dark:text-slate-100">🔍 {L(lang, 'Organik Arama (Search Console)', 'Organic Search (Search Console)')}</div>
+          <div className="text-base font-bold text-slate-900 dark:text-slate-100">🔍 {L(lang, 'Organik arama (Search Console)', 'Organic search (Search Console)')}</div>
           {gscLoading && <Spinner size={3} />}
           {gscData?.notConfigured && (
             <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-full">
@@ -883,7 +885,7 @@ export default function AnalyticsTab() {
             </span>
           )}
           {gscError && !gscLoading && (
-            <span className="text-xs text-red-600 dark:text-red-400">{errorText(gscError, 'GSC hatası', 'GSC error')}</span>
+            <span className="text-xs text-red-600 dark:text-red-400"><Msg text={errorText(gscError, 'GSC hatası', 'GSC error')} /></span>
           )}
         </div>
 
@@ -891,17 +893,17 @@ export default function AnalyticsTab() {
           <>
             {/* GSC metric cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-              <SmallMetric label={L(lang, 'Organik Tıklama', 'Organic Clicks')} value={fmt(gscOv.clicks, lang)}      hint={L(lang, 'son arama', 'recent searches')} />
+              <SmallMetric label={L(lang, 'Organik tıklama', 'Organic clicks')} value={fmt(gscOv.clicks, lang)}      hint={L(lang, 'son arama', 'recent searches')} />
               <SmallMetric label={L(lang, 'Gösterim', 'Impressions')}           value={fmt(gscOv.impressions, lang)} hint={L(lang, "SERP'te görünme", 'SERP appearances')} />
               <SmallMetric label={L(lang, 'Ort. CTR', 'Avg. CTR')}              value={pct(gscOv.ctr, lang)}         hint={L(lang, 'tıklama oranı', 'click-through rate')} />
-              <SmallMetric label={L(lang, 'Ort. Pozisyon', 'Avg. Position')}    value={`#${gscOv.position}`}         hint={L(lang, 'arama sıralaması', 'search ranking')} />
+              <SmallMetric label={L(lang, 'Ort. pozisyon', 'Avg. position')}    value={`#${fmt(gscOv.position, lang)}`}         hint={L(lang, 'arama sıralaması', 'search ranking')} />
             </div>
 
             {/* GSC mini trend */}
             {gscDaily.length > 1 && (
               <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 mb-4">
                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'Organik Tıklama Trendi', 'Organic Click Trend')}</div>
+                  <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'Organik tıklama trendi', 'Organic click trend')}</div>
                   <div className="flex items-center gap-4 text-xs text-slate-500">
                     <span className="flex items-center gap-1.5">
                       <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#f97316" strokeWidth="2" /></svg>
@@ -915,7 +917,7 @@ export default function AnalyticsTab() {
                 </div>
                 <GscMiniChart data={gscDaily} />
                 <div className="flex justify-between text-xs text-slate-400 mt-1">
-                  <span>{gscDaily[0]?.date}</span><span>{gscDaily[gscDaily.length-1]?.date}</span>
+                  <span>{fmtDate(gscDaily[0]?.date, lang)}</span><span>{fmtDate(gscDaily[gscDaily.length-1]?.date, lang)}</span>
                 </div>
               </div>
             )}
@@ -923,11 +925,11 @@ export default function AnalyticsTab() {
             {/* GSC queries + pages */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'En Çok Tıklanan Arama Sorguları', 'Top Search Queries')}</div>
+                <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'En çok tıklanan arama sorguları', 'Top search queries')}</div>
                 <QueryTable rows={gscQueries} lang={lang} />
               </div>
               <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-                <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'Organik Trafik Alan Sayfalar', 'Top Organic Pages')}</div>
+                <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">{L(lang, 'Organik trafik alan sayfalar', 'Top organic pages')}</div>
                 <PageClickList rows={gscPages} lang={lang} />
               </div>
             </div>

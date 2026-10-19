@@ -4,6 +4,8 @@ import {Check,Clock3,ExternalLink,LockKeyhole,RefreshCw,ShieldCheck,SearchCheck}
 import type {Locale} from '@/lib/platform/catalog';
 import type {BillingOrderState,BillingCheckReason,ProjectBillingView} from '@/lib/platform/billing-types';
 import {projectRequest} from '@/lib/platform/client';
+import {localeTag} from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 export default function ProjectBilling({lang}:{lang:Locale}){
   const tr=lang==='tr',controller=useRef<AbortController|null>(null),key=useRef(''),checkKeys=useRef<Record<string,string>>({});
@@ -17,8 +19,8 @@ export default function ProjectBilling({lang}:{lang:Locale}){
     finally{if(!next.signal.aborted)setLoading(false);}
   },[tr]);
   useEffect(()=>{void load();return()=>controller.current?.abort();},[load]);
-  const money=(amount:number)=>(amount/100).toLocaleString(tr?'tr-TR':'en-US',{style:'currency',currency:'USD'});
-  const date=(value:string)=>new Date(value).toLocaleString(tr?'tr-TR':'en-GB',{dateStyle:'short',timeStyle:'short'});
+  const money=(amount:number)=>(amount/100).toLocaleString(tr?localeTag(lang):'en-US',{style:'currency',currency:'USD'});
+  const date=(value:string)=>new Date(value).toLocaleString(localeTag(lang),{dateStyle:'short',timeStyle:'short'});
   const labels:Record<BillingOrderState,string>={preparing:tr?'Hazırlanıyor':'Preparing',pending:tr?'Bildirim bekleniyor':'Awaiting notification',test_paid:tr?'Test başarılı':'Test passed',test_failed:tr?'Test başarısız':'Test failed',rejected:tr?'İstek reddedildi':'Request rejected',uncertain:tr?'Sonuç doğrulanmadı':'Outcome unconfirmed',review:tr?'Kontrol gerekli':'Review required'};
   const blocked=Boolean(data?.orders.some(order=>['preparing','pending','uncertain','review'].includes(order.state)));
   const checkReasons:Record<BillingCheckReason,string>={matched:tr?'Test ödemesi doğrulandı':'Test payment confirmed',no_confirmed_payment:tr?'Başarılı ödeme doğrulanamadı; mevcut durum korundu':'Successful payment not confirmed; current state preserved',provider_unavailable:tr?'PayTR yanıtı alınamadı':'PayTR response unavailable',invalid_response:tr?'PayTR yanıtı doğrulanamadı':'PayTR response could not be verified',details_mismatch:tr?'Tutar, para birimi veya test modu uyuşmuyor':'Amount, currency or test mode differs',refund_observed:tr?'İade kaydı var; yönetici kontrolü gerekli':'Refund observed; administrator review required',configuration_changed:tr?'Mağaza ayarları değişti; sonuç uygulanmadı':'Merchant configuration changed; result not applied',authority_lost:tr?'İşlem yetkisi değişti':'Permission changed',order_changed:tr?'Ödeme kaydı değişti; eski sorgu uygulanmadı':'Order changed; stale query not applied',interrupted:tr?'Sorgu kesildi; sonuç doğrulanmadı':'Inquiry interrupted; outcome unconfirmed',review_required:tr?'Test ödemesi gözlendi; önceki uyuşmazlık için yönetici kontrolü gerekiyor':'Test payment observed; previous conflict still requires review',contradicting_result:tr?'Önceki sonuçla çelişiyor; yönetici kontrolü gerekli':'Conflicts with the previous result; administrator review required'};
@@ -46,8 +48,8 @@ export default function ProjectBilling({lang}:{lang:Locale}){
   const edit=()=>{key.current='';setAck(false);};
   return <section className="studio-band billing-section" aria-busy={loading||saving||Boolean(checking)}>
     <header className="studio-section-title"><h3><ShieldCheck size={17}/>{tr?'PayTR test ortamı':'PayTR test environment'}</h3><button className="icon-button" disabled={loading||saving||Boolean(checking)} title={tr?'Ödeme durumunu yenile':'Refresh payment status'} aria-label={tr?'Ödeme durumunu yenile':'Refresh payment status'} onClick={load}><RefreshCw size={17} className={loading?'animate-spin':''}/></button></header>
-    {error&&<p role="alert" className="studio-error">{error}</p>}
-    {notice&&<p role="status" className="studio-note">{notice}</p>}
+    {error&&<p role="alert" className="studio-error"><Msg text={error}/></p>}
+    {notice&&<p role="status" className="studio-note"><Msg text={notice}/></p>}
     {loading&&!data&&<p role="status" className="studio-note">{tr?'Test ortamı kontrol ediliyor…':'Checking test environment…'}</p>}
     {data&&<>
       <div className="billing-status"><strong><LockKeyhole size={16}/>{tr?'Gerçek tahsilat kapalı':'Live payments disabled'}</strong><span className="studio-badge">USD · {tr?'Yalnız test':'Test only'}</span></div>

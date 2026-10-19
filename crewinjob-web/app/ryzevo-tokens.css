@@ -16,6 +16,8 @@
   --rz-glow:rgba(186,243,49,.22);
   /* birincil eylem: açık temada grafit, koyu temada lime */
   --rz-primary-bg:var(--rz-ink); --rz-primary-fg:var(--rz-paper);
+  /* eski sekmelerin "ocean" vurgusu (Tailwind rgb kanalları): zeytin */
+  --rz-ocean:79 111 31; --rz-ocean-dark:61 87 23; --rz-ocean-light:127 168 26;
   /* köşe */
   --rz-r-badge:4px; --rz-r-control:8px; --rz-r-card:12px; --rz-r-panel:20px;
   /* tipografi */
@@ -28,6 +30,7 @@
   --rz-ease:cubic-bezier(.2,.8,.2,1);
 }
 .dark{
+  --rz-ocean:186 243 49; --rz-ocean-dark:164 214 42; --rz-ocean-light:214 247 140;
   --rz-lime-soft:#1f2a10; --rz-lime-deep:#a9dd2c;
   --rz-paper:#0f120e; --rz-paper-2:#151a13; --rz-surface:#1a1f18;
   --rz-ink:#f1f4ec; --rz-ink-2:#d2d9c8; --rz-muted:#97a28e;

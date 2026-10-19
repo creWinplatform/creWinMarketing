@@ -8,15 +8,21 @@ import './mobile-growth.css';
 import './growth-compass.css';
 import './accessibility.css';
 import { LangProvider } from '@/lib/lang';
+import { requestLang } from '@/lib/i18n/server';
+import { pick } from '@/lib/i18n/shared';
 
-export const metadata: Metadata = {
-  title: { default:'Ryzevo', template:'%s | Ryzevo' },
-  description: 'Projenize özel içerik, kampanya ve büyüme çalışma alanı.',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await requestLang();
+  return {
+    title: { default:'Ryzevo', template:'%s | Ryzevo' },
+    description: pick(lang, 'Projenize özel içerik, kampanya ve büyüme çalışma alanı.', 'A growth workspace for your product: content, campaigns and growth work in one place.'),
+  };
+}
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const lang = await requestLang();
   return (
-    <html lang="tr" suppressHydrationWarning>
+    <html lang={lang} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
@@ -27,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           })();
         `}} />
       </head>
-      <body><LangProvider>{children}</LangProvider></body>
+      <body><LangProvider initial={lang}>{children}</LangProvider></body>
     </html>
   );
 }

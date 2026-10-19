@@ -27,8 +27,8 @@ export default function ThemeToggle() {
       onClick={toggle}
       type="button"
       className="icon-button"
-      aria-label={dark ? (lang === 'tr' ? 'Açık moda geç' : 'Switch to Light') : (lang === 'tr' ? 'Koyu moda geç' : 'Switch to Dark')}
-      title={dark ? (lang === 'tr' ? 'Açık moda geç' : 'Switch to Light') : (lang === 'tr' ? 'Koyu moda geç' : 'Switch to Dark')}
+      aria-label={dark ? (lang === 'tr' ? 'Açık moda geç' : 'Switch to light mode') : (lang === 'tr' ? 'Koyu moda geç' : 'Switch to dark mode')}
+      title={dark ? (lang === 'tr' ? 'Açık moda geç' : 'Switch to light mode') : (lang === 'tr' ? 'Koyu moda geç' : 'Switch to dark mode')}
     >
       {dark ? <Sun size={18}/> : <Moon size={18}/>}
     </button>

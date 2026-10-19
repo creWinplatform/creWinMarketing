@@ -54,7 +54,7 @@ export default function ActivityLogPanel() {
       <button
         onClick={() => { setOpen(v => !v); reload(); }}
         className="relative flex items-center gap-1.5 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors font-medium"
-        title={lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity Log'}
+        title={lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity log'}
       >
         <History size={16} />
         <span className="hidden sm:inline">{lang === 'tr' ? 'Aktivite' : 'Activity'}</span>
@@ -81,7 +81,7 @@ export default function ActivityLogPanel() {
               <div className="flex items-center gap-2">
                 <span className="text-base">🕐</span>
                 <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
-                  {lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity Log'}
+                  {lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity log'}
                 </h2>
                 {entries.length > 0 && (
                   <span className="text-[10px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full">
@@ -101,6 +101,8 @@ export default function ActivityLogPanel() {
                 )}
                 <button
                   onClick={() => setOpen(false)}
+                  aria-label={lang === 'tr' ? 'Kapat' : 'Close'}
+                  title={lang === 'tr' ? 'Kapat' : 'Close'}
                   className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-lg leading-none"
                 >
                   ✕

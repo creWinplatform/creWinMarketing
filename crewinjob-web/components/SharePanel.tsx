@@ -4,6 +4,8 @@ import PlatformPreview from './PlatformPreview';
 import { addPost, extractPostId, makeThumbnail } from '@/lib/post-history';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 import { compositePostImage, PLATFORM_TARGET } from '@/lib/image-composite';
 import { loadPartnerLogo } from '@/lib/partner-logo';
 
@@ -23,46 +25,46 @@ const PLATFORMS = [
     id: 'instagram', icon: '📸', label: 'Instagram',
     color: 'bg-gradient-to-br from-purple-500 to-pink-500',
     charLimit: 2200,
-    charLabel: '2.200 karakter',
+    charLabel: { tr: '2.200 karakter', en: '2,200 characters' },
     imageRatio: '1:1 · 4:5 · 9:16',
-    imageRes: '1080×1080 önerilen',
-    note: 'Caption tam gönderilir. Görsel zorunlu.',
+    imageRes: { tr: '1080×1080 önerilen', en: '1080×1080 recommended' },
+    note: { tr: 'Caption tam gönderilir. Görsel zorunlu.', en: 'The full caption is sent. Image required.' },
   },
   {
     id: 'facebook', icon: '👥', label: 'Facebook',
     color: 'bg-blue-600',
     charLimit: 63206,
-    charLabel: 'Sınırsız',
+    charLabel: { tr: 'Sınırsız', en: 'Unlimited' },
     imageRatio: '1.91:1 · 1:1',
-    imageRes: '1200×630 önerilen',
-    note: 'İçerik tam gönderilir.',
+    imageRes: { tr: '1200×630 önerilen', en: '1200×630 recommended' },
+    note: { tr: 'İçerik tam gönderilir.', en: 'The full content is sent.' },
   },
   {
     id: 'twitter', icon: '🐦', label: 'Twitter / X',
     color: 'bg-slate-900',
     charLimit: 280,
-    charLabel: '280 karakter',
+    charLabel: { tr: '280 karakter', en: '280 characters' },
     imageRatio: '16:9 · 1:1',
-    imageRes: '1600×900 önerilen',
-    note: 'Yalnızca ilk 280 karakter paylaşılır.',
+    imageRes: { tr: '1600×900 önerilen', en: '1600×900 recommended' },
+    note: { tr: 'Yalnızca ilk 280 karakter paylaşılır.', en: 'Only the first 280 characters are shared.' },
   },
   {
     id: 'linkedin', icon: '💼', label: 'LinkedIn',
     color: 'bg-blue-700',
     charLimit: 3000,
-    charLabel: '3.000 karakter',
+    charLabel: { tr: '3.000 karakter', en: '3,000 characters' },
     imageRatio: '1.91:1 · 1:1',
-    imageRes: '1200×627 önerilen',
-    note: 'İçerik tam gönderilir.',
+    imageRes: { tr: '1200×627 önerilen', en: '1200×627 recommended' },
+    note: { tr: 'İçerik tam gönderilir.', en: 'The full content is sent.' },
   },
   {
     id: 'tiktok', icon: '🎵', label: 'TikTok',
     color: 'bg-gradient-to-br from-slate-900 to-pink-500',
     charLimit: 2200,
-    charLabel: '2.200 karakter',
+    charLabel: { tr: '2.200 karakter', en: '2,200 characters' },
     imageRatio: '9:16',
-    imageRes: '1080×1920 önerilen',
-    note: 'Metin post (API) veya Script Modu.',
+    imageRes: { tr: '1080×1920 önerilen', en: '1080×1920 recommended' },
+    note: { tr: 'Metin post (API) veya Script Modu.', en: 'Text post (API) or script mode.' },
   },
 ];
 
@@ -210,56 +212,57 @@ interface ErrorInfo {
   fixHint?:      string;    // Ücretsiz düzeltme ipucu
 }
 
-function getErrorInfo(platform: string, error: string): ErrorInfo {
+function getErrorInfo(platform: string, error: string, lang: 'tr' | 'en'): ErrorInfo {
+  const tr = lang === 'tr';
   if (platform === 'twitter') {
     const webIntentBase: Partial<ErrorInfo> = { canCopy: true, showWebIntent: true };
 
     if (error === 'TWITTER_MONTHLY_LIMIT') return {
       ...webIntentBase,
-      message:  '⚠️ Twitter Free tier aylık 1.500 tweet kotası dolmuş (ay başında yenilenir).',
-      fixHint:  'Şu an için "Web\'de Paylaş" butonunu kullan — Twitter\'ı doğrudan açar. Kota bir sonraki ayın 1\'inde yenilenir. Alternatif: twitter.com/i/developer-platform → Basic plan ($100/ay, 50.000 tweet/ay).',
-      link:     { url: 'https://twitter.com/intent/tweet', label: 'Twitter\'da Manuel Paylaş' },
+      message:  tr ? '⚠️ Twitter Free tier aylık 1.500 tweet kotası dolmuş (ay başında yenilenir).' : '⚠️ The Twitter Free tier monthly quota of 1,500 tweets is used up (it resets at the start of the month).',
+      fixHint:  tr ? 'Şu an için "Web\'de Paylaş" butonunu kullan — Twitter\'ı doğrudan açar. Kota bir sonraki ayın 1\'inde yenilenir. Alternatif: twitter.com/i/developer-platform → Basic plan ($100/ay, 50.000 tweet/ay).' : 'For now, use the "Open on Twitter" button — it opens Twitter directly. The quota resets on the 1st of next month. Alternative: twitter.com/i/developer-platform → Basic plan ($100/month, 50,000 tweets/month).',
+      link:     { url: 'https://twitter.com/intent/tweet', label: tr ? 'Twitter\'da Manuel Paylaş' : 'Share manually on Twitter' },
     } as ErrorInfo;
 
     if (error === 'TWITTER_NO_CREDITS') return {
       ...webIntentBase,
-      message:  'Twitter API Free tier write kotası dolmuş veya app izinleri eksik.',
-      fixHint:  '✅ Ücretsiz düzeltme: developer.twitter.com → Apps → App Settings → "App permissions" → "Read and Write" seç → Access Token\'ı yeniden oluştur.',
-      link:     { url: 'https://developer.twitter.com/en/portal/projects-and-apps', label: 'Developer Portal\'ı Aç' },
+      message:  tr ? 'Twitter API Free tier write kotası dolmuş veya app izinleri eksik.' : 'The Twitter API Free tier write quota is used up or the app permissions are missing.',
+      fixHint:  tr ? '✅ Ücretsiz düzeltme: developer.twitter.com → Apps → App Settings → "App permissions" → "Read and Write" seç → Access Token\'ı yeniden oluştur.' : '✅ Free fix: developer.twitter.com → Apps → App Settings → "App permissions" → choose "Read and Write" → regenerate the Access Token.',
+      link:     { url: 'https://developer.twitter.com/en/portal/projects-and-apps', label: tr ? 'Developer Portal\'ı Aç' : 'Open Developer Portal' },
     } as ErrorInfo;
 
     if (error === 'TWITTER_NO_WRITE') return {
       ...webIntentBase,
-      message:  'Uygulama yalnızca "Read" iznine sahip, "Write" izni eksik.',
-      fixHint:  '✅ Ücretsiz düzeltme: Developer Portal → App Settings → Permissions → "Read and Write" → Kaydet → Access Token\'ı yeniden oluştur.',
-      link:     { url: 'https://developer.twitter.com/en/portal/projects-and-apps', label: 'İzinleri Düzenle' },
+      message:  tr ? 'Uygulama yalnızca "Read" iznine sahip, "Write" izni eksik.' : 'The app only has "Read" permission; "Write" permission is missing.',
+      fixHint:  tr ? '✅ Ücretsiz düzeltme: Developer Portal → App Settings → Permissions → "Read and Write" → Kaydet → Access Token\'ı yeniden oluştur.' : '✅ Free fix: Developer Portal → App Settings → Permissions → "Read and Write" → Save → regenerate the Access Token.',
+      link:     { url: 'https://developer.twitter.com/en/portal/projects-and-apps', label: tr ? 'İzinleri Düzenle' : 'Edit permissions' },
     } as ErrorInfo;
 
     if (error === 'TWITTER_FORBIDDEN') return {
       ...webIntentBase,
-      message:  'Erişim reddedildi (403). API key veya app izni sorunu.',
-      fixHint:  '✅ Ücretsiz düzeltme: App permissions "Read and Write" olduğundan emin olun, ardından Access Token\'ı yeniden oluşturun.',
+      message:  tr ? 'Erişim reddedildi (403). API key veya app izni sorunu.' : 'Access denied (403). API key or app permission issue.',
+      fixHint:  tr ? '✅ Ücretsiz düzeltme: App permissions "Read and Write" olduğundan emin olun, ardından Access Token\'ı yeniden oluşturun.' : '✅ Free fix: make sure App permissions is set to "Read and Write", then regenerate the Access Token.',
       link:     { url: 'https://developer.twitter.com/en/portal/projects-and-apps', label: 'Developer Portal' },
     } as ErrorInfo;
 
     if (error === 'TWITTER_AUTH_ERROR') return {
       ...webIntentBase,
-      message:  'Yetkilendirme hatası (401). API key/secret veya access token hatalı.',
-      fixHint:  '.env.local dosyasındaki TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET değerlerini kontrol edin.',
-      link:     { url: 'https://developer.twitter.com/en/portal/projects-and-apps', label: 'API Anahtarları' },
+      message:  tr ? 'Yetkilendirme hatası (401). API key/secret veya access token hatalı.' : 'Authorization error (401). The API key/secret or access token is wrong.',
+      fixHint:  tr ? '.env.local dosyasındaki TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET değerlerini kontrol edin.' : 'Check the TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN and TWITTER_ACCESS_TOKEN_SECRET values in .env.local.',
+      link:     { url: 'https://developer.twitter.com/en/portal/projects-and-apps', label: tr ? 'API Anahtarları' : 'API keys' },
     } as ErrorInfo;
 
     if (error === 'TWITTER_RATE_LIMIT') return {
       ...webIntentBase,
-      message:  'Hız limiti aşıldı (429). 15 dakika bekleyin.',
+      message:  tr ? 'Hız limiti aşıldı (429). 15 dakika bekleyin.' : 'Rate limit exceeded (429). Wait 15 minutes.',
     } as ErrorInfo;
 
     if (error === 'TWITTER_DUPLICATE') return {
       canCopy: false, showWebIntent: false,
-      message: 'Bu tweet daha önce paylaşıldı. Twitter aynı içeriği iki kez kabul etmiyor.',
+      message: tr ? 'Bu tweet daha önce paylaşıldı. Twitter aynı içeriği iki kez kabul etmiyor.' : "This tweet was already shared. Twitter doesn't accept the same content twice.",
     };
   }
-  return { message: error || 'Bilinmeyen hata.', canCopy: true, showWebIntent: false };
+  return { message: error || (tr ? 'Bilinmeyen hata.' : 'Unknown error.'), canCopy: true, showWebIntent: false };
 }
 
 interface Props {
@@ -407,7 +410,8 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
         thumbnail:   thumbnail || undefined,
         publishedAt: Date.now(),
       });
-      logActivity('post_published', `${r.platform.charAt(0).toUpperCase() + r.platform.slice(1)}'a post yayınlandı`, r.url);
+      const platformName = r.platform.charAt(0).toUpperCase() + r.platform.slice(1);
+      logActivity('post_published', lang === 'tr' ? `${platformName}'a post yayınlandı` : `Post published on ${platformName}`, r.url);
     }
   };
 
@@ -457,9 +461,9 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
       const result = (data.results as Array<{ platform: string; success: boolean; url?: string; postId?: string; error?: string }>)?.[0];
       if (result?.success) {
         void recordResults([{ ...result, platform }], () => text);
-        setQuickToast({ show: true, platform, success: true,  message: lang === 'tr' ? 'Başarıyla yayınlandı!' : 'Successfully published!', url: result.url });
+        setQuickToast({ show: true, platform, success: true,  message: lang === 'tr' ? 'Başarıyla yayınlandı!' : 'Published successfully!', url: result.url });
       } else {
-        setQuickToast({ show: true, platform, success: false, message: result?.error || (lang === 'tr' ? 'Paylaşım başarısız' : 'Share failed') });
+        setQuickToast({ show: true, platform, success: false, message: result?.error || (lang === 'tr' ? 'Paylaşım başarısız' : "Couldn't share the post") });
       }
     } catch {
       setQuickToast({ show: true, platform, success: false, message: lang === 'tr' ? 'Sunucu hatası' : 'Server error' });
@@ -611,13 +615,13 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                   </span> {lang === 'tr' ? '(İndirilenler klasörüne bak)' : '(Check your Downloads folder)'}<br /></>
                 )}
                 <br />
-                <strong>{lang === 'tr' ? 'LinkedIn share modal açıldı:' : 'LinkedIn share modal opened:'}</strong><br />
-                1️⃣ <strong>"Anyone"</strong> dropdown → <strong>creWin</strong> {lang === 'tr' ? 'şirket sayfasını seç' : 'select company page'}<br />
+                <strong>{lang === 'tr' ? 'LinkedIn share modal açıldı:' : 'The LinkedIn share window is open:'}</strong><br />
+                1️⃣ <strong>"Anyone"</strong> dropdown → <strong>creWin</strong> {lang === 'tr' ? 'şirket sayfasını seç' : 'select the company page'}<br />
                 2️⃣ {lang === 'tr'
                   ? <>Metin kutusuna <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → tam metin yapışır</>
-                  : <>Paste in text box <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → full text pastes</>}<br />
+                  : <>Paste into the text box <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → the full text is pasted</>}<br />
                 {twToast.imageCopied && (
-                  <>3️⃣ 🖼️ {lang === 'tr' ? 'fotoğraf butonuna tıkla → indirilen görseli seç' : 'click photo button → select downloaded image'}<br />4️⃣ </>
+                  <>3️⃣ 🖼️ {lang === 'tr' ? 'fotoğraf butonuna tıkla → indirilen görseli seç' : 'click the photo button → select the downloaded image'}<br />4️⃣ </>
                 )}
                 {!twToast.imageCopied && <>3️⃣ </>}<strong>Post</strong>{lang === 'tr' ? "'a bas ✅" : ' ✅'}
               </p>
@@ -629,14 +633,14 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                     Twitter'da metin alanına tıkla → <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> (Mac: <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">⌘+V</kbd>) → Görsel yapışır → <strong>Post</strong>'a tıkla.</>
                   ) : (
                     <>✅ <strong>Image copied to clipboard.</strong><br />
-                    Click in Twitter text area → <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> (Mac: <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">⌘+V</kbd>) → Image pastes → click <strong>Post</strong>.</>
+                    Click the Twitter text area → <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> (Mac: <kbd className="bg-slate-700 px-1.5 py-0.5 rounded text-[10px] font-mono">⌘+V</kbd>) → the image is pasted → click <strong>Post</strong>.</>
                   )}
                 </p>
               ) : imageData ? (
                 <p className="text-xs text-amber-300 leading-relaxed">
                   {lang === 'tr'
                     ? '⚠️ Görsel panoya kopyalanamadı (tarayıcı izni). Görseli manuel olarak indirip Twitter\'a yükleyebilirsin.'
-                    : '⚠️ Image could not be copied to clipboard (browser permission). You can manually download the image and upload it to Twitter.'}
+                    : "⚠️ Couldn't copy the image to the clipboard (browser permission). You can download the image and upload it to Twitter manually."}
                 </p>
               ) : (
                 <p className="text-xs text-slate-200 leading-relaxed">
@@ -678,6 +682,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
           </div>
           <button
             onClick={() => setTwToast({ show: false, imageCopied: false, platform: 'twitter' })}
+            aria-label={lang === 'tr' ? 'Kapat' : 'Close'}
             className="text-slate-400 hover:text-white text-sm shrink-0 self-start"
           >✕</button>
         </div>
@@ -697,27 +702,28 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
               {quickToast.platform === 'facebook' ? 'Facebook' : quickToast.platform === 'instagram' ? 'Instagram' : 'TikTok'}
               {' '}{quickToast.success
                 ? (lang === 'tr' ? '— Yayınlandı! 🎉' : '— Published! 🎉')
-                : (lang === 'tr' ? '— Paylaşım Başarısız' : '— Share Failed')}
+                : (lang === 'tr' ? '— Paylaşım Başarısız' : "— Couldn't share")}
             </p>
             {quickToast.success ? (
               quickToast.url ? (
                 <p className="text-xs text-green-300 leading-relaxed">
-                  {lang === 'tr' ? '✅ İçerik başarıyla yayınlandı.' : '✅ Content successfully published.'}{' '}
+                  {lang === 'tr' ? '✅ İçerik başarıyla yayınlandı.' : '✅ Content published successfully.'}{' '}
                   <a href={quickToast.url} target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-green-200">
                     {lang === 'tr' ? 'Gönderiyi görüntüle →' : 'View post →'}
                   </a>
                 </p>
               ) : (
                 <p className="text-xs text-green-300">
-                  {lang === 'tr' ? '✅ İçerik başarıyla yayınlandı.' : '✅ Content successfully published.'}
+                  {lang === 'tr' ? '✅ İçerik başarıyla yayınlandı.' : '✅ Content published successfully.'}
                 </p>
               )
             ) : (
-              <p className="text-xs text-red-300 leading-relaxed">{quickToast.message}</p>
+              <p className="text-xs text-red-300 leading-relaxed"><Msg text={quickToast.message} /></p>
             )}
           </div>
           <button
             onClick={() => setQuickToast(prev => prev ? { ...prev, show: false } : null)}
+            aria-label={lang === 'tr' ? 'Kapat' : 'Close'}
             className="text-slate-400 hover:text-white text-sm shrink-0"
           >✕</button>
         </div>
@@ -731,14 +737,14 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
             <span className="text-xl">📤</span>
             <div>
               <h2 className="font-bold text-slate-800 dark:text-slate-100">
-                {lang === 'tr' ? 'Paylaşım Onayı' : 'Share Settings'}
+                {lang === 'tr' ? 'Paylaşım Onayı' : 'Share approval'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {lang === 'tr' ? 'Platform seç, içeriği gözden geçir, onayla' : 'Select platform, review content, confirm'}
+                {lang === 'tr' ? 'Platform seç, içeriği gözden geçir, onayla' : 'Select platforms, review the content, confirm'}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none">✕</button>
+          <button onClick={onClose} aria-label={lang === 'tr' ? 'Kapat' : 'Close'} title={lang === 'tr' ? 'Kapat' : 'Close'} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none">✕</button>
         </div>
 
         {/* ── STEP: select ── */}
@@ -752,7 +758,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
               <div className="flex items-center gap-2">
                 <span className="text-base">📋</span>
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  {lang === 'tr' ? 'İçeriği & Görseli Kopyala' : 'Copy Content & Image'}
+                  {lang === 'tr' ? 'İçeriği & Görseli Kopyala' : 'Copy content & image'}
                 </h3>
                 <span className="ml-auto text-[10px] text-slate-400 dark:text-slate-500">
                   {lang === 'tr' ? 'Platform bağlantısı gerekmez' : 'No platform connection needed'}
@@ -778,7 +784,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                 >
                   {copiedText
                     ? (lang === 'tr' ? '✅ Kopyalandı!' : '✅ Copied!')
-                    : (lang === 'tr' ? '📋 İçeriği Kopyala' : '📋 Copy Content')}
+                    : (lang === 'tr' ? '📋 İçeriği Kopyala' : '📋 Copy content')}
                 </button>
 
                 {/* Görseli Kopyala — her zaman göster, görsel yoksa devre dışı */}
@@ -787,7 +793,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                   disabled={!imageData}
                   title={!imageData
                     ? (lang === 'tr' ? 'Görsel bulunamadı — önce görsel oluşturun' : 'No image found — generate an image first')
-                    : (lang === 'tr' ? 'Görseli PNG olarak panoya kopyalar (desteklenmiyorsa indirir)' : 'Copies image as PNG to clipboard (falls back to download)')}
+                    : (lang === 'tr' ? 'Görseli PNG olarak panoya kopyalar (desteklenmiyorsa indirir)' : 'Copies the image to the clipboard as PNG (downloads it if not supported)')}
                   className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition-all ${
                     !imageData
                       ? 'bg-slate-200 dark:bg-slate-600 text-slate-400 dark:text-slate-500 cursor-not-allowed'
@@ -798,7 +804,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                 >
                   {copiedImage
                     ? (lang === 'tr' ? '✅ Kopyalandı!' : '✅ Copied!')
-                    : (lang === 'tr' ? '🖼️ Görseli Kopyala' : '🖼️ Copy Image')}
+                    : (lang === 'tr' ? '🖼️ Görseli Kopyala' : '🖼️ Copy image')}
                 </button>
 
                 {/* Görseli İndir — her zaman göster */}
@@ -806,15 +812,15 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                   onClick={imageData ? handleDownloadImage : undefined}
                   disabled={!imageData}
                   title={!imageData
-                    ? (lang === 'tr' ? 'Görsel bulunamadı — önce görsel oluşturun' : 'No image — generate one first')
-                    : (lang === 'tr' ? 'Orijinal görseli indir' : 'Download original image')}
+                    ? (lang === 'tr' ? 'Görsel bulunamadı — önce görsel oluşturun' : 'No image found — generate an image first')
+                    : (lang === 'tr' ? 'Orijinal görseli indir' : 'Download the original image')}
                   className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-xl transition-all ${
                     !imageData
                       ? 'border border-slate-200 dark:border-slate-600 text-slate-300 dark:text-slate-600 cursor-not-allowed'
                       : 'border border-slate-300 dark:border-slate-500 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
                   }`}
                 >
-                  ⬇️ {lang === 'tr' ? 'Görseli İndir' : 'Download Image'}
+                  ⬇️ {lang === 'tr' ? 'Görseli İndir' : 'Download image'}
                 </button>
               </div>
 
@@ -822,7 +828,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
               {imageData && (
                 <div className="border-t border-slate-200 dark:border-slate-600 pt-3 flex flex-col gap-2">
                   <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    📐 {lang === 'tr' ? 'Platform Boyutunda İndir' : 'Download in Platform Size'}
+                    📐 {lang === 'tr' ? 'Platform Boyutunda İndir' : 'Download in platform size'}
                   </p>
                   <div className="flex gap-1.5 flex-wrap">
                     {([
@@ -867,7 +873,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                     {lang === 'tr' ? (
                       <>1️⃣ <em>İçeriği Kopyala</em> → 2️⃣ LinkedIn&apos;i aç → <kbd className="bg-slate-200 dark:bg-slate-600 px-1 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → 3️⃣ <strong>LinkedIn 1200×627</strong> indir → 🖼️ yükle → 4️⃣ <strong>Paylaş</strong></>
                     ) : (
-                      <>1️⃣ <em>Copy Content</em> → 2️⃣ Open LinkedIn → <kbd className="bg-slate-200 dark:bg-slate-600 px-1 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → 3️⃣ Download <strong>LinkedIn 1200×627</strong> → upload 🖼️ → 4️⃣ <strong>Post</strong></>
+                      <>1️⃣ <em>Copy content</em> → 2️⃣ Open LinkedIn → <kbd className="bg-slate-200 dark:bg-slate-600 px-1 py-0.5 rounded text-[10px] font-mono">Ctrl+V</kbd> → 3️⃣ Download <strong>LinkedIn 1200×627</strong> → upload 🖼️ → 4️⃣ <strong>Post</strong></>
                     )}
                   </p>
                 </div>
@@ -878,7 +884,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  📱 {lang === 'tr' ? 'Platform Seç' : 'Select Platform'}
+                  📱 {lang === 'tr' ? 'Platform Seç' : 'Select platforms'}
                 </h3>
                 {connectedPlatforms.length > 0 && !loading && (
                   <button
@@ -886,8 +892,8 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                     className="text-xs font-medium text-ocean hover:text-ocean-dark border border-ocean/30 hover:border-ocean/60 rounded-lg px-3 py-1 transition-colors"
                   >
                     {allConnectedSelected
-                      ? (lang === 'tr' ? '☐ Tümünü Kaldır' : '☐ Deselect All')
-                      : (lang === 'tr' ? '☑ Tümünü Seç' : '☑ Select All')}
+                      ? (lang === 'tr' ? '☐ Tümünü Kaldır' : '☐ Deselect all')
+                      : (lang === 'tr' ? '☑ Tümünü Seç' : '☑ Select all')}
                   </button>
                 )}
               </div>
@@ -895,7 +901,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
               {loading ? (
                 <div className="flex items-center gap-2 text-slate-400 text-sm">
                   <div className="w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
-                  {lang === 'tr' ? 'Bağlantı durumları kontrol ediliyor...' : 'Checking connection statuses...'}
+                  {lang === 'tr' ? 'Bağlantı durumları kontrol ediliyor…' : 'Checking connection status…'}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">
@@ -939,7 +945,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                 {lang === 'tr' ? 'API key eksik' : 'API key missing'}
                               </p>
                             ) : p.id === 'tiktok' ? (
-                              <p className="text-xs text-pink-500 dark:text-pink-400">🎵 Script Modu</p>
+                              <p className="text-xs text-pink-500 dark:text-pink-400">🎵 {lang === 'tr' ? 'Script Modu' : 'Script mode'}</p>
                             ) : (
                               <p className="text-xs text-slate-500 dark:text-slate-400">
                                 {lang === 'tr' ? 'Bağlı değil' : 'Not connected'}
@@ -974,14 +980,14 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                             <span className="text-sm shrink-0">⚠️</span>
                             <div>
                               <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
-                                {lang === 'tr' ? 'Görsel zorunlu!' : 'Image required!'}
+                                {lang === 'tr' ? 'Görsel zorunlu!' : 'Image required'}
                               </p>
                               <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-relaxed">
                                 {lang === 'tr'
                                   ? <>Instagram API'si görsel olmadan post kabul etmez — paylaşım başarısız olur.
                                     OutputPanel'den <strong>✨ Görsel Oluştur</strong>'u kullanın veya İçerik Kütüphanesi'nden görsellendirilmiş bir içerik seçin.</>
-                                  : <>Instagram API does not accept posts without an image — share will fail.
-                                    Use <strong>✨ Generate Image</strong> from OutputPanel or select visualized content from the Content Library.</>}
+                                  : <>The Instagram API doesn't accept posts without an image — the share will fail.
+                                    Use <strong>✨ Generate image</strong> in the output panel or pick content with an image from the content library.</>}
                               </p>
                             </div>
                           </div>
@@ -996,13 +1002,13 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                               <button
                                 onClick={() => handleTwitterQuickShare(adapted[p.id] || editText)}
                                 title={imageData
-                                  ? (lang === 'tr' ? 'Görsel panoya kopyalanır + Twitter açılır → Ctrl+V yapıştır → Post' : 'Image copied to clipboard + Twitter opens → Ctrl+V paste → Post')
-                                  : (lang === 'tr' ? 'Twitter\'ı açar, metin hazır gelir' : 'Opens Twitter with text pre-filled')}
+                                  ? (lang === 'tr' ? 'Görsel panoya kopyalanır + Twitter açılır → Ctrl+V yapıştır → Post' : 'The image is copied to the clipboard and Twitter opens → paste with Ctrl+V → Post')
+                                  : (lang === 'tr' ? 'Twitter\'ı açar, metin hazır gelir' : 'Opens Twitter with the text pre-filled')}
                                 className="w-full text-xs bg-slate-800 hover:bg-black text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5"
                               >
                                 {lang === 'tr'
                                   ? `🐦 Twitter'da Hızlı Paylaş${imageData ? ' +🖼️' : ''}`
-                                  : `🐦 Share on Twitter${imageData ? ' +🖼️' : ''}`}
+                                  : `🐦 Quick share on Twitter${imageData ? ' +🖼️' : ''}`}
                               </button>
                             )}
 
@@ -1011,13 +1017,13 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                               <button
                                 onClick={() => handleLinkedInQuickShare(adapted[p.id] || editText)}
                                 title={imageData
-                                  ? (lang === 'tr' ? 'Görsel panoya kopyalanır + LinkedIn açılır → şirket sayfasını seç → Ctrl+V görsel → Paylaş' : 'Image copied + LinkedIn opens → select company page → Ctrl+V image → Share')
-                                  : (lang === 'tr' ? 'LinkedIn açılır, metin hazır gelir → şirket sayfasını seç → Paylaş' : 'LinkedIn opens with text → select company page → Share')}
+                                  ? (lang === 'tr' ? 'Görsel panoya kopyalanır + LinkedIn açılır → şirket sayfasını seç → Ctrl+V görsel → Paylaş' : 'The image is copied and LinkedIn opens → select the company page → Ctrl+V the image → Share')
+                                  : (lang === 'tr' ? 'LinkedIn açılır, metin hazır gelir → şirket sayfasını seç → Paylaş' : 'LinkedIn opens with the text ready → select the company page → Share')}
                                 className="w-full text-xs bg-blue-700 hover:bg-blue-800 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5"
                               >
                                 {lang === 'tr'
                                   ? `💼 Şirket Sayfasında Paylaş${imageData ? ' +🖼️' : ''}`
-                                  : `💼 Share on Company Page${imageData ? ' +🖼️' : ''}`}
+                                  : `💼 Share on company page${imageData ? ' +🖼️' : ''}`}
                               </button>
                             )}
 
@@ -1029,8 +1035,8 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                 className="w-full text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5"
                               >
                                 {quickPosting === 'facebook'
-                                  ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}</>
-                                  : <>👥 {lang === 'tr' ? `Sayfada Hızlı Yayınla${imageData ? ' +🖼️' : ''}` : `Quick Publish to Page${imageData ? ' +🖼️' : ''}`}</>}
+                                  ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Yayınlanıyor…' : 'Publishing…'}</>
+                                  : <>👥 {lang === 'tr' ? `Sayfada Hızlı Yayınla${imageData ? ' +🖼️' : ''}` : `Quick publish to page${imageData ? ' +🖼️' : ''}`}</>}
                               </button>
                             )}
 
@@ -1039,7 +1045,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                               <button
                                 onClick={() => imageData ? handleQuickPost('instagram', adapted['instagram'] || editText, imageData, imageMime) : undefined}
                                 disabled={!imageData || quickPosting === 'instagram'}
-                                title={!imageData ? (lang === 'tr' ? 'Instagram paylaşımı için görsel zorunlu' : 'Image required for Instagram share') : undefined}
+                                title={!imageData ? (lang === 'tr' ? 'Instagram paylaşımı için görsel zorunlu' : 'An image is required to share on Instagram') : undefined}
                                 className={`w-full text-xs px-3 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 ${
                                   imageData
                                     ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white disabled:opacity-50'
@@ -1047,10 +1053,10 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                 }`}
                               >
                                 {quickPosting === 'instagram'
-                                  ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}</>
+                                  ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Yayınlanıyor…' : 'Publishing…'}</>
                                   : imageData
                                     ? <>📸 {lang === 'tr' ? 'Instagram\'da Yayınla +🖼️' : 'Publish on Instagram +🖼️'}</>
-                                    : <>📸 {lang === 'tr' ? 'Instagram\'da Yayınla (Görsel Gerekli)' : 'Publish on Instagram (Image Required)'}</>}
+                                    : <>📸 {lang === 'tr' ? 'Instagram\'da Yayınla (Görsel Gerekli)' : 'Publish on Instagram (image required)'}</>}
                               </button>
                             )}
 
@@ -1070,7 +1076,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                   >
                                     {tiktokCopied
                                       ? (lang === 'tr' ? '✅ Kopyalandı!' : '✅ Copied!')
-                                      : (lang === 'tr' ? '📋 Scripti Kopyala' : '📋 Copy Script')}
+                                      : (lang === 'tr' ? '📋 Scripti Kopyala' : '📋 Copy script')}
                                   </button>
                                   <a
                                     href="https://www.tiktok.com/upload"
@@ -1088,8 +1094,8 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                     className="w-full text-xs bg-slate-900 hover:bg-black disabled:opacity-50 text-white px-3 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5"
                                   >
                                     {quickPosting === 'tiktok'
-                                      ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}</>
-                                      : <>🎵 {lang === 'tr' ? 'TikTok\'ta Otomatik Yayınla' : 'Auto-Publish on TikTok'}</>}
+                                      ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Yayınlanıyor…' : 'Publishing…'}</>
+                                      : <>🎵 {lang === 'tr' ? 'TikTok\'ta Otomatik Yayınla' : 'Auto-publish on TikTok'}</>}
                                   </button>
                                 )}
                               </>
@@ -1106,7 +1112,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                   📐 <span className="font-medium text-slate-500 dark:text-slate-400">{p.imageRatio}</span>
                                 </span>
                                 <span className={`text-[10px] font-medium ${(adapted[p.id] ?? editText).length > p.charLimit ? 'text-orange-500' : 'text-slate-400 dark:text-slate-500'}`}>
-                                  ✏️ {p.charLabel}
+                                  ✏️ {p.charLabel[lang]}
                                   {(adapted[p.id] ?? editText).length > p.charLimit && ` (${(adapted[p.id] ?? editText).length - p.charLimit} ${lang === 'tr' ? 'fazla' : 'over'})`}
                                 </span>
                               </div>
@@ -1124,9 +1130,9 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                   } disabled:opacity-50`}
                                 >
                                   {adapting === p.id
-                                    ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Uyarlanıyor...' : 'Adapting...'}</>
+                                    ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Uyarlanıyor…' : 'Adapting…'}</>
                                     : adapted[p.id]
-                                      ? (lang === 'tr' ? '✅ Yeniden Uyarla' : '✅ Re-Adapt')
+                                      ? (lang === 'tr' ? '✅ Yeniden Uyarla' : '✅ Adapt again')
                                       : (lang === 'tr' ? '🤖 AI ile Uyarla' : '🤖 Adapt with AI')}
                                 </button>
                                 {/* Görsel Uyarla — görsel varsa göster */}
@@ -1141,10 +1147,10 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                     } disabled:opacity-50`}
                                   >
                                     {adaptingImg === p.id
-                                      ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Uyarlanıyor...' : 'Adapting...'}</>
+                                      ? <><span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Uyarlanıyor…' : 'Adapting…'}</>
                                       : adaptedImages[p.id]
-                                        ? (lang === 'tr' ? '🖼️ Görsel Uyarlandı' : '🖼️ Image Adapted')
-                                        : (lang === 'tr' ? '🖼️ Görseli Uyarla' : '🖼️ Adapt Image')}
+                                        ? (lang === 'tr' ? '🖼️ Görsel Uyarlandı' : '🖼️ Image adapted')
+                                        : (lang === 'tr' ? '🖼️ Görseli Uyarla' : '🖼️ Adapt image')}
                                   </button>
                                 )}
                               </div>
@@ -1180,7 +1186,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                               {adapted[p.id] || editText}
                             </p>
                             {editText.length > p.charLimit && (
-                              <p className="text-[10px] text-orange-500 mt-1">⚠️ {p.note}</p>
+                              <p className="text-[10px] text-orange-500 mt-1">⚠️ {p.note[lang]}</p>
                             )}
                           </div>
                         )}
@@ -1192,7 +1198,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
 
               {!loading && Object.values(status).every(s => !s.configured) && (
                 <div className="mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-xs text-amber-700 dark:text-amber-300">
-                  <strong>⚙️ API Key {lang === 'tr' ? 'Gerekli' : 'Required'}:</strong> {lang === 'tr' ? '.env.local dosyasına platform API anahtarlarını ekleyin.' : 'Add platform API keys to your .env.local file.'}{' '}
+                  <strong>⚙️ {lang === 'tr' ? 'API Key Gerekli' : 'API key required'}:</strong> {lang === 'tr' ? '.env.local dosyasına platform API anahtarlarını ekleyin.' : 'Add platform API keys to your .env.local file.'}{' '}
                   <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">TWITTER_CLIENT_ID</code>,{' '}
                   <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">LINKEDIN_CLIENT_ID</code>,{' '}
                   <code className="bg-amber-100 dark:bg-amber-900/40 px-1 rounded">FACEBOOK_APP_ID</code>
@@ -1205,14 +1211,14 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                  ✏️ {lang === 'tr' ? 'İçerik (Düzenleyebilirsiniz)' : 'Edit Content'}
+                  ✏️ {lang === 'tr' ? 'İçerik (Düzenleyebilirsiniz)' : 'Content (editable)'}
                 </h3>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                   editText.length > 280
                     ? 'bg-orange-100 dark:bg-orange-900/20 text-orange-600 dark:text-orange-300'
                     : 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-300'
                 }`}>
-                  {editText.length.toLocaleString('tr-TR')} {lang === 'tr' ? 'karakter' : 'characters'}
+                  {editText.length.toLocaleString(localeTag(lang))} {lang === 'tr' ? 'karakter' : 'characters'}
                 </span>
               </div>
               <textarea
@@ -1248,7 +1254,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                   <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-col gap-1">
                     <p>{lang === 'tr' ? '✅ Görsel hazır' : '✅ Image ready'}</p>
                     {PLATFORMS.map(p => (
-                      <p key={p.id} className="text-slate-400 dark:text-slate-500">{p.icon} {p.label}: {p.imageRes}</p>
+                      <p key={p.id} className="text-slate-400 dark:text-slate-500">{p.icon} {p.label}: {p.imageRes[lang]}</p>
                     ))}
                   </div>
                 </div>
@@ -1266,10 +1272,10 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                 className="flex-1 py-2.5 bg-ocean hover:bg-ocean-dark disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
               >
                 {adapting === 'auto' ? (
-                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'İçerik uyarlanıyor...' : 'Adapting content...'}</>
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'İçerik uyarlanıyor…' : 'Adapting content…'}</>
                 ) : connectedSelected.length > 0
-                  ? (lang === 'tr' ? `${connectedSelected.length} Platformda Önizle →` : `Preview on ${connectedSelected.length} Platform${connectedSelected.length > 1 ? 's' : ''} →`)
-                  : (lang === 'tr' ? 'Platform Seç' : 'Select Platform')}
+                  ? (lang === 'tr' ? `${connectedSelected.length} Platformda Önizle →` : `Preview on ${connectedSelected.length} platform${connectedSelected.length > 1 ? 's' : ''} →`)
+                  : (lang === 'tr' ? 'Platform Seç' : 'Select platforms')}
               </button>
             </div>
           </div>
@@ -1282,7 +1288,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
               <span className="text-2xl">⚠️</span>
               <div>
                 <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-                  {lang === 'tr' ? 'Paylaşım Onayı' : 'Share Confirmation'}
+                  {lang === 'tr' ? 'Paylaşım Onayı' : 'Share confirmation'}
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
                   {lang === 'tr' ? (
@@ -1290,7 +1296,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                     Bu işlem geri alınamaz.</>
                   ) : (
                     <>The content below will be published on your <strong>{connectedSelected.map(id => PLATFORMS.find(x => x.id === id)?.label).join(', ')}</strong> accounts.
-                    This action cannot be undone.</>
+                    This can't be undone.</>
                   )}
                 </p>
               </div>
@@ -1310,7 +1316,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                       <span className="text-[10px] text-slate-400 dark:text-slate-400 ml-1">
                         {finalContent.length} {lang === 'tr' ? 'karakter' : 'characters'}
                       </span>
-                      {isAIAdapted  && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">🤖 {lang === 'tr' ? 'AI Uyarlandı' : 'AI Adapted'}</span>}
+                      {isAIAdapted  && <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full font-semibold">🤖 {lang === 'tr' ? 'AI Uyarlandı' : 'AI adapted'}</span>}
                       {!isAIAdapted && <span className="text-[10px] text-green-600 font-medium">✓ {lang === 'tr' ? 'Tam içerik' : 'Full content'}</span>}
                       <span className="text-[10px] text-slate-400">📐 {p.imageRatio}</span>
                       <button
@@ -1345,12 +1351,12 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                 <span className="text-xl shrink-0">⚠️</span>
                 <div>
                   <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
-                    {lang === 'tr' ? 'Instagram — Görsel eksik!' : 'Instagram — Image missing!'}
+                    {lang === 'tr' ? 'Instagram — Görsel eksik!' : 'Instagram — image missing'}
                   </p>
                   <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">
                     {lang === 'tr'
                       ? 'Instagram API\'si görsel olmadan post göndermeyi reddeder — Instagram paylaşımı başarısız olacaktır. Devam etmek için geri dönüp Instagram\'ı kaldırın ya da önce bir görsel oluşturun.'
-                      : 'Instagram API rejects posts without an image — the Instagram share will fail. Go back and remove Instagram, or generate an image first.'}
+                      : 'The Instagram API rejects posts without an image — the Instagram share will fail. Go back and remove Instagram, or generate an image first.'}
                   </p>
                 </div>
               </div>
@@ -1366,10 +1372,10 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                 className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2"
               >
                 {posting
-                  ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Paylaşılıyor...' : 'Sharing...'}</>
+                  ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Paylaşılıyor…' : 'Sharing…'}</>
                   : (lang === 'tr'
                       ? `✅ Onayla ve ${connectedSelected.length} Platformda Paylaş`
-                      : `✅ Confirm and Share on ${connectedSelected.length} Platform${connectedSelected.length > 1 ? 's' : ''}`)}
+                      : `✅ Confirm and share on ${connectedSelected.length} platform${connectedSelected.length > 1 ? 's' : ''}`)}
               </button>
             </div>
           </div>
@@ -1379,12 +1385,12 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
         {step === 'done' && (
           <div className="p-6 flex flex-col gap-4">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              📊 {lang === 'tr' ? 'Paylaşım Sonuçları' : 'Share Complete'}
+              📊 {lang === 'tr' ? 'Paylaşım Sonuçları' : 'Share results'}
             </h3>
             <div className="flex flex-col gap-3">
               {results.map((r, i) => {
                 const p = PLATFORMS.find(x => x.id === r.platform);
-                const errorInfo = getErrorInfo(r.platform, r.error || '');
+                const errorInfo = getErrorInfo(r.platform, r.error || '', lang);
                 const platformContent = adapted[r.platform] || editText;
                 return (
                   <div
@@ -1401,11 +1407,11 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                         <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{p?.label || r.platform}</p>
                         {r.success ? (
                           <p className="text-xs text-green-700 dark:text-green-300">
-                            {lang === 'tr' ? 'Başarıyla paylaşıldı!' : 'Successfully shared!'}
+                            {lang === 'tr' ? 'Başarıyla paylaşıldı!' : 'Shared successfully!'}
                             {r.url && <> · <a href={r.url} target="_blank" rel="noopener noreferrer" className="underline font-medium">{lang === 'tr' ? 'Görüntüle →' : 'View →'}</a></>}
                           </p>
                         ) : (
-                          <p className="text-xs text-red-700 dark:text-red-300 mt-0.5">{errorInfo.message}</p>
+                          <p className="text-xs text-red-700 dark:text-red-300 mt-0.5"><Msg text={errorInfo.message} /></p>
                         )}
                       </div>
                     </div>
@@ -1427,7 +1433,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                             >
                               🐦 {lang === 'tr'
                                 ? `Twitter'da Aç${imageData ? ' + Görsel Kopyala' : ''} (Ücretsiz)`
-                                : `Share on Web${imageData ? ' + Copy Image' : ''} (Free)`}
+                                : `Open on Twitter${imageData ? ' + copy image' : ''} (free)`}
                             </button>
                           )}
                           {/* Kopyala butonu */}
@@ -1438,7 +1444,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                               }}
                               className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-700 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-3 py-1.5 rounded-lg font-medium transition-colors"
                             >
-                              📋 {lang === 'tr' ? 'Metni Kopyala' : 'Copy Text'}
+                              📋 {lang === 'tr' ? 'Metni Kopyala' : 'Copy text'}
                             </button>
                           )}
                           {/* Düzeltme linki */}

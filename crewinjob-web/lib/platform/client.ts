@@ -1,7 +1,8 @@
+import { translateForDocument } from '../i18n/messages';
 export async function projectRequest<T>(url:string,init:RequestInit={}):Promise<T>{
   const response=await fetch(url,{...init,cache:'no-store',signal:init.signal || AbortSignal.timeout(35000),headers:{'Content-Type':'application/json',...init.headers}});
   const data=await response.json();
-  if(!response.ok)throw new Error(data.error || 'İstek tamamlanamadı.');
+  if(!response.ok)throw new Error(translateForDocument(data.error || 'İstek tamamlanamadı.'));
   return data as T;
 }
 export function searchText(value:string,locale:'tr'|'en'){

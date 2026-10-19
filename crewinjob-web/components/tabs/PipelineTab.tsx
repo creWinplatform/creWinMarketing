@@ -1,6 +1,8 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLang } from '@/lib/lang';
+import { localeTag, type Lang } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 // ── Tipler ────────────────────────────────────────────────────────────────────
 interface TgGroup {
@@ -30,7 +32,7 @@ interface MarketingAutomationStatus {
   failed: number;
 }
 
-function fmt(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
+function fmt(n: number, lang: Lang) { return n >= 1000 ? `${(n / 1000).toLocaleString(localeTag(lang), { minimumFractionDigits: 1, maximumFractionDigits: 1 })}k` : n.toLocaleString(localeTag(lang)); }
 function scoreColor(s: number) {
   if (s >= 75) return 'text-green-500';
   if (s >= 50) return 'text-yellow-500';
@@ -41,7 +43,7 @@ function scoreColor(s: number) {
 export default function PipelineTab() {
   const { lang } = useLang();
   const t = (tr: string, en: string) => (lang === 'tr' ? tr : en);
-  const locale = lang === 'tr' ? 'tr-TR' : 'en-US';
+  const locale = localeTag(lang);
   const [groups,      setGroups]       = useState<TgGroup[]>([]);
   const [postedJobs,   setPostedJobs]   = useState<PostedJob[]>([]);
   const [reviewQueue,  setReviewQueue]  = useState<ReviewItem[]>([]);
@@ -242,7 +244,7 @@ export default function PipelineTab() {
         body: JSON.stringify({ action: 'approve_review', id, positionId: overridePositionId ?? null }),
       });
       const d = await r.json();
-      if (d.ok) { showMsg(t('✅ İlan onaylandı ve yayınlandı!', '✅ Job approved and published!')); loadAll(); }
+      if (d.ok) { showMsg(t('✅ İlan onaylandı ve yayınlandı!', '✅ Job posting approved and published!')); loadAll(); }
       else showMsg(d.message || t('Hata', 'Error'), false);
     } catch (e) { showMsg((e as Error).message, false); }
     finally { setRunning(null); }
@@ -255,7 +257,7 @@ export default function PipelineTab() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reject_review', id }),
       });
-      showMsg(t('❌ İlan reddedildi.', '❌ Job rejected.')); loadAll();
+      showMsg(t('❌ İlan reddedildi.', '❌ Job posting rejected.')); loadAll();
     } catch (e) { showMsg((e as Error).message, false); }
     finally { setRunning(null); }
   };
@@ -268,14 +270,14 @@ export default function PipelineTab() {
         body: JSON.stringify({ action: 'bulk_reject', ids }),
       });
       const d = await r.json();
-      if (d.ok) { showMsg(t(`🗑️ ${d.count} ilan silindi.`, `🗑️ ${d.count} jobs deleted.`)); setSelected(new Set()); loadAll(); }
+      if (d.ok) { showMsg(t(`🗑️ ${d.count} ilan silindi.`, `🗑️ ${d.count} job postings deleted.`)); setSelected(new Set()); loadAll(); }
       else showMsg(d.message || t('Hata', 'Error'), false);
     } catch (e) { showMsg((e as Error).message, false); }
     finally { setRunning(null); }
   };
 
   const clearQueue = async () => {
-    if (!confirm(t('Kuyruktaki tüm bekleyen ilanlar silinecek. Emin misin?', 'All pending jobs in the queue will be deleted. Are you sure?'))) return;
+    if (!confirm(t('Kuyruktaki tüm bekleyen ilanlar silinecek. Emin misin?', 'All pending job postings in the queue will be deleted. Are you sure?'))) return;
     setRunning('clear_queue');
     try {
       const r = await fetch('/api/job-bot', {
@@ -283,7 +285,7 @@ export default function PipelineTab() {
         body: JSON.stringify({ action: 'clear_queue' }),
       });
       const d = await r.json();
-      if (d.ok) { showMsg(t(`🗑️ Kuyruk temizlendi (${d.count} ilan).`, `🗑️ Queue cleared (${d.count} jobs).`)); setSelected(new Set()); loadAll(); }
+      if (d.ok) { showMsg(t(`🗑️ Kuyruk temizlendi (${d.count} ilan).`, `🗑️ Queue cleared (${d.count} job postings).`)); setSelected(new Set()); loadAll(); }
       else showMsg(d.message || t('Hata', 'Error'), false);
     } catch (e) { showMsg((e as Error).message, false); }
     finally { setRunning(null); }
@@ -294,7 +296,7 @@ export default function PipelineTab() {
 
       {/* ── Başlık ─────────────────────────────────────────────────────── */}
       <div>
-        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{t('⚙️ Otomasyon Pipeline', '⚙️ Automation Pipeline')}</h2>
+        <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">{t('⚙️ Otomasyon Pipeline', '⚙️ Automation pipeline')}</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           {t("Telegram'dan ilan topla → crewinjob.com'a yayınla → gruplara paylaş", 'Collect jobs from Telegram → publish to crewinjob.com → share to groups')}
         </p>
@@ -325,7 +327,7 @@ export default function PipelineTab() {
               <div className={`w-3 h-3 rounded-full shrink-0 ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`} />
               <div>
                 <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                  {isRunning ? t('🤖 Scheduler Çalışıyor', '🤖 Scheduler Running') : t('🤖 Scheduler Durduruldu', '🤖 Scheduler Stopped')}
+                  {isRunning ? t('🤖 Scheduler Çalışıyor', '🤖 Scheduler running') : t('🤖 Scheduler Durduruldu', '🤖 Scheduler stopped')}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 flex flex-wrap gap-3">
                   {isRunning && scheduler?.pid   && <span>PID: {scheduler.pid}</span>}
@@ -341,24 +343,24 @@ export default function PipelineTab() {
                   onClick={() => schedulerAction('stop')}
                   disabled={schedBusy}
                   className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
-                  {schedBusy ? t('⏳ Durduruluyor...', '⏳ Stopping...') : t('⏹ Durdur', '⏹ Stop')}
+                  {schedBusy ? t('⏳ Durduruluyor…', '⏳ Stopping…') : t('⏹ Durdur', '⏹ Stop')}
                 </button>
               ) : (
                 <button
                   onClick={() => schedulerAction('start')}
                   disabled={schedBusy}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors">
-                  {schedBusy ? t('⏳ Başlatılıyor...', '⏳ Starting...') : t('▶ Başlat', '▶ Start')}
+                  {schedBusy ? t('⏳ Başlatılıyor…', '⏳ Starting…') : t('▶ Başlat', '▶ Start')}
                 </button>
               )}
-              <button onClick={loadScheduler} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm">↻</button>
+              <button onClick={loadScheduler} aria-label={t('Scheduler durumunu yenile', 'Refresh scheduler status')} title={t('Yenile', 'Refresh')} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm">↻</button>
             </div>
           </div>
         );
       })()}
 
       {marketingJobs && (
-        <section className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4" aria-label="Marketing automation queue">
+        <section className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4" aria-label={t('Marketing otomasyon kuyruğu', 'Marketing automation queue')}>
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">{t('Marketing işlem kuyruğu', 'Marketing job queue')}</h3>
@@ -376,7 +378,7 @@ export default function PipelineTab() {
             ].map(([label, value]) => (
               <div key={String(label)} className="border border-slate-200 dark:border-slate-700 px-3 py-2 min-w-0">
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{label}</p>
-                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 tabular-nums">{value}</p>
+                <p className="text-lg font-semibold text-slate-900 dark:text-slate-100 tabular-nums">{Number(value).toLocaleString(locale)}</p>
               </div>
             ))}
           </div>
@@ -388,7 +390,7 @@ export default function PipelineTab() {
         <div className={`px-4 py-3 rounded-lg text-sm font-medium ${
           msgOk ? 'bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-700'
                 : 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-700'
-        }`}>{msg}</div>
+        }`}><Msg text={msg} /></div>
       )}
 
       {/* ── Gemini Maliyet & Agent Config ──────────────────────────────── */}
@@ -404,20 +406,20 @@ export default function PipelineTab() {
           return (
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('💰 Gemini API Maliyeti', '💰 Gemini API Cost')}</span>
-                <button onClick={loadUsageAndConfig} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">↻</button>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('💰 Gemini API Maliyeti', '💰 Gemini API cost')}</span>
+                <button onClick={loadUsageAndConfig} aria-label={t('Maliyeti yenile', 'Refresh cost')} title={t('Yenile', 'Refresh')} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">↻</button>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
-                  <div className="text-lg font-bold text-slate-900 dark:text-slate-100">${todayData?.costUsd?.toFixed(4) || '0.0000'}</div>
+                  <div className="text-lg font-bold text-slate-900 dark:text-slate-100">${(todayData?.costUsd ?? 0).toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</div>
                   <div className="text-xs text-slate-400">{t('Bugün', 'Today')}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-lg font-bold text-slate-900 dark:text-slate-100">${last7.cost.toFixed(4)}</div>
+                  <div className="text-lg font-bold text-slate-900 dark:text-slate-100">${last7.cost.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</div>
                   <div className="text-xs text-slate-400">{t('Son 7 gün', 'Last 7 days')}</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-lg font-bold text-green-600">{last7.filtered}</div>
+                  <div className="text-lg font-bold text-green-600">{last7.filtered.toLocaleString(locale)}</div>
                   <div className="text-xs text-slate-400">{t('Regex filtreli', 'Regex filtered')}</div>
                 </div>
               </div>
@@ -437,16 +439,17 @@ export default function PipelineTab() {
         {agentConfig && (
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('⚙️ Pipeline Ayarları', '⚙️ Pipeline Settings')}</span>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('⚙️ Pipeline Ayarları', '⚙️ Pipeline settings')}</span>
               {configSaving && <span className="text-xs text-slate-400 animate-pulse">{t('Kaydediliyor…', 'Saving…')}</span>}
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-medium text-slate-700 dark:text-slate-300">{t('Tümünü İncele Modu', 'Review All Mode')}</div>
+                  <div className="text-xs font-medium text-slate-700 dark:text-slate-300">{t('Tümünü İncele Modu', 'Review all mode')}</div>
                   <div className="text-xs text-slate-400">{t('Her ilanı review kuyruğuna at', 'Send every job to the review queue')}</div>
                 </div>
                 <button onClick={() => saveConfig({ reviewAllItems: !agentConfig.reviewAllItems })}
+                  role="switch" aria-checked={agentConfig.reviewAllItems} aria-label={t('Tümünü İncele Modu', 'Review all mode')}
                   className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${agentConfig.reviewAllItems ? 'bg-blue-500' : 'bg-slate-200 dark:bg-slate-600'}`}>
                   <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5 ${agentConfig.reviewAllItems ? 'translate-x-4' : 'translate-x-0.5'}`} />
                 </button>
@@ -456,7 +459,7 @@ export default function PipelineTab() {
                   <span className="text-xs text-slate-600 dark:text-slate-400">{t('Oto-onay eşiği', 'Auto-approve threshold')}</span>
                   <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{agentConfig.autoApproveThreshold}/100</span>
                 </div>
-                <input type="range" min={65} max={100} value={agentConfig.autoApproveThreshold}
+                <input type="range" min={65} max={100} value={agentConfig.autoApproveThreshold} aria-label={t('Oto-onay eşiği', 'Auto-approve threshold')}
                   onChange={e => setAgentConfig(c => c ? { ...c, autoApproveThreshold: +e.target.value } : c)}
                   onMouseUp={e => saveConfig({ autoApproveThreshold: +(e.target as HTMLInputElement).value })}
                   onTouchEnd={e => saveConfig({ autoApproveThreshold: +(e.target as HTMLInputElement).value })}
@@ -466,9 +469,9 @@ export default function PipelineTab() {
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-xs text-slate-600 dark:text-slate-400">{t('Kuyruk uyarı limiti', 'Queue alert limit')}</span>
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{agentConfig.alertQueueSize} {t('ilan', 'jobs')}</span>
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{agentConfig.alertQueueSize} {t('ilan', 'job postings')}</span>
                 </div>
-                <input type="range" min={5} max={100} step={5} value={agentConfig.alertQueueSize}
+                <input type="range" min={5} max={100} step={5} value={agentConfig.alertQueueSize} aria-label={t('Kuyruk uyarı limiti', 'Queue alert limit')}
                   onChange={e => setAgentConfig(c => c ? { ...c, alertQueueSize: +e.target.value } : c)}
                   onMouseUp={e => saveConfig({ alertQueueSize: +(e.target as HTMLInputElement).value })}
                   onTouchEnd={e => saveConfig({ alertQueueSize: +(e.target as HTMLInputElement).value })}
@@ -481,10 +484,10 @@ export default function PipelineTab() {
 
       {/* ── Aksiyon kartları ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <ActionCard icon="🔍" title={t('Grup Keşfi', 'Group Discovery')}    desc={t('Grupları ara ve katıl', 'Search and join groups')}           color="blue"   loading={isRunning('discover_groups')}  disabled={!!busy} onClick={() => runAction('discover_groups', {}, t('Grup keşfi', 'Group discovery'))} />
-        <ActionCard icon="📋" title={t('İlan Pipeline', 'Job Pipeline')} desc={t('Çek → AI → crewinjob.com', 'Fetch → AI → crewinjob.com')}        color="green"  loading={isRunning('run_pipeline')}     disabled={!!busy} onClick={() => runAction('run_pipeline', { maxJobs: 15 }, 'Pipeline')} />
+        <ActionCard icon="🔍" title={t('Grup Keşfi', 'Group discovery')}    desc={t('Grupları ara ve katıl', 'Search and join groups')}           color="blue"   loading={isRunning('discover_groups')}  disabled={!!busy} onClick={() => runAction('discover_groups', {}, t('Grup keşfi', 'Group discovery'))} />
+        <ActionCard icon="📋" title={t('İlan Pipeline', 'Job posting pipeline')} desc={t('Çek → AI → crewinjob.com', 'Fetch → AI → crewinjob.com')}        color="green"  loading={isRunning('run_pipeline')}     disabled={!!busy} onClick={() => runAction('run_pipeline', { maxJobs: 15 }, 'Pipeline')} />
         <ActionCard icon="📢" title={t('Paylaş', 'Share')}        desc={t("Yeni ilanları Telegram'da duyur", 'Announce new jobs on Telegram')}  color="purple" loading={isRunning('broadcast_jobs')}   disabled={!!busy} onClick={() => runAction('broadcast_jobs', { maxJobs: 5 }, 'Broadcast')} />
-        <ActionCard icon="🔄" title={t('Tam Döngü', 'Full Cycle')}     desc={t('Keşif + Pipeline + Broadcast', 'Discovery + Pipeline + Broadcast')}    color="orange" loading={isRunning('full_cycle')}       disabled={!!busy}
+        <ActionCard icon="🔄" title={t('Tam Döngü', 'Full cycle')}     desc={t('Keşif + Pipeline + Broadcast', 'Discovery + pipeline + broadcast')}    color="orange" loading={isRunning('full_cycle')}       disabled={!!busy}
           onClick={async () => {
             setRunning('full_cycle'); setLogs([]);
             for (const [act, body, lbl] of [
@@ -504,17 +507,17 @@ export default function PipelineTab() {
 
       {/* ── İkinci sıra: yardımcı aksiyonlar ───────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <MiniCard icon="⏳" title={t('Expiry Kontrolü', 'Expiry Check')}   loading={isRunning('manage_expiry')}     disabled={!!busy} onClick={() => runAction('manage_expiry', {}, t('Expiry kontrolü', 'Expiry check'))} />
-        <MiniCard icon="📊" title={t('Günlük Rapor', 'Daily Report')}      loading={isRunning('send_daily_report')} disabled={!!busy} onClick={() => runAction('send_daily_report', {}, t('Rapor', 'Report'))} />
-        <MiniCard icon="📥" title={t('Başvuru Takibi', 'Application Tracking')}    loading={isRunning('track_applications')} disabled={!!busy} onClick={() => runAction('track_applications', {}, t('Başvuru takibi', 'Application tracking'))} />
-        <MiniCard icon="👋" title={t('Üye Onboarding', 'Member Onboarding')}    loading={isRunning('onboard_members')}   disabled={!!busy} onClick={() => runAction('onboard_members', { maxDms: 20 }, 'Onboarding')} />
+        <MiniCard icon="⏳" title={t('Expiry Kontrolü', 'Expiry check')}   loading={isRunning('manage_expiry')}     disabled={!!busy} onClick={() => runAction('manage_expiry', {}, t('Expiry kontrolü', 'Expiry check'))} />
+        <MiniCard icon="📊" title={t('Günlük Rapor', 'Daily report')}      loading={isRunning('send_daily_report')} disabled={!!busy} onClick={() => runAction('send_daily_report', {}, t('Rapor', 'Report'))} />
+        <MiniCard icon="📥" title={t('Başvuru Takibi', 'Application tracking')}    loading={isRunning('track_applications')} disabled={!!busy} onClick={() => runAction('track_applications', {}, t('Başvuru takibi', 'Application tracking'))} />
+        <MiniCard icon="👋" title={t('Üye Onboarding', 'Member onboarding')}    loading={isRunning('onboard_members')}   disabled={!!busy} onClick={() => runAction('onboard_members', { maxDms: 20 }, 'Onboarding')} />
       </div>
 
       {/* ── Canlı Log ──────────────────────────────────────────────────── */}
       <div className="bg-gray-900 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-4 py-2 bg-gray-800">
           <div className="flex items-center gap-2">
-            <span className="text-gray-300 text-sm font-mono font-semibold">{t('📟 Canlı Log', '📟 Live Log')}</span>
+            <span className="text-gray-300 text-sm font-mono font-semibold">{t('📟 Canlı Log', '📟 Live log')}</span>
             {busy && <span className="flex items-center gap-1.5 text-xs text-green-400"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"/>{backendBusy && !running ? t('arka planda çalışıyor…', 'running in background…') : t('çalışıyor…', 'running…')}</span>}
           </div>
           <button onClick={() => setLogs([])} className="text-xs text-gray-500 hover:text-gray-300">{t('temizle', 'clear')}</button>
@@ -533,17 +536,17 @@ export default function PipelineTab() {
       </div>
 
       {/* ── Panel seçici ────────────────────────────────────────────────── */}
-      <div className="flex gap-2 border-b border-gray-200 dark:border-slate-700">
+      <div className="flex gap-2 border-b border-gray-200 dark:border-slate-700 overflow-x-auto overscroll-x-contain">
         {([
-          { key: 'review', label: t(`🔍 İnceleme Kuyruğu`, '🔍 Review Queue'), badge: reviewQueue.length },
+          { key: 'review', label: t('🔍 İnceleme Kuyruğu', '🔍 Review queue'), badge: reviewQueue.length },
           { key: 'groups', label: t('🤝 Gruplar', '🤝 Groups'), badge: groups.length },
-          { key: 'stats',  label: t('📊 Grup Kalite', '📊 Group Quality'), badge: groupStats.length },
+          { key: 'stats',  label: t('📊 Grup Kalite', '📊 Group quality'), badge: groupStats.length },
           { key: 'jobs',   label: t('✅ Yayınlananlar', '✅ Published'), badge: postedJobs.length },
         ] as { key: typeof activePanel; label: string; badge: number }[]).map(p => (
           <button key={p.key} onClick={() => setActivePanel(p.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
+            className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
               activePanel === p.key
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                ? 'border-ocean text-ocean'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}>
             {p.label}
@@ -564,7 +567,7 @@ export default function PipelineTab() {
                 onClick={() => setSelected(prev => prev.size === reviewQueue.length ? new Set() : new Set(reviewQueue.map(i => i.id)))}
                 className="px-3 py-1.5 text-xs border border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700"
               >
-                {selected.size === reviewQueue.length ? t('☐ Seçimi Kaldır', '☐ Deselect All') : t('☑ Tümünü Seç', '☑ Select All')}
+                {selected.size === reviewQueue.length ? t('☐ Seçimi Kaldır', '☐ Deselect all') : t('☑ Tümünü Seç', '☑ Select all')}
               </button>
               {selected.size > 0 && (
                 <button
@@ -572,7 +575,7 @@ export default function PipelineTab() {
                   disabled={!!running}
                   className="px-3 py-1.5 text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-700 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50"
                 >
-                  {t('🗑️ Seçilenleri Sil', '🗑️ Delete Selected')} ({selected.size})
+                  {t('🗑️ Seçilenleri Sil', '🗑️ Delete selected')} ({selected.size})
                 </button>
               )}
               <button
@@ -580,14 +583,14 @@ export default function PipelineTab() {
                 disabled={!!running}
                 className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-50 ml-auto"
               >
-                {t('🗑️ Tümünü Temizle', '🗑️ Clear All')} ({reviewQueue.length})
+                {t('🗑️ Tümünü Temizle', '🗑️ Clear all')} ({reviewQueue.length})
               </button>
             </div>
           )}
           {reviewQueue.length === 0 ? (
             <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl py-12 text-center text-gray-400 dark:text-gray-500">
               <div className="text-3xl mb-2">✅</div>
-              <div className="text-sm">{t('İnceleme kuyruğu boş — tüm ilanlar kalite eşiğini geçti', 'Review queue is empty — all jobs passed the quality threshold')}</div>
+              <div className="text-sm">{t('İnceleme kuyruğu boş — tüm ilanlar kalite eşiğini geçti', 'Review queue is empty — all job postings passed the quality threshold')}</div>
             </div>
           ) : [...reviewQueue].sort((a, b) => new Date(b.queuedAt).getTime() - new Date(a.queuedAt).getTime()).map(item => {
             const d   = item.jobData || {};
@@ -599,14 +602,15 @@ export default function PipelineTab() {
               !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.trName.toLowerCase().includes(search.toLowerCase())
             );
             return (
-              <div key={item.id} className={`bg-white dark:bg-slate-800 border rounded-xl p-4 ${selected.has(item.id) ? 'border-blue-400 dark:border-blue-500' : needsPos ? 'border-yellow-300 dark:border-yellow-600' : 'border-gray-200 dark:border-slate-700'}`}>
-                <div className="flex items-start gap-4">
+              <div key={item.id} className={`bg-white dark:bg-slate-800 border rounded-xl p-4 ${selected.has(item.id) ? 'border-ocean' : needsPos ? 'border-yellow-300 dark:border-yellow-600' : 'border-gray-200 dark:border-slate-700'}`}>
+                <div className="flex flex-wrap sm:flex-nowrap items-start gap-4">
                   {/* Checkbox */}
                   <input
                     type="checkbox"
                     checked={selected.has(item.id)}
                     onChange={() => setSelected(prev => { const s = new Set(prev); s.has(item.id) ? s.delete(item.id) : s.add(item.id); return s; })}
-                    className="mt-1 w-4 h-4 flex-shrink-0 cursor-pointer accent-blue-500"
+                    aria-label={t('İlanı seç', 'Select job posting')}
+                    className="mt-1 w-4 h-4 flex-shrink-0 cursor-pointer accent-ocean"
                   />
                   {/* Skor */}
                   <div className="flex-shrink-0 text-center">
@@ -619,18 +623,18 @@ export default function PipelineTab() {
                       <span className="font-semibold text-gray-800 dark:text-gray-100">{pos}</span>
                       {needsPos && (
                         <span className="text-xs bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 px-2 py-0.5 rounded-full font-medium">
-                          {t('⚠️ Pozisyon Atanacak', '⚠️ Position Needed')}
+                          {t('⚠️ Pozisyon Atanacak', '⚠️ Position needed')}
                         </span>
                       )}
                       <span className="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
                         📡 {item.sourceChat}
                       </span>
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                      <span className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
                         {new Date(item.queuedAt).toLocaleString(locale)}
                       </span>
                     </div>
                     {item.reason && (
-                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">⚠️ {item.reason}</p>
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">⚠️ <Msg text={item.reason} /></p>
                     )}
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-3 whitespace-pre-wrap">
                       {item.sourceText}
@@ -646,7 +650,7 @@ export default function PipelineTab() {
                     {needsPos && (
                       <div className="mt-3 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3 bg-yellow-50 dark:bg-yellow-900/10">
                         <p className="text-xs font-medium text-yellow-700 dark:text-yellow-400 mb-2">
-                          {t('Pozisyon seçilmeden ilan yayınlanamaz. AI tahmini:', 'The job cannot be published without a position. AI guess:')} <em>&ldquo;{String(d.positionName || '?')}&rdquo;</em>
+                          {t('Pozisyon seçilmeden ilan yayınlanamaz. AI tahmini:', "The job posting can't be published without a position. AI guess:")} <em>&ldquo;{String(d.positionName || '?')}&rdquo;</em>
                         </p>
                         <input
                           type="text"
@@ -677,7 +681,7 @@ export default function PipelineTab() {
                     )}
                   </div>
                   {/* Butonlar */}
-                  <div className="flex flex-col gap-2 flex-shrink-0">
+                  <div className="flex w-full flex-row flex-wrap gap-2 sm:w-auto sm:flex-col sm:flex-shrink-0">
                     <button
                       onClick={() => {
                         if (needsPos && !selPosId) {
@@ -710,18 +714,18 @@ export default function PipelineTab() {
       {activePanel === 'groups' && (
         <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
-            <h3 className="font-semibold text-gray-700 dark:text-gray-200">{t('🤝 Katılınan Gruplar', '🤝 Joined Groups')} <span className="text-xs font-normal text-gray-400">({groups.length})</span></h3>
+            <h3 className="font-semibold text-gray-700 dark:text-gray-200">{t('🤝 Katılınan Gruplar', '🤝 Joined groups')} <span className="text-xs font-normal text-gray-400">({groups.length})</span></h3>
             <button onClick={loadGroups} className="text-xs text-blue-500 hover:underline">{t('Yenile', 'Refresh')}</button>
           </div>
           <div className="divide-y divide-gray-50 dark:divide-slate-700 max-h-96 overflow-y-auto">
             {groups.length === 0
-              ? <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm">{t('Henüz grup yok — "Grup Keşfi" çalıştır', 'No groups yet — run "Group Discovery"')}</div>
+              ? <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm">{t('Henüz grup yok — "Grup Keşfi" çalıştır', 'No groups yet — run "Group discovery"')}</div>
               : groups.map(g => (
                 <div key={g.id} className="flex items-center gap-3 px-4 py-2.5">
                   <span className="text-lg">{g.type === 'channel' ? '📡' : '👥'}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{g.title}</div>
-                    <div className="text-xs text-gray-400 dark:text-gray-500">{g.username && <span className="mr-2">{g.username}</span>}{fmt(g.members)} {t('üye', 'members')}</div>
+                    <div className="text-xs text-gray-400 dark:text-gray-500">{g.username && <span className="mr-2">{g.username}</span>}{fmt(g.members, lang)} {t('üye', 'members')}</div>
                   </div>
                 </div>
               ))
@@ -734,7 +738,7 @@ export default function PipelineTab() {
       {activePanel === 'stats' && (
         <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
-            <h3 className="font-semibold text-gray-700 dark:text-gray-200">{t('📊 Kaynak Grup Kalitesi', '📊 Source Group Quality')}</h3>
+            <h3 className="font-semibold text-gray-700 dark:text-gray-200">{t('📊 Kaynak Grup Kalitesi', '📊 Source group quality')}</h3>
             <button onClick={loadGroupStats} className="text-xs text-blue-500 hover:underline">{t('Yenile', 'Refresh')}</button>
           </div>
           <div className="overflow-x-auto">
@@ -754,9 +758,9 @@ export default function PipelineTab() {
                   : groupStats.map(g => (
                     <tr key={g.chatId} className="hover:bg-gray-50 dark:hover:bg-slate-700/30">
                       <td className="px-4 py-2.5 font-medium text-gray-800 dark:text-gray-100 truncate max-w-[200px]">{g.chatTitle}</td>
-                      <td className="px-3 py-2.5 text-center text-gray-600 dark:text-gray-400">{g.scraped}</td>
-                      <td className="px-3 py-2.5 text-center text-yellow-600">{g.queued}</td>
-                      <td className="px-3 py-2.5 text-center text-green-600">{g.posted}</td>
+                      <td className="px-3 py-2.5 text-center text-gray-600 dark:text-gray-400">{g.scraped.toLocaleString(locale)}</td>
+                      <td className="px-3 py-2.5 text-center text-yellow-600">{g.queued.toLocaleString(locale)}</td>
+                      <td className="px-3 py-2.5 text-center text-green-600">{g.posted.toLocaleString(locale)}</td>
                       <td className="px-3 py-2.5 text-center">
                         <span className={`font-semibold ${scoreColor(Math.round(g.qualityRatio * 100))}`}>
                           {lang === 'tr' ? `%${Math.round(g.qualityRatio * 100)}` : `${Math.round(g.qualityRatio * 100)}%`}
@@ -775,7 +779,7 @@ export default function PipelineTab() {
       {activePanel === 'jobs' && (
         <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
-            <h3 className="font-semibold text-gray-700 dark:text-gray-200">{t('✅ Otomatik Yayınlananlar', '✅ Auto-Published')} <span className="text-xs font-normal text-gray-400">({postedJobs.length})</span></h3>
+            <h3 className="font-semibold text-gray-700 dark:text-gray-200">{t('✅ Otomatik Yayınlananlar', '✅ Auto-published')} <span className="text-xs font-normal text-gray-400">({postedJobs.length})</span></h3>
             <div className="flex items-center gap-3">
               <button
                 onClick={async () => {
@@ -787,13 +791,13 @@ export default function PipelineTab() {
                   } catch { showMsg(t('❌ Bağlantı hatası', '❌ Connection error'), false); }
                 }}
                 className="text-xs text-purple-500 hover:underline"
-              >{t('📥 Başvuruları Güncelle', '📥 Update Applications')}</button>
+              >{t('📥 Başvuruları Güncelle', '📥 Update applications')}</button>
               <button onClick={loadPostedJobs} className="text-xs text-blue-500 hover:underline">{t('Yenile', 'Refresh')}</button>
             </div>
           </div>
           <div className="divide-y divide-gray-50 dark:divide-slate-700 max-h-96 overflow-y-auto">
             {postedJobs.length === 0
-              ? <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm">{t('Henüz ilan yok — "İlan Pipeline" çalıştır', 'No jobs yet — run "Job Pipeline"')}</div>
+              ? <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm">{t('Henüz ilan yok — "İlan Pipeline" çalıştır', 'No job postings yet — run "Job posting pipeline"')}</div>
               : postedJobs.map((job, i) => {
                 const d   = job.jobData || {};
                 const pos = String(d._positionName || `#${job.ilanId}`);
@@ -825,7 +829,7 @@ export default function PipelineTab() {
       )}
 
       <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
-        {t('Uzun işlemler (keşif, pipeline, broadcast) 5-10 dakika sürebilir. Log alanı otomatik güncellenir.', 'Long operations (discovery, pipeline, broadcast) may take 5-10 minutes. The log area updates automatically.')}
+        {t('Uzun işlemler (keşif, pipeline, broadcast) 5–10 dakika sürebilir. Log alanı otomatik güncellenir.', 'Long operations (discovery, pipeline, broadcast) can take 5–10 minutes. The log area updates automatically.')}
       </p>
     </div>
   );

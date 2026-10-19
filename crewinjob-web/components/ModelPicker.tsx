@@ -8,7 +8,7 @@ export const IMAGE_MODEL_KEY = 'crewinjob_image_model';
 
 export const TEXT_MODELS = [
   { value: 'gemini-2.5-flash',           label: 'Gemini 2.5 Flash',           tagTr: '⭐ Önerilen',     tagEn: '⭐ Recommended' },
-  { value: 'gemini-2.5-pro',             label: 'Gemini 2.5 Pro',             tagTr: '🧠 En Güçlü',    tagEn: '🧠 Most Powerful' },
+  { value: 'gemini-2.5-pro',             label: 'Gemini 2.5 Pro',             tagTr: '🧠 En Güçlü',    tagEn: '🧠 Most powerful' },
   { value: 'gemini-2.5-flash-lite',      label: 'Gemini 2.5 Flash Lite',      tagTr: '⚡ En Hızlı',   tagEn: '⚡ Fastest' },
   { value: 'gemini-3-flash-preview',     label: 'Gemini 3 Flash Preview',     tagTr: '🆕 Yeni',        tagEn: '🆕 New' },
   { value: 'gemini-3.1-pro-preview',     label: 'Gemini 3.1 Pro Preview',     tagTr: '🆕 En Yeni',     tagEn: '🆕 Latest' },
@@ -18,7 +18,7 @@ export const TEXT_MODELS = [
 export const IMAGE_MODELS = [
   { value: 'gemini-3.1-flash-image-preview', label: 'Gemini 3.1 Flash Image', tagTr: '⭐ Önerilen',      tagEn: '⭐ Recommended' },
   { value: 'gemini-2.5-flash-image',         label: 'Gemini 2.5 Flash Image', tagTr: '🔄 Alternatif',    tagEn: '🔄 Alternative' },
-  { value: 'gemini-3-pro-image-preview',     label: 'Gemini 3 Pro Image',     tagTr: '🎨 Yüksek Kalite', tagEn: '🎨 High Quality' },
+  { value: 'gemini-3-pro-image-preview',     label: 'Gemini 3 Pro Image',     tagTr: '🎨 Yüksek Kalite', tagEn: '🎨 High quality' },
 ];
 
 // Kayıtlı seçim listede yoksa (ör. emekliye ayrılan model) varsayılana dön
@@ -82,15 +82,15 @@ export default function ModelPicker() {
       {open && (
         <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xl z-50 overflow-hidden">
           <div className="bg-slate-50 dark:bg-slate-700 px-4 py-3 border-b border-slate-200 dark:border-slate-600">
-            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">⚙️ {lang === 'tr' ? 'Model Ayarları' : 'Model Settings'}</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{lang === 'tr' ? 'Seçimler tarayıcıda kaydedilir' : 'Selections are saved in browser'}</p>
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">⚙️ {lang === 'tr' ? 'Model Ayarları' : 'Model settings'}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{lang === 'tr' ? 'Seçimler tarayıcıda kaydedilir' : 'Selections are saved in this browser'}</p>
           </div>
 
           <div className="p-4 flex flex-col gap-4">
             {/* Metin Modeli */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                🤖 {lang === 'tr' ? 'İçerik Üretimi (Metin)' : 'Content Generation (Text)'}
+                🤖 {lang === 'tr' ? 'İçerik Üretimi (Metin)' : 'Content generation (text)'}
               </label>
               <div className="flex flex-col gap-1">
                 {TEXT_MODELS.map(m => (
@@ -119,7 +119,7 @@ export default function ModelPicker() {
             {/* Görsel Modeli */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                🎨 {lang === 'tr' ? 'Görsel Üretimi' : 'Image Generation'}
+                🎨 {lang === 'tr' ? 'Görsel Üretimi' : 'Image generation'}
               </label>
               <div className="flex flex-col gap-1">
                 {IMAGE_MODELS.map(m => (

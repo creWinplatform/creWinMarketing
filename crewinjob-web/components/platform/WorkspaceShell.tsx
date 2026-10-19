@@ -35,6 +35,8 @@ import type {
 import { LangToggle } from '@/lib/lang';
 import ThemeToggle from '@/components/ThemeToggle';
 import { searchText } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 const icons = {
   mobile: Smartphone,
   dashboard: LayoutDashboard,
@@ -200,7 +202,7 @@ export default function WorkspaceShell({
       {switcher && (
         <div className="workspace-switcher">
           {error ? (
-            <p role="alert">{error}</p>
+            <p role="alert"><Msg text={error}/></p>
           ) : (
             spaces.map((space) => (
               <button
@@ -286,7 +288,7 @@ export default function WorkspaceShell({
         <span className="status-dot" />
         <span>
           {workspace.project.productPack === 'crewin'
-            ? 'Crewin workspace'
+            ? (tr ? 'Crewin çalışma alanı' : 'Crewin workspace')
             : tr
               ? 'Ryzevo çalışma alanı'
               : 'Ryzevo workspace'}
@@ -370,7 +372,7 @@ export default function WorkspaceShell({
         </header>
         <main ref={main} id="workspace-main" className="workspace-main" tabIndex={-1}>
           <div className="workspace-page-context"><span><Globe2 size={14} />{new URL(workspace.project.website).hostname}</span><span>{workspace.project.productPack === 'crewin' ? (tr ? 'Crewin çalışma alanı' : 'Crewin workspace') : (tr ? 'Ryzevo çalışma alanı' : 'Ryzevo workspace')}</span></div>
-          {workspace.plan?.id==='trial'&&<aside className="workspace-trial-notice" role="status"><span>{workspace.plan.active&&Date.parse(workspace.plan.endsAt||'')>Date.now()?(tr?`Deneme bitişi: ${new Date(workspace.plan.endsAt!).toLocaleDateString('tr-TR',{timeZone:'UTC'})} UTC. Gerçek gönderim kapalı.`:`Trial ends: ${new Date(workspace.plan.endsAt!).toLocaleDateString('en-GB',{timeZone:'UTC'})} UTC. Live delivery is disabled.`):(tr?'Deneme süreniz doldu. Kayıtlarınız korunuyor; yeni üretim kapalı.':'Your trial has ended. Your records are preserved; new production is disabled.')}</span><a className="studio-text-button" href="/?tab=project&settings=plan">{tr?'Plan & kullanım':'Plan & usage'}<ArrowUpRight size={14}/></a></aside>}
+          {workspace.plan?.id==='trial'&&<aside className="workspace-trial-notice" role="status"><span>{workspace.plan.active&&Date.parse(workspace.plan.endsAt||'')>Date.now()?(tr?`Deneme bitişi: ${new Date(workspace.plan.endsAt!).toLocaleDateString(localeTag(lang),{timeZone:'UTC'})} UTC. Gerçek gönderim kapalı.`:`Trial ends: ${new Date(workspace.plan.endsAt!).toLocaleDateString(localeTag(lang),{timeZone:'UTC'})} UTC. Live delivery is disabled.`):(tr?'Deneme süreniz doldu. Kayıtlarınız korunuyor; yeni üretim kapalı.':'Your trial has ended. Your records are preserved; new production is disabled.')}</span><a className="studio-text-button" href="/?tab=project&settings=plan">{tr?'Plan & kullanım':'Plan & usage'}<ArrowUpRight size={14}/></a></aside>}
           {children}
         </main>
         <footer className="workspace-footer">

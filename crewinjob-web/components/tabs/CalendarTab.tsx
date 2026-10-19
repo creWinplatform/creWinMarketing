@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { getEvents, addEvent, removeEvent, togglePublished, CalendarEvent } from '@/lib/calendar-store';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 const PLATFORM_ICONS: Record<string, string> = {
   instagram: '📸',
@@ -26,7 +28,8 @@ function timeAgo(ts: number, lang: 'tr' | 'en'): string {
   if (mins < 60) return lang === 'tr' ? `${mins} dk önce` : `${mins} min ago`;
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return lang === 'tr' ? `${hrs} sa önce` : `${hrs} h ago`;
-  return lang === 'tr' ? `${Math.floor(hrs / 24)} gün önce` : `${Math.floor(hrs / 24)} days ago`;
+  const days = Math.floor(hrs / 24);
+  return lang === 'tr' ? `${days} gün önce` : days === 1 ? '1 day ago' : `${days} days ago`;
 }
 
 export default function CalendarTab() {
@@ -122,7 +125,7 @@ export default function CalendarTab() {
         setEvents(updated);
       }
     } catch (e: unknown) {
-      setSchedResult({ published: 0, failed: 1, results: [], message: e instanceof Error ? e.message : 'Error' });
+      setSchedResult({ published: 0, failed: 1, results: [], message: e instanceof Error ? e.message : (lang === 'tr' ? 'Bir hata oluştu.' : 'Something went wrong.') });
     } finally {
       setSchedLoading(false);
     }
@@ -155,7 +158,7 @@ export default function CalendarTab() {
     return (
       <div className="flex items-center justify-center h-64 text-slate-400 text-sm">
         <div className="w-6 h-6 border-2 border-slate-300 border-t-transparent rounded-full animate-spin mr-2" />
-        {lang === 'tr' ? 'Takvim yükleniyor...' : 'Loading calendar...'}
+        {lang === 'tr' ? 'Takvim yükleniyor…' : 'Loading calendar…'}
       </div>
     );
   }
@@ -168,13 +171,17 @@ export default function CalendarTab() {
         <div className="flex items-center justify-between mb-5">
           <button
             onClick={() => navigateMonth(-1)}
+            aria-label={lang === 'tr' ? 'Önceki ay' : 'Previous month'}
+            title={lang === 'tr' ? 'Önceki ay' : 'Previous month'}
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
           >←</button>
           <h2 className="font-bold text-slate-800 dark:text-slate-100 text-base">
-            {MONTH_NAMES[currentMonth]} {currentYear}
+            {lang === 'tr' ? `${MONTH_NAMES[currentMonth]} ${currentYear}` : new Date(currentYear, currentMonth, 1).toLocaleDateString(localeTag(lang), { month: 'long', year: 'numeric' })}
           </h2>
           <button
             onClick={() => navigateMonth(1)}
+            aria-label={lang === 'tr' ? 'Sonraki ay' : 'Next month'}
+            title={lang === 'tr' ? 'Sonraki ay' : 'Next month'}
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
           >→</button>
         </div>
@@ -243,12 +250,12 @@ export default function CalendarTab() {
               onClick={() => setShowAddForm(true)}
               className="w-full py-2 border-2 border-dashed border-ocean/30 hover:border-ocean/60 text-ocean text-sm font-medium rounded-xl transition-colors hover:bg-ocean/5"
             >
-              📌 {lang === 'tr' ? 'Bugüne Ekle' : 'Add to Today'}
+              📌 {lang === 'tr' ? 'Bugüne ekle' : 'Add for today'}
             </button>
           ) : (
             <div className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-700 rounded-xl p-4 border border-slate-200 dark:border-slate-600">
               <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                📅 {lang === 'tr' ? 'Takvime İçerik Ekle' : 'Add Content to Calendar'}
+                📅 {lang === 'tr' ? 'Takvime içerik ekle' : 'Add content to the calendar'}
               </h4>
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -264,7 +271,7 @@ export default function CalendarTab() {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-slate-600 dark:text-slate-300 mb-1 block">
-                    {lang === 'tr' ? 'Platform' : 'Platform'}
+                    Platform
                   </label>
                   <select
                     value={addPlatform}
@@ -302,7 +309,7 @@ export default function CalendarTab() {
                 <textarea
                   value={addContent}
                   onChange={e => setAddContent(e.target.value)}
-                  placeholder={lang === 'tr' ? 'İçeriği buraya yapıştır veya yaz...' : 'Paste or type content here...'}
+                  placeholder={lang === 'tr' ? 'İçeriği buraya yapıştırın veya yazın…' : 'Paste or type content here…'}
                   rows={3}
                   className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none bg-white dark:bg-slate-600 dark:text-slate-100 dark:placeholder:text-slate-400"
                 />
@@ -333,10 +340,12 @@ export default function CalendarTab() {
           <>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
-                📅 {new Date(selectedDay + 'T12:00:00').toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                📅 {new Date(selectedDay + 'T12:00:00').toLocaleDateString(localeTag(lang), { day: 'numeric', month: 'long', year: 'numeric' })}
               </h3>
               <button
                 onClick={() => setSelectedDay(null)}
+                aria-label={lang === 'tr' ? 'Kapat' : 'Close'}
+                title={lang === 'tr' ? 'Kapat' : 'Close'}
                 className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-sm"
               >✕</button>
             </div>
@@ -390,11 +399,13 @@ export default function CalendarTab() {
                         }`}
                       >
                         {ev.published
-                          ? (lang === 'tr' ? '↩ Geri Al' : '↩ Undo')
-                          : (lang === 'tr' ? '✓ Yayınlandı İşaretle' : '✓ Mark Published')}
+                          ? (lang === 'tr' ? '↩ Geri al' : '↩ Undo')
+                          : (lang === 'tr' ? '✓ Yayınlandı olarak işaretle' : '✓ Mark as published')}
                       </button>
                       <button
                         onClick={() => handleDelete(ev.id)}
+                        aria-label={lang === 'tr' ? 'Sil' : 'Delete'}
+                        title={lang === 'tr' ? 'Sil' : 'Delete'}
                         className="px-2 py-1 text-[11px] bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-colors"
                       >
                         🗑️
@@ -411,17 +422,17 @@ export default function CalendarTab() {
             <div className="flex flex-col items-center pt-4 text-slate-400 gap-1">
               <span className="text-4xl opacity-20">📅</span>
               <p className="text-sm text-center text-slate-500 dark:text-slate-400 font-medium">
-                {lang === 'tr' ? 'İçerik Takvimi' : 'Content Calendar'}
+                {lang === 'tr' ? 'İçerik takvimi' : 'Content calendar'}
               </p>
               <p className="text-xs text-center text-slate-400 dark:text-slate-500">
-                {lang === 'tr' ? 'Bir güne tıkla ve o günün içeriklerini yönet' : 'Click a day to manage its content'}
+                {lang === 'tr' ? 'Bir güne tıklayın ve o günün içeriklerini yönetin' : 'Select a day to manage its content'}
               </p>
             </div>
 
             {/* Stats */}
             <div className="w-full bg-slate-50 dark:bg-slate-700/50 rounded-xl p-3 flex flex-col gap-1.5">
               <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                <span>{lang === 'tr' ? 'Toplam İçerik' : 'Total Content'}</span>
+                <span>{lang === 'tr' ? 'Toplam içerik' : 'Total content'}</span>
                 <span className="font-semibold text-slate-700 dark:text-slate-200">{events.length}</span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
@@ -460,18 +471,18 @@ export default function CalendarTab() {
                 {schedLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}
+                    {lang === 'tr' ? 'Yayınlanıyor…' : 'Publishing…'}
                   </>
                 ) : (
                   <>
-                    🚀 {lang === 'tr' ? 'Bugünü Otomatik Yayınla' : 'Auto-Publish Today'}
+                    🚀 {lang === 'tr' ? 'Bugünü otomatik yayınla' : "Auto-publish today's posts"}
                   </>
                 )}
               </button>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
                 {lang === 'tr'
                   ? 'Bugünün bekleyen etkinlikleri sosyal medyaya gönderilir'
-                  : "Today's pending events will be sent to social media"}
+                  : "Today's pending posts are sent to social media"}
               </p>
             </div>
 
@@ -485,7 +496,7 @@ export default function CalendarTab() {
                   : 'border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20'
               }`}>
                 {schedResult.message ? (
-                  <p className="text-slate-500 dark:text-slate-400 font-medium">{schedResult.message}</p>
+                  <p className="text-slate-500 dark:text-slate-400 font-medium"><Msg text={schedResult.message} /></p>
                 ) : (
                   <>
                     <div className="flex items-center gap-3 mb-2 font-semibold">
@@ -505,10 +516,10 @@ export default function CalendarTab() {
                           <span className="capitalize text-slate-600 dark:text-slate-300">{PLATFORM_ICONS[r.platform] || '📌'} {r.platform}</span>
                           {r.url && (
                             <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-ocean hover:underline truncate max-w-[100px]">
-                              link
+                              {lang === 'tr' ? 'bağlantı' : 'link'}
                             </a>
                           )}
-                          {r.error && <span className="text-red-400 truncate">{r.error}</span>}
+                          {r.error && <span className="text-red-400 truncate"><Msg text={r.error} /></span>}
                         </div>
                       ))}
                     </div>

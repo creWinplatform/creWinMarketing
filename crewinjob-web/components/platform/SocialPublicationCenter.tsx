@@ -3,11 +3,14 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CalendarClock, RefreshCw, Play, X, ExternalLink, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, ShieldCheck } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
 import { PUBLICATION_LABELS, PUBLICATION_REASONS, type Publication, type PublicationWorkspace } from '@/lib/platform/social-publication-types';
 import PublicationEngagement from './PublicationEngagement';
+import Msg from '@/components/Msg';
 
 export default function SocialPublicationCenter({workspace,lang}:{workspace:WorkspaceContext;lang:Locale}){
-  const tr=lang==='tr',locale=tr?'tr-TR':'en-GB';
+  const tr=lang==='tr',locale=localeTag(lang);
   const [data,setData]=useState<PublicationWorkspace|null>(null),[page,setPage]=useState(1),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [sourceKey,setSource]=useState(''),[targetId,setTarget]=useState(''),[mode,setMode]=useState('rehearsal'),[when,setWhen]=useState('now'),[scheduled,setScheduled]=useState(''),[ack,setAck]=useState(false),[ackFor,setAckFor]=useState(''),[expanded,setExpanded]=useState<string|null>(null);
   const [imageReady,setImageReady]=useState<string[]>([]),[imageError,setImageError]=useState('');
@@ -22,7 +25,7 @@ export default function SocialPublicationCenter({workspace,lang}:{workspace:Work
   async function load(){
     if(!mounted.current||locked.current)return;const request=new AbortController();controller.current=request;locked.current=true;setBusy(true);
     try{const value=await projectRequest<PublicationWorkspace>(`/api/platform/publications?page=${page}`,{signal:AbortSignal.any([request.signal,AbortSignal.timeout(45000)])});if(mounted.current&&!request.signal.aborted){setData(value);setError('');}}
-    catch(reason){if(mounted.current&&!request.signal.aborted)setError(reason instanceof Error?reason.message:'Request failed.');}
+    catch(reason){if(mounted.current&&!request.signal.aborted)setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}
     finally{if(mounted.current&&controller.current===request){locked.current=false;setBusy(false);}}
   }
   useEffect(()=>{mounted.current=true;void load();return()=>{mounted.current=false;controller.current?.abort();controller.current=null;locked.current=false;};},[page]);
@@ -43,7 +46,7 @@ export default function SocialPublicationCenter({workspace,lang}:{workspace:Work
         intents.current.clear();setAck(false);setNotice(tr?'Yayın işi kaydedildi.':'Publication job saved.');
       }else if(body.action==='check')setNotice(target?.platform==='twitter'?(tr?'X OAuth yayın izni kaydı ve hesap erişimi doğrulandı.':'X OAuth publishing grant record and account access verified.'):(tr?'Yayın izni doğrulandı.':'Publishing access verified.'));
       const value=await projectRequest<PublicationWorkspace>(`/api/platform/publications?page=${page}`,{signal});if(mounted.current&&!request.signal.aborted)setData(value);
-    }catch(reason){if(mounted.current&&!request.signal.aborted)setError(reason instanceof Error?reason.message:'Request failed.');}
+    }catch(reason){if(mounted.current&&!request.signal.aborted)setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}
     finally{if(mounted.current&&controller.current===request){locked.current=false;setBusy(false);}}
   }
   const submit=(event:FormEvent)=>{
@@ -59,14 +62,14 @@ export default function SocialPublicationCenter({workspace,lang}:{workspace:Work
   };
   return <section className="social-publications">
     <header className="studio-page-heading"><div><p className="studio-eyebrow">{tr?'YAYIN TAKVİMİ':'PUBLISHING CALENDAR'}</p><h1>{tr?'Sosyal yayınlar':'Social publications'}</h1><p className="studio-subtitle">LinkedIn · Facebook · X · Instagram</p></div><button className="icon-button" aria-label={tr?'Yayınları yenile':'Refresh publications'} title={tr?'Yayınları yenile':'Refresh publications'} disabled={busy} onClick={()=>void load()}><RefreshCw size={18}/></button></header>
-    {error&&<p role="alert" className="studio-error">{error}</p>}{notice&&<p role="status" className="studio-success">{notice}</p>}
+    {error&&<p role="alert" className="studio-error"><Msg text={error}/></p>}{notice&&<p role="status" className="studio-success"><Msg text={notice}/></p>}
     {!data&&busy&&<p role="status">{tr?'Yayınlar yükleniyor…':'Loading publications…'}</p>}
     {data&&!data.publishingEnabled&&<p className="studio-data-notice">{tr?'Gerçek yayın sunucuda kapalı. Prova paylaşım yapmaz.':'Live publishing is disabled on the server. Rehearsals do not post.'}</p>}
     {data?.canManage&&<form className="studio-editor publication-editor" onSubmit={submit}>
       <h2>{tr?'Yayın hazırla':'Prepare publication'}</h2><fieldset className="studio-form-grid" disabled={busy}>
         <label>{tr?'Kayıtlı içerik':'Saved content'}<select aria-label={tr?'Kayıtlı içerik':'Saved content'} required value={sourceKey} onChange={event=>{setSource(event.target.value);setAck(false);setImageError('');setImageReady([]);}}><option value="">{tr?'İçerik seçin':'Choose content'}</option>{data.sources.map(item=><option key={`${item.kind}:${item.id}:${item.platform}`} value={`${item.kind}:${item.id}:${item.platform}`}>{item.title} · {platformName(item.platform)} · {item.kind==='campaign'?(tr?'Kampanya':'Campaign'):(tr?'İçerik':'Content')}{!item.eligible?' · !':''}</option>)}</select></label>
         <label>{tr?'Yayın hesabı':'Publishing account'}<select aria-label={tr?'Yayın hesabı':'Publishing account'} required value={targetId} onChange={event=>{setTarget(event.target.value);setAck(false);}}><option value="">{tr?'Hesap seçin':'Choose account'}</option>{data.targets.map(item=><option key={item.id} value={item.id} disabled={!supported(item.platform)||Boolean(source&&source.platform!==item.platform)}>{item.name} · {platformName(item.platform,item.accountType)}{!supported(item.platform)?(tr?' · Yayın adaptörü bekleniyor':' · Publishing adapter pending'):''}</option>)}</select></label>
-        {!data.sources.length&&<p className="studio-note studio-form-full">{tr?'Desteklenen sosyal kanal taslağı yok.':'No saved drafts for supported social channels.'} <a href="/?tab=library">{tr?'İçerik Kütüphanesi':'Content Library'}</a></p>}
+        {!data.sources.length&&<p className="studio-note studio-form-full">{tr?'Desteklenen sosyal kanal taslağı yok.':'No saved drafts for supported social channels.'} <a href="/?tab=library">{tr?'İçerik Kütüphanesi':'Content library'}</a></p>}
         {data.sourceTotal>50&&<p className="studio-note studio-form-full">{tr?`${data.sourceTotal} taslağın son 50 kaydı listeleniyor.`:`Showing the latest 50 of ${data.sourceTotal} drafts.`}</p>}
         {!data.targets.some(item=>supported(item.platform))&&<p className="studio-note studio-form-full">{tr?'Desteklenen yayın hesabı eklenmedi.':'No supported publishing account added.'} <a href="/?tab=project&settings=connections">{tr?'Bağlantılar':'Connections'}</a></p>}
         {source&&target&&!compatible&&<p className="studio-note studio-form-full" role="status">{tr?'İçeriğin kanalıyla eşleşen bir yayın hesabı seçin.':'Choose a publishing account that matches the content channel.'}</p>}
@@ -85,7 +88,7 @@ export default function SocialPublicationCenter({workspace,lang}:{workspace:Work
       const active=['queued','running'].includes(item.status),future=Date.parse(item.scheduledAt)>Date.now()||Boolean(item.nextCheckAt&&Date.parse(item.nextCheckAt)>Date.now());
       return <article key={item.id} className="publication-row"><header><div><h3>{item.title}</h3><p>{item.accountName} · {platformName(item.platform,item.accountType)} · {formatLabel(item.format)} · {item.mode==='rehearsal'?(tr?'Prova':'Rehearsal'):(tr?'Gerçek yayın':'Live publication')}</p></div><span className="studio-badge">{item.state==='pending'&&future?(tr?'Planlandı':'Scheduled'):PUBLICATION_LABELS[item.state]?.[tr?0:1]||item.state}</span></header>
         <p>{date(item.scheduledAt)} · {item.timezone}</p>{item.state==='pending'&&!future&&<small>{tr?'Zamanlayıcı bekleniyor':'Waiting for scheduler'}</small>}
-        {item.reason&&<p className="studio-note">{PUBLICATION_REASONS[item.reason]?.[tr?0:1]||item.reason}</p>}{item.state==='rehearsed'&&<p className="studio-note">{tr?'Yerel içerik ve yetki kontrolleri tamamlandı. Sağlayıcıya gönderilmedi; yayın izni kanıtı değildir.':'Local content and authority checks completed. Nothing was sent; this is not proof of publishing permission.'}</p>}
+        {item.reason&&<p className="studio-note">{PUBLICATION_REASONS[item.reason]?.[tr?0:1]||translateMessage(item.reason,lang)}</p>}{item.state==='rehearsed'&&<p className="studio-note">{tr?'Yerel içerik ve yetki kontrolleri tamamlandı. Sağlayıcıya gönderilmedi; yayın izni kanıtı değildir.':'Local content and authority checks completed. Nothing was sent; this is not proof of publishing permission.'}</p>}
         {item.cancelRequested&&<p className="studio-note">{tr?'İptal istendi ancak gönderim başlamıştı. Paylaşım geri alınmış sayılmaz.':'Cancellation was requested after submission began. The post has not been retracted.'}</p>}
         <div className="publication-row-actions"><button className="studio-text-button" aria-expanded={expanded===item.id} onClick={()=>setExpanded(expanded===item.id?null:item.id)}>{expanded===item.id?<ChevronUp size={16}/>:<ChevronDown size={16}/>} {tr?'Onaylanan metin':'Approved text'}</button>{item.providerUrl&&<a className="studio-secondary" href={item.providerUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={16}/>{tr?`${platformName(item.platform)} hesabında aç`:`Open on ${platformName(item.platform)}`}</a>}{data.canManage&&active&&<><button className="icon-button" title={tr?'Vadesi gelen işi işle':'Process due job'} aria-label={`${tr?'İşi işle':'Process job'} ${item.title}`} disabled={busy||future||item.state==='submitting'} onClick={()=>void act({action:'run',id:item.id})}><Play size={16}/></button><button className="icon-button" title={tr?'Yayın işini iptal et':'Cancel publication job'} aria-label={`${tr?'İptal et':'Cancel'} ${item.title}`} disabled={busy||item.cancelRequested} onClick={()=>void act({action:'cancel',id:item.id})}><X size={16}/></button></>}</div>
         {expanded===item.id&&<div className="publication-preview"><div className="publication-gallery">{(item.images|| (item.image?[item.image]:[])).map((image,index)=><figure key={image.previewUrl}><img className="publication-image" src={image.previewUrl} alt={`${tr?'Onaylanan görsel':'Approved image'} ${index+1}`} width={image.width} height={image.height}/><figcaption>{index+1} · {image.width} × {image.height} · {Math.ceil(image.bytes/1024)} KB</figcaption></figure>)}</div><p>{item.text}</p>{item.providerPostId&&<small>{item.providerPostId}</small>}</div>}

@@ -10,6 +10,9 @@ import EngagementPanel from '../EngagementPanel';
 import { addEvent } from '@/lib/calendar-store';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
 import { loadPartnerLogo, savePartnerLogo, savePartnerUntil, clearPartnerLogo, daysLeft } from '@/lib/partner-logo';
 
 const PLATFORMS = [
@@ -35,60 +38,61 @@ interface Suggestion {
   labelTr:  string;
   labelEn:  string;
   prompt:   string;
+  promptEn: string;
   tipTr:    string;
   tipEn:    string;
 }
 
 const PLATFORM_SUGGESTIONS: Record<string, Suggestion[]> = {
   instagram: [
-    { icon: '🔥', categoryTr: 'Trend',        categoryEn: 'Trend',         labelTr: 'Viral Kariyer Serisi',   labelEn: 'Viral Career Series',    prompt: 'Denizcilik kariyerinde "kimse söylemez ama bilmen gereken 5 şey" temalı etkileyici bir Instagram carousel post hazırla',                                                          tipTr: 'Carousel postlar %3x daha fazla kayıt alır',           tipEn: 'Carousel posts get 3x more saves' },
-    { icon: '💬', categoryTr: 'Engagement',   categoryEn: 'Engagement',    labelTr: 'Topluluk Sorusu',        labelEn: 'Community Question',     prompt: 'Denizcilerin aktif yorum yapacağı, gemide kariyer ilerleme zorluklarını paylaşacağı bir engagement sorusu ve caption yaz',                                                             tipTr: 'Soru içeren postlar %89 daha fazla yorum alır',        tipEn: 'Posts with questions get 89% more comments' },
-    { icon: '📣', categoryTr: 'Marka',        categoryEn: 'Brand',         labelTr: 'Platform Tanıtımı',      labelEn: 'Platform Intro',         prompt: 'CrewinJob\'un BullsEye akıllı eşleştirme özelliğini Instagram\'a özel, gerçek bir denizci perspektifinden hikaye anlatısıyla tanıt',                                                   tipTr: 'Hikaye formatı güven ve dönüşüm artırır',              tipEn: 'Story format boosts trust and conversions' },
-    { icon: '🌊', categoryTr: 'İlham',        categoryEn: 'Inspiration',   labelTr: 'Denizde Yaşam',          labelEn: 'Life at Sea',            prompt: 'Gemide çalışmanın benzersiz avantajlarını anlatan, denizcileri motive eden ve potansiyel adaylara ilham veren görsel odaklı bir post yaz',                                              tipTr: 'Duygusal içerik paylaşım oranını artırır',             tipEn: 'Emotional content increases share rate' },
-    { icon: '🏅', categoryTr: 'Sosyal Kanıt', categoryEn: 'Social Proof',  labelTr: 'Başarı Hikayesi',        labelEn: 'Success Story',          prompt: 'CrewinJob sayesinde hayalindeki gemiye kavuşan bir denizcinin hikayesini kısa ve duygusal Instagram caption\'ı olarak yaz, story formatına da uygun olsun',                            tipTr: 'Sosyal kanıt dönüşüm oranını 2x artırır',              tipEn: 'Social proof 2x conversion rate' },
-    { icon: '🎯', categoryTr: 'Dönüşüm',     categoryEn: 'Conversion',    labelTr: 'CTA Odaklı Post',        labelEn: 'CTA-Focused Post',       prompt: 'Denizci adaylarını CrewinJob\'a kayıt olmaya teşvik eden, güçlü CTA içeren, görsel açıklamalı bir Instagram post yaz. Aciliyet ve fırsat hissi ver.',                                 tipTr: 'Net CTA olan postlar %38 daha fazla tıklanır',         tipEn: 'Posts with clear CTAs get 38% more clicks' },
-    { icon: '📊', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'İnfografik Caption',     labelEn: 'Infographic Caption',    prompt: '"Denizcilik sertifika yol haritası" konusunu Instagram infografik tarzında 5 adımda anlatan, kaydedilmeye değer bir caption yaz',                                                       tipTr: 'Eğitim içeriği kaydetme oranını artırır',              tipEn: 'Educational content increases save rate' },
-    { icon: '🌟', categoryTr: 'Motivasyon',  categoryEn: 'Motivation',    labelTr: 'Haftanın İlanı',         labelEn: 'Job of the Week',        prompt: 'Bu haftanın en öne çıkan denizcilik ilanını Instagram\'a özel heyecan yaratan bir dille tanıt, hedef kitleyi doğrudan başvurmaya yönlendir',                                           tipTr: 'Düzenli ilan postları takipçi sadakatini artırır',     tipEn: 'Regular job posts build follower loyalty' },
+    { icon: '🔥', categoryTr: 'Trend',        categoryEn: 'Trend',         labelTr: 'Viral Kariyer Serisi',   labelEn: 'Viral career series',    prompt: 'Denizcilik kariyerinde "kimse söylemez ama bilmen gereken 5 şey" temalı etkileyici bir Instagram carousel post hazırla', promptEn: 'Create an engaging Instagram carousel post on "5 things nobody tells you about a maritime career, but you need to know"',                                                          tipTr: 'Carousel postlar kaydedilmeye uygundur',           tipEn: 'Carousel posts invite saves' },
+    { icon: '💬', categoryTr: 'Engagement',   categoryEn: 'Engagement',    labelTr: 'Topluluk Sorusu',        labelEn: 'Community question',     prompt: 'Denizcilerin aktif yorum yapacağı, gemide kariyer ilerleme zorluklarını paylaşacağı bir engagement sorusu ve caption yaz', promptEn: 'Write an engagement question and caption that gets seafarers commenting and sharing the challenges of advancing their careers on board',                                                             tipTr: 'Soru soran postlar yorum davet eder',        tipEn: 'A question invites comments' },
+    { icon: '📣', categoryTr: 'Marka',        categoryEn: 'Brand',         labelTr: 'Platform Tanıtımı',      labelEn: 'Platform intro',         prompt: 'CrewinJob\'un BullsEye akıllı eşleştirme özelliğini Instagram\'a özel, gerçek bir denizci perspektifinden hikaye anlatısıyla tanıt', promptEn: 'Introduce CrewinJob\'s BullsEye smart matching for Instagram through a story told from a real seafarer\'s perspective',                                                   tipTr: 'Hikaye formatı güven ve dönüşüm artırır',              tipEn: 'Story format boosts trust and conversions' },
+    { icon: '🌊', categoryTr: 'İlham',        categoryEn: 'Inspiration',   labelTr: 'Denizde Yaşam',          labelEn: 'Life at sea',            prompt: 'Gemide çalışmanın benzersiz avantajlarını anlatan, denizcileri motive eden ve potansiyel adaylara ilham veren görsel odaklı bir post yaz', promptEn: 'Write an image-led post about the unique advantages of working on board that motivates seafarers and inspires potential candidates',                                              tipTr: 'Duygusal içerik paylaşım oranını artırır',             tipEn: 'Emotional content increases share rate' },
+    { icon: '🏅', categoryTr: 'Sosyal Kanıt', categoryEn: 'Social proof',  labelTr: 'Başarı Hikayesi',        labelEn: 'Success story',          prompt: 'CrewinJob sayesinde hayalindeki gemiye kavuşan bir denizcinin hikayesini kısa ve duygusal Instagram caption\'ı olarak yaz, story formatına da uygun olsun', promptEn: 'Write a short, emotional Instagram caption telling the story of a seafarer who landed their dream vessel through CrewinJob; make it work as a story too',                            tipTr: 'Sosyal kanıt güven oluşturur',              tipEn: 'Social proof builds trust' },
+    { icon: '🎯', categoryTr: 'Dönüşüm',     categoryEn: 'Conversion',    labelTr: 'CTA Odaklı Post',        labelEn: 'CTA-focused post',       prompt: 'Denizci adaylarını CrewinJob\'a kayıt olmaya teşvik eden, güçlü CTA içeren, görsel açıklamalı bir Instagram post yaz. Aciliyet ve fırsat hissi ver.', promptEn: 'Write an Instagram post with a strong CTA and an image description that encourages seafarer candidates to sign up on CrewinJob. Convey urgency and opportunity.',                                 tipTr: 'Net bir CTA tıklamayı kolaylaştırır',         tipEn: 'A clear CTA makes clicking easy' },
+    { icon: '📊', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'İnfografik Caption',     labelEn: 'Infographic caption',    prompt: '"Denizcilik sertifika yol haritası" konusunu Instagram infografik tarzında 5 adımda anlatan, kaydedilmeye değer bir caption yaz', promptEn: 'Write a save-worthy caption that explains the "maritime certificate roadmap" in 5 steps, in Instagram infographic style',                                                       tipTr: 'Eğitim içeriği kaydetme oranını artırır',              tipEn: 'Educational content increases save rate' },
+    { icon: '🌟', categoryTr: 'Motivasyon',  categoryEn: 'Motivation',    labelTr: 'Haftanın İlanı',         labelEn: 'Job of the week',        prompt: 'Bu haftanın en öne çıkan denizcilik ilanını Instagram\'a özel heyecan yaratan bir dille tanıt, hedef kitleyi doğrudan başvurmaya yönlendir', promptEn: 'Introduce this week\'s standout maritime job posting in exciting, Instagram-specific language and point the audience straight to applying',                                           tipTr: 'Düzenli ilan postları takipçi sadakatini artırır',     tipEn: 'Regular job posts build follower loyalty' },
   ],
   facebook: [
-    { icon: '📊', categoryTr: 'Haftalık',     categoryEn: 'Weekly',        labelTr: 'İlan Bülteni',           labelEn: 'Job Bulletin',           prompt: 'Haftanın öne çıkan denizcilik iş ilanlarını özet formatında paylaş, her ilanın neden cazip olduğunu açıkla ve etkileşimi artıracak bir soru ile bitir',                                tipTr: 'Düzenli bültenler %60 daha fazla takipçi sadakati sağlar', tipEn: 'Regular bulletins give 60% more follower loyalty' },
-    { icon: '🤝', categoryTr: 'Topluluk',     categoryEn: 'Community',     labelTr: 'Deneyim Paylaşımı',      labelEn: 'Experience Share',       prompt: 'Denizci topluluğunu en zorlu rotalarını ve en etkileyici limanlarını paylaşmaya davet eden, nostalji ve bağlılık yaratan bir post yaz',                                              tipTr: 'UGC organik erişimi 4x artırır',                       tipEn: 'UGC increases organic reach 4x' },
-    { icon: '🎯', categoryTr: 'Dönüşüm',     categoryEn: 'Conversion',    labelTr: 'Platform Tanıtımı',      labelEn: 'Platform Intro',         prompt: 'CrewinJob\'un işe alım sürecini nasıl kolaylaştırdığını, rakiplerden farkını net biçimde anlatan, hem iş veren hem denizci perspektifinden ikna edici bir Facebook gönderisi yaz',    tipTr: 'Fayda odaklı içerik tıklanma oranını artırır',        tipEn: 'Benefit-focused content increases click rate' },
-    { icon: '📰', categoryTr: 'Sektör',      categoryEn: 'Industry',      labelTr: 'Trend Analiz',           labelEn: 'Trend Analysis',         prompt: 'Denizcilik sektöründe güncel işe alım trendlerini, artan/azalan talep gören pozisyonları analiz eden bilgilendirici bir makale tarzı post yaz',                                        tipTr: 'Otorite içeriği marka güveni inşa eder',               tipEn: 'Authority content builds brand trust' },
-    { icon: '🗳️', categoryTr: 'Engagement', categoryEn: 'Engagement',    labelTr: 'Anket & Tartışma',       labelEn: 'Poll & Discussion',      prompt: 'Denizcilik topluluğunda tartışma yaratacak bir anket oluştur: "Kontrat mı serbest mi tercih edersiniz?" gibi, yorumları tetikleyecek şekilde kur',                                     tipTr: 'Anketler organik erişimi 2x artırır',                  tipEn: 'Polls double organic reach' },
-    { icon: '🚨', categoryTr: 'Acil İlan',   categoryEn: 'Urgent Job',    labelTr: 'Urgent Pozisyon',        labelEn: 'Urgent Position',        prompt: 'Acil doldurulması gereken kritik bir denizcilik pozisyonunu Facebook\'a özel aciliyet duygusuyla duyur, nitelikli adayları harekete geçir',                                           tipTr: 'Aciliyet içeren postlar paylaşım oranını artırır',     tipEn: 'Urgency posts increase share rate' },
-    { icon: '🎉', categoryTr: 'Kutlama',     categoryEn: 'Milestone',     labelTr: 'Başarı Duyurusu',        labelEn: 'Success Announcement',   prompt: 'CrewinJob aracılığıyla işe alınan denizci sayısı veya şirket başarısını kutlayan, toplulukla birlikte kutlayan sıcak bir Facebook gönderisi yaz',                                      tipTr: 'Milestone içerikler marka bağlılığı kurar',            tipEn: 'Milestone content builds brand loyalty' },
-    { icon: '💡', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'Kariyer İpucu',          labelEn: 'Career Tip',             prompt: 'Denizcilik kariyerinde ilerlemenin önündeki 3 yaygın engeli ve nasıl aşılacağını anlatan, değer odaklı ve paylaşılmaya değer bir Facebook içeriği yaz',                              tipTr: 'Değer içeriği organik paylaşımı artırır',              tipEn: 'Value content drives organic shares' },
+    { icon: '📊', categoryTr: 'Haftalık',     categoryEn: 'Weekly',        labelTr: 'İlan Bülteni',           labelEn: 'Job bulletin',           prompt: 'Haftanın öne çıkan denizcilik iş ilanlarını özet formatında paylaş, her ilanın neden cazip olduğunu açıkla ve etkileşimi artıracak bir soru ile bitir', promptEn: 'Share the week\'s standout maritime job postings in a summary format, explain why each one is attractive and finish with a question that drives engagement',                                tipTr: 'Düzenli bültenler takipçi alışkanlığı oluşturur', tipEn: 'Regular bulletins build a follower habit' },
+    { icon: '🤝', categoryTr: 'Topluluk',     categoryEn: 'Community',     labelTr: 'Deneyim Paylaşımı',      labelEn: 'Experience share',       prompt: 'Denizci topluluğunu en zorlu rotalarını ve en etkileyici limanlarını paylaşmaya davet eden, nostalji ve bağlılık yaratan bir post yaz', promptEn: 'Write a post inviting the seafarer community to share their toughest routes and most impressive ports, building nostalgia and loyalty',                                              tipTr: 'Kullanıcı içeriği organik erişimi destekler',                       tipEn: 'User content supports organic reach' },
+    { icon: '🎯', categoryTr: 'Dönüşüm',     categoryEn: 'Conversion',    labelTr: 'Platform Tanıtımı',      labelEn: 'Platform intro',         prompt: 'CrewinJob\'un işe alım sürecini nasıl kolaylaştırdığını, rakiplerden farkını net biçimde anlatan, hem iş veren hem denizci perspektifinden ikna edici bir Facebook gönderisi yaz', promptEn: 'Write a persuasive Facebook post that clearly explains how CrewinJob simplifies hiring and how it differs from competitors, from both the employer and the seafarer perspective',    tipTr: 'Fayda odaklı içerik tıklanma oranını artırır',        tipEn: 'Benefit-focused content increases click rate' },
+    { icon: '📰', categoryTr: 'Sektör',      categoryEn: 'Industry',      labelTr: 'Trend Analiz',           labelEn: 'Trend analysis',         prompt: 'Denizcilik sektöründe güncel işe alım trendlerini, artan/azalan talep gören pozisyonları analiz eden bilgilendirici bir makale tarzı post yaz', promptEn: 'Write an informative, article-style post analyzing current hiring trends in the maritime industry and which positions are seeing rising or falling demand',                                        tipTr: 'Otorite içeriği marka güveni inşa eder',               tipEn: 'Authority content builds brand trust' },
+    { icon: '🗳️', categoryTr: 'Engagement', categoryEn: 'Engagement',    labelTr: 'Anket & Tartışma',       labelEn: 'Poll & discussion',      prompt: 'Denizcilik topluluğunda tartışma yaratacak bir anket oluştur: "Kontrat mı serbest mi tercih edersiniz?" gibi, yorumları tetikleyecek şekilde kur', promptEn: 'Create a poll that sparks discussion in the maritime community, such as "Do you prefer contract or freelance work?", set up to trigger comments',                                     tipTr: 'Anketler hızlı etkileşim toplar',                  tipEn: 'Polls collect quick engagement' },
+    { icon: '🚨', categoryTr: 'Acil İlan',   categoryEn: 'Urgent job',    labelTr: 'Urgent Pozisyon',        labelEn: 'Urgent position',        prompt: 'Acil doldurulması gereken kritik bir denizcilik pozisyonunu Facebook\'a özel aciliyet duygusuyla duyur, nitelikli adayları harekete geçir', promptEn: 'Announce a critical maritime position that must be filled urgently, with a sense of urgency tailored to Facebook, and get qualified candidates to act',                                           tipTr: 'Aciliyet içeren postlar paylaşım oranını artırır',     tipEn: 'Urgency posts increase share rate' },
+    { icon: '🎉', categoryTr: 'Kutlama',     categoryEn: 'Milestone',     labelTr: 'Başarı Duyurusu',        labelEn: 'Success announcement',   prompt: 'CrewinJob aracılığıyla işe alınan denizci sayısı veya şirket başarısını kutlayan, toplulukla birlikte kutlayan sıcak bir Facebook gönderisi yaz', promptEn: 'Write a warm Facebook post celebrating the number of seafarers hired through CrewinJob or a company milestone together with the community',                                      tipTr: 'Milestone içerikler marka bağlılığı kurar',            tipEn: 'Milestone content builds brand loyalty' },
+    { icon: '💡', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'Kariyer İpucu',          labelEn: 'Career tip',             prompt: 'Denizcilik kariyerinde ilerlemenin önündeki 3 yaygın engeli ve nasıl aşılacağını anlatan, değer odaklı ve paylaşılmaya değer bir Facebook içeriği yaz', promptEn: 'Write a value-focused, shareable Facebook post on 3 common obstacles to advancing a maritime career and how to overcome them',                              tipTr: 'Değer içeriği organik paylaşımı artırır',              tipEn: 'Value content drives organic shares' },
   ],
   twitter: [
-    { icon: '🧵', categoryTr: 'Thread',       categoryEn: 'Thread',        labelTr: 'Viral Thread',           labelEn: 'Viral Thread',           prompt: '5 tweet\'lik güçlü bir thread: Denizcilik kariyerine sıfırdan başlamak için adım adım rehber. Her tweet bağımsız ama birlikte güçlü olsun, hook tweet ile başla',                     tipTr: 'Thread\'ler tek tweet\'ten %60 daha fazla etkileşim alır', tipEn: 'Threads get 60% more engagement than single tweets' },
-    { icon: '⚡', categoryTr: 'Anlık',        categoryEn: 'Breaking',      labelTr: 'Breaking Duyuru',        labelEn: 'Breaking Announcement',  prompt: 'Yeni açılan kritik denizcilik pozisyonlarını aciliyet ve fırsat hissiyle duyuran, 280 karakterde maksimum etki yaratan bir tweet yaz',                                               tipTr: 'Aciliyet içeren tweetler %22 daha fazla tıklanır',     tipEn: 'Urgency tweets get 22% more clicks' },
-    { icon: '💡', categoryTr: 'Değer',        categoryEn: 'Value',         labelTr: 'Pro İpucu',              labelEn: 'Pro Tip',                prompt: 'Denizci adaylarının CV\'lerinde yaptığı en kritik 3 hatayı ve çözümünü anlatan, kaydedilip paylaşılacak değerde kısa ve net bir tweet yaz',                                         tipTr: '"Save worthy" içerik organik büyüme sağlar',           tipEn: '"Save worthy" content drives organic growth' },
-    { icon: '📈', categoryTr: 'Sektör',      categoryEn: 'Industry',      labelTr: 'Trend Veri',             labelEn: 'Trend Data',             prompt: 'Denizcilik iş piyasasında bu ay en çok aranan pozisyonları, maaş aralıklarını ve kariyer fırsatlarını data odaklı, otoriter bir tonda paylaş',                                       tipTr: 'Veri içerikli tweetler %3x daha fazla RT alır',        tipEn: 'Data tweets get 3x more retweets' },
-    { icon: '🔁', categoryTr: 'Engagement',  categoryEn: 'Engagement',    labelTr: 'RT Bait',                labelEn: 'RT Bait',                prompt: 'Denizcilerin "kesinlikle" diyerek RT atacağı, sektörle ilgili güçlü bir gerçeği veya tartışmalı görüşü içeren, kısa ve etkili bir tweet yaz',                                         tipTr: 'Güçlü görüşler RT oranını artırır',                    tipEn: 'Strong opinions increase RT rate' },
-    { icon: '🎤', categoryTr: 'Otorite',     categoryEn: 'Authority',     labelTr: 'Uzman Görüşü',           labelEn: 'Expert Opinion',         prompt: 'Denizcilik işe alım sürecinde işverenlerin en çok hangi özelliklere baktığını anlatan, otoriter ve güvenilir bir uzman tweeti yaz',                                                  tipTr: 'Uzman içeriği takipçi güvenini artırır',               tipEn: 'Expert content builds follower trust' },
-    { icon: '😄', categoryTr: 'Eğlenceli',   categoryEn: 'Fun',           labelTr: 'Denizci Humor',          labelEn: 'Seafarer Humor',         prompt: 'Denizcilerin gülerek paylaşacağı, gemi yaşamından ilham alan esprili ama profesyonel bir tweet yaz. CrewinJob markasıyla bağdaşmalı.',                                              tipTr: 'Eğlenceli içerik viral potansiyeli taşır',             tipEn: 'Fun content has viral potential' },
-    { icon: '❓', categoryTr: 'Soru',        categoryEn: 'Question',      labelTr: 'Topluluk Sorusu',        labelEn: 'Community Question',     prompt: 'Denizcilik topluluğunu yanıt vermeye teşvik eden, ilgi çekici ve tartışma yaratan bir soru tweeti yaz. Kısa, net, merak uyandırıcı olsun.',                                          tipTr: 'Soru tweetleri yanıt oranını 3x artırır',              tipEn: 'Question tweets get 3x more replies' },
+    { icon: '🧵', categoryTr: 'Thread',       categoryEn: 'Thread',        labelTr: 'Viral Thread',           labelEn: 'Viral thread',           prompt: '5 tweet\'lik güçlü bir thread: Denizcilik kariyerine sıfırdan başlamak için adım adım rehber. Her tweet bağımsız ama birlikte güçlü olsun, hook tweet ile başla', promptEn: 'A strong 5-tweet thread: a step-by-step guide to starting a maritime career from scratch. Each tweet should stand on its own but be stronger together; open with a hook tweet',                     tipTr: 'Thread\'ler bir fikri adım adım anlatmaya uygundur', tipEn: 'Threads suit explaining an idea step by step' },
+    { icon: '⚡', categoryTr: 'Anlık',        categoryEn: 'Breaking',      labelTr: 'Breaking Duyuru',        labelEn: 'Breaking announcement',  prompt: 'Yeni açılan kritik denizcilik pozisyonlarını aciliyet ve fırsat hissiyle duyuran, 280 karakterde maksimum etki yaratan bir tweet yaz', promptEn: 'Write a tweet announcing newly opened critical maritime positions with a sense of urgency and opportunity, making maximum impact in 280 characters',                                               tipTr: 'Aciliyet hissi hızlı aksiyon çağırır',     tipEn: 'Urgency prompts quick action' },
+    { icon: '💡', categoryTr: 'Değer',        categoryEn: 'Value',         labelTr: 'Pro İpucu',              labelEn: 'Pro tip',                prompt: 'Denizci adaylarının CV\'lerinde yaptığı en kritik 3 hatayı ve çözümünü anlatan, kaydedilip paylaşılacak değerde kısa ve net bir tweet yaz', promptEn: 'Write a short, clear, save-worthy tweet on the 3 most critical mistakes seafarer candidates make on their CVs and how to fix them',                                         tipTr: '"Save worthy" içerik organik büyüme sağlar',           tipEn: '"Save-worthy" content drives organic growth' },
+    { icon: '📈', categoryTr: 'Sektör',      categoryEn: 'Industry',      labelTr: 'Trend Veri',             labelEn: 'Trend data',             prompt: 'Denizcilik iş piyasasında bu ay en çok aranan pozisyonları, maaş aralıklarını ve kariyer fırsatlarını data odaklı, otoriter bir tonda paylaş', promptEn: 'Share this month\'s most searched positions, salary ranges and career opportunities in the maritime job market in a data-driven, authoritative tone',                                       tipTr: 'Kaynağı belli veri paylaşımı kolaylaştırır',        tipEn: 'Sourced data makes sharing easy' },
+    { icon: '🔁', categoryTr: 'Engagement',  categoryEn: 'Engagement',    labelTr: 'RT Bait',                labelEn: 'RT bait',                prompt: 'Denizcilerin "kesinlikle" diyerek RT atacağı, sektörle ilgili güçlü bir gerçeği veya tartışmalı görüşü içeren, kısa ve etkili bir tweet yaz', promptEn: 'Write a short, punchy tweet with a strong fact or bold opinion about the industry that seafarers will retweet saying "absolutely"',                                         tipTr: 'Güçlü görüşler RT oranını artırır',                    tipEn: 'Strong opinions increase RT rate' },
+    { icon: '🎤', categoryTr: 'Otorite',     categoryEn: 'Authority',     labelTr: 'Uzman Görüşü',           labelEn: 'Expert opinion',         prompt: 'Denizcilik işe alım sürecinde işverenlerin en çok hangi özelliklere baktığını anlatan, otoriter ve güvenilir bir uzman tweeti yaz', promptEn: 'Write an authoritative, credible expert tweet on which qualities employers look at most in the maritime hiring process',                                                  tipTr: 'Uzman içeriği takipçi güvenini artırır',               tipEn: 'Expert content builds follower trust' },
+    { icon: '😄', categoryTr: 'Eğlenceli',   categoryEn: 'Fun',           labelTr: 'Denizci Humor',          labelEn: 'Seafarer humor',         prompt: 'Denizcilerin gülerek paylaşacağı, gemi yaşamından ilham alan esprili ama profesyonel bir tweet yaz. CrewinJob markasıyla bağdaşmalı.', promptEn: 'Write a witty but professional tweet inspired by life on board that seafarers will share with a smile. It should fit the CrewinJob brand.',                                              tipTr: 'Eğlenceli içerik viral potansiyeli taşır',             tipEn: 'Fun content has viral potential' },
+    { icon: '❓', categoryTr: 'Soru',        categoryEn: 'Question',      labelTr: 'Topluluk Sorusu',        labelEn: 'Community question',     prompt: 'Denizcilik topluluğunu yanıt vermeye teşvik eden, ilgi çekici ve tartışma yaratan bir soru tweeti yaz. Kısa, net, merak uyandırıcı olsun.', promptEn: 'Write an engaging question tweet that sparks discussion and gets the maritime community replying. Keep it short, clear and intriguing.',                                          tipTr: 'Soru tweetleri yanıt davet eder',              tipEn: 'Question tweets invite replies' },
   ],
   linkedin: [
-    { icon: '🏆', categoryTr: 'Liderlik',    categoryEn: 'Leadership',    labelTr: 'Otorite Makalesi',       labelEn: 'Authority Article',      prompt: 'Denizcilik sektöründe 2026 işe alım trendlerini derinlemesine analiz eden, sektör liderlerine hitap eden düşünce liderliği makalesi yaz. Veri ve içgörüler içersin.',             tipTr: 'Düşünce liderliği profil görüntülemesini 10x artırır', tipEn: 'Thought leadership 10x profile views' },
-    { icon: '📖', categoryTr: 'Hikaye',      categoryEn: 'Story',         labelTr: 'Başarı Hikayesi',        labelEn: 'Success Story',          prompt: 'CrewinJob aracılığıyla hayalindeki pozisyona kavuşan bir denizcinin dönüşüm hikayesini, duygusal ve profesyonel bir dille LinkedIn formatında anlat',                              tipTr: 'Hikaye formatı bağlantı isteklerini %55 artırır',      tipEn: 'Story format increases connection requests by 55%' },
-    { icon: '🎓', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'Kariyer Rehberi',        labelEn: 'Career Guide',           prompt: 'Denizcilik kariyerinde güverte zabitinden kaptana uzanan yolda gereken sertifikalar, deneyimler ve stratejileri adım adım açıklayan kapsamlı bir rehber yaz',                      tipTr: 'Eğitim içeriği en yüksek kaydetme oranına sahip',      tipEn: 'Educational content has the highest save rate' },
-    { icon: '🤝', categoryTr: 'Network',     categoryEn: 'Network',       labelTr: 'Sektör Tartışması',      labelEn: 'Industry Discussion',    prompt: 'Denizcilik iş dünyasında tartışmalı ama düşündürücü bir soru sor: otomasyon denizci ihtiyacını azaltır mı? Farklı bakış açılarını dengeli sun.',                                    tipTr: 'Tartışma başlatan içerikler yorumları %3x artırır',    tipEn: 'Discussion content gets 3x more comments' },
-    { icon: '📊', categoryTr: 'Veri',        categoryEn: 'Data',          labelTr: 'Sektör Raporu',          labelEn: 'Industry Report',        prompt: '2025-2026 denizcilik sektörü istihdam verilerini yorumlayan, hangi pozisyonların yükselişte olduğunu gösteren kısa bir LinkedIn analiz paylaşımı yaz',                            tipTr: 'Veri destekli içerik paylaşım oranını artırır',        tipEn: 'Data-backed content increases share rate' },
-    { icon: '🔮', categoryTr: 'Vizyon',      categoryEn: 'Vision',        labelTr: 'Gelecek Tahmini',        labelEn: 'Future Forecast',        prompt: 'Denizcilik sektörünün önümüzdeki 5 yılını şekillendirecek 3 büyük trendi anlatan, vizyon sahibi ve ileriye bakışlı bir LinkedIn postu yaz',                                         tipTr: 'Vizyon içeriği thought leadership inşa eder',          tipEn: 'Vision content builds thought leadership' },
-    { icon: '💼', categoryTr: 'İK & İşe Alım', categoryEn: 'HR & Hiring', labelTr: 'İşveren Perspektifi',  labelEn: 'Employer Perspective',   prompt: 'Denizcilik şirketlerinin iş ilanı yayınlarken yaptığı 5 kritik hatayla ve bunların nitelikli adayları nasıl kaçırdığını anlatan, işverenlere yönelik bir LinkedIn postu yaz',     tipTr: 'B2B içerik karar vericilere ulaşır',                   tipEn: 'B2B content reaches decision-makers' },
-    { icon: '🌍', categoryTr: 'Global',      categoryEn: 'Global',        labelTr: 'Uluslararası Pazar',     labelEn: 'International Market',   prompt: 'Dünyanın en çok denizci istihdam eden 5 ülkesini ve CrewinJob\'un bu pazarlardaki rolünü anlatan, küresel perspektifli bir LinkedIn içeriği yaz',                                   tipTr: 'Global içerik uluslararası bağlantı çeker',            tipEn: 'Global content attracts international connections' },
+    { icon: '🏆', categoryTr: 'Liderlik',    categoryEn: 'Leadership',    labelTr: 'Otorite Makalesi',       labelEn: 'Authority article',      prompt: 'Denizcilik sektöründe 2026 işe alım trendlerini derinlemesine analiz eden, sektör liderlerine hitap eden düşünce liderliği makalesi yaz. Veri ve içgörüler içersin.', promptEn: 'Write a thought leadership article that analyzes 2026 maritime hiring trends in depth and speaks to industry leaders. Include data and insights.',             tipTr: 'Düşünce liderliği profil ilgisini artırır', tipEn: 'Thought leadership draws profile interest' },
+    { icon: '📖', categoryTr: 'Hikaye',      categoryEn: 'Story',         labelTr: 'Başarı Hikayesi',        labelEn: 'Success story',          prompt: 'CrewinJob aracılığıyla hayalindeki pozisyona kavuşan bir denizcinin dönüşüm hikayesini, duygusal ve profesyonel bir dille LinkedIn formatında anlat', promptEn: 'Tell the transformation story of a seafarer who reached their dream position through CrewinJob, in an emotional yet professional LinkedIn style',                              tipTr: 'Hikaye formatı bağ kurmayı kolaylaştırır',      tipEn: 'Stories make it easier to connect' },
+    { icon: '🎓', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'Kariyer Rehberi',        labelEn: 'Career guide',           prompt: 'Denizcilik kariyerinde güverte zabitinden kaptana uzanan yolda gereken sertifikalar, deneyimler ve stratejileri adım adım açıklayan kapsamlı bir rehber yaz', promptEn: 'Write a comprehensive guide that explains, step by step, the certificates, experience and strategies needed on the path from deck officer to captain',                      tipTr: 'Eğitim içeriği en yüksek kaydetme oranına sahip',      tipEn: 'Educational content has the highest save rate' },
+    { icon: '🤝', categoryTr: 'Network',     categoryEn: 'Network',       labelTr: 'Sektör Tartışması',      labelEn: 'Industry discussion',    prompt: 'Denizcilik iş dünyasında tartışmalı ama düşündürücü bir soru sor: otomasyon denizci ihtiyacını azaltır mı? Farklı bakış açılarını dengeli sun.', promptEn: 'Ask a controversial but thought-provoking question for the maritime business world: will automation reduce the need for seafarers? Present different viewpoints in a balanced way.',                                    tipTr: 'Tartışma başlatan içerik yorum çeker',    tipEn: 'Discussion starters draw comments' },
+    { icon: '📊', categoryTr: 'Veri',        categoryEn: 'Data',          labelTr: 'Sektör Raporu',          labelEn: 'Industry report',        prompt: '2025-2026 denizcilik sektörü istihdam verilerini yorumlayan, hangi pozisyonların yükselişte olduğunu gösteren kısa bir LinkedIn analiz paylaşımı yaz', promptEn: 'Write a short LinkedIn analysis post interpreting 2025–2026 maritime employment data and showing which positions are on the rise',                            tipTr: 'Veri destekli içerik paylaşım oranını artırır',        tipEn: 'Data-backed content increases share rate' },
+    { icon: '🔮', categoryTr: 'Vizyon',      categoryEn: 'Vision',        labelTr: 'Gelecek Tahmini',        labelEn: 'Future forecast',        prompt: 'Denizcilik sektörünün önümüzdeki 5 yılını şekillendirecek 3 büyük trendi anlatan, vizyon sahibi ve ileriye bakışlı bir LinkedIn postu yaz', promptEn: 'Write a visionary, forward-looking LinkedIn post on 3 major trends that will shape the maritime industry over the next 5 years',                                         tipTr: 'Vizyon içeriği thought leadership inşa eder',          tipEn: 'Vision content builds thought leadership' },
+    { icon: '💼', categoryTr: 'İK & İşe Alım', categoryEn: 'HR & hiring', labelTr: 'İşveren Perspektifi',  labelEn: 'Employer perspective',   prompt: 'Denizcilik şirketlerinin iş ilanı yayınlarken yaptığı 5 kritik hatayla ve bunların nitelikli adayları nasıl kaçırdığını anlatan, işverenlere yönelik bir LinkedIn postu yaz', promptEn: 'Write a LinkedIn post for employers on 5 critical mistakes maritime companies make when publishing job postings and how these cost them qualified candidates',     tipTr: 'B2B içerik karar vericilere ulaşır',                   tipEn: 'B2B content reaches decision-makers' },
+    { icon: '🌍', categoryTr: 'Global',      categoryEn: 'Global',        labelTr: 'Uluslararası Pazar',     labelEn: 'International market',   prompt: 'Dünyanın en çok denizci istihdam eden 5 ülkesini ve CrewinJob\'un bu pazarlardaki rolünü anlatan, küresel perspektifli bir LinkedIn içeriği yaz', promptEn: 'Write a LinkedIn post with a global perspective on the 5 countries that employ the most seafarers and CrewinJob\'s role in these markets',                                   tipTr: 'Global içerik uluslararası bağlantı çeker',            tipEn: 'Global content attracts international connections' },
   ],
   tiktok: [
-    { icon: '🎬', categoryTr: 'POV',          categoryEn: 'POV',           labelTr: 'Liman İzin Günü',        labelEn: 'Port Day Off',           prompt: '"POV: Gemi adamısın ve bugün liman iznin var" formatında, Z kuşağına hitap eden, eğlenceli ve merak uyandıran 60 saniyelik TikTok video scripti yaz',                             tipTr: 'POV içerikler FYP\'de daha fazla önerilir',            tipEn: 'POV content gets more FYP recommendations' },
-    { icon: '🪝', categoryTr: 'Hook',         categoryEn: 'Hook',          labelTr: 'Dur Kaydırma',           labelEn: 'Stop Scrolling',         prompt: '"Bu videoyu izlemeden denizci olma" hook\'lu, ilk 3 saniyede kaydırmayı durduracak güçlü bir açılışla başlayan kariyer motivasyon videosu scripti yaz',                           tipTr: 'İlk 3 saniye izlenmeyi belirler',                      tipEn: 'First 3 seconds determine watch rate' },
-    { icon: '🌍', categoryTr: 'Yaşam Tarzı', categoryEn: 'Lifestyle',     labelTr: 'Dünya Turu',             labelEn: 'World Tour',             prompt: 'Bir denizci olarak ziyaret ettiğin en iyi 5 limanı, her birinde yaşadığın unutulmaz anlarla anlatan, seyahat tutkunu gençlere hitap eden TikTok scripti yaz',                     tipTr: 'Seyahat içerikleri genç kitlede %80 daha fazla paylaşılır', tipEn: 'Travel content is shared 80% more by younger audiences' },
-    { icon: '💰', categoryTr: 'Motivasyon',  categoryEn: 'Motivation',    labelTr: 'Kazanç Gerçekliği',      labelEn: 'Earnings Reality',       prompt: 'Denizcilik kariyerinde gerçek kazanç rakamlarını şeffaf biçimde paylaşan, kariyer değişikliği düşünenlere hitap eden viral potansiyelli bir TikTok videosu yaz',                   tipTr: 'Kazanç içerikleri hedef kitlede yüksek ilgi görür',    tipEn: 'Earnings content drives high interest in target audience' },
-    { icon: '😱', categoryTr: 'Surpriz',     categoryEn: 'Surprise',      labelTr: 'Beklenmedik Gerçekler',  labelEn: 'Unexpected Facts',       prompt: '"Gemide çalışmadan önce bilmediğim 5 şey" formatında, izleyiciyi şaşırtacak, merak uyandıracak ve sektörü tanıtacak bir TikTok video scripti yaz',                              tipTr: 'Surpriz içerik izlenme süresini artırır',              tipEn: 'Surprise content increases watch time' },
-    { icon: '🎓', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'Hızlı Kariyer Rehberi', labelEn: 'Quick Career Guide',     prompt: '"30 saniyede denizcilik kariyerine nasıl başlarsın" formatında, bilgi yoğun, hızlı tempolu ve aksiyon odaklı bir TikTok scripti yaz',                                              tipTr: 'Bilgi yoğun içerik kaydetme oranını artırır',          tipEn: 'Info-dense content increases save rate' },
-    { icon: '🏆', categoryTr: 'Challenge',   categoryEn: 'Challenge',     labelTr: 'Viral Challenge',        labelEn: 'Viral Challenge',        prompt: 'Denizcilik topluluğunu harekete geçirecek, taklit edilebilir ve CrewinJob markasını organik yayacak bir TikTok challenge konsepti ve video scripti yaz',                          tipTr: 'Challenge içerikler UGC ve marka bilinirliği yaratır', tipEn: 'Challenge content drives UGC and brand awareness' },
-    { icon: '🌅', categoryTr: 'Atmosfer',    categoryEn: 'Atmosphere',    labelTr: 'Gündoğumu Nöbeti',       labelEn: 'Sunrise Watch',          prompt: '"Okyanusun ortasında gündoğumu nöbeti" temalı, denizciliğin poetik ve büyüleyici yönünü anlatan, izleyiciyi büyüleyecek sinematik tarzda bir TikTok scripti yaz',               tipTr: 'Estetik içerik \'duygusal\' kitleyi çeker',            tipEn: 'Aesthetic content attracts the emotional audience' },
+    { icon: '🎬', categoryTr: 'POV',          categoryEn: 'POV',           labelTr: 'Liman İzin Günü',        labelEn: 'Port day off',           prompt: '"POV: Gemi adamısın ve bugün liman iznin var" formatında, Z kuşağına hitap eden, eğlenceli ve merak uyandıran 60 saniyelik TikTok video scripti yaz', promptEn: 'Write a fun, intriguing 60-second TikTok video script for Gen Z in the format "POV: you\'re a seafarer and today is your shore leave"',                             tipTr: 'POV içerikler FYP\'de daha fazla önerilir',            tipEn: 'POV content gets more FYP recommendations' },
+    { icon: '🪝', categoryTr: 'Hook',         categoryEn: 'Hook',          labelTr: 'Dur Kaydırma',           labelEn: 'Stop scrolling',         prompt: '"Bu videoyu izlemeden denizci olma" hook\'lu, ilk 3 saniyede kaydırmayı durduracak güçlü bir açılışla başlayan kariyer motivasyon videosu scripti yaz', promptEn: 'Write a career motivation video script with the hook "Don\'t become a seafarer before watching this", opening strongly enough to stop the scroll in the first 3 seconds',                           tipTr: 'İlk 3 saniye izlenmeyi belirler',                      tipEn: 'The first 3 seconds decide the watch rate' },
+    { icon: '🌍', categoryTr: 'Yaşam Tarzı', categoryEn: 'Lifestyle',     labelTr: 'Dünya Turu',             labelEn: 'World tour',             prompt: 'Bir denizci olarak ziyaret ettiğin en iyi 5 limanı, her birinde yaşadığın unutulmaz anlarla anlatan, seyahat tutkunu gençlere hitap eden TikTok scripti yaz', promptEn: 'Write a TikTok script for young travel lovers about the 5 best ports you\'ve visited as a seafarer and an unforgettable moment in each',                     tipTr: 'Seyahat içerikleri genç kitlede paylaşılmaya uygundur', tipEn: 'Travel content suits sharing with younger audiences' },
+    { icon: '💰', categoryTr: 'Motivasyon',  categoryEn: 'Motivation',    labelTr: 'Kazanç Gerçekliği',      labelEn: 'Earnings reality',       prompt: 'Denizcilik kariyerinde gerçek kazanç rakamlarını şeffaf biçimde paylaşan, kariyer değişikliği düşünenlere hitap eden viral potansiyelli bir TikTok videosu yaz', promptEn: 'Write a TikTok video with viral potential that transparently shares real earnings in a maritime career, aimed at people considering a career change',                   tipTr: 'Kazanç içerikleri hedef kitlede yüksek ilgi görür',    tipEn: 'Earnings content draws strong interest from the target audience' },
+    { icon: '😱', categoryTr: 'Surpriz',     categoryEn: 'Surprise',      labelTr: 'Beklenmedik Gerçekler',  labelEn: 'Unexpected facts',       prompt: '"Gemide çalışmadan önce bilmediğim 5 şey" formatında, izleyiciyi şaşırtacak, merak uyandıracak ve sektörü tanıtacak bir TikTok video scripti yaz', promptEn: 'Write a TikTok video script in the format "5 things I didn\'t know before working on a ship" that surprises viewers, sparks curiosity and introduces the industry',                              tipTr: 'Surpriz içerik izlenme süresini artırır',              tipEn: 'Surprise content increases watch time' },
+    { icon: '🎓', categoryTr: 'Eğitim',      categoryEn: 'Education',     labelTr: 'Hızlı Kariyer Rehberi', labelEn: 'Quick career guide',     prompt: '"30 saniyede denizcilik kariyerine nasıl başlarsın" formatında, bilgi yoğun, hızlı tempolu ve aksiyon odaklı bir TikTok scripti yaz', promptEn: 'Write a dense, fast-paced, action-focused TikTok script in the format "How to start a maritime career in 30 seconds"',                                              tipTr: 'Bilgi yoğun içerik kaydetme oranını artırır',          tipEn: 'Info-dense content increases save rate' },
+    { icon: '🏆', categoryTr: 'Challenge',   categoryEn: 'Challenge',     labelTr: 'Viral Challenge',        labelEn: 'Viral challenge',        prompt: 'Denizcilik topluluğunu harekete geçirecek, taklit edilebilir ve CrewinJob markasını organik yayacak bir TikTok challenge konsepti ve video scripti yaz', promptEn: 'Write a TikTok challenge concept and video script that mobilizes the maritime community, is easy to imitate and spreads the CrewinJob brand organically',                          tipTr: 'Challenge içerikler UGC ve marka bilinirliği yaratır', tipEn: 'Challenge content drives UGC and brand awareness' },
+    { icon: '🌅', categoryTr: 'Atmosfer',    categoryEn: 'Atmosphere',    labelTr: 'Gündoğumu Nöbeti',       labelEn: 'Sunrise watch',          prompt: '"Okyanusun ortasında gündoğumu nöbeti" temalı, denizciliğin poetik ve büyüleyici yönünü anlatan, izleyiciyi büyüleyecek sinematik tarzda bir TikTok scripti yaz', promptEn: 'Write a cinematic TikTok script themed "sunrise watch in the middle of the ocean" that captures the poetic, mesmerizing side of seafaring',               tipTr: 'Estetik içerik \'duygusal\' kitleyi çeker',            tipEn: 'Aesthetic content attracts the emotional audience' },
   ],
 };
 
@@ -279,9 +283,9 @@ export default function SocialTab() {
   };
 
   const TONE_META: Array<{ tone: string; labelTr: string; labelEn: string; emoji: string }> = [
-    { tone: 'professional', labelTr: 'Profesyonel & Otoriter', labelEn: 'Professional & Authoritative', emoji: '🎯' },
-    { tone: 'emotional',    labelTr: 'Duygusal & İlham Verici', labelEn: 'Emotional & Inspiring',        emoji: '❤️' },
-    { tone: 'casual',       labelTr: 'Samimi & Konuşma Dili',  labelEn: 'Casual & Conversational',      emoji: '😊' },
+    { tone: 'professional', labelTr: 'Profesyonel & Otoriter', labelEn: 'Professional & authoritative', emoji: '🎯' },
+    { tone: 'emotional',    labelTr: 'Duygusal & İlham Verici', labelEn: 'Emotional & inspiring',        emoji: '❤️' },
+    { tone: 'casual',       labelTr: 'Samimi & Konuşma Dili',  labelEn: 'Casual & conversational',      emoji: '😊' },
   ];
 
   const generateVariants = async () => {
@@ -304,7 +308,7 @@ export default function SocialTab() {
       const fetched = (data.variants as Array<{ label: string; tone: string; content: string }>) || [];
       const results = TONE_META.map(tm => {
         const match = fetched.find(f => f.tone === tm.tone);
-        return { ...tm, content: match?.content || t('İçerik üretilemedi', 'Content could not be generated'), loading: false };
+        return { ...tm, content: match?.content || t('İçerik üretilemedi', "Couldn't generate content"), loading: false };
       });
       setVariants(results);
       logActivity('content_generated', t(`A/B test üretildi (${platform})`, `A/B test generated (${platform})`), `3 ${t('varyant', 'variants')} · ${language.toUpperCase()}`);
@@ -416,7 +420,7 @@ export default function SocialTab() {
       setAllPlatImage(finalB64);
       setAppliedHeadline(headline);
     } catch (e) {
-      setAllPlatImgError(e instanceof Error ? e.message : t('Görsel oluşturulamadı', 'Image generation failed'));
+      setAllPlatImgError(e instanceof Error ? e.message : t('Görsel oluşturulamadı', "Couldn't generate the image"));
     } finally {
       setAllPlatImgLoading(false);
     }
@@ -611,10 +615,10 @@ export default function SocialTab() {
       <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1">
-            {t('Sosyal Medya İçerik Üretici', 'Social Media Content Generator')}
+            {t('Sosyal Medya İçerik Üretici', 'Social media content generator')}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
-            {t('Platform seç, strateji belirle, AI ile üret.', 'Select platform, define strategy, generate with AI.')}
+            {t('Platform seç, strateji belirle, AI ile üret.', 'Pick a platform, set a strategy, generate with AI.')}
           </p>
         </div>
 
@@ -622,19 +626,20 @@ export default function SocialTab() {
           <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
             {t('Platform', 'Platform')}
           </label>
-          <div className="grid grid-cols-5 gap-1">
+          <div className="grid gap-1" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))' }}>
             {PLATFORMS.map(p => (
               <button
                 key={p.value}
                 onClick={() => { setPlatform(p.value); setOutput(''); setError(''); setVariantMode(false); setAllPlatMode(false); }}
-                className={`flex flex-col items-center py-2 px-1 rounded-lg text-xs font-medium transition-colors gap-1 ${
+                aria-pressed={platform === p.value}
+                className={`min-w-0 flex flex-col items-center py-2 px-1 rounded-lg text-xs font-medium transition-colors gap-1 ${
                   platform === p.value
                     ? 'bg-ocean text-white'
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                 }`}
               >
                 <span className="text-base">{p.label.split(' ')[0]}</span>
-                <span className="leading-tight text-center" style={{ fontSize: '10px' }}>
+                <span className="text-[11px] leading-tight text-center min-w-0 max-w-full break-words">
                   {p.label.split(' ').slice(1).join(' ')}
                 </span>
               </button>
@@ -644,7 +649,7 @@ export default function SocialTab() {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-            {t('İçerik Dili', 'Content Language')}
+            {t('İçerik Dili', 'Content language')}
           </label>
           <div className="grid grid-cols-2 gap-2">
             {([
@@ -674,8 +679,9 @@ export default function SocialTab() {
           <textarea
             value={customPrompt}
             onChange={e => setCustomPrompt(e.target.value)}
-            placeholder={t('Bir strateji kartına tıkla ya da kendin yaz...', 'Click a strategy card or write your own...')}
+            placeholder={t('Bir strateji kartına tıkla ya da kendin yaz…', 'Click a strategy card or write your own…')}
             rows={4}
+            aria-label={t('Ne üretmek istiyorsun?', 'What do you want to generate?')}
             className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500 leading-relaxed"
           />
           <p className="text-xs text-slate-400 dark:text-slate-500">
@@ -689,7 +695,7 @@ export default function SocialTab() {
                     type="text"
                     value={tplName}
                     onChange={e => setTplName(e.target.value)}
-                    placeholder={t('Şablon adı...', 'Template name...')}
+                    placeholder={t('Şablon adı…', 'Template name…')}
                     className="flex-1 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100"
                   />
                   <button
@@ -701,6 +707,8 @@ export default function SocialTab() {
                   </button>
                   <button
                     onClick={() => setShowSaveTpl(false)}
+                    aria-label={t('Vazgeç', 'Cancel')}
+                    title={t('Vazgeç', 'Cancel')}
                     className="text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                   >
                     ✕
@@ -711,7 +719,7 @@ export default function SocialTab() {
                   onClick={() => setShowSaveTpl(true)}
                   className="text-xs text-slate-500 dark:text-slate-400 hover:text-ocean dark:hover:text-ocean border border-dashed border-slate-300 dark:border-slate-600 hover:border-ocean/50 px-3 py-1.5 rounded-lg transition-colors w-full"
                 >
-                  💾 {t('Şablon Kaydet', 'Save Template')}
+                  💾 {t('Şablon Kaydet', 'Save template')}
                 </button>
               )}
             </div>
@@ -724,19 +732,19 @@ export default function SocialTab() {
           className="w-full bg-ocean hover:bg-ocean-dark disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
           {loading ? (
-            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t('Üretiliyor...', 'Generating...')}</>
+            <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t('Üretiliyor…', 'Generating…')}</>
           ) : (
-            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} {t('İçerik Üret', 'Generate Content')}</>
+            <>{language === 'tr' ? '🇹🇷' : '🇬🇧'} {t('İçerik Üret', 'Generate content')}</>
           )}
         </button>
 
         <button
           onClick={generateVariants}
           disabled={loading || !customPrompt.trim()}
-          title={t('3 farklı ton (Profesyonel / Duygusal / Samimi) paralelde üretilir, en iyi varyantı seç', '3 tones (Professional / Emotional / Casual) generated in parallel — pick the best variant')}
+          title={t('3 farklı ton (Profesyonel / Duygusal / Samimi) paralelde üretilir, en iyi varyantı seç', '3 tones (professional / emotional / casual) are generated in parallel — pick the best variant')}
           className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
-          🧪 {t('A/B Test (3 Ton)', 'A/B Test (3 Tones)')}
+          🧪 {t('A/B Test (3 Ton)', 'A/B test (3 tones)')}
         </button>
 
         <button
@@ -744,14 +752,14 @@ export default function SocialTab() {
           disabled={loading || !customPrompt.trim()}
           className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
-          🌐 {t('Tüm Platformlara', 'All Platforms')}
+          🌐 {t('Tüm Platformlara', 'All platforms')}
         </button>
       </div>
 
       {/* ── Middle: Strategy cards + Templates ── */}
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 flex flex-col gap-4">
-        <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-700">
-          <div className="flex gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5">
+        <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-700">
+          <div className="flex flex-wrap gap-1 bg-slate-100 dark:bg-slate-700 rounded-lg p-0.5 min-w-0">
             <button
               onClick={() => setStratPanel('strategy')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
@@ -769,7 +777,7 @@ export default function SocialTab() {
               📁 {t('Şablonlar', 'Templates')}
               {templates.length > 0 && (
                 <span className="bg-ocean text-white text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
-                  {templates.length}
+                  {templates.length.toLocaleString(localeTag(lang))}
                 </span>
               )}
             </button>
@@ -786,7 +794,7 @@ export default function SocialTab() {
             <button
               onClick={handleRefresh}
               title={t('Yeni öneriler getir', 'Get new suggestions')}
-              className="ml-auto flex items-center gap-1.5 text-xs font-medium text-ocean hover:text-ocean-dark border border-ocean/30 hover:border-ocean/60 bg-ocean/5 hover:bg-ocean/10 rounded-lg px-3 py-1.5 transition-all"
+              className="ml-auto shrink-0 flex items-center gap-1.5 text-xs font-medium text-ocean hover:text-ocean-dark border border-ocean/30 hover:border-ocean/60 bg-ocean/5 hover:bg-ocean/10 rounded-lg px-3 py-1.5 transition-all"
             >
               <span className={`inline-block transition-transform duration-500 ${spinning ? 'rotate-[360deg]' : ''}`}
                     style={{ transitionTimingFunction: 'ease-in-out' }}>🔄</span>
@@ -820,9 +828,9 @@ export default function SocialTab() {
               {visibleSuggestions.map((s, i) => (
                 <button
                   key={i}
-                  onClick={() => setCustomPrompt(s.prompt)}
+                  onClick={() => setCustomPrompt(lang === 'tr' ? s.prompt : s.promptEn)}
                   className={`group text-left rounded-xl border p-3.5 transition-all hover:shadow-sm ${
-                    customPrompt === s.prompt
+                    customPrompt === s.prompt || customPrompt === s.promptEn
                       ? 'border-ocean bg-ocean/5 shadow-sm'
                       : 'border-slate-200 dark:border-slate-700 hover:border-ocean/40 bg-white dark:bg-slate-800 hover:bg-slate-50/80 dark:hover:bg-slate-700/80'
                   }`}
@@ -834,7 +842,7 @@ export default function SocialTab() {
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                           {lang === 'tr' ? s.categoryTr : s.categoryEn}
                         </span>
-                        {customPrompt === s.prompt && (
+                        {(customPrompt === s.prompt || customPrompt === s.promptEn) && (
                           <span className="text-[10px] bg-ocean text-white px-1.5 py-0.5 rounded-full font-medium">
                             {t('Seçili', 'Selected')}
                           </span>
@@ -843,7 +851,7 @@ export default function SocialTab() {
                       <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
                         {lang === 'tr' ? s.labelTr : s.labelEn}
                       </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">{s.prompt}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed line-clamp-2">{lang === 'tr' ? s.prompt : s.promptEn}</p>
                       <div className="mt-2 flex items-center gap-1.5 opacity-70">
                         <span className="text-[10px]">💡</span>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400 italic">
@@ -896,6 +904,8 @@ export default function SocialTab() {
                     </button>
                     <button
                       onClick={() => handleDeleteTemplate(tpl.id)}
+                      aria-label={t('Şablonu sil', 'Delete template')}
+                      title={t('Şablonu sil', 'Delete template')}
                       className="text-xs px-2 py-1.5 bg-red-50 dark:bg-red-900/20 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-colors"
                     >
                       🗑️
@@ -920,10 +930,10 @@ export default function SocialTab() {
           <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2 flex-1">
             <span>📄</span>
             {variantMode
-              ? t('A/B Varyantlar', 'A/B Variants')
+              ? t('A/B Varyantlar', 'A/B variants')
               : allPlatMode
-              ? t('Tüm Platformlar', 'All Platforms')
-              : t('Üretilen İçerik', 'Generated Content')}
+              ? t('Tüm Platformlar', 'All platforms')
+              : t('Üretilen İçerik', 'Generated content')}
           </h3>
           <div className="flex gap-2">
             <button
@@ -950,8 +960,8 @@ export default function SocialTab() {
                 }`}
               >
                 {calSaved
-                  ? `✅ ${t('Takvime Eklendi!', 'Added to Calendar!')}`
-                  : `📅 ${t('Takvime Ekle', 'Add to Calendar')}`}
+                  ? `✅ ${t('Takvime Eklendi!', 'Added to calendar!')}`
+                  : `📅 ${t('Takvime Ekle', 'Add to calendar')}`}
               </button>
             )}
           </div>
@@ -961,10 +971,10 @@ export default function SocialTab() {
           <div className="mb-4 border border-amber-200 dark:border-amber-700 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700">
               <span className="text-xs font-semibold text-amber-800 dark:text-amber-300">
-                📚 {t('İçerik Geçmişi', 'Content History')}
+                📚 {t('İçerik Geçmişi', 'Content history')}
               </span>
               <button onClick={handleClearHistory} className="text-[11px] text-red-500 hover:text-red-700 font-medium">
-                🗑️ {t('Geçmişi Temizle', 'Clear History')}
+                🗑️ {t('Geçmişi Temizle', 'Clear history')}
               </button>
             </div>
             {history.length === 0 ? (
@@ -983,11 +993,13 @@ export default function SocialTab() {
                         <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">{timeAgo(item.timestamp, lang)}</span>
                       </div>
                       <p className="text-xs text-slate-700 dark:text-slate-200 line-clamp-2 leading-relaxed">
-                        {item.content.slice(0, 100)}{item.content.length > 100 ? '...' : ''}
+                        {item.content.slice(0, 100)}{item.content.length > 100 ? '…' : ''}
                       </p>
                     </button>
                     <button
                       onClick={() => handleDeleteHistory(item.id)}
+                      aria-label={t('Kaydı sil', 'Delete entry')}
+                      title={t('Kaydı sil', 'Delete entry')}
                       className="text-slate-300 dark:text-slate-600 hover:text-red-500 text-xs shrink-0 mt-1 transition-colors"
                     >
                       ✕
@@ -1002,7 +1014,7 @@ export default function SocialTab() {
         {showCalForm && output && (
           <div className="mb-4 border border-ocean/30 rounded-xl p-3 bg-ocean/5 dark:bg-ocean/10">
             <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">
-              📅 {t('Takvime Ekle Formu', 'Add to Calendar')}
+              📅 {t('Takvime Ekle Formu', 'Add to calendar')}
             </p>
             <div className="flex gap-2 items-end">
               <div className="flex-1">
@@ -1011,6 +1023,7 @@ export default function SocialTab() {
                 </label>
                 <input
                   type="date"
+                  aria-label={t('Tarih', 'Date')}
                   value={calDate}
                   onChange={e => setCalDate(e.target.value)}
                   className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100"
@@ -1020,7 +1033,7 @@ export default function SocialTab() {
                 onClick={saveToCalendar}
                 className="bg-ocean hover:bg-ocean-dark text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
               >
-                {t('Takvime Ekle', 'Add to Calendar')}
+                {t('Takvime Ekle', 'Add to calendar')}
               </button>
               <button
                 onClick={() => setShowCalForm(false)}
@@ -1044,7 +1057,7 @@ export default function SocialTab() {
                   ← {t('Geri', 'Back')}
                 </button>
                 <span className="text-xs text-slate-400 dark:text-slate-500">
-                  🧪 {t('A/B Test — 3 farklı ton karşılaştırması', 'A/B Test — 3 tone comparison')}
+                  🧪 {t('A/B Test — 3 farklı ton karşılaştırması', 'A/B test — comparing 3 tones')}
                 </span>
               </div>
               {variants.every(v => !v.loading) && (
@@ -1069,7 +1082,7 @@ export default function SocialTab() {
                     </span>
                     {!v.loading && v.content && !v.content.startsWith('Hata') && !v.content.startsWith('Error') && (
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                        {v.content.length} {t('kar.', 'chars.')}
+                        {v.content.length.toLocaleString(localeTag(lang))} {t('kar.', 'chars')}
                       </span>
                     )}
                   </div>
@@ -1085,7 +1098,7 @@ export default function SocialTab() {
                         onClick={() => useVariant(v.content)}
                         className="text-[11px] bg-ocean text-white px-2.5 py-1 rounded-lg font-medium hover:bg-ocean-dark transition-colors"
                       >
-                        {t('Bunu Kullan →', 'Use This →')}
+                        {t('Bunu Kullan →', 'Use this →')}
                       </button>
                     </div>
                   )}
@@ -1095,10 +1108,10 @@ export default function SocialTab() {
                   {v.loading ? (
                     <div className="flex items-center gap-2 py-5 justify-center text-slate-400">
                       <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                      <span className="text-xs">{t('Üretiliyor...', 'Generating...')}</span>
+                      <span className="text-xs">{t('Üretiliyor…', 'Generating…')}</span>
                     </div>
                   ) : v.content.startsWith('Hata') || v.content.startsWith('Error') ? (
-                    <p className="text-xs text-red-500 py-2">{v.content}</p>
+                    <p className="text-xs text-red-500 py-2"><Msg text={v.content} /></p>
                   ) : (
                     <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap line-clamp-6">
                       {v.content}
@@ -1112,7 +1125,7 @@ export default function SocialTab() {
               <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
                 💡 {t(
                   '"Bunu Kullan" ile seçtiğin varyantı OutputPanel\'e al, görsel üret ve paylaş.',
-                  'Use "Use This" to send the selected variant to the OutputPanel, generate visuals and share.',
+                  'Use "Use this" to move the selected variant to the output panel, generate an image and share it.',
                 )}
               </p>
             )}
@@ -1164,7 +1177,7 @@ export default function SocialTab() {
                     onClick={() => logoInputRef.current?.click()}
                     className="flex items-center gap-1.5 text-xs bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40 border border-amber-300 dark:border-amber-600 text-amber-700 dark:text-amber-300 rounded-lg px-3 py-1.5 transition-colors font-medium"
                   >
-                    🏷️ {t('Logo Yükle', 'Upload Logo')}
+                    🏷️ {t('Logo Yükle', 'Upload logo')}
                   </button>
                 )}
 
@@ -1186,12 +1199,12 @@ export default function SocialTab() {
                       value={partnerUntil}
                       min={new Date().toISOString().slice(0, 10)}
                       onChange={e => changePartnerUntil(e.target.value)}
-                      title={t('Bitiş tarihi — sonrasında logo otomatik kalkar', 'End date — logo is auto-removed after')}
+                      title={t('Bitiş tarihi — sonrasında logo otomatik kalkar', 'End date — the logo is removed automatically afterwards')}
                       className="px-1 py-0.5 rounded border border-amber-300 dark:border-amber-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[10px] focus:outline-none"
                     />
                     {partnerUntil && (
                       <span className={`text-[10px] ${(daysLeft(partnerUntil) ?? 0) <= 3 ? 'text-red-500 font-medium' : 'text-slate-400'}`}>
-                        {(daysLeft(partnerUntil) ?? 0) <= 0 ? t('son gün', 'last day') : `${daysLeft(partnerUntil)}g`}
+                        {(daysLeft(partnerUntil) ?? 0) <= 0 ? t('son gün', 'last day') : t(`${daysLeft(partnerUntil)}g`, `${daysLeft(partnerUntil)}d`)}
                       </span>
                     )}
                     <button
@@ -1215,7 +1228,7 @@ export default function SocialTab() {
                     className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-700 hover:border-amber-500 hover:text-amber-600 border border-dashed border-slate-300 dark:border-slate-500 text-slate-500 dark:text-slate-400 rounded-lg px-3 py-1.5 transition-colors"
                     title={t('Fuar, etkinlik veya işbirliği logosu', 'Fair, event or partnership logo')}
                   >
-                    🤝 {t('Etkinlik Logosu', 'Event Logo')}
+                    🤝 {t('Etkinlik Logosu', 'Event logo')}
                   </button>
                 )}
               </div>
@@ -1227,7 +1240,7 @@ export default function SocialTab() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm">🎨</span>
                   <span className="text-xs font-semibold text-purple-800 dark:text-purple-300">
-                    {t('Paylaşım Görseli', 'Post Image')}
+                    {t('Paylaşım Görseli', 'Post image')}
                   </span>
                   <span className="text-[10px] text-purple-500 dark:text-purple-400">
                     {t('— tüm platformlar için tek görsel', '— one image for all platforms')}
@@ -1239,8 +1252,8 @@ export default function SocialTab() {
                   className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
                 >
                   {allPlatImgLoading
-                    ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t('Üretiliyor...', 'Generating...')}</>
-                    : allPlatImage ? `🔄 ${t('Yeniden Üret', 'Regenerate')}` : `✨ ${t('Görsel Üret', 'Generate Image')}`}
+                    ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> {t('Üretiliyor…', 'Generating…')}</>
+                    : allPlatImage ? `🔄 ${t('Yeniden Üret', 'Regenerate')}` : `✨ ${t('Görsel Üret', 'Generate image')}`}
                 </button>
               </div>
 
@@ -1252,16 +1265,17 @@ export default function SocialTab() {
                       value={imagePrompt}
                       onChange={e => setImagePrompt(e.target.value)}
                       rows={2}
+                      aria-label={t('Görsel tarifi', 'Image description')}
                       placeholder={t(
-                        'Görsel tarifi... (isteğe bağlı) — ör: "Akdeniz\'de gün batımı, yük gemisi, sıcak amber tonlar"',
-                        'Image description... (optional) — e.g. "Mediterranean sunset, cargo vessel, warm amber tones"',
+                        'Görsel tarifi… (isteğe bağlı) — ör: "Akdeniz\'de gün batımı, yük gemisi, sıcak amber tonlar"',
+                        'Image description… (optional) — e.g. "Mediterranean sunset, cargo vessel, warm amber tones"',
                       )}
                       className="w-full text-xs border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-400/60 resize-none placeholder-slate-400 dark:placeholder-slate-500 leading-relaxed"
                     />
                     <p className="text-[10px] text-purple-500 dark:text-purple-400 mt-1">
                       {imagePrompt.trim()
-                        ? t('✅ Tarif aktif — "Yeniden Üret" ile uygula', '✅ Description active — click "Regenerate" to apply')
-                        : t('Boş bırakırsan AI içeriğe göre otomatik belirler', 'Leave empty for AI to auto-decide from content')}
+                        ? t('✅ Tarif aktif — "Yeniden Üret" ile uygula', '✅ Description active — click "Regenerate" to apply it')
+                        : t('Boş bırakırsan AI içeriğe göre otomatik belirler', 'Leave it empty and AI decides from the content')}
                     </p>
                   </div>
                   {imagePrompt.trim() && (
@@ -1280,12 +1294,12 @@ export default function SocialTab() {
                 {allPlatImgLoading && (
                   <div className="flex flex-col items-center justify-center py-8 gap-2 text-slate-400">
                     <div className="w-8 h-8 border-4 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-xs animate-pulse">{t('Görsel üretiliyor...', 'Generating image...')}</p>
+                    <p className="text-xs animate-pulse">{t('Görsel üretiliyor…', 'Generating image…')}</p>
                   </div>
                 )}
                 {allPlatImgError && !allPlatImgLoading && (
                   <p className="text-xs text-red-500 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2">
-                    ❌ {allPlatImgError}
+                    ❌ <Msg text={allPlatImgError} />
                   </p>
                 )}
                 {allPlatImage && !allPlatImgLoading && (
@@ -1295,7 +1309,7 @@ export default function SocialTab() {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={`data:image/png;base64,${allPlatImage}`}
-                        alt="Post görseli"
+                        alt={t('Post görseli', 'Post image')}
                         className="w-full object-contain"
                         style={{ maxHeight: '320px' }}
                       />
@@ -1305,7 +1319,7 @@ export default function SocialTab() {
                     {rawBg && (
                       <div className="rounded-xl border border-purple-200 dark:border-purple-700 bg-purple-50/60 dark:bg-purple-900/20 p-3 flex flex-col gap-2">
                         <p className="text-[11px] font-semibold text-purple-700 dark:text-purple-300">
-                          ✏️ {t('Görsel Başlığı', 'Image Headline')}
+                          ✏️ {t('Görsel Başlığı', 'Image headline')}
                         </p>
 
                         {/* Öneri chip'leri */}
@@ -1335,7 +1349,8 @@ export default function SocialTab() {
                             value={customHeadline}
                             onChange={e => setCustomHeadline(e.target.value)}
                             rows={2}
-                            placeholder={t('Başlık yazın... (satır sonu için Enter)', 'Type headline... (Enter for newline)')}
+                            aria-label={t('Görsel Başlığı', 'Image headline')}
+                            placeholder={t('Başlık yazın… (satır sonu için Enter)', 'Type a headline… (Enter for a new line)')}
                             className="flex-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none leading-relaxed"
                           />
                           <button
@@ -1350,7 +1365,7 @@ export default function SocialTab() {
                           </button>
                         </div>
                         <p className="text-[10px] text-purple-500 dark:text-purple-400">
-                          {t('Başlık değişince "Uygula"ya bas — API çağrısı olmadan görsel anında güncellenir.', 'Press "Apply" after editing — image updates instantly without a new API call.')}
+                          {t('Başlık değişince "Uygula"ya bas — API çağrısı olmadan görsel anında güncellenir.', 'Press "Apply" after editing — the image updates instantly without a new API call.')}
                         </p>
                       </div>
                     )}
@@ -1360,15 +1375,15 @@ export default function SocialTab() {
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
                         ⬇️ {t('Platform boyutunda indir:', 'Download in platform size:')}
                       </p>
-                      <div className="grid grid-cols-5 gap-1.5">
+                      <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(64px, 1fr))' }}>
                         {PLATFORMS.map(p => (
                           <button
                             key={p.value}
                             onClick={() => void downloadPlatformImage(p.value)}
-                            className="flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/30 hover:text-purple-700 dark:hover:text-purple-300 text-slate-600 dark:text-slate-300 transition-colors"
+                            className="min-w-0 flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-purple-100 dark:hover:bg-purple-900/30 hover:text-purple-700 dark:hover:text-purple-300 text-slate-600 dark:text-slate-300 transition-colors"
                           >
                             <span className="text-base">{p.label.split(' ')[0]}</span>
-                            <span className="text-[9px] font-medium leading-tight text-center">{p.label.split(' ').slice(1).join(' ')}</span>
+                            <span className="text-[10px] font-medium leading-tight text-center min-w-0 max-w-full break-words">{p.label.split(' ').slice(1).join(' ')}</span>
                           </button>
                         ))}
                       </div>
@@ -1379,7 +1394,7 @@ export default function SocialTab() {
                   <div className="flex flex-col items-center justify-center py-6 gap-2 text-slate-400">
                     <span className="text-3xl opacity-20">🖼️</span>
                     <p className="text-xs text-center text-slate-400 dark:text-slate-500">
-                      {t('İçerik üretildikten sonra "Görsel Üret" butonuna tıklayın', 'Click "Generate Image" after content is ready')}
+                      {t('İçerik üretildikten sonra "Görsel Üret" butonuna tıklayın', 'Click "Generate image" once the content is ready')}
                     </p>
                   </div>
                 )}
@@ -1445,13 +1460,14 @@ export default function SocialTab() {
                     {p.loading ? (
                       <div className="flex items-center gap-2 py-4 justify-center text-slate-400">
                         <div className="w-4 h-4 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-                        <span className="text-xs">{t('İçerik Üretiliyor', 'Generating Content')}</span>
+                        <span className="text-xs">{t('İçerik Üretiliyor', 'Generating content')}</span>
                       </div>
                     ) : p.error ? (
-                      <p className="text-xs text-red-500">{p.error}</p>
+                      <p className="text-xs text-red-500"><Msg text={p.error} /></p>
                     ) : p.editing ? (
                       <div className="flex flex-col gap-2">
                         <textarea
+                          aria-label={t('İçeriği düzenle', 'Edit content')}
                           value={p.editValue}
                           onChange={e => setAllPlatData(prev => prev.map((pp, ii) => ii === i ? { ...pp, editValue: e.target.value } : pp))}
                           rows={5}
@@ -1481,7 +1497,7 @@ export default function SocialTab() {
 
         {!variantMode && !allPlatMode && (
           <OutputPanel
-            content={output} loading={loading} error={error} platform={platform} contentType="ilan_ozeti" language={language}
+            content={output} loading={loading} error={translateMessage(error, lang)} platform={platform} contentType="ilan_ozeti" language={language}
             restoredImage={restoredImg} historyId={restoredId}
             onImageReady={(data, mime) => setOutputImage({ data, mime })}
           />

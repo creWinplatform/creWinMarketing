@@ -4,6 +4,9 @@ import { UserPlus, Copy, ShieldCheck, KeyRound } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import AccountEmail from './AccountEmail';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
 export default function AccountSettings({
   workspace,
   lang,
@@ -12,6 +15,7 @@ export default function AccountSettings({
   lang: Locale;
 }) {
   const tr = lang === 'tr',
+    failed = tr ? 'İstek tamamlanamadı.' : 'Request failed.',
     [username, setUsername] = useState(''),
     [role, setRole] = useState('editor'),
     [newOrganization, setNewOrganization] = useState(false),
@@ -46,7 +50,7 @@ export default function AccountSettings({
       );
       setExpiresAt(data.expiresAt);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error && reason.message ? reason.message : failed);
     } finally {
       setBusy(false);
     }
@@ -61,12 +65,12 @@ export default function AccountSettings({
       </div>
       {error && (
         <p role="alert" className="studio-error">
-          {error}
+          {translateMessage(error, lang)}
         </p>
       )}
       {notice && (
         <p className="studio-success" role="status">
-          {notice}
+          <Msg text={notice} />
         </p>
       )}
       {workspace.permissions?.includes('members.manage') && (
@@ -164,7 +168,7 @@ export default function AccountSettings({
               </label>
               <p className="studio-note">
                 {tr ? 'Son kullanım' : 'Expires'}:{' '}
-                {new Date(expiresAt).toLocaleString(tr ? 'tr-TR' : 'en-GB')} ·{' '}
+                {new Date(expiresAt).toLocaleString(localeTag(lang))} ·{' '}
                 {tr
                   ? 'Tek kullanımlık. E-posta otomatik gönderilmez.'
                   : 'Single-use. No email is sent automatically.'}
@@ -200,7 +204,7 @@ export default function AccountSettings({
               window.location.href = '/login?updated=1';
             } catch (reason) {
               setError(
-                reason instanceof Error ? reason.message : 'Request failed.',
+                reason instanceof Error && reason.message ? reason.message : failed,
               );
             } finally {
               setBusy(false);

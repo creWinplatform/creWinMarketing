@@ -2,6 +2,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { BreakdownItem, BreakdownData, CompanyItem, CompaniesResponse } from '@/lib/types';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 function flag(iso2?: string) {
   if (!iso2 || iso2.length !== 2) return '';
@@ -10,8 +12,8 @@ function flag(iso2?: string) {
          String.fromCodePoint(b + iso2.toUpperCase().charCodeAt(1));
 }
 
-function BarRow({ item, rank, max, color }: {
-  item: BreakdownItem; rank: number; max: number; color: string;
+function BarRow({ item, rank, max, color, lang }: {
+  item: BreakdownItem; rank: number; max: number; color: string; lang: 'tr' | 'en';
 }) {
   const pct = max > 0 ? Math.max((item.count / max) * 100, item.count > 0 ? 1.5 : 0) : 0;
   return (
@@ -27,7 +29,7 @@ function BarRow({ item, rank, max, color }: {
         <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="w-16 text-right text-xs font-bold text-slate-700 dark:text-slate-200 tabular-nums shrink-0">
-        {item.count > 0 ? item.count.toLocaleString('tr-TR') : '–'}
+        {item.count > 0 ? item.count.toLocaleString(localeTag(lang)) : '–'}
       </span>
     </div>
   );
@@ -74,7 +76,7 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
           <div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              {items.length} {lang === 'tr' ? 'kayıt · toplam' : 'records · total'} {total.toLocaleString('tr-TR')} {lang === 'tr' ? 'gemi adamı' : 'seafarers'}
+              {items.length} {lang === 'tr' ? 'kayıt · toplam' : 'records · total'} {total.toLocaleString(localeTag(lang))} {lang === 'tr' ? 'gemi adamı' : 'seafarers'}
             </p>
           </div>
         </div>
@@ -84,7 +86,7 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]">🔍</span>
             <input
               type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder={lang === 'tr' ? 'Ara...' : 'Search...'}
+              placeholder={lang === 'tr' ? 'Ara…' : 'Search…'}
               className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 w-28 placeholder:text-slate-400"
             />
           </div>
@@ -101,7 +103,7 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
           <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">&ldquo;{search}&rdquo; {lang === 'tr' ? 'için sonuç yok.' : 'returned no results.'}</p>
         ) : (
           visible.map((item, idx) => (
-            <BarRow key={item.id} item={item} rank={idx + 1} max={maxCount} color={color} />
+            <BarRow key={item.id} item={item} rank={idx + 1} max={maxCount} color={color} lang={lang} />
           ))
         )}
       </div>
@@ -124,7 +126,7 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
 
 function CompanyRow({ item, rank, lang }: { item: CompanyItem; rank: number; lang: 'tr' | 'en' }) {
   const date = item.registeredAt
-    ? new Date(item.registeredAt).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+    ? new Date(item.registeredAt).toLocaleDateString(localeTag(lang), { day: 'numeric', month: 'short', year: 'numeric' })
     : '–';
   return (
     <div className="flex items-center gap-3 py-2 border-b border-slate-50 dark:border-slate-700/50 last:border-0 group">
@@ -170,7 +172,7 @@ function CompaniesSection({ data, loading, count, onCountChange, lang }: {
           <span className="text-lg">🏢</span>
           <div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              {lang === 'tr' ? 'Son Kayıt Olan Firmalar' : 'Recently Registered Companies'}
+              {lang === 'tr' ? 'Son Kayıt Olan Firmalar' : 'Recently registered companies'}
             </p>
             <p className="text-[11px] text-slate-400 dark:text-slate-500">
               GetLastRegisteredCompanies · {data?.companies?.length ?? 0} {lang === 'tr' ? 'firma' : 'companies'}
@@ -183,7 +185,7 @@ function CompaniesSection({ data, loading, count, onCountChange, lang }: {
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]">🔍</span>
             <input
               type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder={lang === 'tr' ? 'Ara...' : 'Search...'}
+              placeholder={lang === 'tr' ? 'Ara…' : 'Search…'}
               className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 w-28 placeholder:text-slate-400"
             />
           </div>
@@ -194,7 +196,7 @@ function CompaniesSection({ data, loading, count, onCountChange, lang }: {
         {loading ? (
           <div className="flex items-center gap-2 py-6 text-slate-400 text-xs">
             <div className="w-4 h-4 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-            {lang === 'tr' ? 'Firmalar yükleniyor...' : 'Loading companies...'}
+            {lang === 'tr' ? 'Firmalar yükleniyor…' : 'Loading companies…'}
           </div>
         ) : !data || data.companies.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 gap-2 text-slate-400 dark:text-slate-500">
@@ -290,7 +292,7 @@ export default function BreakdownPanel() {
       >
         <div className="flex items-center gap-2 flex-wrap">
           <span>📊</span>
-          <span>{lang === 'tr' ? 'Ülke & Pozisyon & Firma Dağılımı' : 'Country & Position & Company Distribution'}</span>
+          <span>{lang === 'tr' ? 'Ülke & Pozisyon & Firma Dağılımı' : 'Country, position & company distribution'}</span>
           {data && !loading && (
             <>
               <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
@@ -298,7 +300,7 @@ export default function BreakdownPanel() {
                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                   : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
               }`}>
-                {data.source === 'api' ? '● Real API' : '◐ Mock'}
+                {data.source === 'api' ? (lang === 'tr' ? '● Gerçek API' : '● Live API') : (lang === 'tr' ? '◐ Örnek veri' : '◐ Mock data')}
               </span>
               <span className="text-xs text-slate-400 dark:text-slate-500">
                 {data.countries.length} {lang === 'tr' ? 'ülke' : 'countries'} · {data.positions.length} {lang === 'tr' ? 'pozisyon' : 'positions'}
@@ -315,7 +317,7 @@ export default function BreakdownPanel() {
           {loading && (
             <div className="flex items-center gap-3 py-8 text-slate-400 dark:text-slate-500 text-sm">
               <div className="w-5 h-5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-              {lang === 'tr' ? 'Veriler yükleniyor...' : 'Loading data...'}
+              {lang === 'tr' ? 'Veriler yükleniyor…' : 'Loading data…'}
             </div>
           )}
 
@@ -323,8 +325,8 @@ export default function BreakdownPanel() {
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-red-700 dark:text-red-300 text-sm flex gap-2 mb-4">
               <span>❌</span>
               <div>
-                <p className="font-semibold">{lang === 'tr' ? 'Veri çekilemedi' : 'Failed to load data'}</p>
-                <p className="text-xs mt-0.5 opacity-80">{data.error}</p>
+                <p className="font-semibold">{lang === 'tr' ? 'Veri çekilemedi' : "Couldn't load data"}</p>
+                <p className="text-xs mt-0.5 opacity-80"><Msg text={data.error} /></p>
               </div>
             </div>
           )}
@@ -334,7 +336,7 @@ export default function BreakdownPanel() {
               <div className="flex items-center justify-between mb-4">
                 <p className="text-xs text-slate-400 dark:text-slate-500">
                   {data.source === 'api' && data.fetchedAt
-                    ? `api.crewin.org · ${new Date(data.fetchedAt).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}`
+                    ? `api.crewin.org · ${new Date(data.fetchedAt).toLocaleString(localeTag(lang))}`
                     : (lang === 'tr' ? 'Mock veri — CREWINJOB_API_KEY eksik' : 'Mock data — CREWINJOB_API_KEY missing')}
                 </p>
                 <button onClick={refresh} className="text-xs text-ocean hover:text-ocean-dark font-medium flex items-center gap-1 transition-colors">
@@ -344,7 +346,7 @@ export default function BreakdownPanel() {
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 mb-5">
                 <BreakdownSection
-                  title={lang === 'tr' ? 'Ülke Dağılımı' : 'Country Distribution'}
+                  title={lang === 'tr' ? 'Ülke Dağılımı' : 'Country distribution'}
                   icon="🌍"
                   items={data.countries}
                   color="bg-emerald-500"
@@ -354,7 +356,7 @@ export default function BreakdownPanel() {
                   lang={lang}
                 />
                 <BreakdownSection
-                  title={lang === 'tr' ? 'Pozisyon Dağılımı' : 'Position Distribution'}
+                  title={lang === 'tr' ? 'Pozisyon Dağılımı' : 'Position distribution'}
                   icon="⚓"
                   items={data.positions}
                   color="bg-ocean"

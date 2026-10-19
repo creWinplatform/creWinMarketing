@@ -3,6 +3,9 @@ import { useState, useCallback, useEffect } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
 import SiteAuditPanel from '@/components/seo/SiteAuditPanel';
 
 type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor' | 'ctr_report' | 'site_audit';
@@ -105,11 +108,11 @@ const SEO_TEMPLATES: { jobTitle: string; vesselType: string; label: string }[] =
 ];
 
 // focus: AI istemine giden düzenlenebilir değer (TR kalır); etiketler TR/EN
-const COMPETITOR_TEMPLATES: { label: string; labelEn: string; focus: string }[] = [
-  { label: '🌍 Genel Karşılaştırma', labelEn: '🌍 General Comparison',   focus: 'SEO, ürün, fiyatlama, pazar payı' },
-  { label: '📣 İçerik & SEO Odaklı', labelEn: '📣 Content & SEO Focus',  focus: 'Blog stratejisi, keyword boşlukları, backlink profili' },
-  { label: '💰 Reklam & Büyüme',     labelEn: '💰 Ads & Growth',         focus: 'Google Ads, sosyal medya reklamları, kullanıcı edinme maliyeti' },
-  { label: '🎯 Ürün & UX Odaklı',    labelEn: '🎯 Product & UX Focus',   focus: 'Arayüz karşılaştırma, özellik eksiklikleri, kullanıcı deneyimi' },
+const COMPETITOR_TEMPLATES: { label: string; labelEn: string; focus: string; focusEn: string }[] = [
+  { label: '🌍 Genel Karşılaştırma', labelEn: '🌍 General comparison',   focus: 'SEO, ürün, fiyatlama, pazar payı', focusEn: 'SEO, product, pricing, market share' },
+  { label: '📣 İçerik & SEO Odaklı', labelEn: '📣 Content & SEO focus',  focus: 'Blog stratejisi, keyword boşlukları, backlink profili', focusEn: 'Blog strategy, keyword gaps, backlink profile' },
+  { label: '💰 Reklam & Büyüme',     labelEn: '💰 Ads & growth',         focus: 'Google Ads, sosyal medya reklamları, kullanıcı edinme maliyeti', focusEn: 'Google Ads, social media ads, user acquisition cost' },
+  { label: '🎯 Ürün & UX Odaklı',    labelEn: '🎯 Product & UX focus',   focus: 'Arayüz karşılaştırma, özellik eksiklikleri, kullanıcı deneyimi', focusEn: 'Interface comparison, feature gaps, user experience' },
 ];
 
 // ── Rastgele set seç (tekrar etmeme için indeks sakla) ────────────────────────
@@ -147,12 +150,12 @@ export default function SeoTab() {
   const { lang } = useLang();
 
   const SUB_TABS: { id: SubTab; label: string; icon: string }[] = [
-    { id: 'blog',       label: lang === 'tr' ? 'Blog Makalesi'    : 'Blog Article',        icon: '📝' },
-    { id: 'seo',        label: lang === 'tr' ? 'İlan SEO'         : 'Job SEO',             icon: '🔍' },
-    { id: 'keyword',    label: lang === 'tr' ? 'Keyword Araştır'  : 'Keyword Research',    icon: '🎯' },
-    { id: 'competitor', label: lang === 'tr' ? 'Rakip Analizi'    : 'Competitor Analysis', icon: '⚔️' },
-    { id: 'ctr_report', label: lang === 'tr' ? 'Düşük CTR Raporu' : 'Low CTR Report',      icon: '📉' },
-    { id: 'site_audit', label: lang === 'tr' ? 'Site Denetimi'    : 'Site Audit',           icon: '🧭' },
+    { id: 'blog',       label: lang === 'tr' ? 'Blog Makalesi'    : 'Blog article',        icon: '📝' },
+    { id: 'seo',        label: lang === 'tr' ? 'İlan SEO'         : 'Job posting SEO',             icon: '🔍' },
+    { id: 'keyword',    label: lang === 'tr' ? 'Keyword Araştır'  : 'Keyword research',    icon: '🎯' },
+    { id: 'competitor', label: lang === 'tr' ? 'Rakip Analizi'    : 'Competitor analysis', icon: '⚔️' },
+    { id: 'ctr_report', label: lang === 'tr' ? 'Düşük CTR Raporu' : 'Low CTR report',      icon: '📉' },
+    { id: 'site_audit', label: lang === 'tr' ? 'Site Denetimi'    : 'Site audit',           icon: '🧭' },
   ];
 
   const [subTab,     setSubTab]     = useState<SubTab>('blog');
@@ -182,7 +185,7 @@ export default function SeoTab() {
       if (data.error) throw new Error(data.error);
       setRealJobs(data.jobs || []);
     } catch (e: unknown) {
-      setRealJobsError(e instanceof Error ? e.message : lang === 'tr' ? 'İlanlar yüklenemedi' : 'Failed to load jobs');
+      setRealJobsError(e instanceof Error ? e.message : lang === 'tr' ? 'İlanlar yüklenemedi' : "Couldn't load job postings");
     } finally {
       setRealJobsLoading(false);
     }
@@ -333,12 +336,12 @@ export default function SeoTab() {
   };
 
   const buttonLabel = () => {
-    if (loading) return lang === 'tr' ? 'Üretiliyor...' : 'Generating...';
+    if (loading) return lang === 'tr' ? 'Üretiliyor…' : 'Generating…';
     const flag = language === 'tr' ? '🇹🇷' : '🇬🇧';
-    if (subTab === 'blog')        return `${flag} ${lang === 'tr' ? 'Makale Üret'          : 'Generate Article'}`;
-    if (subTab === 'seo')         return `${flag} ${lang === 'tr' ? 'SEO Meta Üret'        : 'Generate SEO Meta'}`;
-    if (subTab === 'keyword')     return `${flag} ${lang === 'tr' ? 'Keyword Listesi Üret' : 'Generate Keyword List'}`;
-    if (subTab === 'competitor')  return `${flag} ${lang === 'tr' ? 'Rakip Analizi Üret'   : 'Generate Competitor Analysis'}`;
+    if (subTab === 'blog')        return `${flag} ${lang === 'tr' ? 'Makale Üret'          : 'Generate article'}`;
+    if (subTab === 'seo')         return `${flag} ${lang === 'tr' ? 'SEO Meta Üret'        : 'Generate SEO meta'}`;
+    if (subTab === 'keyword')     return `${flag} ${lang === 'tr' ? 'Keyword Listesi Üret' : 'Generate keyword list'}`;
+    if (subTab === 'competitor')  return `${flag} ${lang === 'tr' ? 'Rakip Analizi Üret'   : 'Generate competitor analysis'}`;
     return lang === 'tr' ? 'Üret' : 'Generate';
   };
 
@@ -352,7 +355,7 @@ export default function SeoTab() {
       <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1 flex items-center gap-2">
-            <span>🔎</span> {lang === 'tr' ? 'SEO & İçerik Stratejisi' : 'SEO & Content Strategy'}
+            <span>🔎</span> {lang === 'tr' ? 'SEO & İçerik Stratejisi' : 'SEO & content strategy'}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
             {lang === 'tr'
@@ -384,7 +387,7 @@ export default function SeoTab() {
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                {lang === 'tr' ? 'Blog Konusu' : 'Blog Topic'}
+                {lang === 'tr' ? 'Blog Konusu' : 'Blog topic'}
               </label>
               <input
                 type="text"
@@ -399,7 +402,7 @@ export default function SeoTab() {
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                  💡 {lang === 'tr' ? 'Konu Önerileri' : 'Topic Suggestions'}
+                  💡 {lang === 'tr' ? 'Konu Önerileri' : 'Topic suggestions'}
                 </span>
                 <button
                   onClick={refreshBlogChips}
@@ -446,6 +449,7 @@ export default function SeoTab() {
                   onClick={() => setTargetKeyword('')}
                   className="text-[11px] text-purple-500 hover:text-purple-700 dark:hover:text-purple-200 flex-shrink-0"
                   title={lang === 'tr' ? 'Temizle' : 'Clear'}
+                  aria-label={lang === 'tr' ? 'Hedef keyword\'ü temizle' : 'Clear target keyword'}
                 >
                   ✕
                 </button>
@@ -462,7 +466,7 @@ export default function SeoTab() {
                     : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50'
                 }`}
               >
-                📋 {lang === 'tr' ? 'Gerçek İlan Seç' : 'Pick Real Job'}
+                📋 {lang === 'tr' ? 'Gerçek İlan Seç' : 'Pick a live job posting'}
               </button>
               <button
                 onClick={() => setJobSourceMode('manual')}
@@ -472,7 +476,7 @@ export default function SeoTab() {
                     : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50'
                 }`}
               >
-                ✏️ {lang === 'tr' ? 'Manuel Şablon' : 'Manual Template'}
+                ✏️ {lang === 'tr' ? 'Manuel Şablon' : 'Manual template'}
               </button>
             </div>
 
@@ -481,29 +485,29 @@ export default function SeoTab() {
                 <p className="text-[11px] text-slate-400 dark:text-slate-500">
                   {lang === 'tr'
                     ? 'Platformda yayında olan gerçek bir ilan seçin — üretilen meta o ilanın çalışan URL\'ine bağlanır.'
-                    : 'Pick a job that is actually live on the platform — the generated meta links to that job\'s working URL.'}
+                    : 'Pick a job posting that is live on the platform — the generated meta links to that posting\'s working URL.'}
                 </p>
                 <input
                   type="text"
                   value={jobSearch}
                   onChange={e => setJobSearch(e.target.value)}
-                  placeholder={lang === 'tr' ? 'Pozisyon, şirket, gemi tipi ara...' : 'Search position, company, vessel type...'}
+                  placeholder={lang === 'tr' ? 'Pozisyon, şirket, gemi tipi ara…' : 'Search position, company, vessel type…'}
                   className={selectClass}
                 />
                 {realJobsLoading && (
                   <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2 py-2">
                     <span className="w-3.5 h-3.5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
-                    {lang === 'tr' ? 'İlanlar yükleniyor...' : 'Loading jobs...'}
+                    {lang === 'tr' ? 'İlanlar yükleniyor…' : 'Loading job postings…'}
                   </p>
                 )}
                 {realJobsError && (
-                  <p className="text-xs text-red-500">❌ {realJobsError}</p>
+                  <p className="text-xs text-red-500">❌ <Msg text={realJobsError} /></p>
                 )}
                 {!realJobsLoading && !realJobsError && (
                   <div className="max-h-64 overflow-y-auto flex flex-col gap-1.5 border border-slate-200 dark:border-slate-600 rounded-lg p-2">
                     {filteredRealJobs.length === 0 && (
                       <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
-                        {lang === 'tr' ? 'Sonuç bulunamadı.' : 'No results.'}
+                        {lang === 'tr' ? 'Sonuç bulunamadı.' : 'No results found.'}
                       </p>
                     )}
                     {filteredRealJobs.map((j, i) => (
@@ -530,12 +534,12 @@ export default function SeoTab() {
               </div>
             ) : (
               <>
-                <Field label={lang === 'tr' ? 'Pozisyon / Rütbe' : 'Position / Rank'}>
+                <Field label={lang === 'tr' ? 'Pozisyon / Rütbe' : 'Position / rank'}>
                   <select value={jobTitle} onChange={e => setJobTitle(e.target.value)} className={selectClass}>
                     {RANKS.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </Field>
-                <Field label={lang === 'tr' ? 'Gemi Tipi' : 'Vessel Type'}>
+                <Field label={lang === 'tr' ? 'Gemi Tipi' : 'Vessel type'}>
                   <select value={vesselType} onChange={e => setVesselType(e.target.value)} className={selectClass}>
                     {VESSEL_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
                   </select>
@@ -544,7 +548,7 @@ export default function SeoTab() {
                 {/* Hızlı şablonlar */}
                 <div className="flex flex-col gap-2">
                   <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                    ⚡ {lang === 'tr' ? 'Hızlı Şablonlar' : 'Quick Templates'}
+                    ⚡ {lang === 'tr' ? 'Hızlı Şablonlar' : 'Quick templates'}
                   </span>
                   <div className="grid grid-cols-2 gap-1.5">
                     {SEO_TEMPLATES.map((t, i) => (
@@ -570,7 +574,7 @@ export default function SeoTab() {
         {/* ── Keyword Research form ── */}
         {subTab === 'keyword' && (
           <div className="flex flex-col gap-3">
-            <Field label={lang === 'tr' ? 'Tohum Keyword' : 'Seed Keyword'}>
+            <Field label={lang === 'tr' ? 'Tohum Keyword' : 'Seed keyword'}>
               <input
                 type="text"
                 value={seedKeyword}
@@ -584,10 +588,11 @@ export default function SeoTab() {
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                  💡 {lang === 'tr' ? 'Keyword Önerileri' : 'Keyword Ideas'}
+                  💡 {lang === 'tr' ? 'Keyword Önerileri' : 'Keyword ideas'}
                 </span>
                 <button
                   onClick={refreshKeywordChips}
+                  title={lang === 'tr' ? 'Yeni öneriler' : 'New suggestions'}
                   className="flex items-center gap-1 text-[11px] text-ocean hover:text-ocean-dark font-medium transition-colors"
                 >
                   🔄 {lang === 'tr' ? 'Yenile' : 'Refresh'}
@@ -610,7 +615,7 @@ export default function SeoTab() {
               </div>
             </div>
 
-            <Field label="Search Intent">
+            <Field label={lang === 'tr' ? 'Arama Niyeti (Search Intent)' : 'Search intent'}>
               <select value={intent} onChange={e => setIntent(e.target.value)} className={selectClass}>
                 {INTENT_TYPES.map(i => <option key={i.value} value={i.value}>{lang === 'tr' ? i.label : i.labelEn}</option>)}
               </select>
@@ -639,7 +644,7 @@ export default function SeoTab() {
             {/* Analiz odağı şablonları */}
             <div className="flex flex-col gap-2">
               <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                🎯 {lang === 'tr' ? 'Analiz Odağı' : 'Analysis Focus'}
+                🎯 {lang === 'tr' ? 'Analiz Odağı' : 'Analysis focus'}
               </span>
               <div className="flex flex-col gap-1.5">
                 {COMPETITOR_TEMPLATES.map((t, i) => (
@@ -653,7 +658,7 @@ export default function SeoTab() {
                     }`}
                   >
                     <p className="font-medium">{lang === 'tr' ? t.label : t.labelEn}</p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{t.focus}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{lang === 'tr' ? t.focus : t.focusEn}</p>
                   </button>
                 ))}
               </div>
@@ -672,7 +677,7 @@ export default function SeoTab() {
                   : 'Finds pages ranking well on Google but clicked far less than expected, and suggests AI-generated title/description fixes.'}
               </p>
             </div>
-            <Field label={lang === 'tr' ? 'Zaman Aralığı' : 'Date Range'}>
+            <Field label={lang === 'tr' ? 'Zaman Aralığı' : 'Date range'}>
               <div className="grid grid-cols-3 gap-2">
                 {(['7', '30', '90'] as const).map(r => (
                   <button
@@ -694,7 +699,7 @@ export default function SeoTab() {
 
         {/* Dil */}
         {subTab !== 'ctr_report' && (
-        <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content Language'}>
+        <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content language'}>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -718,7 +723,7 @@ export default function SeoTab() {
             <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 {lang === 'tr' ? 'SEO blog için İngilizce önerilir (global kitle).' : 'English is recommended for SEO blogs (global audience).'}</p>
           )}
           {subTab === 'keyword' && language === 'en' && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 Maritime sektörü çoğunlukla İngilizce arama yapar.</p>
+            <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 {lang === 'tr' ? 'Maritime sektörü çoğunlukla İngilizce arama yapar.' : 'The maritime industry mostly searches in English.'}</p>
           )}
         </Field>
         )}
@@ -731,8 +736,8 @@ export default function SeoTab() {
           >
             {ctrLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             {ctrLoading
-              ? (lang === 'tr' ? 'Analiz ediliyor...' : 'Analyzing...')
-              : (lang === 'tr' ? '📉 Raporu Getir' : '📉 Fetch Report')}
+              ? (lang === 'tr' ? 'Analiz ediliyor…' : 'Analyzing…')
+              : (lang === 'tr' ? '📉 Raporu Getir' : '📉 Fetch report')}
           </button>
         ) : (
           <button
@@ -754,19 +759,21 @@ export default function SeoTab() {
               className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
             >
               {publishing
-                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yayınlanıyor...' : 'Publishing...'}</>
+                ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yayınlanıyor…' : 'Publishing…'}</>
                 : blogImageData
-                  ? (lang === 'tr' ? '🚀 Görselli Yayınla' : '🚀 Publish with Image')
-                  : (lang === 'tr' ? '🚀 Blogu Yayınla (Görsel Otomatik)' : '🚀 Publish Blog (Auto Image)')}
+                  ? (lang === 'tr' ? '🚀 Görselli Yayınla' : '🚀 Publish with image')
+                  : (lang === 'tr' ? '🚀 Blogu Yayınla (Görsel Otomatik)' : '🚀 Publish blog (automatic image)')}
             </button>
             {blogImageData && !publishing && (
               <p className="text-[11px] text-green-600 dark:text-green-400 text-center flex items-center justify-center gap-1">
-                <span>✅</span> {lang === 'tr' ? 'Görsel hazır — yayınlamada kullanılacak' : 'Image ready — will be used in publish'}
+                <span>✅</span> {lang === 'tr' ? 'Görsel hazır — yayınlamada kullanılacak' : 'Image ready — it will be used when publishing'}
               </p>
             )}
             {publishing && (
               <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
-                {blogImageData ? 'Görsel kaydediliyor ve blog yayınlanıyor...' : 'Görsel üretiliyor ve blog yayınlanıyor...'}
+                {blogImageData
+                  ? (lang === 'tr' ? 'Görsel kaydediliyor ve blog yayınlanıyor…' : 'Saving the image and publishing the blog…')
+                  : (lang === 'tr' ? 'Görsel üretiliyor ve blog yayınlanıyor…' : 'Generating the image and publishing the blog…')}
               </p>
             )}
             {publishResult && (
@@ -792,12 +799,12 @@ export default function SeoTab() {
                     )}
                     {publishResult.syncNote && (
                       <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-2 text-[10px] text-amber-700 dark:text-amber-300 leading-relaxed">
-                        ℹ️ {publishResult.syncNote}
+                        ℹ️ <Msg text={publishResult.syncNote} />
                       </div>
                     )}
                   </div>
                 ) : (
-                  <p className="text-red-600 dark:text-red-400">❌ {publishResult.error}</p>
+                  <p className="text-red-600 dark:text-red-400">❌ <Msg text={publishResult.error || (lang === 'tr' ? 'Blog yayınlanamadı' : "Couldn't publish the blog")} /></p>
                 )}
               </div>
             )}
@@ -809,11 +816,11 @@ export default function SeoTab() {
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
           <span>📄</span>{' '}
-          {subTab === 'blog'       && (lang === 'tr' ? 'Üretilen Blog Makalesi'   : 'Generated Blog Article')}
-          {subTab === 'seo'        && (lang === 'tr' ? 'Üretilen SEO Meta'        : 'Generated SEO Meta')}
-          {subTab === 'keyword'    && (lang === 'tr' ? 'Keyword Araştırma Sonucu' : 'Keyword Research Result')}
-          {subTab === 'competitor' && (lang === 'tr' ? 'Rakip Analizi Raporu'     : 'Competitor Analysis Report')}
-          {subTab === 'ctr_report' && (lang === 'tr' ? 'Düşük CTR Raporu'         : 'Low CTR Report')}
+          {subTab === 'blog'       && (lang === 'tr' ? 'Üretilen Blog Makalesi'   : 'Generated blog article')}
+          {subTab === 'seo'        && (lang === 'tr' ? 'Üretilen SEO Meta'        : 'Generated SEO meta')}
+          {subTab === 'keyword'    && (lang === 'tr' ? 'Keyword Araştırma Sonucu' : 'Keyword research result')}
+          {subTab === 'competitor' && (lang === 'tr' ? 'Rakip Analizi Raporu'     : 'Competitor analysis report')}
+          {subTab === 'ctr_report' && (lang === 'tr' ? 'Düşük CTR Raporu'         : 'Low CTR report')}
         </h3>
         {subTab === 'ctr_report' ? (
           <CtrReportPanel data={ctrData} loading={ctrLoading} error={ctrError} lang={lang} />
@@ -821,7 +828,7 @@ export default function SeoTab() {
           <OutputPanel
             content={output}
             loading={loading}
-            error={error}
+            error={translateMessage(error, lang)}
             platform={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
             contentType={subTab === 'blog' ? 'blog' : subTab === 'seo' ? 'seo_job' : subTab}
             autoSaveHistory={{ prompt: `SEO & Blog · ${subTab}`, language }}
@@ -838,7 +845,7 @@ export default function SeoTab() {
               <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-2">
                 🔗 {lang === 'tr'
                   ? `${extracted.length} keyword bulundu — birini seçip İlan SEO'da hedefleyin:`
-                  : `Found ${extracted.length} keywords — pick one to target in Job SEO:`}
+                  : `Found ${extracted.length} keywords — pick one to target in job posting SEO:`}
               </p>
               <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
                 {extracted.map((kw, i) => (
@@ -846,7 +853,7 @@ export default function SeoTab() {
                     key={i}
                     onClick={() => { setTargetKeyword(kw); setSubTab('seo'); }}
                     className="text-[11px] px-2.5 py-1.5 rounded-full border border-purple-200 dark:border-purple-700 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
-                    title={lang === 'tr' ? "İlan SEO'da hedefle" : 'Target in Job SEO'}
+                    title={lang === 'tr' ? "İlan SEO'da hedefle" : 'Target in job posting SEO'}
                   >
                     🎯 {kw}
                   </button>
@@ -869,14 +876,14 @@ function CtrReportPanel({
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400 dark:text-slate-500">
         <div className="w-8 h-8 border-3 border-ocean border-t-transparent rounded-full animate-spin" />
-        <p className="text-sm">{lang === 'tr' ? 'GSC verisi analiz ediliyor ve AI önerileri üretiliyor...' : 'Analyzing GSC data and generating AI suggestions...'}</p>
+        <p className="text-sm">{lang === 'tr' ? 'GSC verisi analiz ediliyor ve AI önerileri üretiliyor…' : 'Analyzing GSC data and generating AI suggestions…'}</p>
       </div>
     );
   }
   if (error) {
     return (
       <div className="rounded-xl border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-600 dark:text-red-400">
-        ❌ {error}
+        ❌ <Msg text={error} />
       </div>
     );
   }
@@ -895,7 +902,7 @@ function CtrReportPanel({
         <span className="text-3xl">📉</span>
         <p className="text-sm">
           {lang === 'tr' ? 'Zaman aralığını seçin ve ' : 'Pick a date range and click '}
-          <strong>{lang === 'tr' ? 'Raporu Getir' : 'Fetch Report'}</strong>
+          <strong>{lang === 'tr' ? 'Raporu Getir' : 'Fetch report'}</strong>
           {lang === 'tr' ? "'e tıklayın." : '.'}
         </p>
       </div>
@@ -906,13 +913,18 @@ function CtrReportPanel({
   const suggestions = data.suggestions || [];
   const suggByPage  = new Map(suggestions.map(s => [s.page, s]));
   const totalLost   = Math.round(rows.reduce((sum, r) => sum + r.lostClicks, 0));
+  const locale      = localeTag(lang);
+  const pct         = (ratio: number) => {
+    const value = (ratio * 100).toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return lang === 'tr' ? `%${value}` : `${value}%`;
+  };
 
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 p-4 text-sm text-green-700 dark:text-green-300">
         ✅ {lang === 'tr'
-          ? `Analiz edilen ${data.totalAnalyzed ?? 0} sorgu/sayfa çiftinde önemli bir CTR sapması bulunamadı.`
-          : `No significant CTR gap found among ${data.totalAnalyzed ?? 0} analyzed query/page pairs.`}
+          ? `Analiz edilen ${(data.totalAnalyzed ?? 0).toLocaleString(localeTag(lang))} sorgu/sayfa çiftinde önemli bir CTR sapması bulunamadı.`
+          : `No significant CTR gap found among ${(data.totalAnalyzed ?? 0).toLocaleString(localeTag(lang))} analyzed query/page pairs.`}
       </div>
     );
   }
@@ -920,14 +932,14 @@ function CtrReportPanel({
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-3 gap-3">
-        <StatCard label={lang === 'tr' ? 'Sorunlu Satır' : 'Flagged Rows'} value={String(rows.length)} />
-        <StatCard label={lang === 'tr' ? 'Analiz Edilen' : 'Total Analyzed'} value={String(data.totalAnalyzed ?? 0)} />
-        <StatCard label={lang === 'tr' ? 'Tahmini Kayıp Tık.' : 'Est. Lost Clicks'} value={String(totalLost)} accent />
+        <StatCard label={lang === 'tr' ? 'Sorunlu Satır' : 'Flagged rows'} value={rows.length.toLocaleString(locale)} />
+        <StatCard label={lang === 'tr' ? 'Analiz Edilen' : 'Total analyzed'} value={(data.totalAnalyzed ?? 0).toLocaleString(locale)} />
+        <StatCard label={lang === 'tr' ? 'Tahmini Kayıp Tık.' : 'Est. lost clicks'} value={totalLost.toLocaleString(locale)} accent />
       </div>
 
       {data.aiError && (
         <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-700 dark:text-amber-300">
-          ⚠️ {lang === 'tr' ? 'AI önerisi üretilemedi, ham veri aşağıda:' : 'AI suggestions failed, raw data below:'} {data.aiError}
+          ⚠️ {lang === 'tr' ? 'AI önerisi üretilemedi, ham veri aşağıda:' : "Couldn't generate AI suggestions, raw data below:"} <Msg text={data.aiError} />
         </div>
       )}
 
@@ -940,31 +952,31 @@ function CtrReportPanel({
                 <a href={r.page} target="_blank" rel="noopener noreferrer"
                    className="text-xs text-ocean hover:underline truncate font-medium">{r.page}</a>
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
-                  ~{Math.round(r.lostClicks)} {lang === 'tr' ? 'kayıp tık.' : 'lost clicks'}
+                  ~{Math.round(r.lostClicks).toLocaleString(locale)} {lang === 'tr' ? 'kayıp tık.' : 'lost clicks'}
                 </span>
               </div>
               <div className="p-4 flex flex-col gap-3">
                 <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
                   <span>🔎 <strong className="text-slate-700 dark:text-slate-200">&quot;{r.query}&quot;</strong></span>
-                  <span>📍 {lang === 'tr' ? 'poz.' : 'pos.'} {r.position.toFixed(1)}</span>
-                  <span>👁️ {r.impressions}</span>
-                  <span>🖱️ {r.clicks}</span>
+                  <span>📍 {lang === 'tr' ? 'poz.' : 'pos.'} {r.position.toLocaleString(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</span>
+                  <span title={lang === 'tr' ? 'Gösterim' : 'Impressions'}>👁️ {r.impressions.toLocaleString(locale)}</span>
+                  <span title={lang === 'tr' ? 'Tıklama' : 'Clicks'}>🖱️ {r.clicks.toLocaleString(locale)}</span>
                   <span className="text-red-500 font-medium">
-                    CTR %{(r.ctr * 100).toFixed(1)} <span className="text-slate-400">({lang === 'tr' ? 'beklenen' : 'expected'} %{(r.expectedCtr * 100).toFixed(1)})</span>
+                    CTR {pct(r.ctr)} <span className="text-slate-400">({lang === 'tr' ? 'beklenen' : 'expected'} {pct(r.expectedCtr)})</span>
                   </span>
                 </div>
                 {sugg ? (
                   <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg p-3 flex flex-col gap-1.5">
                     <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">
-                      {lang === 'tr' ? 'Önerilen Düzeltme' : 'Suggested Fix'}
+                      {lang === 'tr' ? 'Önerilen Düzeltme' : 'Suggested fix'}
                     </p>
-                    <p className="text-sm text-slate-800 dark:text-slate-100"><strong>Title:</strong> {sugg.suggestedTitle}</p>
-                    <p className="text-sm text-slate-700 dark:text-slate-300"><strong>Description:</strong> {sugg.suggestedDescription}</p>
+                    <p className="text-sm text-slate-800 dark:text-slate-100"><strong>{lang === 'tr' ? 'Başlık:' : 'Title:'}</strong> {sugg.suggestedTitle}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300"><strong>{lang === 'tr' ? 'Açıklama:' : 'Description:'}</strong> {sugg.suggestedDescription}</p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 italic mt-1">💡 {sugg.reasoning}</p>
                   </div>
                 ) : (
                   <p className="text-xs text-slate-400 dark:text-slate-500 italic">
-                    {lang === 'tr' ? 'Bu satır için AI önerisi yok (ilk 15 içinde değil).' : 'No AI suggestion for this row (not in top 15).'}
+                    {lang === 'tr' ? 'Bu satır için AI önerisi yok (ilk 15 içinde değil).' : 'No AI suggestion for this row (not in the top 15).'}
                   </p>
                 )}
               </div>

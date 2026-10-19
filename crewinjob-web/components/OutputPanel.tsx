@@ -8,6 +8,8 @@ import { attachImageToLatest, attachImageToItem, createHistoryItem, updateHistor
 import { compositePostImage } from '@/lib/image-composite';
 import { logActivity } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 import { loadPartnerLogo, savePartnerLogo, savePartnerUntil, clearPartnerLogo, daysLeft } from '@/lib/partner-logo';
 import { ART_DIRECTIONS } from '@/lib/art-directions';
 
@@ -386,15 +388,15 @@ export default function OutputPanel({
       void (targetHistoryId
         ? attachImageToItem(targetHistoryId, payload)
         : attachImageToLatest(payload));
-      logActivity('image_generated', `${platform} için görsel üretildi`, `${contentType} · PNG`);
+      logActivity('image_generated', lang === 'tr' ? `${platform} için görsel üretildi` : `Image generated for ${platform}`, `${contentType} · PNG`);
       // Üst bileşene bildir (ör. blog yayınlama butonu)
       onImageReady?.(finalB64, 'image/png');
     } catch (e: unknown) {
-      setImageError(e instanceof Error ? e.message : 'Görsel oluşturulamadı');
+      setImageError(e instanceof Error ? e.message : (lang === 'tr' ? 'Görsel oluşturulamadı' : "Couldn't create the image"));
     } finally {
       setImageLoading(false);
     }
-  }, [platform, contentType, text, logoBase64, partnerLogoBase64, refImages, language, imagePrompt, activeScene, subline, targetHistoryId, onImageReady]);
+  }, [platform, contentType, text, logoBase64, partnerLogoBase64, refImages, language, imagePrompt, activeScene, subline, targetHistoryId, onImageReady, lang]);
 
   // Başlık değişince arka planı yeniden composite et (ağ isteği yok)
   const recomposite = useCallback(async () => {
@@ -451,13 +453,13 @@ export default function OutputPanel({
   if (loading) return (
     <div className="flex flex-col items-center justify-center h-64 gap-4">
       <div className="w-10 h-10 border-4 border-ocean border-t-transparent rounded-full animate-spin" />
-      <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Gemini AI içerik üretiyor...' : 'Gemini AI generating content...'}</p>
+      <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Gemini AI içerik üretiyor…' : 'Gemini AI is generating content…'}</p>
     </div>
   );
 
   if (error) return (
     <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-red-700 dark:text-red-300 text-sm flex gap-2">
-      <span>❌</span><span>{error}</span>
+      <span>❌</span><span><Msg text={error} /></span>
     </div>
   );
 
@@ -470,7 +472,7 @@ export default function OutputPanel({
       <p className="text-sm text-center">
         {lang === 'tr'
           ? <>{`Formu doldurun ve`}<br /><strong className="text-slate-500 dark:text-slate-400">İçerik Üret</strong>{` butonuna tıklayın.`}</>
-          : <>{`Fill in the form and click the`}<br /><strong className="text-slate-500 dark:text-slate-400">Generate Content</strong>{` button.`}</>}
+          : <>{`Fill in the form and click the`}<br /><strong className="text-slate-500 dark:text-slate-400">Generate content</strong>{` button.`}</>}
       </p>
     </div>
   );
@@ -504,7 +506,7 @@ export default function OutputPanel({
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{text.length.toLocaleString('tr-TR')} karakter</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{text.length.toLocaleString(localeTag(lang))} {lang === 'tr' ? 'karakter' : 'characters'}</span>
             {edited && (
               <span className="text-[10px] font-semibold bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded-full">
                 ✏️ {lang === 'tr' ? 'düzenlendi' : 'edited'}
@@ -519,23 +521,23 @@ export default function OutputPanel({
               onClick={reviewContent}
               disabled={reviewing}
               className="flex items-center gap-1.5 text-xs bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-              title="AI ile içerik kalitesini değerlendir ve iyileştir"
+              title={lang === 'tr' ? 'AI ile içerik kalitesini değerlendir ve iyileştir' : 'Review and improve content quality with AI'}
             >
               {reviewing
-                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Değerlendiriliyor...' : 'Reviewing...'}</>
+                ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Değerlendiriliyor…' : 'Reviewing…'}</>
                 : (lang === 'tr' ? '⭐ Değerlendir' : '⭐ Review')}
             </button>
             <button
               onClick={() => setShowSchedule(true)}
               className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-              title="İleride otomatik yayınlamak için zamanla"
+              title={lang === 'tr' ? 'İleride otomatik yayınlamak için zamanla' : 'Schedule for automatic publishing later'}
             >
               {lang === 'tr' ? '📅 Zamanla' : '📅 Schedule'}
             </button>
             <button
               onClick={() => setShowHistory(true)}
               className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-              title="Paylaşım geçmişi ve metrikler"
+              title={lang === 'tr' ? 'Paylaşım geçmişi ve metrikler' : 'Post history and metrics'}
             >
               {lang === 'tr' ? '📊 Geçmiş' : '📊 History'}
             </button>
@@ -565,7 +567,7 @@ export default function OutputPanel({
         <div className="border border-sky-200 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/15 rounded-xl p-3 flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="text-[11px] font-semibold text-sky-800 dark:text-sky-300 flex items-center gap-1.5">
-              ✨ {lang === 'tr' ? 'İçeriği Düzenle' : 'Edit Content'}
+              ✨ {lang === 'tr' ? 'İçeriği Düzenle' : 'Edit content'}
             </span>
             <div className="flex items-center gap-1.5">
               <button
@@ -577,7 +579,7 @@ export default function OutputPanel({
                 }`}
                 title={lang === 'tr' ? 'Metni doğrudan elle düzenle' : 'Edit the text by hand'}
               >
-                {manualEdit ? (lang === 'tr' ? '✓ Elle Düzenleme Açık' : '✓ Manual Edit On') : (lang === 'tr' ? '⌨️ Elle Düzenle' : '⌨️ Edit by Hand')}
+                {manualEdit ? (lang === 'tr' ? '✓ Elle Düzenleme Açık' : '✓ Manual editing on') : (lang === 'tr' ? '⌨️ Elle Düzenle' : '⌨️ Edit by hand')}
               </button>
               {undoStack.length > 0 && (
                 <button
@@ -637,10 +639,10 @@ export default function OutputPanel({
               : [
                   ['✂️ Shorten',      'Make the post noticeably shorter while keeping the core message and CTA'],
                   ['➕ Expand',       'Expand slightly, adding one concrete benefit sentence'],
-                  ['#️⃣ Fewer Tags',  'Reduce hashtags to the 5 most relevant ones'],
-                  ['😀 Fewer Emoji',  'Reduce emoji usage to at most 2-3'],
+                  ['#️⃣ Fewer hashtags',  'Reduce hashtags to the 5 most relevant ones'],
+                  ['😀 Fewer emoji',  'Reduce emoji usage to at most 2-3'],
                   ['📣 Stronger CTA', 'Make the closing call-to-action clearer and more actionable'],
-                  ['🎯 More Formal',  'Make the tone more corporate and formal'],
+                  ['🎯 More formal',  'Make the tone more corporate and formal'],
                 ]
             ).map(([label, cmd]) => (
               <button
@@ -655,7 +657,7 @@ export default function OutputPanel({
           </div>
 
           {refineError && (
-            <p className="text-[11px] text-red-500 dark:text-red-400">⚠️ {refineError}</p>
+            <p className="text-[11px] text-red-500 dark:text-red-400">⚠️ <Msg text={refineError} /></p>
           )}
         </div>
 
@@ -666,7 +668,7 @@ export default function OutputPanel({
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg">⭐</span>
-                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? 'İçerik Değerlendirmesi' : 'Content Review'}</span>
+                <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? 'İçerik Değerlendirmesi' : 'Content review'}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-2xl font-black ${reviewResult.score >= 80 ? 'text-green-500' : reviewResult.score >= 60 ? 'text-amber-500' : 'text-red-500'}`}>
@@ -721,7 +723,7 @@ export default function OutputPanel({
             {/* İyileştirilmiş versiyon */}
             {reviewResult.improved && (
               <div>
-                <p className="text-[10px] font-semibold text-ocean mb-1">✨ {lang === 'tr' ? 'AI ile İyileştirilmiş Versiyon' : 'AI-Improved Version'}</p>
+                <p className="text-[10px] font-semibold text-ocean mb-1">✨ {lang === 'tr' ? 'AI ile İyileştirilmiş Versiyon' : 'AI-improved version'}</p>
                 <pre className="bg-slate-900 text-slate-100 rounded-lg p-3 text-xs overflow-auto max-h-40 whitespace-pre-wrap font-mono leading-relaxed">
                   {reviewResult.improved}
                 </pre>
@@ -730,7 +732,7 @@ export default function OutputPanel({
                     onClick={() => { applyEdit(reviewResult.improved); setReviewResult(null); }}
                     className="flex-1 text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-2 rounded-lg font-medium transition-colors"
                   >
-                    {lang === 'tr' ? '✅ Bu Versiyonu Kullan' : '✅ Use This Version'}
+                    {lang === 'tr' ? '✅ Bu Versiyonu Kullan' : '✅ Use this version'}
                   </button>
                   <button
                     onClick={async () => {
@@ -764,7 +766,7 @@ export default function OutputPanel({
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-base">🎨</span>
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? '🎨 Post Görseli' : '🎨 Post Image'}</span>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? '🎨 Post Görseli' : '🎨 Post image'}</span>
               <span className="text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 px-2 py-0.5 rounded-full">
                 {platform} · {contentType.replace(/_/g, ' ')}
               </span>
@@ -774,16 +776,16 @@ export default function OutputPanel({
               <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
               {logoBase64 ? (
                 <div onClick={() => logoInputRef.current?.click()}
-                  className="flex items-center gap-1.5 bg-white dark:bg-slate-600 border border-green-200 dark:border-green-700 rounded-lg px-2 py-1 cursor-pointer hover:border-ocean" title="Logo değiştir">
+                  className="flex items-center gap-1.5 bg-white dark:bg-slate-600 border border-green-200 dark:border-green-700 rounded-lg px-2 py-1 cursor-pointer hover:border-ocean" title={lang === 'tr' ? 'Logo değiştir' : 'Change logo'}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`data:image/png;base64,${logoBase64}`} alt="Logo" className="h-6 w-auto max-w-[90px] object-contain" />
                   <span className="text-xs text-green-600">✓</span>
-                  <button onClick={e => { e.stopPropagation(); removeLogo(); }} className="text-slate-300 hover:text-red-500 text-xs">✕</button>
+                  <button onClick={e => { e.stopPropagation(); removeLogo(); }} aria-label={lang === 'tr' ? 'Logoyu kaldır' : 'Remove logo'} title={lang === 'tr' ? 'Logoyu kaldır' : 'Remove logo'} className="text-slate-300 hover:text-red-500 text-xs">✕</button>
                 </div>
               ) : (
                 <button onClick={() => logoInputRef.current?.click()}
                   className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-600 border border-dashed border-slate-300 dark:border-slate-500 hover:border-ocean hover:text-ocean text-slate-500 dark:text-slate-400 px-3 py-1.5 rounded-lg transition-colors">
-                  {lang === 'tr' ? '🏷️ Logo Yükle' : '🏷️ Upload Logo'}
+                  {lang === 'tr' ? '🏷️ Logo Yükle' : '🏷️ Upload logo'}
                 </button>
               )}
 
@@ -794,17 +796,17 @@ export default function OutputPanel({
                   className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-600 rounded-lg px-2 py-1 cursor-pointer hover:border-amber-500"
                   title={lang === 'tr' ? 'Etkinlik logosunu değiştir' : 'Change event logo'}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`data:image/png;base64,${partnerLogoBase64}`} alt="Etkinlik logosu" className="h-6 w-auto max-w-[90px] object-contain" />
+                  <img src={`data:image/png;base64,${partnerLogoBase64}`} alt={lang === 'tr' ? 'Etkinlik logosu' : 'Event logo'} className="h-6 w-auto max-w-[90px] object-contain" />
                   <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
                     {lang === 'tr' ? 'Etkinlik' : 'Event'}
                   </span>
-                  <button onClick={e => { e.stopPropagation(); removePartnerLogo(); }} className="text-slate-300 hover:text-red-500 text-xs">✕</button>
+                  <button onClick={e => { e.stopPropagation(); removePartnerLogo(); }} aria-label={lang === 'tr' ? 'Etkinlik logosunu kaldır' : 'Remove event logo'} title={lang === 'tr' ? 'Etkinlik logosunu kaldır' : 'Remove event logo'} className="text-slate-300 hover:text-red-500 text-xs">✕</button>
                 </div>
               ) : (
                 <button onClick={() => partnerLogoInputRef.current?.click()}
                   className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-600 border border-dashed border-slate-300 dark:border-slate-500 hover:border-amber-500 hover:text-amber-600 text-slate-500 dark:text-slate-400 px-3 py-1.5 rounded-lg transition-colors"
                   title={lang === 'tr' ? 'Fuar, etkinlik veya işbirliği logosu' : 'Fair, event or partnership logo'}>
-                  {lang === 'tr' ? '🤝 Etkinlik Logosu' : '🤝 Event Logo'}
+                  {lang === 'tr' ? '🤝 Etkinlik Logosu' : '🤝 Event logo'}
                 </button>
               )}
 
@@ -826,7 +828,7 @@ export default function OutputPanel({
               {!imageLoading && (
                 <button onClick={() => generateImage()}
                   className="flex items-center gap-1.5 text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-1.5 rounded-lg transition-colors font-medium">
-                  {imageData ? (lang === 'tr' ? '🔄 Yeniden Üret' : '🔄 Regenerate') : (lang === 'tr' ? '✨ Görsel Oluştur' : '✨ Generate Image')}
+                  {imageData ? (lang === 'tr' ? '🔄 Yeniden Üret' : '🔄 Regenerate') : (lang === 'tr' ? '✨ Görsel Oluştur' : '✨ Generate image')}
                 </button>
               )}
             </div>
@@ -836,7 +838,7 @@ export default function OutputPanel({
           <p className="text-xs">
             {logoBase64
               ? <span className="text-green-600 dark:text-green-400">✅ {lang === 'tr' ? 'Logo yüklendi.' : 'Logo uploaded.'}</span>
-              : <span className="text-slate-400 dark:text-slate-500">💡 <strong>{lang === 'tr' ? 'Logo Yükle' : 'Upload Logo'}</strong> {lang === 'tr' ? '→ markanız her görsele eklenir.' : '→ your brand is added to every image.'}</span>}
+              : <span className="text-slate-400 dark:text-slate-500">💡 <strong>{lang === 'tr' ? 'Logo Yükle' : 'Upload logo'}</strong> {lang === 'tr' ? '→ markanız her görsele eklenir.' : '→ your brand is added to every image.'}</span>}
             {refImages.length > 0 && (
               <span className="text-purple-600 dark:text-purple-400 ml-2">✅ {refImages.length} {lang === 'tr' ? 'referans post yüklendi — stil tutarlılığı için kullanılıyor.' : 'reference posts uploaded — used for style consistency.'}</span>
             )}
@@ -878,8 +880,8 @@ export default function OutputPanel({
               onChange={e => setImagePrompt(e.target.value)}
               rows={2}
               placeholder={lang === 'tr'
-                ? 'Sahneyi düzenle... — ör: "gemiyi çıkar, fuar standı olsun", "gün batımı yerine sabah ışığı"'
-                : 'Edit the scene... — e.g. "drop the ship, make it a trade-show booth", "morning light instead of sunset"'}
+                ? 'Sahneyi düzenle… — ör: "gemiyi çıkar, fuar standı olsun", "gün batımı yerine sabah ışığı"'
+                : 'Edit the scene… — e.g. "drop the ship, make it a trade-show booth", "morning light instead of sunset"'}
               className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-400 dark:placeholder-slate-500 leading-relaxed"
             />
             <div className="flex flex-col gap-1 shrink-0">
@@ -945,7 +947,7 @@ export default function OutputPanel({
           <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
             {lang === 'tr'
               ? 'ℹ️ Tarih, yer, stant no başlığın altına net biçimde yazılır — AI görsele yazı çizemez. Görsel hazırsa anında işlenir.'
-              : 'ℹ️ Dates, venues and booth numbers are drawn crisply under the headline — the AI cannot render text. Instant if an image already exists.'}
+              : "ℹ️ Dates, venues and booth numbers are drawn crisply under the headline — the AI can't render text. Instant if an image already exists."}
           </p>
 
           {/* Referans paneli */}
@@ -953,7 +955,7 @@ export default function OutputPanel({
             <div className="bg-white dark:bg-slate-600 border border-purple-200 dark:border-purple-700 rounded-xl p-3 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">📌 {lang === 'tr' ? 'Referans Postlar' : 'Reference Posts'}</p>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">📌 {lang === 'tr' ? 'Referans Postlar' : 'Reference posts'}</p>
                   <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5">{lang === 'tr' ? 'Daha önce paylaştığın postları yükle — AI aynı tarzda görsel üretir (maks. 4)' : 'Upload your previously shared posts — AI generates images in the same style (max 4)'}</p>
                 </div>
                 <input ref={refInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleRefUpload} />
@@ -962,7 +964,7 @@ export default function OutputPanel({
                     onClick={() => refInputRef.current?.click()}
                     className="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium flex items-center gap-1.5"
                   >
-                    + {lang === 'tr' ? 'Görsel Ekle' : 'Add Image'}
+                    + {lang === 'tr' ? 'Görsel Ekle' : 'Add image'}
                   </button>
                 )}
               </div>
@@ -980,10 +982,12 @@ export default function OutputPanel({
                   {refImages.map((b64, idx) => (
                     <div key={idx} className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 aspect-square">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={`data:image/jpeg;base64,${b64}`} alt={`Ref ${idx + 1}`} className="w-full h-full object-cover" />
+                      <img src={`data:image/jpeg;base64,${b64}`} alt={lang === 'tr' ? `Referans ${idx + 1}` : `Reference ${idx + 1}`} className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <button
                           onClick={() => removeRef(idx)}
+                          aria-label={lang === 'tr' ? 'Referansı kaldır' : 'Remove reference'}
+                          title={lang === 'tr' ? 'Referansı kaldır' : 'Remove reference'}
                           className="bg-red-500 hover:bg-red-600 text-white text-xs rounded-full w-6 h-6 flex items-center justify-center transition-colors"
                         >
                           ✕
@@ -997,6 +1001,8 @@ export default function OutputPanel({
                   {refImages.length < 4 && (
                     <button
                       onClick={() => refInputRef.current?.click()}
+                      aria-label={lang === 'tr' ? 'Görsel ekle' : 'Add image'}
+                      title={lang === 'tr' ? 'Görsel ekle' : 'Add image'}
                       className="border-2 border-dashed border-purple-200 dark:border-purple-700 hover:border-purple-400 dark:hover:border-purple-500 rounded-lg aspect-square flex items-center justify-center text-purple-400 hover:text-purple-600 transition-colors text-2xl"
                     >
                       +
@@ -1013,33 +1019,33 @@ export default function OutputPanel({
           {imageLoading && (
             <div className="flex flex-col items-center justify-center h-52 gap-3">
               <div className="w-10 h-10 border-4 border-ocean border-t-transparent rounded-full animate-spin" />
-              <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Görsel üretiliyor...' : 'Generating image...'}</p>
-              <p className="text-slate-400 text-xs">Gemini arka planı oluşturuyor, brand katmanları ekleniyor</p>
+              <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Görsel üretiliyor…' : 'Generating image…'}</p>
+              <p className="text-slate-400 text-xs">{lang === 'tr' ? 'Gemini arka planı oluşturuyor, marka katmanları ekleniyor' : 'Gemini is creating the background and adding brand layers'}</p>
             </div>
           )}
           {imageError && !imageLoading && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm flex gap-2">
-              <span>❌</span><span>{imageError}</span>
+              <span>❌</span><span><Msg text={imageError} /></span>
             </div>
           )}
           {imageData && !imageLoading && (
             <div className="flex flex-col gap-3">
               <div className="relative rounded-xl overflow-hidden bg-slate-950 flex justify-center shadow-lg">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`data:${imageMime};base64,${imageData}`} alt="Post görseli" className="max-h-[460px] object-contain" />
+                <img src={`data:${imageMime};base64,${imageData}`} alt={lang === 'tr' ? 'Post görseli' : 'Post image'} className="max-h-[460px] object-contain" />
               </div>
 
               {/* Başlık düzenleme alanı */}
               {rawBgData && (
                 <div className="bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex flex-col gap-2">
                   <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    {lang === 'tr' ? '✏️ Görseldeki Başlık' : '✏️ Image Headline'}
+                    {lang === 'tr' ? '✏️ Görseldeki Başlık' : '✏️ Image headline'}
                   </p>
                   <textarea
                     value={headline}
                     onChange={e => setHeadline(e.target.value)}
                     rows={2}
-                    placeholder={lang === 'tr' ? 'Başlık metnini düzenle...' : 'Edit headline text...'}
+                    placeholder={lang === 'tr' ? 'Başlık metnini düzenle…' : 'Edit the headline text…'}
                     className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-400 font-medium leading-snug"
                   />
 
@@ -1089,8 +1095,8 @@ export default function OutputPanel({
                     className="flex items-center justify-center gap-2 text-sm bg-ocean hover:bg-ocean-dark disabled:opacity-50 text-white font-medium py-2 rounded-lg transition-colors"
                   >
                     {recompositing
-                      ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Uygulanıyor...' : 'Applying...'}</>
-                      : (lang === 'tr' ? '🖊️ Başlığı Uygula' : '🖊️ Apply Headline')}
+                      ? <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" /> {lang === 'tr' ? 'Uygulanıyor…' : 'Applying…'}</>
+                      : (lang === 'tr' ? '🖊️ Başlığı Uygula' : '🖊️ Apply headline')}
                   </button>
                 </div>
               )}
@@ -1099,7 +1105,7 @@ export default function OutputPanel({
               {rawBgData && (
                 <div className="bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex flex-col gap-3">
                   <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    {lang === 'tr' ? '🎬 Görsel Konsepti & Stil' : '🎬 Visual Concept & Style'}
+                    {lang === 'tr' ? '🎬 Görsel Konsepti & Stil' : '🎬 Visual concept & style'}
                   </p>
 
                   {/* Sanat yönü */}
@@ -1159,7 +1165,7 @@ export default function OutputPanel({
 
               <div className="flex gap-2">
                 <button onClick={downloadImage} className="flex-1 flex items-center justify-center gap-2 bg-navy hover:bg-navy-light text-white text-sm font-medium py-2.5 rounded-lg transition-colors">
-                  {lang === 'tr' ? '⬇️ Görseli İndir' : '⬇️ Download Image'}
+                  {lang === 'tr' ? '⬇️ Görseli İndir' : '⬇️ Download image'}
                 </button>
                 <button
                   onClick={async () => {
@@ -1201,7 +1207,7 @@ export default function OutputPanel({
                   }}
                   className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
                 >
-                  {imgCopied ? '✅ Tamam!' : (lang === 'tr' ? '📋 Kopyala' : '📋 Copy')}
+                  {imgCopied ? (lang === 'tr' ? '✅ Tamam!' : '✅ Done!') : (lang === 'tr' ? '📋 Kopyala' : '📋 Copy')}
                 </button>
               </div>
             </div>
@@ -1212,7 +1218,7 @@ export default function OutputPanel({
               <p className="text-xs text-center">
                 {lang === 'tr'
                   ? <>{`İçerik üretildikten sonra`}<br /><strong className="text-slate-500 dark:text-slate-400">Görsel Oluştur</strong>{` butonuna tıklayın.`}</>
-                  : <>{`After generating content, click the`}<br /><strong className="text-slate-500 dark:text-slate-400">Generate Image</strong>{` button.`}</>}
+                  : <>{`After generating content, click the`}<br /><strong className="text-slate-500 dark:text-slate-400">Generate image</strong>{` button.`}</>}
               </p>
             </div>
           )}

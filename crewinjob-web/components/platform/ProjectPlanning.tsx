@@ -16,6 +16,8 @@ import type { WorkItem } from '@/lib/platform/operations';
 import type { UnifiedCampaign } from '@/lib/campaigns';
 import type { OperationsSummary } from './ProjectOverview';
 import { projectRequest, projectDateKey } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 const SocialPublicationCenter=dynamic(()=>import('./SocialPublicationCenter'));
 const blank = {
   title: '',
@@ -57,7 +59,7 @@ export default function ProjectPlanning({
       );
       setCampaigns(list.items);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setLoading(false);
     }
@@ -93,7 +95,7 @@ export default function ProjectPlanning({
       setEditing(null);
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setBusy(false);
     }
@@ -162,7 +164,7 @@ export default function ProjectPlanning({
       </header>
       {error && (
         <p className="studio-error" role="alert">
-          {error}
+          <Msg text={error} />
         </p>
       )}
       {show && (
@@ -291,7 +293,7 @@ export default function ProjectPlanning({
             <ChevronLeft size={18} />
           </button>
           <h2>
-            {month.toLocaleDateString(tr ? 'tr-TR' : 'en-GB', {
+            {month.toLocaleDateString(localeTag(lang), {
               month: 'long',
               year: 'numeric',
             })}
@@ -396,7 +398,7 @@ export default function ProjectPlanning({
                   </span>
                 </div>
                 <p>
-                  {new Date(item.dueAt).toLocaleString(tr ? 'tr-TR' : 'en-GB', {
+                  {new Date(item.dueAt).toLocaleString(localeTag(lang), {
                     timeZone: workspace.project.timezone,
                   })}
                 </p>
@@ -440,7 +442,9 @@ export default function ProjectPlanning({
                         setError(
                           reason instanceof Error
                             ? reason.message
-                            : 'Request failed.',
+                            : tr
+                              ? 'İstek tamamlanamadı.'
+                              : 'Request failed.',
                         );
                       } finally {
                         setBusy(false);

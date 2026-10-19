@@ -24,7 +24,9 @@ import type { GoalDefinition, Locale } from '@/lib/platform/catalog';
 import type { UnifiedCampaign } from '@/lib/campaigns';
 import type { HistoryItem } from '@/lib/content-history';
 import { projectRequest,searchText } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
 import SegmentBindingPicker from './SegmentBindingPicker';
+import Msg from '@/components/Msg';
 const CampaignReviewPanel=dynamic(()=>import('./CampaignReviewPanel'));
 const channels = [
   'email',
@@ -35,6 +37,8 @@ const channels = [
   'tiktok',
   'blog',
 ];
+const channelNames: Record<string, [string, string]> = { email: ['E-posta', 'Email'], linkedin: ['LinkedIn', 'LinkedIn'], instagram: ['Instagram', 'Instagram'], facebook: ['Facebook', 'Facebook'], twitter: ['X', 'X'], tiktok: ['TikTok', 'TikTok'], blog: ['Blog', 'Blog'] };
+const channelLabel = (channel: string, lang: Locale) => channelNames[channel]?.[lang === 'en' ? 1 : 0] || channel;
 const empty = {
   name: '',
   text: '',
@@ -52,17 +56,22 @@ export default function ProjectDrafts({
   lang,
   canWrite,
   goals,
+  contentLanguage,
 }: {
   kind: 'campaigns' | 'content';
   lang: Locale;
   canWrite: boolean;
   goals: GoalDefinition[];
+  /** Projenin içerik dili (Proje ayarları). Yeni taslakların varsayılanı; arayüz dilinden bağımsızdır. */
+  contentLanguage?: Locale;
 }) {
+  // İçerik kitleye göre yazılır: önce projenin içerik dili, yoksa arayüz dili. Taslak başına değiştirilebilir.
+  const defaultLanguage: Locale = contentLanguage || lang;
   const tr = lang === 'tr',
     campaigns = kind === 'campaigns',
     endpoint = campaigns ? '/api/campaigns' : '/api/data/content-history';
   const [items, setItems] = useState<Draft[]>([]),
-    [form, setForm] = useState({ ...empty, language: lang }),
+    [form, setForm] = useState({ ...empty, language: defaultLanguage }),
     [editingId, setEditingId] = useState<string | null>(null),
     [showEditor, setShowEditor] = useState(false),
     [loading, setLoading] = useState(true),
@@ -95,7 +104,7 @@ export default function ProjectDrafts({
       >(endpoint);
       setItems(Array.isArray(data) ? data : data.items);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setLoading(false);
     }
@@ -116,7 +125,7 @@ export default function ProjectDrafts({
     if ('name' in item)
       setForm({
         ...empty,
-        language: lang,
+        language: defaultLanguage,
         name: item.name + (clone ? (tr ? ' (kopya)' : ' (copy)') : ''),
         text: item.content.text,
         subject: item.content.subject || '',
@@ -187,7 +196,7 @@ export default function ProjectDrafts({
       setNotice(tr ? 'Taslak kaydedildi.' : 'Draft saved.');
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setBusy(false);
     }
@@ -207,7 +216,7 @@ export default function ProjectDrafts({
       if(reviewId===item.id)setReviewId(null);
       await load();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setBusy(false);
     }
@@ -237,7 +246,7 @@ export default function ProjectDrafts({
             {campaigns
               ? tr
                 ? 'KAMPANYA MERKEZİ'
-                : 'CAMPAIGN CENTER'
+                : 'CAMPAIGN HUB'
               : tr
                 ? 'İÇERİK STÜDYOSU'
                 : 'CONTENT STUDIO'}
@@ -267,7 +276,7 @@ export default function ProjectDrafts({
             className="studio-primary"
             onClick={() => {
               setReviewId(null);
-              setForm({ ...empty, language: lang });
+              setForm({ ...empty, language: defaultLanguage });
               setSelectedChannels(['email']);
               setEditingId(null);
               setShowEditor(true);
@@ -284,12 +293,12 @@ export default function ProjectDrafts({
       </header>
       {error && (
         <p className="studio-error" role="alert">
-          {error}
+          <Msg text={error} />
         </p>
       )}
       {notice && (
         <p className="studio-success" role="status">
-          {notice}
+          <Msg text={notice} />
         </p>
       )}
       {campaigns && (
@@ -363,7 +372,7 @@ export default function ProjectDrafts({
                           }));
                         }}
                       />
-                      {channel}
+                      {channelLabel(channel, lang)}
                     </label>
                   ))}
               </fieldset>
@@ -377,7 +386,7 @@ export default function ProjectDrafts({
                   }
                 >
                   {channels.map((channel) => (
-                    <option key={channel}>{channel}</option>
+                    <option key={channel} value={channel}>{channelLabel(channel, lang)}</option>
                   ))}
                 </select>
               </label>
@@ -529,7 +538,9 @@ export default function ProjectDrafts({
                     setError(
                       reason instanceof Error
                         ? reason.message
-                        : 'Request failed.',
+                        : tr
+                          ? 'İstek tamamlanamadı.'
+                          : 'Request failed.',
                     );
                   } finally {
                     setAiBusy(false);
@@ -561,7 +572,7 @@ export default function ProjectDrafts({
                 }
               />
               <small id={`${kind}-draft-count`} className="studio-note">
-                {form.text.length.toLocaleString()}{' '}
+                {form.text.length.toLocaleString(localeTag(lang))}{' '}
                 {tr ? 'karakter' : 'characters'}
               </small>
             </label>
@@ -615,12 +626,12 @@ export default function ProjectDrafts({
           >
             <option value="all">{tr ? 'Tüm kanallar' : 'All channels'}</option>
             {channels.map((channel) => (
-              <option key={channel}>{channel}</option>
+              <option key={channel} value={channel}>{channelLabel(channel, lang)}</option>
             ))}
           </select>
         </label>
         <span className="studio-note">
-          {filtered.length} {tr ? 'taslak' : 'drafts'}
+          {filtered.length} {tr ? 'taslak' : filtered.length === 1 ? 'draft' : 'drafts'}
         </span>
       </div>
       {loading ? (
@@ -666,8 +677,8 @@ export default function ProjectDrafts({
                   ? [
                       ...(campaign.channels.email ? ['email'] : []),
                       ...campaign.channels.social,
-                    ].join(', ')
-                  : history?.platform;
+                    ].map((value) => channelLabel(value, lang)).join(', ')
+                  : history?.platform && channelLabel(history.platform, lang);
               return (
                 <article className="studio-draft-row" key={item.id}>
                   <div className="studio-draft-top">
@@ -684,7 +695,7 @@ export default function ProjectDrafts({
                           campaign?.updatedAt ||
                             history?.timestamp ||
                             Date.now(),
-                        ).toLocaleDateString(tr ? 'tr-TR' : 'en-GB')}
+                        ).toLocaleDateString(localeTag(lang))}
                       </p>
                     </div>
                     {canWrite && (

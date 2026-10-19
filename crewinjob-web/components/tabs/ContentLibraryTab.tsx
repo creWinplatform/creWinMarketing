@@ -5,6 +5,8 @@ import { compositePostImage } from '@/lib/image-composite';
 import { getImageModel } from '@/components/ModelPicker';
 import SharePanel from '@/components/SharePanel';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 import { loadPartnerLogo } from '@/lib/partner-logo';
 
 const LOGO_KEY = 'crewinjob_brand_logo';
@@ -25,8 +27,8 @@ function timeAgo(ts: number, lang: 'tr' | 'en'): string {
   const h = Math.floor(m / 60);
   if (h < 24) return lang === 'tr' ? `${h} sa önce` : `${h} h ago`;
   const d = Math.floor(h / 24);
-  if (d < 30) return lang === 'tr' ? `${d} gün önce` : `${d} days ago`;
-  return new Date(ts).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US');
+  if (d < 30) return lang === 'tr' ? `${d} gün önce` : d === 1 ? '1 day ago' : `${d} days ago`;
+  return new Date(ts).toLocaleDateString(localeTag(lang));
 }
 
 export default function ContentLibraryTab() {
@@ -59,7 +61,7 @@ export default function ContentLibraryTab() {
   };
 
   const handleClearAll = async () => {
-    if (!confirm(lang === 'tr' ? 'Tüm içerik geçmişini silmek istiyor musun? Bu işlem geri alınamaz.' : 'Delete all content history? This action cannot be undone.')) return;
+    if (!confirm(lang === 'tr' ? 'Tüm içerik geçmişini silmek istiyor musunuz? Bu işlem geri alınamaz.' : "Delete all content history? This can't be undone.")) return;
     await clearHistory();
     setItems([]);
   };
@@ -121,7 +123,7 @@ export default function ContentLibraryTab() {
       });
       reload();
     } catch (e: unknown) {
-      setGenError(e instanceof Error ? e.message : (lang === 'tr' ? 'Görsel oluşturulamadı' : 'Image could not be generated'));
+      setGenError(e instanceof Error ? e.message : (lang === 'tr' ? 'Görsel oluşturulamadı.' : "Couldn't generate the image."));
       setTimeout(() => setGenError(null), 4000);
     } finally {
       setGeneratingId(null);
@@ -148,10 +150,10 @@ export default function ContentLibraryTab() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-bold text-slate-800 dark:text-slate-100 text-lg flex items-center gap-2">
-            <span>🗂️</span> {lang === 'tr' ? 'İçerik Kütüphanesi' : 'Content Library'}
+            <span>🗂️</span> {lang === 'tr' ? 'İçerik kütüphanesi' : 'Content library'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {items.length} {lang === 'tr' ? 'içerik' : 'content'} · {withImage} {lang === 'tr' ? 'görsel' : 'image'} · {lang === 'tr' ? 'Tekrar paylaş veya kopyala' : 'Reshare or copy'}
+            {items.length} {lang === 'tr' ? 'içerik' : items.length === 1 ? 'item' : 'items'} · {withImage} {lang === 'tr' ? 'görselli' : 'with images'} · {lang === 'tr' ? 'Tekrar paylaşın veya kopyalayın' : 'Reshare or copy'}
           </p>
         </div>
         <div className="flex gap-2">
@@ -166,7 +168,7 @@ export default function ContentLibraryTab() {
               onClick={handleClearAll}
               className="text-xs flex items-center gap-1.5 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 px-3 py-2 rounded-lg transition-colors font-medium"
             >
-              🗑️ {lang === 'tr' ? 'Tümünü Temizle' : 'Clear All'}
+              🗑️ {lang === 'tr' ? 'Tümünü temizle' : 'Clear all'}
             </button>
           )}
         </div>
@@ -204,13 +206,15 @@ export default function ContentLibraryTab() {
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder={lang === 'tr' ? 'İçerik veya prompt ara...' : 'Search content or prompt...'}
+            placeholder={lang === 'tr' ? 'İçerik veya prompt ara…' : 'Search content or prompt…'}
             className="text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 pl-8 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean bg-white dark:bg-slate-700 dark:text-slate-100 w-56 placeholder:text-slate-400"
           />
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
           {search && (
             <button
               onClick={() => setSearch('')}
+              aria-label={lang === 'tr' ? 'Aramayı temizle' : 'Clear search'}
+              title={lang === 'tr' ? 'Aramayı temizle' : 'Clear search'}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
             >✕</button>
           )}
@@ -220,7 +224,7 @@ export default function ContentLibraryTab() {
       {/* ── Hata bildirimi ── */}
       {genError && (
         <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-xl px-4 py-2.5 text-sm">
-          <span>❌</span><span>{genError}</span>
+          <span>❌</span><span><Msg text={genError} /></span>
         </div>
       )}
 
@@ -231,18 +235,18 @@ export default function ContentLibraryTab() {
           {items.length === 0 ? (
             <>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
-                {lang === 'tr' ? 'Henüz içerik üretilmedi' : 'No content generated yet'}
+                {lang === 'tr' ? 'Henüz içerik üretilmedi' : 'No content yet'}
               </p>
               <p className="text-xs text-center text-slate-400 dark:text-slate-500">
                 {lang === 'tr'
-                  ? <>Sosyal Medya sekmesinden içerik üret,<br />otomatik olarak buraya kaydedilir.</>
-                  : <>Generate content from the Social Media tab,<br />it will be saved here automatically.</>
+                  ? <>Sosyal Medya sekmesinden içerik üretin,<br />otomatik olarak buraya kaydedilir.</>
+                  : <>Generate content in the Social media tab;<br />it&apos;s saved here automatically.</>
                 }
               </p>
             </>
           ) : (
             <p className="text-sm text-slate-500">
-              {lang === 'tr' ? 'Bu filtreye uyan içerik bulunamadı' : 'No content found for this filter'}
+              {lang === 'tr' ? 'Bu filtreye uyan içerik bulunamadı' : 'No content matches this filter'}
             </p>
           )}
         </div>
@@ -261,7 +265,7 @@ export default function ContentLibraryTab() {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={`data:${item.imageMime || 'image/png'};base64,${item.imageData}`}
-                      alt="Post görseli"
+                      alt={lang === 'tr' ? 'Gönderi görseli' : 'Post image'}
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
@@ -286,9 +290,9 @@ export default function ContentLibraryTab() {
                       className="ml-auto flex items-center gap-1.5 text-[11px] bg-ocean hover:bg-ocean-dark disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg font-medium transition-colors"
                     >
                       {generatingId === item.id ? (
-                        <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Üretiliyor...' : 'Generating...'}</>
+                        <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Üretiliyor…' : 'Generating…'}</>
                       ) : (
-                        <>✨ {lang === 'tr' ? 'Görsel Oluştur' : 'Generate Image'}</>
+                        <>✨ {lang === 'tr' ? 'Görsel oluştur' : 'Generate image'}</>
                       )}
                     </button>
                   </div>
@@ -298,7 +302,7 @@ export default function ContentLibraryTab() {
                 <div className="p-3 flex-1 flex flex-col gap-2">
                   {/* Prompt özeti */}
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 italic line-clamp-1 leading-relaxed">
-                    💬 {item.prompt.slice(0, 80)}{item.prompt.length > 80 ? '...' : ''}
+                    💬 {item.prompt.slice(0, 80)}{item.prompt.length > 80 ? '…' : ''}
                   </p>
                   {/* İçerik — düzenleme modu veya önizleme */}
                   {editingId === item.id ? (
@@ -334,7 +338,7 @@ export default function ContentLibraryTab() {
                   {editingId !== item.id && (
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(item.timestamp, lang)}</span>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{item.content.length} {lang === 'tr' ? 'kar.' : 'chars.'}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{item.content.length} {lang === 'tr' ? 'kar.' : 'chars'}</span>
                     </div>
                   )}
                 </div>
@@ -344,6 +348,8 @@ export default function ContentLibraryTab() {
                 <div className="flex border-t border-slate-100 dark:border-slate-700">
                   <button
                     onClick={() => handleCopy(item)}
+                    title={lang === 'tr' ? 'Kopyala' : 'Copy'}
+                    aria-label={lang === 'tr' ? 'Kopyala' : 'Copy'}
                     className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-medium"
                   >
                     {copiedId === item.id ? '✅' : '📋'}
@@ -351,6 +357,8 @@ export default function ContentLibraryTab() {
                   <div className="w-px bg-slate-100 dark:bg-slate-700" />
                   <button
                     onClick={() => startEdit(item)}
+                    title={lang === 'tr' ? 'Düzenle' : 'Edit'}
+                    aria-label={lang === 'tr' ? 'Düzenle' : 'Edit'}
                     className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-medium"
                   >
                     ✏️
@@ -377,6 +385,8 @@ export default function ContentLibraryTab() {
                   <div className="w-px bg-slate-100 dark:bg-slate-700" />
                   <button
                     onClick={() => handleDelete(item.id)}
+                    title={lang === 'tr' ? 'Sil' : 'Delete'}
+                    aria-label={lang === 'tr' ? 'Sil' : 'Delete'}
                     className="px-3 py-2 text-xs text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     🗑️
@@ -393,10 +403,10 @@ export default function ContentLibraryTab() {
       {items.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-1">
           {[
-            { label: lang === 'tr' ? 'Toplam İçerik' : 'Total Content', value: items.length,     icon: '📝' },
-            { label: lang === 'tr' ? 'Görsel Var'    : 'Has Image',     value: withImage,        icon: '🖼️' },
-            { label: lang === 'tr' ? 'Görsel Yok'    : 'No Image',      value: withoutImage,     icon: '📄' },
-            { label: lang === 'tr' ? 'Platform'      : 'Platform',      value: platforms.length - 1, icon: '📱' },
+            { label: lang === 'tr' ? 'Toplam içerik' : 'Total content', value: items.length,     icon: '📝' },
+            { label: lang === 'tr' ? 'Görselli'      : 'With image',     value: withImage,        icon: '🖼️' },
+            { label: lang === 'tr' ? 'Görselsiz'     : 'Without image',      value: withoutImage,     icon: '📄' },
+            { label: lang === 'tr' ? 'Platform'      : 'Platforms',      value: platforms.length - 1, icon: '📱' },
           ].map(stat => (
             <div key={stat.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 flex items-center gap-3">
               <span className="text-xl">{stat.icon}</span>

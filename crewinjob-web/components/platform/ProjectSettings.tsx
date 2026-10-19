@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
+import { localeTag } from '@/lib/i18n/shared';
 import TeamAdministration from './TeamAdministration';
 import ProjectConnections from './ProjectConnections';
 import ProjectProfileEditor from './ProjectProfileEditor';
@@ -50,7 +51,7 @@ export default function ProjectSettings({
       <header className="studio-page-heading">
         <div>
           <p className="studio-eyebrow">
-            {workspace.organization.name.toUpperCase()}
+            {workspace.organization.name.toLocaleUpperCase(localeTag(lang))}
           </p>
           <h1>{tr ? 'Proje ayarları' : 'Project settings'}</h1>
           <p className="studio-subtitle">

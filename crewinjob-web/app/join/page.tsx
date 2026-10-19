@@ -4,7 +4,13 @@ import { useSearchParams } from 'next/navigation';
 import { ArrowRight, KeyRound } from 'lucide-react';
 import Brand from '@/components/platform/Brand';
 import { projectRequest } from '@/lib/platform/client';
+import { LangToggle, useLang, useT } from '@/lib/lang';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
 function Join() {
+  const { lang } = useLang(),
+    t = useT(),
+    tr = lang === 'tr';
   const params = useSearchParams(),
     [token, setToken] = useState(params.get('token') || '');
   const [password, setPassword] = useState(''),
@@ -37,7 +43,7 @@ function Join() {
     )
       .then(setInvite)
       .catch((reason) => {
-        if (reason.name !== 'AbortError') setError(reason.message);
+        if (reason.name !== 'AbortError') setError(translateMessage(reason.message, lang));
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
@@ -45,7 +51,7 @@ function Join() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (password !== confirm) {
-      setError('Şifreler eşleşmiyor.');
+      setError(t('Şifreler eşleşmiyor.', 'Passwords do not match.'));
       return;
     }
     setBusy(true);
@@ -68,70 +74,82 @@ function Join() {
       window.history.replaceState({}, '', '/join');
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : 'Hesap oluşturulamadı.',
+        (reason instanceof Error && translateMessage(reason.message, lang)) || t('Hesap oluşturulamadı.', 'Could not create the account.'),
       );
     } finally {
       setBusy(false);
     }
   };
   return (
-    <main className="auth-page ryz-join">
+    <main className="auth-page ryz-join relative" lang={lang}>
+      <LangToggle className="absolute right-4 top-4 z-10 inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded-md border border-[#cfd7c6] bg-white px-3 text-[11px] font-bold tracking-[.04em] text-[#3f5a28] hover:bg-[#f1f5ea] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#789f17]" />
       <a href="/welcome" className="auth-brand">
         <Brand />
       </a>
       <section className="auth-form-surface">
-        <p className="studio-eyebrow">PİLOT ERİŞİMİ</p>
+        <p className="studio-eyebrow">{t('PİLOT ERİŞİMİ', 'PILOT ACCESS')}</p>
         <h1>
           {complete
-            ? 'Hesabınız hazır'
+            ? t('Hesabınız hazır', 'Your account is ready')
             : token
-              ? 'Davetinizi tamamlayın'
-              : 'Birlikte başlayalım'}
+              ? t('Davetinizi tamamlayın', 'Complete your invitation')
+              : t('Birlikte başlayalım', 'Let’s get started')}
         </h1>
         {complete ? (
           <>
             <p>
-              <strong>{invite?.username}</strong> hesabınızla çalışma alanınıza
-              giriş yapabilirsiniz.
+              {tr ? (
+                <>
+                  <strong>{invite?.username}</strong> hesabınızla çalışma alanınıza
+                  giriş yapabilirsiniz.
+                </>
+              ) : (
+                <>
+                  You can now sign in to your workspace as{' '}
+                  <strong>{invite?.username}</strong>.
+                </>
+              )}
             </p>
             <a href="/login" className="studio-primary mt-5">
-              Giriş yap
+              {t('Giriş yap', 'Sign in')}
               <ArrowRight size={16} />
             </a>
           </>
         ) : !token ? (
           <>
             <p>
-              Pilot çalışma alanları şu anda davetle açılıyor. Platform
-              yöneticisinden tek kullanımlık bir davet bağlantısı isteyin.
+              {t(
+                'Pilot çalışma alanları şu anda davetle açılıyor. Platform yöneticisinden tek kullanımlık bir davet bağlantısı isteyin.',
+                'Pilot workspaces are currently opened by invitation only. Ask the platform administrator for a single-use invitation link.',
+              )}
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
               <a href="/login" className="studio-primary">
-                Mevcut hesabımla giriş yap
+                {t('Mevcut hesabımla giriş yap', 'Sign in with my existing account')}
                 <ArrowRight size={16} />
               </a>
               <a className="studio-text-button" href="/welcome">
-                Ürün sayfasına dön
+                {t('Ürün sayfasına dön', 'Back to the product page')}
               </a>
             </div>
           </>
         ) : loading ? (
-          <p role="status">Davet doğrulanıyor…</p>
+          <p role="status">{t('Davet doğrulanıyor…', 'Verifying your invitation…')}</p>
         ) : !invite ? (
           <p className="studio-error" role="alert">
-            {error || 'Davet geçersiz veya süresi dolmuş.'}
+            {error || t('Davet geçersiz veya süresi dolmuş.', 'The invitation is invalid or has expired.')}
           </p>
         ) : (
           <>
             <p>
-              Kullanıcı adınız: <strong>{invite.username}</strong>
+              {t('Kullanıcı adınız', 'Your username')}: <strong>{invite.username}</strong>
             </p>
             <form onSubmit={submit}>
               <div className="studio-form-grid">
                 {invite.newOrganization && (
                   <>
                     <label className="studio-form-full">
-                      Organizasyon adı
+                      {t('Organizasyon adı', 'Organization name')}
                       <input
                         required
                         maxLength={160}
@@ -142,7 +160,7 @@ function Join() {
                       />
                     </label>
                     <label className="studio-form-full">
-                      Ürün / proje adı
+                      {t('Ürün / proje adı', 'Product / project name')}
                       <input
                         required
                         maxLength={160}
@@ -151,7 +169,7 @@ function Join() {
                       />
                     </label>
                     <label className="studio-form-full">
-                      Web sitesi
+                      {t('Web sitesi', 'Website')}
                       <input
                         required
                         type="url"
@@ -163,7 +181,7 @@ function Join() {
                   </>
                 )}
                 <label className="studio-form-full">
-                  Yeni şifre
+                  {t('Yeni şifre', 'New password')}
                   <input
                     type="password"
                     required
@@ -175,7 +193,7 @@ function Join() {
                   />
                 </label>
                 <label className="studio-form-full">
-                  Şifre tekrar
+                  {t('Şifre tekrar', 'Repeat password')}
                   <input
                     type="password"
                     required
@@ -189,26 +207,28 @@ function Join() {
               </div>
               {error && (
                 <p className="studio-error" role="alert">
-                  {error}
+                  <Msg text={error} />
                 </p>
               )}
               <button className="studio-primary w-full mt-6" disabled={busy}>
                 <KeyRound size={16} />
-                {busy ? 'Oluşturuluyor…' : 'Hesabımı oluştur'}
+                {busy ? t('Oluşturuluyor…', 'Creating…') : t('Hesabımı oluştur', 'Create my account')}
               </button>
             </form>
           </>
         )}
       </section>
-      <p className="auth-footer">Organizasyon ve proje bazlı erişim.</p>
+      <p className="auth-footer">{t('Organizasyon ve proje bazlı erişim.', 'Organization- and project-scoped access.')}</p>
     </main>
   );
 }
+function JoinFallback() {
+  const t = useT();
+  return <main className="workspace-loading">{t('Davet yükleniyor…', 'Loading invitation…')}</main>;
+}
 export default function JoinPage() {
   return (
-    <Suspense
-      fallback={<main className="workspace-loading">Davet yükleniyor…</main>}
-    >
+    <Suspense fallback={<JoinFallback />}>
       <Join />
     </Suspense>
   );

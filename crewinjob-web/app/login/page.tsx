@@ -3,7 +3,9 @@ import { Suspense, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import Brand from '@/components/platform/Brand';
-import { useLang } from '@/lib/lang';
+import { LangToggle, useLang } from '@/lib/lang';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
 function LoginForm() {
   const { lang } = useLang(),
     tr = lang === 'tr',
@@ -31,7 +33,7 @@ function LoginForm() {
         }),
         data = await response.json();
       if (!response.ok || !data.ok) {
-        setError(data.error || (tr ? 'Giriş başarısız.' : 'Sign in failed.'));
+        setError(translateMessage(data.error, lang) || (tr ? 'Giriş başarısız.' : 'Sign in failed.'));
         return;
       }
       const from = params.get('from') || '/',
@@ -51,8 +53,9 @@ function LoginForm() {
     }
   };
   return (
-    <main className="auth-page auth-designed auth-ryzevo" lang={lang}>
-      <aside className="auth-story"><a href="/welcome" aria-label="Ryzevo"><Brand inverse /></a><div className="ryz-auth-story-body"><span className="ryz-kicker">GROW WITH INTENT.</span><h2>{tr ? 'Bir sonraki iyi adım, buradan başlar.' : 'Your next good move starts here.'}</h2><p>{tr ? 'Fikirden içeriğe. Kampanyadan sonuca. Ekibinizle aynı yönde.' : 'From idea to content. From campaign to results. Moving together.'}</p><div className="ryz-auth-path"><span>01 / STRATEJİ</span><ArrowRight size={18} /><span>02 / ÜRETİM</span><ArrowRight size={18} /><span>03 / BÜYÜME</span></div></div><small>© {new Date().getFullYear()} Ryzevo · ryzevo.com</small></aside>
+    <main className="auth-page auth-designed auth-ryzevo relative" lang={lang}>
+      <LangToggle className="absolute right-4 top-4 z-10 inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded-md border border-[#cfd7c6] bg-white px-3 text-[11px] font-bold tracking-[.04em] text-[#3f5a28] hover:bg-[#f1f5ea]" />
+      <aside className="auth-story"><a href="/welcome" aria-label="Ryzevo"><Brand inverse /></a><div className="ryz-auth-story-body"><span className="ryz-kicker" lang="en">GROW WITH INTENT.</span><h2>{tr ? 'Bir sonraki iyi adım, buradan başlar.' : 'Your next good move starts here.'}</h2><p>{tr ? 'Fikirden içeriğe. Kampanyadan sonuca. Ekibinizle aynı yönde.' : 'From idea to content. From campaign to results. Moving together.'}</p><div className="ryz-auth-path"><span>{tr ? '01 / STRATEJİ' : '01 / STRATEGY'}</span><ArrowRight size={18} aria-hidden="true" /><span>{tr ? '02 / ÜRETİM' : '02 / PRODUCTION'}</span><ArrowRight size={18} aria-hidden="true" /><span>{tr ? '03 / BÜYÜME' : '03 / GROWTH'}</span></div></div><small>© {new Date().getFullYear()} Ryzevo · ryzevo.com</small></aside>
       <div className="auth-entry">
       <a className="auth-mobile-brand" href="/welcome" aria-label="Ryzevo"><Brand /></a>
       <section className="auth-form-surface">
@@ -134,7 +137,7 @@ function LoginForm() {
           </div>
           {error && (
             <p className="studio-error" role="alert">
-              {error}
+              <Msg text={error} />
             </p>
           )}
           <button disabled={loading} className="studio-primary w-full">
@@ -165,7 +168,7 @@ function LoginForm() {
       <p className="auth-footer">
         {tr
           ? 'Organizasyon ve proje bazlı erişim'
-          : 'Organization and project scoped access'}
+          : 'Organization- and project-scoped access'}
       </p>
       </div>
     </main>

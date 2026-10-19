@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLang, type Lang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 type HakTipi = 1 | 2 | 3;
 type KaynakTipi = 1 | 2 | 3 | 4 | 5 | 6;
@@ -98,16 +100,16 @@ interface Paged<T> {
 }
 
 // Etiketler [TR, EN]
-const HAK_TIPI_LABEL: Record<HakTipi, [string, string]> = { 1: ['CV Kredisi', 'CV Credits'], 2: ['İlan Hakkı', 'Job Posting Rights'], 3: ['Bullseye Gün', 'Bullseye Days'] };
+const HAK_TIPI_LABEL: Record<HakTipi, [string, string]> = { 1: ['CV Kredisi', 'CV credits'], 2: ['İlan Hakkı', 'Job posting rights'], 3: ['Bullseye Gün', 'Bullseye days'] };
 const KAYNAK_TIPI_LABEL: Record<KaynakTipi, [string, string]> = {
-  1: ['Manuel Ödeme', 'Manual Payment'],
-  2: ['Kredi Kartı', 'Credit Card'],
+  1: ['Manuel Ödeme', 'Manual payment'],
+  2: ['Kredi Kartı', 'Credit card'],
   3: ['Promosyon', 'Promotion'],
   4: ['Düzeltme', 'Adjustment'],
   5: ['Kullanım', 'Usage'],
-  6: ['Açılış Bakiyesi', 'Opening Balance'],
+  6: ['Açılış Bakiyesi', 'Opening balance'],
 };
-const ODEME_YONTEMI_LABEL: Record<OdemeYontemi, [string, string]> = { 1: ['Havale', 'Bank Transfer'], 2: ['EFT', 'EFT'], 3: ['Swift', 'Swift'], 99: ['Diğer', 'Other'] };
+const ODEME_YONTEMI_LABEL: Record<OdemeYontemi, [string, string]> = { 1: ['Havale', 'Bank transfer'], 2: ['EFT', 'EFT'], 3: ['Swift', 'Swift'], 99: ['Diğer', 'Other'] };
 const PARA_BIRIMLERI = ['USD', 'EUR', 'TRY'];
 const today = () => new Date().toISOString().slice(0, 10);
 const tt = (lang: Lang, tr: string, en: string) => lang === 'tr' ? tr : en;
@@ -125,28 +127,28 @@ function friendlyError(err: unknown, lang: Lang) {
   const raw = err instanceof Error ? err.message : String(err || '');
   const message = raw === UNKNOWN_ERROR ? '' : raw;
   if (message.includes('Pages.FirmaKrediYonetimi')) {
-    return tt(lang, 'Kredi yönetimi API hesabında Pages.FirmaKrediYonetimi yetkisi yok. Yetkili kredi hesabını tanımlayıp Yenile ile tekrar deneyin.', 'The credit management API account lacks the Pages.FirmaKrediYonetimi permission. Configure an authorized credit account and press Refresh.');
+    return lang === 'tr' ? 'Kredi yönetimi API hesabında Pages.FirmaKrediYonetimi yetkisi yok. Yetkili kredi hesabını tanımlayıp Yenile ile tekrar deneyin.' : 'The credit management API account lacks the Pages.FirmaKrediYonetimi permission. Configure an authorized credit account, then select Refresh.';
   }
   if (message.includes('HTTP 404')) {
-    return tt(lang, 'Kredi yönetimi verileri şu anda alınamadı. Lütfen backend servis yayınını kontrol edin.', 'Credit management data could not be loaded. Please check the backend service deployment.');
+    return lang === 'tr' ? 'Kredi yönetimi verileri şu anda alınamadı. Lütfen backend servis yayınını kontrol edin.' : "Couldn't load credit management data. Check the backend service deployment.";
   }
   if (message.includes('HTTP 405')) {
-    return tt(lang, 'Kredi yönetimi servisi bu işlem tipini kabul etmedi. Lütfen endpoint method tanımını kontrol edin.', 'The credit management service rejected this request method. Please check the endpoint method definition.');
+    return lang === 'tr' ? 'Kredi yönetimi servisi bu işlem tipini kabul etmedi. Lütfen endpoint method tanımını kontrol edin.' : 'The credit management service rejected this request method. Check the endpoint method definition.';
   }
   if (message.includes('HTTP 500') || message.toLowerCase().includes('<!doctype html')) {
-    return tt(lang, 'Kredi yönetimi servisi beklenen JSON yanıtı veremedi. Backend hatası giderildikten sonra Yenile ile tekrar deneyin.', 'The credit management service did not return the expected JSON. Retry with Refresh once the backend error is fixed.');
+    return lang === 'tr' ? 'Kredi yönetimi servisi beklenen JSON yanıtı veremedi. Backend hatası giderildikten sonra Yenile ile tekrar deneyin.' : "The credit management service didn't return the expected JSON. Select Refresh once the backend error is fixed.";
   }
   if (message.toLowerCase().includes('fetch failed')) {
-    return tt(lang, 'Kredi yönetimi verileri şu anda alınamadı. Bağlantı toparlanınca Yenile ile tekrar deneyebilirsiniz.', 'Credit management data could not be loaded right now. Retry with Refresh once the connection recovers.');
+    return lang === 'tr' ? 'Kredi yönetimi verileri şu anda alınamadı. Bağlantı toparlanınca Yenile ile tekrar deneyebilirsiniz.' : "Couldn't load credit management data right now. Select Refresh once the connection recovers.";
   }
   if (message.includes('API kimlik bilgisi tanımlı değil')) {
-    return tt(lang, 'CrewinJob API kimlik bilgileri tanımlı değil.', 'CrewinJob API credentials are not configured.');
+    return lang === 'tr' ? 'CrewinJob API kimlik bilgileri tanımlı değil.' : "CrewinJob API credentials aren't configured.";
   }
-  return message || tt(lang, 'İşlem tamamlanamadı.', 'The operation could not be completed.');
+  return message || (lang === 'tr' ? 'İşlem tamamlanamadı.' : "Couldn't complete the operation.");
 }
 
 function para(value: number, currency?: string, lang: Lang = 'tr') {
-  const amount = new Intl.NumberFormat(lang === 'tr' ? 'tr-TR' : 'en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
+  const amount = new Intl.NumberFormat(localeTag(lang), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value || 0);
   return currency ? `${amount} ${currency}` : amount;
 }
 
@@ -154,7 +156,7 @@ function tarih(value?: string | null, lang: Lang = 'tr') {
   if (!value) return '-';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return new Intl.DateTimeFormat(lang === 'tr' ? 'tr-TR' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat(localeTag(lang), { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 }
 
 function expired(value: string) {
@@ -241,7 +243,7 @@ async function uploadReceipt(file: File): Promise<number | null> {
 }
 
 function FieldError({ text }: { text?: string }) {
-  return text ? <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400">{text}</p> : null;
+  return text ? <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400"><Msg text={text} /></p> : null;
 }
 
 function SkeletonRows({ columns, rows = 5 }: { columns: number; rows?: number }) {
@@ -267,7 +269,7 @@ function RightsChips({ items }: { items?: HakSatiri[] }) {
     <div className="flex flex-wrap gap-1.5">
       {items.map((item, idx) => (
         <span key={`${item.hakTipi}-${idx}`} className="rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-          {item.hakTipi === 1 ? `${item.miktar} CV` : item.hakTipi === 2 ? `${item.miktar} ${tt(lang, 'İlan', 'Job')}` : `${item.miktar} ${tt(lang, 'Gün Bullseye', 'Bullseye day(s)')}`}
+          {item.hakTipi === 1 ? `${item.miktar} CV` : item.hakTipi === 2 ? `${item.miktar} ${tt(lang, 'İlan', item.miktar === 1 ? 'job posting' : 'job postings')}` : `${item.miktar} ${tt(lang, 'Gün Bullseye', item.miktar === 1 ? 'Bullseye day' : 'Bullseye days')}`}
         </span>
       ))}
     </div>
@@ -306,20 +308,20 @@ function ReceiptInput({ file, onChange }: { file: File | null; onChange: (file: 
   const [error, setError] = useState('');
   return (
     <div>
-      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Dekont Dosyası', 'Receipt File')}</label>
+      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Dekont dosyası', 'Receipt file')}</label>
       <input
         type="file"
         accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
         onChange={e => {
           const next = e.target.files?.[0] ?? null;
           if (next && next.size > 10 * 1024 * 1024) {
-            setError(tt(lang, 'Dekont dosyası en fazla 10MB olabilir.', 'Receipt file can be at most 10MB.'));
+            setError(lang === 'tr' ? 'Dekont dosyası en fazla 10MB olabilir.' : 'The receipt file can be at most 10MB.');
             onChange(null);
             return;
           }
           // Sunucu da tipi ve dosya imzasını doğrular; burada erken uyarı
           if (next && !RECEIPT_TYPES.includes(next.type)) {
-            setError(tt(lang, 'Dekont sadece PDF, JPG veya PNG olabilir.', 'Receipt must be a PDF, JPG or PNG file.'));
+            setError(lang === 'tr' ? 'Dekont sadece PDF, JPG veya PNG olabilir.' : 'The receipt must be a PDF, JPG or PNG file.');
             onChange(null);
             return;
           }
@@ -360,7 +362,7 @@ function ReasonModal({ title, label, loading, onClose, onSubmit }: {
         <button
           disabled={loading}
           onClick={async () => {
-            if (!reason.trim()) { setError(tt(lang, 'İptal nedeni zorunlu.', 'A cancellation reason is required.')); return; }
+            if (!reason.trim()) { setError(lang === 'tr' ? 'İptal nedeni zorunlu.' : 'A cancellation reason is required.'); return; }
             setError('');
             try {
               await onSubmit(reason.trim());
@@ -371,7 +373,7 @@ function ReasonModal({ title, label, loading, onClose, onSubmit }: {
           }}
           className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {loading ? tt(lang, 'İşleniyor...', 'Processing...') : tt(lang, 'İptal Et', 'Confirm Cancel')}
+          {loading ? tt(lang, 'İşleniyor…', 'Processing…') : tt(lang, 'İptal et', 'Confirm cancellation')}
         </button>
       </div>
     </ModalShell>
@@ -393,7 +395,7 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
   const [fieldError, setFieldError] = useState('');
 
   const submit = async () => {
-    if (!form.bankaReferansNo.trim()) { setFieldError(tt(lang, 'Banka referans no zorunlu.', 'Bank reference number is required.')); return; }
+    if (!form.bankaReferansNo.trim()) { setFieldError(lang === 'tr' ? 'Banka referans no zorunlu.' : 'The bank reference number is required.'); return; }
     setLoading(true);
     setFieldError('');
     try {
@@ -403,7 +405,7 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
       onClose();
     } catch (err) {
       // Backend bu iki senaryoyu da error.code=409 ile bildiriyor.
-      if ((err as Error & { status?: number }).status === 409) setFieldError(tt(lang, 'Bu sipariş zaten onaylanmış ya da bu referans numarası daha önce kaydedilmiş.', 'This order is already approved or this reference number was already recorded.'));
+      if ((err as Error & { status?: number }).status === 409) setFieldError(lang === 'tr' ? 'Bu sipariş zaten onaylanmış ya da bu referans numarası daha önce kaydedilmiş.' : 'This order is already approved, or this reference number was already recorded.');
       else setFieldError(friendlyError(err, lang));
     } finally {
       setLoading(false);
@@ -411,7 +413,7 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
   };
 
   return (
-    <ModalShell title={`${tt(lang, 'Sipariş Onayla', 'Approve Order')} - ${order.referansKodu}`} onClose={onClose}>
+    <ModalShell title={`${tt(lang, 'Sipariş onayla', 'Approve order')} - ${order.referansKodu}`} onClose={onClose}>
       <div className="mb-4 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800">
         <div className="font-semibold text-slate-900 dark:text-slate-100">{order.firmaUnvan}</div>
         <div className="mt-1 text-slate-500">{order.paket} · {para(order.tutar, order.paraBirimi, lang)}</div>
@@ -419,14 +421,14 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka Referans No', 'Bank Reference No')} *</label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka referans no', 'Bank reference no.')} *</label>
           <input value={form.bankaReferansNo} onChange={e => { setForm(f => ({ ...f, bankaReferansNo: e.target.value })); setFieldError(''); }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
           <FieldError text={fieldError} />
         </div>
-        <DateInput label={`${tt(lang, 'Ödeme Tarihi', 'Payment Date')} *`} value={form.odemeTarihi} onChange={v => setForm(f => ({ ...f, odemeTarihi: v }))} />
+        <DateInput label={`${tt(lang, 'Ödeme tarihi', 'Payment date')} *`} value={form.odemeTarihi} onChange={v => setForm(f => ({ ...f, odemeTarihi: v }))} />
         <MethodSelect value={form.odemeYontemi} onChange={v => setForm(f => ({ ...f, odemeYontemi: v }))} />
-        <TextInput label={tt(lang, 'Gönderen Ünvan', 'Sender Name')} value={form.gonderenUnvan} onChange={v => setForm(f => ({ ...f, gonderenUnvan: v }))} />
-        <TextInput label={tt(lang, 'Fatura No', 'Invoice No')} value={form.faturaNo} onChange={v => setForm(f => ({ ...f, faturaNo: v }))} />
+        <TextInput label={tt(lang, 'Gönderen unvanı', 'Sender name')} value={form.gonderenUnvan} onChange={v => setForm(f => ({ ...f, gonderenUnvan: v }))} />
+        <TextInput label={tt(lang, 'Fatura no', 'Invoice no.')} value={form.faturaNo} onChange={v => setForm(f => ({ ...f, faturaNo: v }))} />
         <div className="col-span-2"><ReceiptInput file={file} onChange={setFile} /></div>
         <div className="col-span-2">
           <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')}</label>
@@ -435,7 +437,7 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">{tt(lang, 'Vazgeç', 'Cancel')}</button>
-        <button onClick={submit} disabled={loading} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? tt(lang, 'Onaylanıyor...', 'Approving...') : tt(lang, 'Onayla', 'Approve')}</button>
+        <button onClick={submit} disabled={loading} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? tt(lang, 'Onaylanıyor…', 'Approving…') : tt(lang, 'Onayla', 'Approve')}</button>
       </div>
     </ModalShell>
   );
@@ -463,7 +465,7 @@ function MethodSelect({ value, onChange }: { value: OdemeYontemi; onChange: (val
   const { lang } = useLang();
   return (
     <div>
-      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Ödeme Yöntemi', 'Payment Method')} *</label>
+      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Ödeme yöntemi', 'Payment method')} *</label>
       <select value={value} onChange={e => onChange(Number(e.target.value) as OdemeYontemi)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
         {([1, 2, 3, 99] as OdemeYontemi[]).map(v => <option key={v} value={v}>{yontemLabel(v, lang)}</option>)}
       </select>
@@ -494,8 +496,14 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
 
   const submit = async () => {
     const amount = Number(form.tutar);
-    if (!amount || amount <= 0) { setFormError(tt(lang, 'Tutar 0’dan büyük olmalı.', 'Amount must be greater than 0.')); return; }
-    if (!form.bankaReferansNo.trim()) { setBankError(tt(lang, 'Banka referans no zorunlu.', 'Bank reference number is required.')); return; }
+    if (!amount || amount <= 0) {
+      const message = lang === 'tr' ? 'Tutar 0’dan büyük olmalı.' : 'The amount must be greater than 0.';
+      setFormError(message); return;
+    }
+    if (!form.bankaReferansNo.trim()) {
+      const message = lang === 'tr' ? 'Banka referans no zorunlu.' : 'The bank reference number is required.';
+      setBankError(message); return;
+    }
     setLoading(true);
     setBankError('');
     setFormError('');
@@ -517,7 +525,7 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
       await onDone();
       onClose();
     } catch (err) {
-      if ((err as Error & { status?: number }).status === 409) setBankError(tt(lang, 'Bu referans numarası zaten kayıtlı.', 'This reference number is already recorded.'));
+      if ((err as Error & { status?: number }).status === 409) setBankError(lang === 'tr' ? 'Bu referans numarası zaten kayıtlı.' : 'This reference number is already recorded.');
       else setFormError(friendlyError(err, lang));
     } finally {
       setLoading(false);
@@ -525,7 +533,7 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
   };
 
   return (
-    <ModalShell title={`${tt(lang, 'Ödeme Kaydet', 'Record Payment')} - ${firma.unvan}`} onClose={onClose}>
+    <ModalShell title={`${tt(lang, 'Ödeme kaydet', 'Record payment')} - ${firma.unvan}`} onClose={onClose}>
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Tutar', 'Amount')} *</label>
@@ -533,20 +541,20 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
           <FieldError text={formError} />
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Para Birimi', 'Currency')} *</label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Para birimi', 'Currency')} *</label>
           <select value={form.paraBirimi} onChange={e => setForm(f => ({ ...f, paraBirimi: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
             {PARA_BIRIMLERI.map(p => <option key={p}>{p}</option>)}
           </select>
         </div>
-        <DateInput label={`${tt(lang, 'Ödeme Tarihi', 'Payment Date')} *`} value={form.odemeTarihi} onChange={v => setForm(f => ({ ...f, odemeTarihi: v }))} />
+        <DateInput label={`${tt(lang, 'Ödeme tarihi', 'Payment date')} *`} value={form.odemeTarihi} onChange={v => setForm(f => ({ ...f, odemeTarihi: v }))} />
         <MethodSelect value={form.odemeYontemi} onChange={v => setForm(f => ({ ...f, odemeYontemi: v }))} />
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka Referans No', 'Bank Reference No')} *</label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka referans no', 'Bank reference no.')} *</label>
           <input value={form.bankaReferansNo} onChange={e => { setForm(f => ({ ...f, bankaReferansNo: e.target.value })); setBankError(''); }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
           <FieldError text={bankError} />
         </div>
-        <TextInput label={tt(lang, 'Gönderen Ünvan', 'Sender Name')} value={form.gonderenUnvan} onChange={v => setForm(f => ({ ...f, gonderenUnvan: v }))} />
-        <TextInput label={tt(lang, 'Fatura No', 'Invoice No')} value={form.faturaNo} onChange={v => setForm(f => ({ ...f, faturaNo: v }))} />
+        <TextInput label={tt(lang, 'Gönderen unvanı', 'Sender name')} value={form.gonderenUnvan} onChange={v => setForm(f => ({ ...f, gonderenUnvan: v }))} />
+        <TextInput label={tt(lang, 'Fatura no', 'Invoice no.')} value={form.faturaNo} onChange={v => setForm(f => ({ ...f, faturaNo: v }))} />
         <div className="col-span-2"><ReceiptInput file={file} onChange={setFile} /></div>
         <div className="col-span-2">
           <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')}</label>
@@ -556,8 +564,8 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
 
       <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700">
         <div className="mb-2 flex items-center justify-between">
-          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">{tt(lang, 'Tanımlanacak Haklar', 'Rights to Grant')}</h4>
-          <button onClick={addRight} className="rounded-lg border border-ocean/40 px-3 py-1.5 text-xs font-semibold text-ocean">{tt(lang, 'Hak Ekle', 'Add Right')}</button>
+          <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">{tt(lang, 'Tanımlanacak haklar', 'Rights to grant')}</h4>
+          <button onClick={addRight} className="rounded-lg border border-ocean/40 px-3 py-1.5 text-xs font-semibold text-ocean">{tt(lang, 'Hak ekle', 'Add right')}</button>
         </div>
         {rights.length === 0 && <p className="text-xs text-slate-400">{tt(lang, 'Liste boş bırakılabilir.', 'The list can be left empty.')}</p>}
         <div className="space-y-2">
@@ -576,7 +584,7 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
 
       <div className="mt-5 flex justify-end gap-2">
         <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">{tt(lang, 'Vazgeç', 'Cancel')}</button>
-        <button onClick={submit} disabled={loading} className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? tt(lang, 'Kaydediliyor...', 'Saving...') : tt(lang, 'Ödemeyi Kaydet', 'Save Payment')}</button>
+        <button onClick={submit} disabled={loading} className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? tt(lang, 'Kaydediliyor…', 'Saving…') : tt(lang, 'Ödemeyi kaydet', 'Save payment')}</button>
       </div>
     </ModalShell>
   );
@@ -592,8 +600,8 @@ function RightModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: () 
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    if (!Number(miktar) || Number(miktar) <= 0) { setError(tt(lang, 'Miktar 0’dan büyük olmalı.', 'Quantity must be greater than 0.')); return; }
-    if (!aciklama.trim()) { setError(tt(lang, 'Açıklama zorunlu.', 'Notes are required.')); return; }
+    if (!Number(miktar) || Number(miktar) <= 0) { setError(lang === 'tr' ? 'Miktar 0’dan büyük olmalı.' : 'The quantity must be greater than 0.'); return; }
+    if (!aciklama.trim()) { setError(lang === 'tr' ? 'Açıklama zorunlu.' : 'Notes are required.'); return; }
     setLoading(true);
     setError('');
     try {
@@ -615,10 +623,10 @@ function RightModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: () 
   };
 
   return (
-    <ModalShell title={`${tt(lang, 'Hak Tanımla', 'Grant Rights')} - ${firma.unvan}`} onClose={onClose}>
+    <ModalShell title={`${tt(lang, 'Hak tanımla', 'Grant rights')} - ${firma.unvan}`} onClose={onClose}>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Hak Tipi', 'Right Type')} *</label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Hak tipi', 'Right type')} *</label>
           <select value={hakTipi} onChange={e => setHakTipi(Number(e.target.value) as HakTipi)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
             {([1, 2, 3] as HakTipi[]).map(v => <option key={v} value={v}>{hakLabel(v, lang)}</option>)}
           </select>
@@ -628,7 +636,7 @@ function RightModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: () 
           <input type="number" min="1" value={miktar} onChange={e => setMiktar(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
         </div>
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Son Kullanma Tarihi', 'Expiry Date')}</label>
+          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Son kullanma tarihi', 'Expiry date')}</label>
           <input type="date" value={gecerlilikBitis} onChange={e => setGecerlilikBitis(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
         </div>
         <div className="col-span-2">
@@ -639,7 +647,7 @@ function RightModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: () 
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-300">{tt(lang, 'Vazgeç', 'Cancel')}</button>
-        <button onClick={submit} disabled={loading} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? tt(lang, 'Kaydediliyor...', 'Saving...') : tt(lang, 'Hak Tanımla', 'Grant Rights')}</button>
+        <button onClick={submit} disabled={loading} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{loading ? tt(lang, 'Kaydediliyor…', 'Saving…') : tt(lang, 'Hak tanımla', 'Grant rights')}</button>
       </div>
     </ModalShell>
   );
@@ -785,7 +793,7 @@ export default function FirmaKrediTab() {
   const approveDone = async () => {
     await loadPending();
     if (firma?.firmaId) await loadFirmData(firma.firmaId);
-    flash(tt(lang, 'Sipariş onaylandı ve haklar tanımlandı.', 'Order approved and rights granted.'));
+    flash(lang === 'tr' ? 'Sipariş onaylandı ve haklar tanımlandı.' : 'Order approved and rights granted.');
   };
 
   // Hatalar yutulmaz: ReasonModal yakalayıp modal içinde gösterir (modal açık kalır)
@@ -795,7 +803,7 @@ export default function FirmaKrediTab() {
     try {
       await apiPost('HavaleSiparisiIptal', { siparisId: cancelOrder.siparisId, iptalNedeni: reason });
       setCancelOrder(null);
-      flash(tt(lang, 'Sipariş iptal edildi.', 'Order cancelled.'));
+      flash(lang === 'tr' ? 'Sipariş iptal edildi.' : 'Order cancelled.');
       await loadPending();
     } finally {
       setActionLoading(false);
@@ -805,12 +813,12 @@ export default function FirmaKrediTab() {
   const cancelMovementSubmit = async (reason: string) => {
     if (!cancelMovement || !firma) return;
     const hareketId = cancelMovement.hareketId ?? cancelMovement.id;
-    if (hareketId === undefined || hareketId === null) throw new Error(tt(lang, 'Hareket kimliği bulunamadı.', 'Movement ID not found.'));
+    if (hareketId === undefined || hareketId === null) throw new Error(lang === 'tr' ? 'Hareket kimliği bulunamadı.' : "Couldn't find the movement ID.");
     setActionLoading(true);
     try {
       await apiPost('HareketIptal', { hareketId, iptalNedeni: reason });
       setCancelMovement(null);
-      flash(tt(lang, 'Hareket ters kayıtla iptal edildi.', 'Movement cancelled with a reversing entry.'));
+      flash(lang === 'tr' ? 'Hareket ters kayıtla iptal edildi.' : 'Movement cancelled with a reversing entry.');
       await loadFirmData(firma.firmaId);
     } finally {
       setActionLoading(false);
@@ -827,16 +835,16 @@ export default function FirmaKrediTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{tr ? 'Kredi Yönetimi' : 'Credit Management'}</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{tr ? 'Kredi yönetimi' : 'Credit management'}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">{tr ? 'Havale/EFT ödemeleri, firma hakları ve finans hareketleri' : 'Bank transfer payments, company rights and financial movements'}</p>
         </div>
-        {toast && <div className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300">{toast}</div>}
+        {toast && <div className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"><Msg text={toast} /></div>}
       </div>
 
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
         {([
-          ['bekleyen', tr ? 'Bekleyen Siparişler' : 'Pending Orders'],
-          ['firma', tr ? 'Firma Detay' : 'Company Detail'],
+          ['bekleyen', tr ? 'Bekleyen siparişler' : 'Pending orders'],
+          ['firma', tr ? 'Firma detayı' : 'Company details'],
           ['odemeler', tr ? 'Ödemeler' : 'Payments'],
         ] as [Page, string][]).map(([id, label]) => (
           <button key={id} onClick={() => setPage(id)} className={`border-b-2 px-4 py-3 text-sm font-semibold ${page === id ? 'border-ocean text-ocean' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'}`}>
@@ -845,13 +853,13 @@ export default function FirmaKrediTab() {
         ))}
       </div>
 
-      {notice && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">{friendlyError(notice, lang)}</div>}
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">{error}</div>}
+      {notice && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"><Msg text={friendlyError(notice, lang)} /></div>}
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"><Msg text={error} /></div>}
 
       {page === 'bekleyen' && (
         <section className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
           <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
-            <h3 className="font-bold text-slate-900 dark:text-slate-100">{tr ? 'Bekleyen Siparişler' : 'Pending Orders'}</h3>
+            <h3 className="font-bold text-slate-900 dark:text-slate-100">{tr ? 'Bekleyen siparişler' : 'Pending orders'}</h3>
             <div className="flex w-full sm:w-auto flex-wrap gap-2">
               <input value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} placeholder={tr ? 'Firma adına göre ara' : 'Search by company name'} className="w-full sm:w-72 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
               <button onClick={loadPending} className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white">{tr ? 'Yenile' : 'Refresh'}</button>
@@ -861,8 +869,8 @@ export default function FirmaKrediTab() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                 <tr>{(tr
-                  ? ['Firma Adı', 'Referans Kodu', 'Paket', 'Talep Edilen Haklar', 'Tutar', 'Para Birimi', 'Oluşturma Tarihi', 'Son Geçerlilik', 'İşlemler']
-                  : ['Company', 'Reference Code', 'Package', 'Requested Rights', 'Amount', 'Currency', 'Created', 'Valid Until', 'Actions']).map(h => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr>
+                  ? ['Firma adı', 'Referans kodu', 'Paket', 'Talep edilen haklar', 'Tutar', 'Para birimi', 'Oluşturma tarihi', 'Son geçerlilik', 'İşlemler']
+                  : ['Company', 'Reference code', 'Package', 'Requested rights', 'Amount', 'Currency', 'Created', 'Valid until', 'Actions']).map(h => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {pendingLoading ? <SkeletonRows columns={9} /> : pending.map(order => {
@@ -880,7 +888,7 @@ export default function FirmaKrediTab() {
                       <td className="px-3 py-3">
                         <div className="flex gap-2">
                           <button onClick={() => setApproveOrder(order)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white">{tr ? 'Onayla' : 'Approve'}</button>
-                          <button onClick={() => setCancelOrder(order)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 dark:border-red-800">{tr ? 'İptal Et' : 'Cancel'}</button>
+                          <button onClick={() => setCancelOrder(order)} className="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 dark:border-red-800">{tr ? 'İptal et' : 'Cancel'}</button>
                         </div>
                       </td>
                     </tr>
@@ -896,11 +904,11 @@ export default function FirmaKrediTab() {
       {page === 'firma' && (
         <section className="space-y-4">
           <div className="relative rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400">{tr ? 'Firma Ara' : 'Search Company'}</label>
+            <label className="text-xs font-bold text-slate-500 dark:text-slate-400">{tr ? 'Firma ara' : 'Search companies'}</label>
             <input value={firmaQuery} onChange={e => setFirmaQuery(e.target.value)} placeholder={tr ? 'En az 2 karakter yazın' : 'Type at least 2 characters'} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
             {firmaQuery.length >= 2 && (
               <div className="absolute left-4 right-4 top-[82px] z-20 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                {firmaLoading ? <div className="p-4 text-sm text-slate-400">{tr ? 'Aranıyor...' : 'Searching...'}</div> : firmaResults.map(item => (
+                {firmaLoading ? <div className="p-4 text-sm text-slate-400">{tr ? 'Aranıyor…' : 'Searching…'}</div> : firmaResults.map(item => (
                   <button key={item.firmaId} onClick={() => void selectFirma(item)} className="block w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800">
                     <div className="font-semibold text-slate-900 dark:text-slate-100">{item.unvan}</div>
                     <div className="text-xs text-slate-500">{item.email || '-'} · {item.ulke || '-'}</div>
@@ -919,8 +927,8 @@ export default function FirmaKrediTab() {
                   <p className="text-sm text-slate-500">{firma.email || '-'} · {firma.ulke || '-'}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => setPaymentModal(true)} className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white">{tr ? 'Ödeme Kaydet' : 'Record Payment'}</button>
-                  <button onClick={() => setRightModal(true)} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">{tr ? 'Hak Tanımla' : 'Grant Rights'}</button>
+                  <button onClick={() => setPaymentModal(true)} className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white">{tr ? 'Ödeme kaydet' : 'Record payment'}</button>
+                  <button onClick={() => setRightModal(true)} className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white">{tr ? 'Hak tanımla' : 'Grant rights'}</button>
                 </div>
               </div>
 
@@ -939,16 +947,16 @@ export default function FirmaKrediTab() {
               )}
 
               <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-                <div className="text-xs font-bold text-slate-500 dark:text-slate-400">{tr ? 'Para Birimi Bazında Toplam Ödemeler' : 'Total Payments by Currency'}</div>
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400">{tr ? 'Para birimi bazında toplam ödemeler' : 'Total payments by currency'}</div>
                 <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-slate-100">{firma.toplamOdenenTutar?.length ? firma.toplamOdenenTutar.map(t => `${t.paraBirimi} ${para(t.tutar, undefined, lang)}`).join(' / ') : '-'}</div>
               </div>
 
               <div className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
                 <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
-                  <h4 className="font-bold text-slate-900 dark:text-slate-100">{tr ? 'Hareket Geçmişi' : 'Movement History'}</h4>
+                  <h4 className="font-bold text-slate-900 dark:text-slate-100">{tr ? 'Hareket geçmişi' : 'Movement history'}</h4>
                   <div className="flex gap-2">
                     <select value={hareketHakTipi} onChange={e => setHareketHakTipi(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                      <option value="">{tr ? 'Tüm Haklar' : 'All Rights'}</option>
+                      <option value="">{tr ? 'Tüm haklar' : 'All rights'}</option>
                       {([1, 2, 3] as HakTipi[]).map(v => <option key={v} value={v}>{hakLabel(v, lang)}</option>)}
                     </select>
                     <input type="date" value={hareketBaslangic} onChange={e => setHareketBaslangic(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
@@ -959,8 +967,8 @@ export default function FirmaKrediTab() {
                   <table className="w-full text-sm">
                     <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                       <tr>{(tr
-                        ? ['Hak Tipi', 'Miktar', 'Kaynak', 'Kaynak ID', 'Geçerlilik Sonu', 'Kim Ekledi', 'Tarih', 'Durum', 'İşlem']
-                        : ['Right Type', 'Quantity', 'Source', 'Source ID', 'Valid Until', 'Added By', 'Date', 'Status', 'Action']).map(h => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr>
+                        ? ['Hak tipi', 'Miktar', 'Kaynak', 'Kaynak ID', 'Geçerlilik sonu', 'Kim ekledi', 'Tarih', 'Durum', 'İşlem']
+                        : ['Right type', 'Quantity', 'Source', 'Source ID', 'Valid until', 'Added by', 'Date', 'Status', 'Action']).map(h => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr>
                     </thead>
                     <tbody>
                       {firmaDataLoading ? <SkeletonRows columns={9} /> : hareketler.map(h => {
@@ -976,7 +984,7 @@ export default function FirmaKrediTab() {
                             <td className="px-3 py-3 text-slate-500">{h.olusturanKullaniciAdi || '-'}</td>
                             <td className="px-3 py-3 text-slate-500">{tarih(h.olusturmaTarihi, lang)}</td>
                             <td className="px-3 py-3">{cancelled ? <span className="rounded bg-red-100 px-2 py-1 text-xs text-red-700">{tr ? 'İptal' : 'Cancelled'}</span> : <span className="rounded bg-emerald-100 px-2 py-1 text-xs text-emerald-700">{tr ? 'Aktif' : 'Active'}</span>}</td>
-                            <td className="px-3 py-3">{!cancelled && h.miktar > 0 && <button onClick={() => setCancelMovement(h)} className="text-xs font-semibold text-red-600">{tr ? 'İptal Et' : 'Cancel'}</button>}</td>
+                            <td className="px-3 py-3">{!cancelled && h.miktar > 0 && <button onClick={() => setCancelMovement(h)} className="text-xs font-semibold text-red-600">{tr ? 'İptal et' : 'Cancel'}</button>}</td>
                           </tr>
                         );
                       })}
@@ -993,17 +1001,17 @@ export default function FirmaKrediTab() {
       {page === 'odemeler' && (
         <section className="space-y-4">
           <div className="grid grid-cols-4 gap-4">
-            <BalanceCard title={tr ? 'Toplam Ödeme Adedi' : 'Total Payments'} value={summary?.toplamOdeme?.reduce((s, x) => s + (x.adet || 0), 0) ?? payments.length} />
-            <BalanceCard title={tr ? 'Ödeme Yapan Firma' : 'Paying Companies'} value={summary?.odemeYapanFirmaSayisi ?? '-'} />
-            <BalanceCard title={tr ? 'Tanımlanan CV Kredisi' : 'CV Credits Granted'} value={summary?.tanimlananHaklar?.cvKredisi ?? '-'} />
-            <BalanceCard title={tr ? 'Tanımlanan İlan Hakkı' : 'Job Posting Rights Granted'} value={summary?.tanimlananHaklar?.ilanHakki ?? '-'} />
+            <BalanceCard title={tr ? 'Toplam ödeme adedi' : 'Total payments'} value={summary?.toplamOdeme?.reduce((s, x) => s + (x.adet || 0), 0) ?? payments.length} />
+            <BalanceCard title={tr ? 'Ödeme yapan firma' : 'Paying companies'} value={summary?.odemeYapanFirmaSayisi ?? '-'} />
+            <BalanceCard title={tr ? 'Tanımlanan CV kredisi' : 'CV credits granted'} value={summary?.tanimlananHaklar?.cvKredisi ?? '-'} />
+            <BalanceCard title={tr ? 'Tanımlanan ilan hakkı' : 'Job posting rights granted'} value={summary?.tanimlananHaklar?.ilanHakki ?? '-'} />
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
             <div className="grid grid-cols-[1.5fr_120px_140px_150px_150px_auto] gap-2">
               <input value={paymentFilters.firmaArama} onChange={e => setPaymentFilters(f => ({ ...f, firmaArama: e.target.value }))} placeholder={tr ? 'Firma adı' : 'Company name'} className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
               <select value={paymentFilters.paraBirimi} onChange={e => setPaymentFilters(f => ({ ...f, paraBirimi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
-                <option value="">{tr ? 'Para Birimi' : 'Currency'}</option>
+                <option value="">{tr ? 'Para birimi' : 'Currency'}</option>
                 {PARA_BIRIMLERI.map(p => <option key={p}>{p}</option>)}
               </select>
               <select value={paymentFilters.odemeYontemi} onChange={e => setPaymentFilters(f => ({ ...f, odemeYontemi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
@@ -1021,8 +1029,8 @@ export default function FirmaKrediTab() {
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-slate-900 dark:text-slate-400">
                 <tr>{(tr
-                  ? ['Firma Adı', 'Tutar', 'Para Birimi', 'Ödeme Tarihi', 'Yöntem', 'Banka Referans No', 'Gönderen', 'Fatura No', 'Dekont', 'Durum', 'Kim Ekledi', 'Eklenme Tarihi']
-                  : ['Company', 'Amount', 'Currency', 'Payment Date', 'Method', 'Bank Reference No', 'Sender', 'Invoice No', 'Receipt', 'Status', 'Added By', 'Added On']).map(h => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr>
+                  ? ['Firma adı', 'Tutar', 'Para birimi', 'Ödeme tarihi', 'Yöntem', 'Banka referans no', 'Gönderen', 'Fatura no', 'Dekont', 'Durum', 'Kim ekledi', 'Eklenme tarihi']
+                  : ['Company', 'Amount', 'Currency', 'Payment date', 'Method', 'Bank reference no.', 'Sender', 'Invoice no.', 'Receipt', 'Status', 'Added by', 'Added on']).map(h => <th key={h} className="px-3 py-3 text-left">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {paymentsLoading ? <SkeletonRows columns={12} /> : payments.map(p => {
@@ -1052,10 +1060,10 @@ export default function FirmaKrediTab() {
       )}
 
       {approveOrder && <ApproveOrderModal order={approveOrder} onDone={approveDone} onClose={() => setApproveOrder(null)} />}
-      {cancelOrder && <ReasonModal title={tr ? 'Siparişi İptal Et' : 'Cancel Order'} label={tr ? 'İptal nedeni' : 'Cancellation reason'} onSubmit={cancelOrderSubmit} onClose={() => setCancelOrder(null)} loading={actionLoading} />}
+      {cancelOrder && <ReasonModal title={tr ? 'Siparişi iptal et' : 'Cancel order'} label={tr ? 'İptal nedeni' : 'Cancellation reason'} onSubmit={cancelOrderSubmit} onClose={() => setCancelOrder(null)} loading={actionLoading} />}
       {firma && paymentModal && <PaymentModal firma={firma} onDone={() => loadFirmData(firma.firmaId)} onClose={() => setPaymentModal(false)} />}
       {firma && rightModal && <RightModal firma={firma} onDone={() => loadFirmData(firma.firmaId)} onClose={() => setRightModal(false)} />}
-      {cancelMovement && <ReasonModal title={tr ? 'Hareketi İptal Et' : 'Cancel Movement'} label={tr ? 'İptal nedeni' : 'Cancellation reason'} onSubmit={cancelMovementSubmit} onClose={() => setCancelMovement(null)} loading={actionLoading} />}
+      {cancelMovement && <ReasonModal title={tr ? 'Hareketi iptal et' : 'Cancel movement'} label={tr ? 'İptal nedeni' : 'Cancellation reason'} onSubmit={cancelMovementSubmit} onClose={() => setCancelMovement(null)} loading={actionLoading} />}
     </div>
   );
 }

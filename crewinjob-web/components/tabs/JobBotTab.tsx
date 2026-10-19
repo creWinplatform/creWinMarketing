@@ -1,6 +1,8 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 // ── Sabit lookup veriler (crewinjob API'sinden alınmış) ──────────────────────
 const SHIP_TYPES = [
@@ -51,21 +53,21 @@ const ALL_COUNTRIES = [
 
 // ── Sabit küçük listeler ──────────────────────────────────────────────────────
 const VISA_TYPES = [
-  { id: 1, name: 'International passport' },
-  { id: 2, name: 'National passport' },
-  { id: 3, name: 'US visa C1/D' },
-  { id: 4, name: 'US visa B1/B2' },
-  { id: 5, name: 'US visa B1/OCS' },
-  { id: 6, name: 'Schengen visa' },
+  { id: 1, name: 'International passport', tr: 'Uluslararası pasaport' },
+  { id: 2, name: 'National passport',      tr: 'Ulusal pasaport' },
+  { id: 3, name: 'US visa C1/D',           tr: 'ABD vizesi C1/D' },
+  { id: 4, name: 'US visa B1/B2',          tr: 'ABD vizesi B1/B2' },
+  { id: 5, name: 'US visa B1/OCS',         tr: 'ABD vizesi B1/OCS' },
+  { id: 6, name: 'Schengen visa',          tr: 'Schengen vizesi' },
 ];
 
 const LANG_LEVELS = [
-  { id: 1, name: 'Elementary' },
-  { id: 2, name: 'Lower Intermediate' },
-  { id: 3, name: 'Intermediate' },
-  { id: 4, name: 'Upper Intermediate' },
-  { id: 5, name: 'Advanced' },
-  { id: 6, name: 'Native' },
+  { id: 1, name: 'Elementary',         tr: 'Başlangıç' },
+  { id: 2, name: 'Lower intermediate', tr: 'Orta altı' },
+  { id: 3, name: 'Intermediate',       tr: 'Orta' },
+  { id: 4, name: 'Upper intermediate', tr: 'Orta üstü' },
+  { id: 5, name: 'Advanced',           tr: 'İleri' },
+  { id: 6, name: 'Native',             tr: 'Ana dil' },
 ];
 
 // ── Tipler ────────────────────────────────────────────────────────────────────
@@ -181,10 +183,12 @@ function Combobox({
           value={inputVal}
           onChange={e => { onChange(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
+          aria-label={placeholder}
         />
         <button
           type="button"
           tabIndex={-1}
+          aria-label={lang === 'tr' ? 'Seçenekleri göster' : 'Show options'}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
           onClick={() => setOpen(o => !o)}
         >
@@ -200,7 +204,7 @@ function Combobox({
           marginTop: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
         }}>
           {loading ? (
-            <div className="px-3 py-2 text-xs text-gray-400">{lang === 'tr' ? 'Yükleniyor...' : 'Loading...'}</div>
+            <div className="px-3 py-2 text-xs text-gray-400">{lang === 'tr' ? 'Yükleniyor…' : 'Loading…'}</div>
           ) : filtered.length === 0 ? (
             <div className="px-3 py-2 text-xs text-gray-400">{lang === 'tr' ? 'Bulunamadı' : 'Not found'}</div>
           ) : filtered.map(opt => (
@@ -343,7 +347,7 @@ export default function JobBotTab() {
   const shipOptions  = SHIP_TYPES.map(s => ({ id: s.id, label: s.name }));
   const ctOptions    = CONTRACT_TYPES.map(c => ({ id: c.id, label: c.name }));
   const curOptions   = CURRENCIES.map(c => ({ id: c.id, label: c.name }));
-  const cntOptions   = ALL_COUNTRIES.map(c => ({ id: c.id, label: c.name, sub: c.tr !== c.name ? c.tr : undefined }));
+  const cntOptions   = ALL_COUNTRIES.map(c => ({ id: c.id, label: c.name, sub: lang === 'tr' && c.tr !== c.name ? c.tr : undefined }));
   const compOptions  = companies.map(c => ({ id: c.id, label: c.name, sub: c.country || undefined }));
 
   // ── AI sonucunu forma uygula (parse + generate ortak) ─────────────────────
@@ -406,8 +410,8 @@ export default function JobBotTab() {
 
       if (aiTextRef.current) aiTextRef.current.value = '';
       showMsg(generateMode
-        ? t('✨ AI yeni bir ilan üretti — kontrol edip yayınla', '✨ AI generated a new job — review and publish')
-        : t('✅ AI alanları doldurdu — kontrol edip yayınla', '✅ AI filled in the fields — review and publish'));
+        ? t('✨ AI yeni bir ilan üretti — kontrol edip yayınla', '✨ AI generated a new job posting — review and publish it')
+        : t('✅ AI alanları doldurdu — kontrol edip yayınla', '✅ AI filled in the fields — review and publish it'));
     } catch (e) {
       showMsg(t('Bağlantı hatası: ', 'Connection error: ') + (e as Error).message, false);
     } finally {
@@ -475,7 +479,7 @@ export default function JobBotTab() {
         body: JSON.stringify({ action: 'create_direct', jobData: formToJobData() }),
       });
       const data = await res.json();
-      if (data.ok) { setForm(EMPTY_FORM); showMsg(t('🎉 İlan crewinjob.com\'a yayınlandı!', '🎉 Job published to crewinjob.com!'), true, data.ilanUrl || null); }
+      if (data.ok) { setForm(EMPTY_FORM); showMsg(t('🎉 İlan crewinjob.com\'a yayınlandı!', '🎉 Job posting published to crewinjob.com!'), true, data.ilanUrl || null); }
       else showMsg(data.message || t('API hatası', 'API error'), false);
     } catch { showMsg(t('Bağlantı hatası', 'Connection error'), false); }
     setBusy(null);
@@ -581,8 +585,8 @@ export default function JobBotTab() {
       {/* ── Başlık + statlar ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">{t('📋 İlan Botu', '📋 Job Bot')}</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{t("crewinjob.com'a denizcilik iş ilanı oluştur", 'Create maritime job listings on crewinjob.com')}</p>
+          <h2 className="text-xl font-bold text-gray-800">{t('📋 İlan Botu', '📋 Job bot')}</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{t("crewinjob.com'a denizcilik iş ilanı oluştur", 'Create maritime job postings on crewinjob.com')}</p>
         </div>
         <div className="flex gap-2">
           {[
@@ -592,7 +596,7 @@ export default function JobBotTab() {
             { label: t('Hata', 'Error'),    val: stats.errors,  cls: 'bg-red-100 text-red-700' },
           ].map(s => (
             <div key={s.label} className={`px-3 py-1.5 rounded-xl text-center ${s.cls}`}>
-              <div className="text-lg font-bold leading-tight">{s.val}</div>
+              <div className="text-lg font-bold leading-tight">{(s.val ?? 0).toLocaleString(localeTag(lang))}</div>
               <div className="text-xs">{s.label}</div>
             </div>
           ))}
@@ -602,7 +606,7 @@ export default function JobBotTab() {
       {/* ── Mesaj banner ───────────────────────────────────────────────────── */}
       {msg && (
         <div className={`px-4 py-3 rounded-lg text-sm font-medium flex flex-col gap-1.5 ${msgOk ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
-          <span>{msg}</span>
+          <span><Msg text={msg} /></span>
           {msgUrl && (
             <a
               href={msgUrl}
@@ -619,7 +623,7 @@ export default function JobBotTab() {
       {/* ── Sub-tab navigation ─────────────────────────────────────────────── */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
         {([
-          ['create',  t('✏️ İlan Oluştur', '✏️ Create Job')],
+          ['create',  t('✏️ İlan Oluştur', '✏️ Create job posting')],
           ['queue',   `${t('📥 Kuyruk', '📥 Queue')}${stats.pending > 0 ? ` (${stats.pending})` : ''}`],
           ['history', `${t('✅ Yayınlananlar', '✅ Published')}${stats.posted > 0 ? ` (${stats.posted})` : ''}`],
         ] as [typeof subTab, string][]).map(([key, label]) => (
@@ -657,15 +661,16 @@ export default function JobBotTab() {
               <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Gemini</span>
             </div>
             <p className="text-xs text-gray-500">
-              {t('Metin yapıştırırsan (Telegram, e-posta, LinkedIn…) AI alanları çıkarır.', 'If you paste text (Telegram, email, LinkedIn…), AI extracts the fields.')} <strong>{t('Boş bırakıp butona basarsan AI sıfırdan gerçekçi bir denizcilik ilanı üretir.', 'If you leave it empty and press the button, AI generates a realistic maritime job from scratch.')}</strong>
+              {t('Metin yapıştırırsan (Telegram, e-posta, LinkedIn…) AI alanları çıkarır.', 'If you paste text (Telegram, email, LinkedIn…), AI extracts the fields.')} <strong>{t('Boş bırakıp butona basarsan AI sıfırdan gerçekçi bir denizcilik ilanı üretir.', 'If you leave it empty and press the button, AI generates a realistic maritime job posting from scratch.')}</strong>
             </p>
             <textarea
               ref={aiTextRef}
               rows={5}
               className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none resize-none bg-white"
               style={{ color: '#1e293b' }}
-              placeholder={t('İlan metnini buraya yapıştır — VEYA boş bırak, AI senin için bir ilan üretsin...', 'Paste the job text here — OR leave it empty and let AI generate a job for you...')}
+              placeholder={t('İlan metnini buraya yapıştır — VEYA boş bırak, AI senin için bir ilan üretsin…', 'Paste the job posting text here — or leave it empty and let AI generate one for you…')}
               defaultValue=""
+              aria-label={t('İlan metni', 'Job posting text')}
             />
             <button
               onClick={handleAiParse}
@@ -687,7 +692,7 @@ export default function JobBotTab() {
           {/* ── Form ───────────────────────────────────────────────────── */}
           <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4" style={{ color: '#1e293b' }}>
             <h3 className="font-semibold text-gray-700 flex items-center gap-2">
-              {t('📝 İlan Detayları', '📝 Job Details')}
+              {t('📝 İlan Detayları', '📝 Job posting details')}
               <span className="text-xs font-normal text-gray-400">{t('(mavi arka plan = seçildi)', '(blue background = selected)')}</span>
             </h3>
 
@@ -697,7 +702,7 @@ export default function JobBotTab() {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   {t('Pozisyon *', 'Position *')}
-                  {posLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor...', 'loading...')}</span>}
+                  {posLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor…', 'loading…')}</span>}
                   {!posLoad && posOptions.length > 0 && <span className="ml-1 text-green-500 font-normal">({posOptions.length} {t('seçenek', 'options')})</span>}
                 </label>
                 <Combobox
@@ -706,21 +711,21 @@ export default function JobBotTab() {
                   onChange={text => setForm(f => ({ ...f, positionText: text, positionId: null }))}
                   onSelect={(id, text) => setForm(f => ({ ...f, positionId: id, positionText: text }))}
                   options={posOptions}
-                  placeholder={t('Pozisyon ara veya seç...', 'Search or select a position...')}
+                  placeholder={t('Pozisyon ara veya seç…', 'Search or select a position…')}
                   loading={posLoad}
                 />
               </div>
 
               {/* Gemi Tipi */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Gemi Tipi', 'Ship Type')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Gemi Tipi', 'Ship type')}</label>
                 <Combobox
                   value={form.shipTypeId}
                   inputVal={form.shipTypeText}
                   onChange={text => setForm(f => ({ ...f, shipTypeText: text, shipTypeId: null }))}
                   onSelect={(id, text) => setForm(f => ({ ...f, shipTypeId: id, shipTypeText: text }))}
                   options={shipOptions}
-                  placeholder={t('Gemi tipi seç...', 'Select ship type...')}
+                  placeholder={t('Gemi tipi seç…', 'Select ship type…')}
                 />
               </div>
 
@@ -733,7 +738,7 @@ export default function JobBotTab() {
                   onChange={text => setForm(f => ({ ...f, countryText: text, countryId: null, cityId: null, cityText: '' }))}
                   onSelect={(id, text) => setForm(f => ({ ...f, countryId: id, countryText: text, cityId: null, cityText: '' }))}
                   options={cntOptions}
-                  placeholder={t('Ülke ara...', 'Search country...')}
+                  placeholder={t('Ülke ara…', 'Search country…')}
                 />
               </div>
 
@@ -741,7 +746,7 @@ export default function JobBotTab() {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   {t('Şehir', 'City')}
-                  {cityLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor...', 'loading...')}</span>}
+                  {cityLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor…', 'loading…')}</span>}
                   {!cityLoad && cities.length > 0 && <span className="ml-1 text-green-500 font-normal">({cities.length} {t('şehir', 'cities')})</span>}
                   {!form.countryId && <span className="ml-1 text-gray-400 font-normal">{t('(önce ülke seç)', '(select a country first)')}</span>}
                 </label>
@@ -751,21 +756,21 @@ export default function JobBotTab() {
                   onChange={text => setForm(f => ({ ...f, cityText: text, cityId: null }))}
                   onSelect={(id, text) => setForm(f => ({ ...f, cityId: id, cityText: text }))}
                   options={cities.map(c => ({ id: c.id, label: c.name }))}
-                  placeholder={form.countryId ? t('Şehir ara veya seç...', 'Search or select a city...') : t('Önce ülke seçin', 'Select a country first')}
+                  placeholder={form.countryId ? t('Şehir ara veya seç…', 'Search or select a city…') : t('Önce ülke seçin', 'Select a country first')}
                   loading={cityLoad}
                 />
               </div>
 
               {/* Kontrat Tipi */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Kontrat Süresi', 'Contract Duration')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Kontrat Süresi', 'Contract duration')}</label>
                 <Combobox
                   value={form.contractTypeId}
                   inputVal={form.contractTypeText}
                   onChange={text => setForm(f => ({ ...f, contractTypeText: text, contractTypeId: null }))}
                   onSelect={(id, text) => setForm(f => ({ ...f, contractTypeId: id, contractTypeText: text }))}
                   options={ctOptions}
-                  placeholder={t('Kontrat süresi seç...', 'Select contract duration...')}
+                  placeholder={t('Kontrat süresi seç…', 'Select contract duration…')}
                 />
               </div>
 
@@ -778,22 +783,22 @@ export default function JobBotTab() {
                   onChange={text => setForm(f => ({ ...f, currencyText: text, currencyId: null }))}
                   onSelect={(id, text) => setForm(f => ({ ...f, currencyId: id, currencyText: text }))}
                   options={curOptions}
-                  placeholder="USD, EUR..."
+                  placeholder="USD, EUR…"
                 />
               </div>
 
               {/* Maaş Aralığı */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Maaş Aralığı', 'Salary Range')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Maaş Aralığı', 'Salary range')}</label>
                 <div className="flex gap-2">
                   <input
-                    type="number" min="0" placeholder="Min"
+                    type="number" min="0" placeholder="Min" aria-label={t('Minimum maaş', 'Minimum salary')}
                     className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
                     value={form.minPrice}
                     onChange={e => setForm(f => ({ ...f, minPrice: e.target.value }))}
                   />
                   <input
-                    type="number" min="0" placeholder="Max"
+                    type="number" min="0" placeholder="Max" aria-label={t('Maksimum maaş', 'Maximum salary')}
                     className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
                     value={form.maxPrice}
                     onChange={e => setForm(f => ({ ...f, maxPrice: e.target.value }))}
@@ -805,7 +810,7 @@ export default function JobBotTab() {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                   {t('Firma', 'Company')}
-                  {compLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor...', 'loading...')}</span>}
+                  {compLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor…', 'loading…')}</span>}
                   {!compLoad && compOptions.length > 0 && <span className="ml-1 text-green-500 font-normal">({compOptions.length} {t('firma', 'companies')})</span>}
                 </label>
                 <Combobox
@@ -814,16 +819,16 @@ export default function JobBotTab() {
                   onChange={text => setForm(f => ({ ...f, companyText: text, companyId: null }))}
                   onSelect={(id, text) => setForm(f => ({ ...f, companyId: id, companyText: text }))}
                   options={compOptions}
-                  placeholder={t('Firma ara veya seç...', 'Search or select a company...')}
+                  placeholder={t('Firma ara veya seç…', 'Search or select a company…')}
                   loading={compLoad}
                 />
               </div>
 
               {/* Email */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('İletişim Email', 'Contact Email')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('İletişim E-postası', 'Contact email')}</label>
                 <input
-                  type="email" placeholder="jobs@company.com"
+                  type="email" placeholder="jobs@company.com" aria-label={t('İletişim E-postası', 'Contact email')}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
@@ -832,18 +837,20 @@ export default function JobBotTab() {
 
               {/* Tarihler */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Başlangıç Tarihi', 'Start Date')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Başlangıç Tarihi', 'Start date')}</label>
                 <input
                   type="date"
+                  aria-label={t('Başlangıç Tarihi', 'Start date')}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
                   value={form.startDate}
                   onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Son Başvuru Tarihi', 'Application Deadline')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Son Başvuru Tarihi', 'Application deadline')}</label>
                 <input
                   type="date"
+                  aria-label={t('Son Başvuru Tarihi', 'Application deadline')}
                   className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
                   value={form.expirationDate}
                   onChange={e => setForm(f => ({ ...f, expirationDate: e.target.value }))}
@@ -854,11 +861,11 @@ export default function JobBotTab() {
 
             {/* Açıklama */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('İş Tanımı / Açıklama', 'Job Description')}</label>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('İş Tanımı / Açıklama', 'Job description')}</label>
               <textarea
                 rows={4}
                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none resize-none"
-                placeholder={t('İş gereksinimleri, sorumluluklar, avantajlar...', 'Requirements, responsibilities, benefits...')}
+                placeholder={t('İş gereksinimleri, sorumluluklar, avantajlar…', 'Requirements, responsibilities, benefits…')}
                 value={form.explanation}
                 onChange={e => setForm(f => ({ ...f, explanation: e.target.value }))}
               />
@@ -866,12 +873,12 @@ export default function JobBotTab() {
 
             {/* ── Ek Gereksinimler ─────────────────────────────────────── */}
             <div className="border-t border-gray-100 pt-4 space-y-4">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Ek Gereksinimler', 'Additional Requirements')}</h4>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Ek Gereksinimler', 'Additional requirements')}</h4>
 
               {/* Diller */}
               <div className="flex flex-col gap-2">
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  {t('Dil Gereksinimleri', 'Language Requirements')}
+                  {t('Dil Gereksinimleri', 'Language requirements')}
                   {apiLanguages.length > 0 && <span className="ml-1 text-green-500 font-normal">({apiLanguages.length} {t('dil', 'languages')})</span>}
                 </label>
                 <LanguageRows
@@ -883,13 +890,13 @@ export default function JobBotTab() {
 
               {/* Vize Tipleri */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Vize / Pasaport Gereksinimleri', 'Visa / Passport Requirements')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Vize / Pasaport Gereksinimleri', 'Visa / passport requirements')}</label>
                 <MultiSelectRows
                   rows={form.visaTypes}
-                  options={VISA_TYPES}
+                  options={VISA_TYPES.map(v => ({ id: v.id, name: lang === 'tr' ? v.tr : v.name }))}
                   onChange={rows => setForm(f => ({ ...f, visaTypes: rows }))}
-                  placeholder={t('Vize / pasaport tipi seç...', 'Select visa / passport type...')}
-                  addLabel={t('+ Vize Ekle', '+ Add Visa')}
+                  placeholder={t('Vize / pasaport tipi seç…', 'Select visa / passport type…')}
+                  addLabel={t('+ Vize Ekle', '+ Add visa')}
                 />
               </div>
 
@@ -903,8 +910,8 @@ export default function JobBotTab() {
                   rows={form.certificates}
                   options={apiCerts}
                   onChange={rows => setForm(f => ({ ...f, certificates: rows }))}
-                  placeholder={t('Sertifika seç...', 'Select certificate...')}
-                  addLabel={t('+ Sertifika Ekle', '+ Add Certificate')}
+                  placeholder={t('Sertifika seç…', 'Select certificate…')}
+                  addLabel={t('+ Sertifika Ekle', '+ Add certificate')}
                 />
               </div>
 
@@ -938,7 +945,7 @@ export default function JobBotTab() {
               {editId ? (
                 <>
                   <button onClick={handleUpdateQueue} disabled={busy === 'update'} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
-                    {busy === 'update' ? t('Kaydediliyor…', 'Saving…') : t('💾 Kuyruğu Güncelle', '💾 Update Queue')}
+                    {busy === 'update' ? t('Kaydediliyor…', 'Saving…') : t('💾 Kuyruğu Güncelle', '💾 Update queue item')}
                   </button>
                   <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); }} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold">
                     {t('İptal', 'Cancel')}
@@ -947,10 +954,10 @@ export default function JobBotTab() {
               ) : (
                 <>
                   <button onClick={handlePublishDirect} disabled={!!busy} className="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
-                    {busy === 'direct' ? t('Yayınlanıyor…', 'Publishing…') : t('🚀 Hemen Yayınla', '🚀 Publish Now')}
+                    {busy === 'direct' ? t('Yayınlanıyor…', 'Publishing…') : t('🚀 Hemen Yayınla', '🚀 Publish now')}
                   </button>
                   <button onClick={handleAddQueue} disabled={!!busy} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
-                    {busy === 'queue' ? t('Ekleniyor…', 'Adding…') : t('📥 Kuyruğa Ekle', '📥 Add to Queue')}
+                    {busy === 'queue' ? t('Ekleniyor…', 'Adding…') : t('📥 Kuyruğa Ekle', '📥 Add to queue')}
                   </button>
                   <button onClick={() => setForm(EMPTY_FORM)} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold">
                     {t('Temizle', 'Clear')}
@@ -959,8 +966,8 @@ export default function JobBotTab() {
               )}
             </div>
             <p className="text-xs text-gray-400">
-              <strong>{t('Hemen Yayınla', 'Publish Now')}</strong> {t("→ crewinjob API'ye direkt gönderir.", '→ sends directly to the crewinjob API.')} &nbsp;
-              <strong>{t('Kuyruğa Ekle', 'Add to Queue')}</strong> {t('→ inceleyip onaylarsın.', '→ you review and approve it.')}
+              <strong>{t('Hemen Yayınla', 'Publish now')}</strong> {t("→ crewinjob API'ye direkt gönderir.", '→ sends directly to the crewinjob API.')} &nbsp;
+              <strong>{t('Kuyruğa Ekle', 'Add to queue')}</strong> {t('→ inceleyip onaylarsın.', '→ you review and approve it.')}
             </p>
           </div>
         </div>
@@ -975,7 +982,7 @@ export default function JobBotTab() {
             <div className="text-center py-16 text-gray-400">
               <div className="text-5xl mb-3">📭</div>
               <p className="text-lg font-medium">{t('Kuyruk boş', 'Queue is empty')}</p>
-              <p className="text-sm mt-1">{t('İlan oluştur → Kuyruğa Ekle', 'Create a job → Add to Queue')}</p>
+              <p className="text-sm mt-1">{t('İlan oluştur → Kuyruğa Ekle', 'Create a job posting → Add to queue')}</p>
             </div>
           ) : pending.map(item => (
             <QueueCard key={item.id} item={item} onApprove={handleApprove} onRemove={handleRemove} onEdit={handleEdit} busy={busy} />
@@ -991,7 +998,7 @@ export default function JobBotTab() {
           {posted.length === 0 ? (
             <div className="text-center py-16 text-gray-400">
               <div className="text-5xl mb-3">📋</div>
-              <p className="text-lg font-medium">{t('Henüz yayınlanan ilan yok', 'No published jobs yet')}</p>
+              <p className="text-lg font-medium">{t('Henüz yayınlanan ilan yok', 'No published job postings yet')}</p>
             </div>
           ) : posted.map(item => (
             <QueueCard key={item.id} item={item} onApprove={handleApprove} onRemove={handleRemove} onEdit={handleEdit} busy={busy} readonly />
@@ -1024,7 +1031,7 @@ function LanguageRows({ rows, languages, onChange }: {
             value={row.langId ?? ''}
             onChange={e => updateRow(i, { langId: e.target.value ? Number(e.target.value) : null })}
           >
-            <option value="">{lang === 'tr' ? 'Dil seç...' : 'Select language...'}</option>
+            <option value="">{lang === 'tr' ? 'Dil seç…' : 'Select language…'}</option>
             {languages.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <select
@@ -1033,18 +1040,20 @@ function LanguageRows({ rows, languages, onChange }: {
             value={row.levelId ?? ''}
             onChange={e => updateRow(i, { levelId: e.target.value ? Number(e.target.value) : null })}
           >
-            <option value="">{lang === 'tr' ? 'Seviye...' : 'Level...'}</option>
-            {LANG_LEVELS.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            <option value="">{lang === 'tr' ? 'Seviye…' : 'Level…'}</option>
+            {LANG_LEVELS.map(l => <option key={l.id} value={l.id}>{lang === 'tr' ? l.tr : l.name}</option>)}
           </select>
           <button
             onClick={() => removeRow(i)}
+            aria-label={lang === 'tr' ? 'Satırı kaldır' : 'Remove row'}
+            title={lang === 'tr' ? 'Kaldır' : 'Remove'}
             className="text-red-400 hover:text-red-600 text-sm px-2 py-1 rounded"
           >✕</button>
         </div>
       ))}
       {rows.length < 5 && (
         <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1">
-          {lang === 'tr' ? '+ Dil Ekle' : '+ Add Language'}
+          {lang === 'tr' ? '+ Dil Ekle' : '+ Add language'}
         </button>
       )}
     </div>
@@ -1075,11 +1084,13 @@ function MultiSelectRows({ rows, options, onChange, placeholder, addLabel }: {
             value={val ?? ''}
             onChange={e => updateRow(i, e.target.value ? Number(e.target.value) : null)}
           >
-            <option value="">{placeholder || (lang === 'tr' ? 'Seç...' : 'Select...')}</option>
+            <option value="">{placeholder || (lang === 'tr' ? 'Seç…' : 'Select…')}</option>
             {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
           <button
             onClick={() => removeRow(i)}
+            aria-label={lang === 'tr' ? 'Satırı kaldır' : 'Remove row'}
+            title={lang === 'tr' ? 'Kaldır' : 'Remove'}
             className="text-red-400 hover:text-red-600 text-sm px-2 py-1 rounded"
           >✕</button>
         </div>
@@ -1112,19 +1123,21 @@ function EndorsementRows({ rows, onChange }: {
             type="text"
             className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
             style={{ color: '#1e293b' }}
-            placeholder={lang === 'tr' ? 'Endorsement (örn: STCW II/1, IGF...)' : 'Endorsement (e.g. STCW II/1, IGF...)'}
+            placeholder={lang === 'tr' ? 'Endorsement (örn: STCW II/1, IGF…)' : 'Endorsement (e.g. STCW II/1, IGF…)'}
             value={val}
             onChange={e => updateRow(i, e.target.value)}
           />
           <button
             onClick={() => removeRow(i)}
+            aria-label={lang === 'tr' ? 'Satırı kaldır' : 'Remove row'}
+            title={lang === 'tr' ? 'Kaldır' : 'Remove'}
             className="text-red-400 hover:text-red-600 text-sm px-2 py-1 rounded"
           >✕</button>
         </div>
       ))}
       {rows.length < 5 && (
         <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1">
-          {lang === 'tr' ? '+ Endorsement Ekle' : '+ Add Endorsement'}
+          {lang === 'tr' ? '+ Endorsement Ekle' : '+ Add endorsement'}
         </button>
       )}
     </div>
@@ -1144,7 +1157,7 @@ function QueueCard({
 }) {
   const { lang } = useLang();
   const t = (tr: string, en: string) => (lang === 'tr' ? tr : en);
-  const locale = lang === 'tr' ? 'tr-TR' : 'en-US';
+  const locale = localeTag(lang);
   const [expanded, setExpanded] = useState(false);
   const d = item.data as Record<string, unknown>;
 
@@ -1182,18 +1195,18 @@ function QueueCard({
       {expanded && (
         <div className="border-t border-gray-100 px-4 py-3 space-y-2 text-sm">
           {item.error && (
-            <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-xs">❌ {item.error}</div>
+            <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-xs">❌ <Msg text={item.error} /></div>
           )}
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
             {[
               [t('Pozisyon', 'Position'),  pos],
-              [t('Gemi Tipi', 'Ship Type'), ship],
+              [t('Gemi Tipi', 'Ship type'), ship],
               [t('Ülke', 'Country'),      country],
               [t('Kontrat', 'Contract'),   contract],
               [t('Para Birimi', 'Currency'), currency],
-              [t('Min Maaş', 'Min Salary'),  minP],
-              [t('Max Maaş', 'Max Salary'),  maxP],
-              ['Email',     String(d.email || '')],
+              [t('Min Maaş', 'Min salary'),  minP],
+              [t('Max Maaş', 'Max salary'),  maxP],
+              [t('E-posta', 'Email'), String(d.email || '')],
               [t('Başlangıç', 'Start'), String(d.startDate || '')],
               [t('Son Başvuru', 'Deadline'), String(d.expirationDate || '')],
             ].filter(([, v]) => v).map(([k, v]) => (
@@ -1211,7 +1224,7 @@ function QueueCard({
               {(item.status === 'pending' || item.status === 'error') && (
                 <button onClick={() => onApprove(item.id)} disabled={busy === item.id}
                   className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50">
-                  {busy === item.id ? t('Yayınlanıyor…', 'Publishing…') : t('🚀 Onayla & Yayınla', '🚀 Approve & Publish')}
+                  {busy === item.id ? t('Yayınlanıyor…', 'Publishing…') : t('🚀 Onayla & Yayınla', '🚀 Approve & publish')}
                 </button>
               )}
               <button onClick={() => onEdit(item)}

@@ -4,18 +4,21 @@ import {Cloud,Copy,RefreshCw,Save,ShieldCheck,LockKeyhole} from 'lucide-react';
 import type {Locale} from '@/lib/platform/catalog';
 import type {SesSettings} from '@/lib/platform/ses-types';
 import {projectRequest} from '@/lib/platform/client';
+import {translateMessage} from '@/lib/i18n/messages';
+import {localeTag} from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 export default function SesConnectionPanel({lang}:{lang:Locale}){
   const tr=lang==='tr',[data,setData]=useState<SesSettings|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[key,setKey]=useState(''),[secret,setSecret]=useState(''),[configurationSet,setSet]=useState(''),[topicArn,setTopic]=useState('');
   const request=useRef<AbortController|null>(null),mounted=useRef(false);
   const act=useCallback(async(action='load',body:Record<string,unknown>={})=>{
     if(!mounted.current)return;const controller=new AbortController();request.current?.abort();request.current=controller;setBusy(true);setError('');setNotice('');
     try{const value=await projectRequest<SesSettings>('/api/platform/ses',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(35000)]),...(action==='load'?{}:{method:'POST',body:JSON.stringify({action,...body})})});if(!mounted.current||controller.signal.aborted)return;setData(value);setSet(value.configurationSet);setTopic(value.topicArn);if(action==='save'){setKey('');setSecret('');setNotice(tr?'SES ayarları kaydedildi.':'SES settings saved.');}if(action==='verify')setNotice(value.verified?(tr?'SES kimlik ve olay ayarları doğrulandı.':'SES identity and event settings verified.'):(tr?'SES kontrolü tamamlandı; eksik kapılar aşağıda.':'SES check completed; missing gates are listed below.'));}
-    catch(reason){if(mounted.current&&!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Request failed.');}finally{if(mounted.current&&!controller.signal.aborted)setBusy(false);}
-  },[tr]);
+    catch(reason){if(mounted.current&&!controller.signal.aborted)setError(translateMessage(reason instanceof Error?reason.message:'',lang)||(tr?'İstek tamamlanamadı.':'Request failed.'));}finally{if(mounted.current&&!controller.signal.aborted)setBusy(false);}
+  },[tr,lang]);
   useEffect(()=>{mounted.current=true;void act();return()=>{mounted.current=false;request.current?.abort();};},[act]);
-  const date=(value:string|null)=>value?new Date(value).toLocaleString(tr?'tr-TR':'en-GB'):'—';
+  const date=(value:string|null)=>value?new Date(value).toLocaleString(localeTag(lang)):'—';
   return <section className="studio-band ses-connection" aria-labelledby="ses-heading"><div className="studio-section-title"><h2 id="ses-heading"><Cloud size={18}/>{tr?'Amazon SES':'Amazon SES'}</h2><button type="button" className="icon-button" disabled={busy} aria-label={tr?'SES ayarlarını yenile':'Refresh SES settings'} title={tr?'SES ayarlarını yenile':'Refresh SES settings'} onClick={()=>void act()}><RefreshCw size={16}/></button></div>
-    {error&&<p className="studio-error" role="alert">{error}</p>}{notice&&<p className="studio-success" role="status">{notice}</p>}
+    {error&&<p className="studio-error" role="alert"><Msg text={error}/></p>}{notice&&<p className="studio-success" role="status"><Msg text={notice}/></p>}
     {!data&&busy&&<p role="status">{tr?'SES ayarları yükleniyor…':'Loading SES settings…'}</p>}
     {data&&<><dl className="recipient-counts">{([[tr?'SES kimliği':'SES identity',data.verified],[tr?'İmzalı SNS bildirimi':'Signed SNS notification',Boolean(data.feedbackObservedAt)],[tr?'Gerçek pilot':'Real pilot',data.ready]] as const).map(([label,value])=><div key={label}><dt>{label}</dt><dd>{value?<ShieldCheck size={16}/>:<LockKeyhole size={16}/>} {value?(tr?'Hazır':'Ready'):(tr?'Bekliyor':'Pending')}</dd></div>)}</dl>
       <form onSubmit={event=>{event.preventDefault();void act('save',{accessKeyId:key,secretAccessKey:secret,configurationSet,topicArn,expectedRevision:data.revision});}}><fieldset className="ses-fields" disabled={busy}>

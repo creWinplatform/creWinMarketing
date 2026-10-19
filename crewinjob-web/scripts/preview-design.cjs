@@ -215,6 +215,7 @@ const server = spawn(process.execPath,[require.resolve('next/dist/bin/next'),dev
 console.log(`Isolated QA: http://${qaHost}:31450/login | design-fixture / design-fixture-only-123`);
 process.on('SIGINT',()=>{selectionPortal?.close();server.kill();});
 process.on('SIGTERM',()=>{selectionPortal?.close();server.kill();});
-server.on('exit',code=>{selectionPortal?.close();process.exitCode=code || 0;});
+// Geçici fixture veritabanı her çalıştırmada yeniden üretilir; sunucu kapanınca klasörü de kaldır.
+server.on('exit',code=>{selectionPortal?.close();try{require('node:fs').rmSync(directory,{recursive:true,force:true});}catch{}process.exitCode=code || 0;});
 }
 void start().catch(()=>{try{db.close();}catch{}console.error('Visual QA fixture could not start.');process.exitCode=1;});

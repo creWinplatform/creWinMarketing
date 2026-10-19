@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic';
 import ModelPicker from '@/components/ModelPicker';
 import ActivityLogPanel from '@/components/ActivityLogPanel';
 import { useLang } from '@/lib/lang';
+import Msg from '@/components/Msg';
+import { localeTag } from '@/lib/i18n/shared';
 import type { StatsResponse } from '@/lib/types';
 import { type ModuleId, type WorkspaceContext } from '@/lib/platform/catalog';
 import ProjectSettings from '@/components/platform/ProjectSettings';
@@ -167,7 +169,7 @@ export default function Home() {
       <main className="workspace-loading">
         <span className="studio-loader" />
         <p role="status">
-          {workspaceError ||
+          {workspaceError ? <Msg text={workspaceError} /> :
             (tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…')}
         </p>
         {workspaceError && (
@@ -257,7 +259,7 @@ export default function Home() {
                         <span>{label}</span>
                         <strong>
                           {typeof value === 'number'
-                            ? value.toLocaleString(tr ? 'tr-TR' : 'en-GB')
+                            ? value.toLocaleString(localeTag(lang))
                             : '—'}
                         </strong>
                       </div>
@@ -294,6 +296,7 @@ export default function Home() {
               key={`${workspace.project.id}-${activeTab}`}
               kind="content"
               lang={lang}
+              contentLanguage={workspace.project.language}
               canWrite={
                 workspace.permissions?.includes('content.write') || false
               }

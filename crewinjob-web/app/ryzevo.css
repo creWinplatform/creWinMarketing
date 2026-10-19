@@ -249,6 +249,8 @@
 .rm-nav nav a:hover{color:var(--ink)}.rm-nav nav a:hover::after{transform:scaleX(1)}
 .rm-nav-cta{display:flex;gap:8px}
 .rm-nav-cta .rm-btn{min-height:40px;padding:8px 16px;font-size:.84rem}
+.rm-nav-mobile{display:none;align-items:center;gap:8px}
+.ryz-map .rm-lang{min-height:40px;padding:8px 12px;font-size:.84rem;gap:6px;cursor:pointer;font-family:inherit}
 .rm-burger{display:none;background:var(--white);border:1px solid var(--line-2);color:var(--ink);border-radius:var(--rz-r-control);padding:9px 16px;font-weight:800;cursor:pointer}
 .rm-mobile{display:none;position:fixed;inset:0;z-index:39;background:var(--paper);padding:120px 24px 24px;flex-direction:column;gap:6px}
 .rm-mobile a{font-size:1.5rem;font-weight:800;padding:12px 0;border-bottom:1px solid var(--line)}
@@ -439,7 +441,7 @@
   .rm-hero-top{padding-top:36px;padding-bottom:76px}.ryz-map h1{font-size:clamp(2.6rem,4.2vw,3.9rem)}.rm-lead{font-size:1rem;margin-top:20px}.rm-name{margin-top:18px}.rm-ctas{margin-top:20px}.rm-hint{margin-top:16px}
 }
 @media(max-width:1000px){
-  .rm-nav nav,.rm-nav-cta{display:none}.rm-burger{display:block}
+  .rm-nav nav,.rm-nav-cta{display:none}.rm-nav-mobile{display:flex}.rm-burger{display:block}
   .rm-map{aspect-ratio:4/3}
   .rm-node{min-width:0;padding:9px 10px;gap:8px;border-radius:var(--rz-r-control);grid-template-columns:26px 1fr}.rm-node-go{display:none}.rm-node b{font-size:.8rem}.rm-node small{font-size:.64rem}.rm-node .rm-ic{width:26px;height:26px;border-radius:6px}.rm-node .rm-ic svg{width:13px;height:13px}.rm-node.core{min-width:0;padding:11px 12px}
   .rm-col-grid,.rm-pilot{grid-template-columns:1fr}.rm-steps{grid-template-columns:1fr 1fr}.rm-step::after{content:none}.rm-fgrid{grid-template-columns:1fr}
@@ -457,3 +459,16 @@
 /* koyu kenar çubuğunda açık renkli tarayıcı kaydırma çubuğu görünmesin */
 .workspace-navigation{scrollbar-color:#3a4333 transparent}
 .workspace-navigation::-webkit-scrollbar{width:6px}.workspace-navigation::-webkit-scrollbar-thumb{background:#3a4333;border-radius:3px}.workspace-navigation::-webkit-scrollbar-track{background:transparent}
+/* Kaydırma kutusu içindeki mutlak konumlu ekran okuyucu etiketleri (sr-only) kutudan kaçıp sayfayı genişletmesin */
+.studio-table-scroll,.workspace-shell .overflow-x-auto{position:relative}
+/* Tablo ve kart içi küçük yardımcı metinler okunur kalsın (en az 11px) */
+.workspace-shell .studio-table small,.workspace-shell .work-day small,.workspace-shell .studio-stat small{font-size:11px}
+/* Koyu temada iş durumu rozeti: açık bej zemin üzerinde lime yazı okunmuyordu */
+.dark .workspace-shell .work-status{background:rgba(186,243,49,.12);color:var(--rz-lime)}
+
+/* Eski sekmeler: dolu "ocean" yüzeyler Ryzevo ana düğmesi gibi (açıkta grafit, koyuda lime + koyu yazı) */
+.bg-ocean{background-color:var(--rz-primary-bg);color:var(--rz-primary-fg)}
+.bg-ocean:hover,.hover\:bg-ocean:hover,.hover\:bg-ocean-dark:hover.bg-ocean{background-color:var(--rz-primary-bg);filter:brightness(1.12)}
+.hover\:bg-ocean:hover{color:var(--rz-primary-fg)}
+/* Eski sekmelerdeki 8–10px yardımcı yazılar okunur olsun: çalışma alanında en az 11px */
+.workspace-shell :is(.text-\[8px\],.text-\[9px\],.text-\[10px\],.text-\[10\.5px\]){font-size:11px;line-height:1.35}

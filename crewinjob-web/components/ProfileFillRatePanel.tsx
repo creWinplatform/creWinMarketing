@@ -1,6 +1,7 @@
 'use client';
 import type { FillRateBuckets } from '@/lib/types';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
 
 interface Props {
   buckets: FillRateBuckets;
@@ -14,11 +15,17 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
   if (total === 0) return null;
 
   const pct = (n: number) => total > 0 ? (n / total) * 100 : 0;
+  const num = (n: number) => n.toLocaleString(localeTag(lang));
+  // Türkçede yüzde işareti başta (%80), İngilizcede sonda (80%).
+  const percent = (n: number, digits = 0) => {
+    const value = n.toLocaleString(localeTag(lang), { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    return lang === 'tr' ? `%${value}` : `${value}%`;
+  };
 
   const SEGMENTS = [
     {
       key:   'zero' as const,
-      label: lang === 'tr' ? '%0 (Boş Profil)' : '%0 (Empty Profile)',
+      label: lang === 'tr' ? '%0 (Boş Profil)' : '0% (empty profile)',
       range: lang === 'tr' ? 'Hiç doldurmamış' : 'Never filled',
       color: 'bg-red-500',
       text:  'text-red-600 dark:text-red-400',
@@ -26,7 +33,7 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
     },
     {
       key:   'low' as const,
-      label: '%1–49',
+      label: lang === 'tr' ? '%1–49' : '1–49%',
       range: lang === 'tr' ? 'Çok eksik' : 'Very incomplete',
       color: 'bg-orange-500',
       text:  'text-orange-600 dark:text-orange-400',
@@ -34,7 +41,7 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
     },
     {
       key:   'mid' as const,
-      label: '%50–79',
+      label: lang === 'tr' ? '%50–79' : '50–79%',
       range: lang === 'tr' ? 'Yarım dolu' : 'Half complete',
       color: 'bg-amber-400',
       text:  'text-amber-600 dark:text-amber-400',
@@ -42,8 +49,8 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
     },
     {
       key:   'high' as const,
-      label: '%80+',
-      range: lang === 'tr' ? 'Activated Seafarer' : 'Activated Seafarer',
+      label: lang === 'tr' ? '%80+' : '80%+',
+      range: lang === 'tr' ? 'Aktive gemi adamı' : 'Activated seafarer',
       color: 'bg-green-500',
       text:  'text-green-600 dark:text-green-400',
       icon:  '✅',
@@ -59,10 +66,10 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
           <div className="flex items-center gap-2">
             <span className="text-lg">📊</span>
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              {lang === 'tr' ? 'Profil Doluluk Dağılımı' : 'Profile Completion Distribution'}
+              {lang === 'tr' ? 'Profil Doluluk Dağılımı' : 'Profile completion distribution'}
             </h3>
             <span className="text-xs text-slate-400 dark:text-slate-500">
-              {total.toLocaleString('tr-TR')} {lang === 'tr' ? 'gemi adamı' : 'seafarers'}
+              {num(total)} {lang === 'tr' ? 'gemi adamı' : 'seafarers'}
             </span>
           </div>
           <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5">
@@ -72,7 +79,7 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
               average >= 50 ? 'text-amber-500' :
               average >= 25 ? 'text-orange-500' : 'text-red-500'
             }`}>
-              %{average}
+              {percent(average)}
             </span>
           </div>
         </div>
@@ -87,11 +94,11 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
                 key={seg.key}
                 className={`${seg.color} flex items-center justify-center transition-all hover:opacity-90`}
                 style={{ width: `${w}%` }}
-                title={`${seg.label}: ${buckets[seg.key].toLocaleString('tr-TR')} ${lang === 'tr' ? 'kişi' : 'people'} (%${w.toFixed(1)})`}
+                title={`${seg.label}: ${num(buckets[seg.key])} ${lang === 'tr' ? 'kişi' : 'people'} (${percent(w, 1)})`}
               >
                 {w > 8 && (
                   <span className="text-[10px] font-bold text-white drop-shadow">
-                    %{w.toFixed(0)}
+                    {percent(w)}
                   </span>
                 )}
               </div>
@@ -116,10 +123,10 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
                 </div>
                 <div className="flex items-baseline gap-1.5">
                   <span className={`text-lg font-bold ${seg.text}`}>
-                    {count.toLocaleString('tr-TR')}
+                    {num(count)}
                   </span>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                    %{w.toFixed(1)}
+                    {percent(w, 1)}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{seg.range}</p>
@@ -134,10 +141,10 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
             <span>💡</span>
             <span>
               {lang === 'tr' ? (
-                <>Kullanıcıların <strong>%{(((buckets.zero + buckets.low + buckets.mid) / total) * 100).toFixed(1)}</strong>&apos;i henüz %80 aktivasyon eşiğine ulaşmamış.
+                <>Kullanıcıların <strong>{percent(((buckets.zero + buckets.low + buckets.mid) / total) * 100, 1)}</strong>&apos;i henüz %80 aktivasyon eşiğine ulaşmamış.
                   {' '}<strong>Kampanyalar</strong> sekmesinden bu kitleye yönelik taslak hazırlayabilirsiniz.</>
               ) : (
-                <><strong>{(((buckets.zero + buckets.low + buckets.mid) / total) * 100).toFixed(1)}%</strong> of users have not reached the 80% activation threshold.
+                <><strong>{percent(((buckets.zero + buckets.low + buckets.mid) / total) * 100, 1)}</strong> of users have not reached the 80% activation threshold.
                   {' '}Prepare a draft for this audience from <strong>Campaigns</strong>.</>
               )}
             </span>

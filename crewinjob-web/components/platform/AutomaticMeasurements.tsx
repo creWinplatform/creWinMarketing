@@ -3,10 +3,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Plus, RefreshCw, Save, Pencil, Play, X, Database, Clock3, Download } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
 import { MEASUREMENT_METRICS, MEASUREMENT_METRIC_LABELS, MEASUREMENT_STATUS, defaultMeasurementPeriod, type MeasurementWorkspace, type MeasurementBinding, type MeasurementJob } from '@/lib/platform/measurement-types';
+import Msg from '@/components/Msg';
 
 export default function AutomaticMeasurements({ workspace, lang }: { workspace: WorkspaceContext; lang: Locale }) {
-  const tr = lang === 'tr', locale = tr ? 'tr-TR' : 'en-GB';
+  const tr = lang === 'tr', locale = localeTag(lang), failed = tr ? 'İstek tamamlanamadı.' : 'Request failed.';
   const [data, setData] = useState<MeasurementWorkspace | null>(null), [period, setPeriod] = useState(defaultMeasurementPeriod()), [draftPeriod, setDraftPeriod] = useState(defaultMeasurementPeriod());
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState(''), [show, setShow] = useState(false);
   const [goalId, setGoal] = useState(workspace.project.goals[0]?.id || ''), [stage, setStage] = useState(0), [sourceId, setSource] = useState(''), [metric, setMetric] = useState(''), [eventName, setEvent] = useState(''), [enabled, setEnabled] = useState(false);
@@ -21,7 +24,7 @@ export default function AutomaticMeasurements({ workspace, lang }: { workspace: 
     try {
       const value = await projectRequest<MeasurementWorkspace>(`/api/platform/measurements?from=${period.from}&to=${period.to}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(45000)]) });
       if (mounted.current && !controller.signal.aborted) { setData(value); setError(''); }
-    } catch (reason) { if (mounted.current && !controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Request failed.'); }
+    } catch (reason) { if (mounted.current && !controller.signal.aborted) setError(reason instanceof Error && reason.message ? reason.message : failed); }
     finally { if (mounted.current && request.current === controller) { locked.current = false; setBusy(false); } }
   }
   useEffect(() => { mounted.current = true; setData(null); void load(); return () => { mounted.current = false; request.current?.abort(); request.current = null; locked.current = false; }; }, [period.from, period.to]);
@@ -60,7 +63,7 @@ export default function AutomaticMeasurements({ workspace, lang }: { workspace: 
       setNotice(tr ? 'Ölçüm kaydı güncellendi.' : 'Measurement record updated.');
       const value = await projectRequest<MeasurementWorkspace>(`/api/platform/measurements?from=${period.from}&to=${period.to}`, { signal: options.signal });
       if (mounted.current && !controller.signal.aborted) setData(value);
-    } catch (reason) { if (mounted.current && !controller.signal.aborted) setError(reason instanceof Error ? reason.message : 'Request failed.'); }
+    } catch (reason) { if (mounted.current && !controller.signal.aborted) setError(reason instanceof Error && reason.message ? reason.message : failed); }
     finally { if (mounted.current && request.current === controller) { locked.current = false; setBusy(false); } }
   }
   const save = (event: FormEvent) => { event.preventDefault(); void act({ action: 'save', goalId, stageIndex: stage, connectionId: sourceId, metric, eventName, enabled, expectedVersion }); };
@@ -68,7 +71,7 @@ export default function AutomaticMeasurements({ workspace, lang }: { workspace: 
     <div className="studio-section-title"><h2 id="automatic-measurement-heading"><Database size={18}/>{tr ? 'Kaynağa bağlı ölçümler' : 'Source-linked measurements'}</h2><div className="studio-row-actions"><button className="icon-button" title={tr ? 'Ölçümleri yenile' : 'Refresh measurements'} aria-label={tr ? 'Ölçümleri yenile' : 'Refresh measurements'} disabled={busy} onClick={() => void load()}><RefreshCw size={16}/></button>{data && <a className="icon-button" title={tr ? 'Otomatik ölçümleri dışa aktar' : 'Export automatic measurements'} aria-label={tr ? 'Otomatik ölçümleri dışa aktar' : 'Export automatic measurements'} href={`/api/platform/operations?resource=export&mode=automatic&from=${period.from}&to=${period.to}`}><Download size={16}/></a>}{canManage && <button className="studio-secondary" disabled={busy || !data || !workspace.project.goals.length} onClick={newMapping}><Plus size={16}/>{tr ? 'Eşleştirme ekle' : 'Add mapping'}</button>}</div></div>
     <form className="measurement-period" onSubmit={event => { event.preventDefault(); if (!busy) { intents.current.clear(); setPeriod({ ...draftPeriod }); } }}><label>{tr ? 'Başlangıç' : 'From'}<input required type="date" value={draftPeriod.from} onChange={event => setDraftPeriod(old => ({ ...old, from: event.target.value }))}/></label><label>{tr ? 'Bitiş' : 'To'}<input required type="date" value={draftPeriod.to} onChange={event => setDraftPeriod(old => ({ ...old, to: event.target.value }))}/></label><button className="studio-secondary" disabled={busy}>{tr ? 'Dönemi göster' : 'Show period'}</button></form>
     <p className="studio-note">{tr ? 'Dönem toplamlarıdır; kaynaklar ve manuel kayıtlarla birleştirilmez. Saat dilimi her sonuçta belirtilir.' : 'Period totals; not combined across sources or with manual entries. Each result states its timezone.'}</p>
-    {error && <p className="studio-error" role="alert">{error}</p>}{notice && <p className="studio-success" role="status">{notice}</p>}
+    {error && <p className="studio-error" role="alert">{translateMessage(error, lang)}</p>}{notice && <p className="studio-success" role="status"><Msg text={notice}/></p>}
     {!data && busy && <p role="status">{tr ? 'Ölçümler yükleniyor…' : 'Loading measurements…'}</p>}
     {show && data && <form className="studio-editor" onSubmit={save}><h3>{tr ? 'Hedef ve kaynak eşleştirmesi' : 'Goal and source mapping'}</h3><fieldset className="studio-form-grid" disabled={busy}>
       <label>{tr ? 'Hedef' : 'Goal'}<select value={goalId} required onChange={event => chooseTarget(event.target.value, 0)}>{workspace.project.goals.map(item => <option key={item.id} value={item.id}>{item.label[lang]}</option>)}</select></label>

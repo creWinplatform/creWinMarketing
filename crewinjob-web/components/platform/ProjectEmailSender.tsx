@@ -3,18 +3,22 @@ import {useCallback,useEffect,useRef,useState,type FormEvent} from 'react';
 import {MailCheck,Save,RefreshCw,Copy,Plus,Trash2,ShieldCheck,LockKeyhole,Globe,UsersRound,ExternalLink} from 'lucide-react';
 import type {Locale} from '@/lib/platform/catalog';
 import {projectRequest} from '@/lib/platform/client';
+import {translateMessage} from '@/lib/i18n/messages';
+import {localeTag} from '@/lib/i18n/shared';
 import {OWNERSHIP_LABELS,SENDER_ERROR_LABELS,type SenderWorkspace} from '@/lib/platform/email-sender-types';
 import SesConnectionPanel from './SesConnectionPanel';
+import Msg from '@/components/Msg';
 const endpoint='/api/platform/email-sender';
 export default function ProjectEmailSender({lang,canManage}:{lang:Locale;canManage:boolean}){
   const tr=lang==='tr',[data,setData]=useState<SenderWorkspace|null>(null),[busy,setBusy]=useState(false),[pending,setPending]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('');
   const [connectionId,setConnectionId]=useState(''),[maximum,setMaximum]=useState(5),[email,setEmail]=useState(''),[ack,setAck]=useState(false),[copyNotice,setCopyNotice]=useState('');
+  const fail=(reason:unknown)=>translateMessage(reason instanceof Error?reason.message:'',lang)||(tr?'İstek tamamlanamadı.':'Request failed.');
   const request=useRef<AbortController|null>(null),messages=useRef<HTMLDivElement>(null),mounted=useRef(true);
   const accept=useCallback((value:SenderWorkspace)=>{setData(value);setConnectionId(value.readiness.connectionId||'');setMaximum(value.readiness.maxRecipients||5);setAck(false);},[]);
   const load=useCallback(async()=>{
     const controller=new AbortController();request.current?.abort();request.current=controller;setBusy(true);setPending('load');setError('');setNotice('');
     try{const value=await projectRequest<SenderWorkspace>(endpoint,{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(35000)])});if(mounted.current&&!controller.signal.aborted)accept(value);}
-    catch(reason){if(mounted.current&&!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Request failed.');}
+    catch(reason){if(mounted.current&&!controller.signal.aborted)setError(fail(reason));}
     finally{if(mounted.current&&!controller.signal.aborted){setBusy(false);setPending('');}}
   },[accept]);
   useEffect(()=>{mounted.current=true;if(canManage)void load();return()=>{mounted.current=false;request.current?.abort();};},[load,canManage]);
@@ -27,15 +31,15 @@ export default function ProjectEmailSender({lang,canManage}:{lang:Locale;canMana
       if(!mounted.current||controller.signal.aborted)return;accept(value);if(action==='allow')setEmail('');
       if(action==='verify'&&value.readiness.ownership!=='verified'){setError(SENDER_ERROR_LABELS[value.lastError]?.[tr?0:1]||(tr?'DNS kaydı henüz doğrulanmadı.':'DNS record is not verified yet.'));return;}
       setNotice(action==='verify'?(tr?'Alan adı sahipliği doğrulandı.':'Domain ownership verified.'):action==='allow'?(tr?'Test adresi eklendi. İletişim izni ayrıca kontrol edilir.':'Test address added. Communication consent is checked separately.'):action==='remove'?(tr?'Adres pilot listesinden çıkarıldı.':'Address removed from the pilot allowlist.'):action==='renew'?(tr?'Yeni DNS değeri oluşturuldu; önceki doğrulama geçersiz.':'New DNS value created; previous verification is invalid.'):(tr?'Gönderen ve pilot sınırı kaydedildi.':'Sender and pilot cap saved.'));
-    }catch(reason){if(mounted.current&&!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Request failed.');}
+    }catch(reason){if(mounted.current&&!controller.signal.aborted)setError(fail(reason));}
     finally{if(mounted.current&&!controller.signal.aborted){setBusy(false);setPending('');}}
   }
   async function copy(value:string){try{await navigator.clipboard.writeText(value);setCopyNotice(tr?'DNS alanı kopyalandı.':'DNS field copied.');}catch{setCopyNotice(tr?'Kopyalanamadı. DNS alanını seçerek kopyalayın.':'Could not copy. Select the DNS field to copy it.');}}
-  const readiness=data?.readiness,selected=data?.connections.find(item=>item.id===connectionId),date=(value:string)=>new Date(value).toLocaleString(tr?'tr-TR':'en-GB');
+  const readiness=data?.readiness,selected=data?.connections.find(item=>item.id===connectionId),date=(value:string)=>new Date(value).toLocaleString(localeTag(lang));
   function save(event:FormEvent){event.preventDefault();void action('select',{connectionId,maxRecipients:maximum});}
   return <section className="email-sender-workspace"><header className="studio-page-heading"><div><p className="studio-eyebrow">{tr?'E-POSTA OPERASYONU':'EMAIL OPERATIONS'}</p><h1>{tr?'Gönderen ve pilot':'Sender & pilot'}</h1></div>{canManage&&<button className="icon-button" disabled={busy} title={tr?'Gönderen ekranını yenile':'Refresh sender settings'} aria-label={tr?'Gönderen ekranını yenile':'Refresh sender settings'} onClick={()=>void load()}><RefreshCw size={17}/></button>}</header>
     {!canManage?<p className="studio-data-notice"><LockKeyhole size={16}/>{tr?'Gönderen ve pilot listesini proje sahibi veya yöneticisi yönetebilir.':'Only project owners and administrators can manage sender and pilot settings.'}</p>:<>
-      <div ref={messages} className="sender-messages">{error&&<p role="alert" className="studio-error">{error}</p>}{notice&&<p role="status" className="studio-success">{notice}</p>}</div>
+      <div ref={messages} className="sender-messages">{error&&<p role="alert" className="studio-error"><Msg text={error}/></p>}{notice&&<p role="status" className="studio-success"><Msg text={notice}/></p>}</div>
       {!data&&busy&&<p role="status" className="studio-skeleton">{tr?'Gönderen ayarları yükleniyor…':'Loading sender settings…'}</p>}
       {data&&<>
         <dl className="sender-check-strip"><div><MailCheck size={19}/><dt>{tr?'Seçili SMTP erişimi':'Selected SMTP access'}</dt><dd>{readiness?.smtpReady?(tr?'Doğrulandı':'Verified'):(tr?'Bekliyor':'Pending')}</dd></div><div><Globe size={19}/><dt>{tr?'Alan adı sahipliği':'Domain ownership'}</dt><dd>{OWNERSHIP_LABELS[readiness!.ownership][tr?0:1]}</dd></div><div><UsersRound size={19}/><dt>{tr?'Pilot listesi':'Pilot allowlist'}</dt><dd>{data.allowlist.length} <span>/ {data.limits.activeAddresses}</span></dd></div></dl>
@@ -45,7 +49,7 @@ export default function ProjectEmailSender({lang,canManage}:{lang:Locale;canMana
         </form>
         {readiness?.connectionId&&<section className="studio-band sender-domain"><div className="studio-section-title"><h2><Globe size={18}/>{tr?'DNS sahiplik kontrolü':'DNS ownership check'}</h2><span className={`studio-badge ${readiness.ownership==='verified'?'sender-verified':''}`}>{OWNERSHIP_LABELS[readiness.ownership][tr?0:1]}</span></div>
           {data.dnsRecord?<><dl className="sender-dns-fields"><div><dt>{tr?'Kayıt türü':'Record type'}</dt><dd>TXT</dd></div><DnsField label={tr?'DNS adı':'DNS name'} value={data.dnsRecord.name} tr={tr} copy={copy}/><DnsField label={tr?'DNS değeri':'DNS value'} value={data.dnsRecord.value} tr={tr} copy={copy}/></dl><p className="studio-note">{tr?'DNS değerinin son geçerliliği':'DNS challenge expires'}: {date(data.dnsRecord.expiresAt)}</p></>:<p className="studio-data-notice">{tr?'Güncel DNS kaydı için göndereni yeniden kaydedin veya DNS değerini yenileyin.':'Save the current sender again or renew the DNS challenge.'}</p>}
-          {copyNotice&&<p className="studio-note" role="status">{copyNotice}</p>}
+          {copyNotice&&<p className="studio-note" role="status"><Msg text={copyNotice}/></p>}
           {readiness.ownershipExpiresAt&&<p className="studio-note">{tr?'Sahiplik kontrolünün geçerliliği':'Ownership check valid until'}: {date(readiness.ownershipExpiresAt)}</p>}
           {data.lastError&&<p className="sender-warning">{SENDER_ERROR_LABELS[data.lastError]?.[tr?0:1]||(tr?'DNS kontrolü tamamlanamadı.':'DNS check could not complete.')}</p>}
           {data.lastCheckedAt&&<p className="studio-note">{tr?'Son DNS kontrolü':'Last DNS check'}: {date(data.lastCheckedAt)}</p>}

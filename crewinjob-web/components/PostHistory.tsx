@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getHistory, updateMetrics, removePost, clearHistory, fetchPostMetrics, refreshMetrics, type PostHistoryItem } from '@/lib/post-history';
 import { useLang } from '@/lib/lang';
+import { localeTag } from '@/lib/i18n/shared';
 
 const PLATFORM_META: Record<string, { icon: string; label: string; color: string }> = {
   twitter:   { icon: '🐦', label: 'Twitter / X',   color: 'bg-slate-900 text-white'                },
@@ -44,13 +45,13 @@ export default function PostHistory({ onClose }: Props) {
   };
 
   const handleRemove = async (id: string) => {
-    if (!confirm(lang === 'tr' ? 'Bu paylaşımı geçmişten kaldırmak istediğine emin misin?' : 'Are you sure you want to remove this post from history?')) return;
+    if (!confirm(lang === 'tr' ? 'Bu paylaşımı geçmişten kaldırmak istediğine emin misin?' : 'Remove this post from history?')) return;
     await removePost(id);
     reload();
   };
 
   const handleClearAll = async () => {
-    if (!confirm(lang === 'tr' ? 'TÜM paylaşım geçmişini silmek istediğine emin misin? Bu işlem geri alınamaz.' : 'Are you sure you want to delete ALL post history? This action cannot be undone.')) return;
+    if (!confirm(lang === 'tr' ? 'TÜM paylaşım geçmişini silmek istediğine emin misin? Bu işlem geri alınamaz.' : "Delete ALL post history? This can't be undone.")) return;
     await clearHistory();
     reload();
   };
@@ -61,10 +62,10 @@ export default function PostHistory({ onClose }: Props) {
     const h = Math.floor(diff / 3600000);
     const d = Math.floor(diff / 86400000);
     if (m < 1)  return lang === 'tr' ? 'az önce' : 'just now';
-    if (m < 60) return lang === 'tr' ? `${m} dakika önce` : `${m} minutes ago`;
-    if (h < 24) return lang === 'tr' ? `${h} saat önce` : `${h} hours ago`;
-    if (d < 30) return lang === 'tr' ? `${d} gün önce` : `${d} days ago`;
-    return new Date(ts).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-US');
+    if (m < 60) return lang === 'tr' ? `${m} dakika önce` : `${m} min ago`;
+    if (h < 24) return lang === 'tr' ? `${h} saat önce` : `${h} h ago`;
+    if (d < 30) return lang === 'tr' ? `${d} gün önce` : `${d} d ago`;
+    return new Date(ts).toLocaleDateString(localeTag(lang));
   };
 
   return (
@@ -76,10 +77,10 @@ export default function PostHistory({ onClose }: Props) {
             <span className="text-xl">📊</span>
             <div>
               <h2 className="font-bold text-slate-800 dark:text-slate-100">
-                {lang === 'tr' ? 'Paylaşım Geçmişi & Metrikler' : 'Post History & Metrics'}
+                {lang === 'tr' ? 'Paylaşım Geçmişi & Metrikler' : 'Post history & metrics'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                {items.length} {lang === 'tr' ? 'paylaşım' : 'posts'} · {lang === 'tr' ? 'Beğeni, yorum, görüntüleme takibi' : 'Like, comment, view tracking'}
+                {items.length} {lang === 'tr' ? 'paylaşım' : 'posts'} · {lang === 'tr' ? 'Beğeni, yorum, görüntüleme takibi' : 'Tracking likes, comments and views'}
               </p>
             </div>
           </div>
@@ -92,18 +93,18 @@ export default function PostHistory({ onClose }: Props) {
                   className="text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {refreshAll
-                    ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yenileniyor...' : 'Refreshing...'}</>
-                    : `🔄 ${lang === 'tr' ? 'Tümünü Yenile' : 'Refresh All'}`}
+                    ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" /> {lang === 'tr' ? 'Yenileniyor…' : 'Refreshing…'}</>
+                    : `🔄 ${lang === 'tr' ? 'Tümünü Yenile' : 'Refresh all'}`}
                 </button>
                 <button
                   onClick={handleClearAll}
                   className="text-xs bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg font-medium transition-colors border border-red-200 dark:border-red-800"
                 >
-                  🗑️ {lang === 'tr' ? 'Hepsini Sil' : 'Delete All'}
+                  🗑️ {lang === 'tr' ? 'Hepsini Sil' : 'Delete all'}
                 </button>
               </>
             )}
-            <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none">✕</button>
+            <button onClick={onClose} aria-label={lang === 'tr' ? 'Kapat' : 'Close'} title={lang === 'tr' ? 'Kapat' : 'Close'} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none">✕</button>
           </div>
         </div>
 
@@ -156,6 +157,7 @@ export default function PostHistory({ onClose }: Props) {
                           onClick={() => handleRemove(item.id)}
                           className="text-[11px] text-slate-400 hover:text-red-500 px-1"
                           title={lang === 'tr' ? 'Geçmişten kaldır' : 'Remove from history'}
+                          aria-label={lang === 'tr' ? 'Geçmişten kaldır' : 'Remove from history'}
                         >✕</button>
                       </div>
                     </div>
@@ -198,7 +200,7 @@ function Stat({ label, value, loading, lang }: { label: string; value?: number; 
     <div className="bg-white dark:bg-slate-800 px-3 py-2 flex flex-col items-center justify-center">
       <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wide">{label}</span>
       <span className="text-base font-bold text-slate-700 dark:text-slate-200">
-        {loading ? <span className="text-slate-300">—</span> : (value ?? 0).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US')}
+        {loading ? <span className="text-slate-300">—</span> : (value ?? 0).toLocaleString(localeTag(lang))}
       </span>
     </div>
   );

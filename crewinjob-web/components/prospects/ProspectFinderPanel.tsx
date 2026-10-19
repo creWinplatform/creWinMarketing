@@ -2,6 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ProspectLead, ProspectLeadStatus, ProspectResearchRequest } from '@/lib/prospects';
+import { localeTag } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 
 type Lang = 'tr' | 'en';
 type Mode = 'research' | 'add' | 'pool';
@@ -85,7 +87,7 @@ function researchErrorMessage(value: unknown, lang: Lang): string {
   }
   return raw || (lang === 'tr'
     ? 'Araştırmanın neden tamamlanamadığı backend tarafından bildirilmedi.'
-    : 'The backend did not report why the research could not be completed.');
+    : "The backend didn't report why the research couldn't be completed.");
 }
 
 async function researchStatusRequest(jobId: string | number): Promise<ProspectApiResponse> {
@@ -330,7 +332,7 @@ function ProspectDecisionPanel({ item, lang }: { item: ProspectLead; lang: Lang 
       <section className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
         <p className="text-xs font-semibold uppercase tracking-wide text-ocean">{t('Neden bu firma?', 'Why this company?')}</p>
         <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{reasons.map((reason, index) => <li key={index} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-ocean" /><span>{reason}</span></li>)}</ul>
-        <div className="mt-3 flex flex-wrap gap-2">{item.sourceTitle && <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-300">{item.sourceTitle}</span>}{item.lastCheckedAt && <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-300">{t('Kontrol', 'Checked')}: {new Date(item.lastCheckedAt).toLocaleDateString(lang === 'tr' ? 'tr-TR' : 'en-GB')}</span>}</div>
+        <div className="mt-3 flex flex-wrap gap-2">{item.sourceTitle && <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-300">{item.sourceTitle}</span>}{item.lastCheckedAt && <span className="bg-slate-100 px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-700 dark:text-slate-300">{t('Kontrol', 'Checked')}: {new Date(item.lastCheckedAt).toLocaleDateString(localeTag(lang))}</span>}</div>
       </section>
 
       <section className="border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
@@ -373,7 +375,7 @@ function ResearchProgressPanel({ progress, lang }: { progress: ResearchProgress;
   const stages = [
     { id: 'starting', label: t('İstek hazırlanıyor', 'Preparing request') },
     { id: 'queued', label: t('Kuyruğa alındı', 'Queued') },
-    { id: 'running', label: t('AI araştırıyor', 'AI researching') },
+    { id: 'running', label: t('AI araştırıyor', 'AI is researching') },
     { id: 'saving', label: t('Lead’ler kaydediliyor', 'Saving leads') },
     { id: 'completed', label: t('Tamamlandı', 'Completed') },
   ];
@@ -391,7 +393,7 @@ function ResearchProgressPanel({ progress, lang }: { progress: ResearchProgress;
       <div>
         <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{statusText}</p>
         {progress.querySummary && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{progress.querySummary}</p>}
-        {progress.detail && <p className={`mt-1 text-xs ${unsuccessful ? 'text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-slate-400'}`}>{progress.detail}</p>}
+        {progress.detail && <p className={`mt-1 text-xs ${unsuccessful ? 'text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-slate-400'}`}><Msg text={progress.detail} /></p>}
         {progress.jobId && <p className="mt-1 text-[11px] text-slate-400">{t('İşlem kimliği', 'Job ID')}: {progress.jobId}</p>}
       </div>
       <div className="shrink-0 text-right"><span className="block text-lg font-semibold text-slate-800 dark:text-slate-100">{progress.totalFound}</span><span className="text-[11px] text-slate-500 dark:text-slate-400">{t('lead bulundu', 'leads found')}</span></div>
@@ -466,7 +468,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       setBackendReady(capabilityRoot.researchEnabled !== false && capabilityRoot.campaignDispatchEnabled !== false);
       setFeatureDisabled(capabilityRoot.researchEnabled === false);
       const providerRoot = responseRoot(provider);
-      setProviderStatus(providerRoot.provider ? String(providerRoot.provider) : t('Provider hazır', 'Provider ready'));
+      setProviderStatus(providerRoot.provider ? String(providerRoot.provider) : t('Sağlayıcı hazır', 'Provider ready'));
       setSourceCount(responseItems(sources).length || Number(responseRoot(sources).totalCount || 0) || 0);
       const remoteLeads = responseItems(remote).map(backendLead).filter((item): item is ProspectLead => Boolean(item));
       if (remoteLeads.length) setLeads(current => { const merged = new Map(current.map(item => [item.email.toLowerCase(), item])); remoteLeads.forEach(item => merged.set(item.email.toLowerCase(), item)); return Array.from(merged.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); });
@@ -521,7 +523,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
         setResearchProgress(current => ({
           ...current,
           stage: 'running',
-          detail: t(`Durum bilgisi alınamadı, yeniden deneniyor (${consecutiveFailures}/4).`, `Status could not be retrieved; retrying (${consecutiveFailures}/4).`),
+          detail: t(`Durum bilgisi alınamadı, yeniden deneniyor (${consecutiveFailures}/4).`, `Couldn't get the status; retrying (${consecutiveFailures}/4).`),
         }));
         if (consecutiveFailures >= 4) throw new Error(message);
         continue;
@@ -535,7 +537,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
         detail: undefined,
       }));
       if (done.includes(status)) return job;
-      setOperationMessage(t(`AI araştırması ${status === 'queued' ? 'kuyrukta' : 'sürüyor'}... (${job.totalFound ?? 0} bulundu)`, `AI research ${status === 'queued' ? 'is queued' : 'is running'}... (${job.totalFound ?? 0} found)`));
+      setOperationMessage(t(`AI araştırması ${status === 'queued' ? 'kuyrukta' : 'sürüyor'}… (${job.totalFound ?? 0} bulundu)`, `AI research ${status === 'queued' ? 'is queued' : 'is running'}… (${job.totalFound ?? 0} found)`));
     }
     return null; // zaman aşımı
   };
@@ -568,7 +570,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
 
       // StartResearch asenkron job döndürüyor (jobId + status) — tamamlanana kadar poll et
       if (!items.length && jobId != null && jobId !== '') {
-        setOperationMessage(t('AI araştırması kuyruğa alındı, sonuçlar bekleniyor...', 'AI research queued, waiting for results...'));
+        setOperationMessage(t('AI araştırması kuyruğa alındı, sonuçlar bekleniyor…', 'AI research is queued, waiting for results…'));
         const job = await pollResearchJob(jobId);
         if (!job) {
           setResearchProgress(current => ({
@@ -611,13 +613,13 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       mergeLeads(incoming);
       setResearchProgress(current => ({ ...current, stage: 'saving', totalFound: incoming.length }));
       const persisted = await Promise.allSettled(incoming.map(item => prospectRequest('Upsert', 'POST', backendUpsertPayload(item))));
-      if (persisted.some(item => item.status === 'rejected')) setError(t('Araştırma sonuclari alindi ancak bazi lead kayitlari backende yazılamadı.', 'Research results were received, but some leads could not be saved to the backend.'));
+      if (persisted.some(item => item.status === 'rejected')) setError(t('Araştırma sonuçları alındı ancak bazı lead kayıtları backend’e yazılamadı.', "Research results were received, but some leads couldn't be saved to the backend."));
       setResearchProgress(current => ({ ...current, stage: 'completed', totalFound: incoming.length }));
       setMode('pool');
     } catch (err) {
       const msg = err instanceof Error ? err.message : '';
       if (/devre dışı|feature_disabled|ResearchEnabled/i.test(msg)) { setFeatureDisabled(true); }
-      const detail = researchErrorMessage(msg || t('AI araştırması başlatılamadı.', 'AI research could not start.'), lang);
+      const detail = researchErrorMessage(msg || t('AI araştırması başlatılamadı.', "Couldn't start AI research."), lang);
       setResearchProgress(current => ({ ...current, stage: 'failed', detail }));
     }
     finally { setBusy(false); }
@@ -642,7 +644,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       }
       mergeLeads([savedLead]);
       setCompanyName(''); setEmail(''); setCountry(''); setCompanyType(''); setWebsite(''); setContactName(''); setContactRole(''); setNotes(''); setMode('pool');
-    } catch (err) { setError(err instanceof Error ? err.message : t('Lead kaydedilemedi.', 'Lead could not be saved.')); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('Lead kaydedilemedi.', "Couldn't save the lead.")); }
     finally { setBusy(false); }
   };
 
@@ -658,7 +660,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
         await Promise.all(imported.map(item => prospectRequest('Upsert', 'POST', backendUpsertPayload(item))));
       }
       mergeLeads(imported); setMode('pool');
-    } catch (err) { setError(err instanceof Error ? err.message : t('Lead içe aktarılamadı.', 'Leads could not be imported.')); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('Lead içe aktarılamadı.', "Couldn't import the leads.")); }
     finally { setBusy(false); }
   };
 
@@ -669,7 +671,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
     try {
       await prospectRequest('UpdateStatus', 'POST', { id, prospectId: id, email: item.email, status });
       setLeads(current => current.map(lead => lead.id === id ? { ...lead, status, updatedAt: new Date().toISOString() } : lead));
-    } catch (err) { setError(err instanceof Error ? err.message : t('Lead durumu güncellenemedi.', 'Lead status could not be updated.')); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('Lead durumu güncellenemedi.', "Couldn't update the lead status.")); }
     finally { setBusy(false); }
   };
 
@@ -681,7 +683,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       const verified = responseItems(result);
       if (verified.length) setLeads(current => current.map(item => { const match = verified.find(row => String(row.id || row.prospectId || '').toLowerCase() === item.id.toLowerCase() || String(row.email || '').toLowerCase() === item.email.toLowerCase()); return match ? { ...item, emailValid: match.isValid === undefined ? item.emailValid : Boolean(match.isValid), emailDeliverable: match.isDeliverable === undefined ? item.emailDeliverable : Boolean(match.isDeliverable), emailVerificationReason: match.reason ? String(match.reason) : item.emailVerificationReason, emailCheckedAt: match.checkedAt ? String(match.checkedAt) : new Date().toISOString() } : item; }));
       setOperationMessage(t(`${items.length} e-posta doğrulaması tamamlandı.`, `${items.length} email(s) verified.`));
-    } catch (err) { setError(err instanceof Error ? err.message : t('E-posta doğrulaması başlatılamadı.', 'Email verification could not start.')); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('E-posta doğrulaması başlatılamadı.', "Couldn't start email verification.")); }
     finally { setBusy(false); }
   };
 
@@ -692,7 +694,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       const results = await Promise.all(items.map(async item => ({ item, result: await prospectRequest(`GetSuppressionStatus?email=${encodeURIComponent(item.email)}`, 'GET') })));
       setLeads(current => current.map(item => { const match = results.find(result => result.item.id === item.id); if (!match) return item; const root = responseRoot(match.result); return { ...item, isSuppressed: Boolean(root.isSuppressed), suppressionReason: root.reason ? String(root.reason) : undefined }; }));
       setOperationMessage(t('Suppression durumları güncellendi.', 'Suppression statuses updated.'));
-    } catch (err) { setError(err instanceof Error ? err.message : t('Suppression kontrolü başarısız.', 'Suppression check failed.')); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('Suppression kontrolü başarısız.', "Couldn't check suppression status.")); }
     finally { setBusy(false); }
   };
 
@@ -703,7 +705,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       await prospectRequest('Suppress', 'POST', { email: item.email, reason: 'unsubscribed' });
       setLeads(current => current.map(lead => lead.id === item.id ? { ...lead, isSuppressed: true, suppressionReason: 'unsubscribed', updatedAt: new Date().toISOString() } : lead));
       setOperationMessage(t('Lead suppression listesine eklendi.', 'Lead added to the suppression list.'));
-    } catch (err) { setError(err instanceof Error ? err.message : t('Lead suppression listesine eklenemedi.', 'Lead could not be suppressed.')); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('Lead suppression listesine eklenemedi.', "Couldn't add the lead to the suppression list.")); }
     finally { setBusy(false); }
   };
 
@@ -714,7 +716,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
     try {
       await prospectRequest('Preflight', 'POST', { prospectIds: items.map(item => item.id), emails: items.map(item => item.email), channel: 'email' });
       onUseInCampaign(items.map(item => item.email));
-    } catch (err) { setError(err instanceof Error ? err.message : t('Kampanya ön kontrolü başarısız.', 'Campaign preflight failed.')); }
+    } catch (err) { setError(err instanceof Error ? err.message : t('Kampanya ön kontrolü başarısız.', "Campaign preflight didn't pass.")); }
     finally { setBusy(false); }
   };
   const toggleSelected = (id: string) => setSelectedIds(current => current.includes(id) ? current.filter(item => item !== id) : [...current, id]);
@@ -726,12 +728,12 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5">{[[t('Toplam lead', 'Total leads'), leads.length], [t('İnceleme bekliyor', 'Needs review'), leads.filter(item => item.status === 'review').length], [t('Kampanyaya hazır', 'Campaign ready'), approvedLeads.length], [t('Dönüşüm', 'Converted'), leads.filter(item => ['registered', 'job_posted', 'cv_unlocked'].includes(item.status)).length]].map(([name, value]) => <div key={String(name)} className="border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3"><span className="block text-[11px] uppercase tracking-wide text-slate-400">{name}</span><b className="block text-xl text-slate-800 dark:text-slate-100 mt-1">{value}</b></div>)}</div>
     </div>
     <div className="flex gap-1 px-5 pt-4 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">{([['research', t('AI ile araştır', 'Research with AI')], ['add', t('Görüşme / lead ekle', 'Add meeting / lead')], ['pool', t('Lead havuzu', 'Lead pool')]] as const).map(([value, text]) => <button key={value} type="button" onClick={() => setMode(value)} className={`whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 ${mode === value ? 'border-ocean text-ocean' : 'border-transparent text-slate-500 dark:text-slate-400'}`}>{text}</button>)}</div>
-    {featureDisabled && <div className="mx-5 mt-4 border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 px-3 py-2 text-sm">⚠️ {t('AI araştırma özelliği şu an devre dışı. Lütfen sistem yöneticinizle iletişime geçin.', 'AI research feature is currently disabled. Please contact your system administrator.')}</div>}
-    {error && researchProgress.stage !== 'failed' && <div className="mx-5 mt-4 border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 px-3 py-2 text-sm">{error}</div>}
+    {featureDisabled && <div className="mx-5 mt-4 border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 px-3 py-2 text-sm">⚠️ {t('AI araştırma özelliği şu an devre dışı. Lütfen sistem yöneticinizle iletişime geçin.', 'AI research is currently disabled. Please contact your system administrator.')}</div>}
+    {error && researchProgress.stage !== 'failed' && <div className="mx-5 mt-4 border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 px-3 py-2 text-sm"><Msg text={error} /></div>}
     {researchProgress.stage !== 'idle' && <ResearchProgressPanel progress={researchProgress} lang={lang} />}
     <div className="p-5">
-      {mode === 'research' && <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-6"><div className="space-y-4"><div><label className="text-xs text-slate-500 block mb-1">{t('Hedef şirket tipleri', 'Target company types')}</label><textarea value={research.companyTypes.join('\n')} onChange={event => setResearch(current => ({ ...current, companyTypes: splitList(event.target.value) }))} rows={3} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div><div className="grid md:grid-cols-2 gap-3"><div><label className="text-xs text-slate-500 block mb-1">{t('Ülkeler', 'Countries')}</label><input value={research.countries.join(', ')} onChange={event => setResearch(current => ({ ...current, countries: splitList(event.target.value).map(item => item.toUpperCase()) }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="TR, GR, NL, SG" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Maksimum sonuç', 'Maximum results')}</label><input type="number" min={5} max={100} value={research.maxResults} onChange={event => setResearch(current => ({ ...current, maxResults: Math.min(100, Math.max(5, Number(event.target.value) || 5)) }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div></div><div><label className="text-xs text-slate-500 block mb-1">{t('Arama sinyalleri', 'Search signals')}</label><textarea value={research.signals.join('\n')} onChange={event => setResearch(current => ({ ...current, signals: splitList(event.target.value) }))} rows={3} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder={t('Aktif işe alım, fleet management, crew vacancies', 'Active hiring, fleet management, crew vacancies')} /></div><button type="button" onClick={runResearch} disabled={busy} className="bg-ocean text-white px-4 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">{busy ? t('Araştırılıyor...', 'Researching...') : t('AI araştırmasını başlat', 'Start AI research')}</button></div><div className="border-l-4 border-amber-400 bg-amber-50/70 dark:bg-amber-950/20 px-4 py-4 text-sm text-slate-700 dark:text-slate-200"><p className="font-semibold">{t('Sonuçlar nasıl kullanılacak?', 'How results are used')}</p><p className="text-xs leading-relaxed mt-2">{t('AI yalnızca kamuya açık kaynaklardan firma sinyali toplar. Her kayıtta kaynak URL’si, son kontrol zamanı ve puan gerekçesi tutulur.', 'AI uses public sources for company signals. Each record keeps a source URL, last checked time and score rationale.')}</p><p className="text-xs leading-relaxed mt-3 text-amber-800 dark:text-amber-300">{t('LinkedIn otomatik scraping ve izinsiz kişisel e-posta tahmini kullanılmaz. Son gönderim öncesi firma ve iletişim izni incelenmelidir.', 'No LinkedIn scraping or guessed personal emails are used. Review the company and outreach basis before sending.')}</p></div></div>}
-      {mode === 'add' && <div className="max-w-4xl space-y-4"><div className="grid md:grid-cols-2 gap-3"><div><label className="text-xs text-slate-500 block mb-1">{t('Firma adı', 'Company name')} *</label><input value={companyName} onChange={event => setCompanyName(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Genel iletişim e-postası', 'Business email')} *</label><input type="email" value={email} onChange={event => setEmail(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="info@company.com" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Şirket tipi', 'Company type')}</label><select value={companyType} onChange={event => setCompanyType(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"><option value="">{t('Seçin', 'Select')}</option>{COMPANY_TYPES.map(type => <option key={type} value={type}>{companyTypeLabel(type, lang)}</option>)}</select></div><div><label className="text-xs text-slate-500 block mb-1">{t('Ülke', 'Country')}</label><input value={country} onChange={event => setCountry(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="TR" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Web sitesi', 'Website')}</label><input type="url" value={website} onChange={event => setWebsite(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="https://" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Görüşülen kişi / rol', 'Contact / role')}</label><input value={`${contactName}${contactName && contactRole ? ' — ' : ''}${contactRole}`} onChange={event => { const [namePart, rolePart] = event.target.value.split(' — '); setContactName(namePart || ''); setContactRole(rolePart || ''); }} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder={t('İsim — Commercial Manager', 'Name — Commercial Manager')} /></div></div><div><label className="text-xs text-slate-500 block mb-1">{t('Görüşme notu / sonraki adım', 'Meeting notes / next step')}</label><textarea value={notes} onChange={event => setNotes(event.target.value)} rows={4} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div><div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => void addManualLead()} disabled={busy} className="bg-ocean text-white px-4 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">{busy ? t('Kaydediliyor...', 'Saving...') : t('Lead’i kaydet', 'Save lead')}</button><label className={`border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-4 py-2.5 rounded-lg text-sm ${busy ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}>{t('CSV içe aktar', 'Import CSV')}<input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importCsv(file); event.target.value = ''; }} /></label><span className="text-xs text-slate-400">{t('CSV: companyName, email, country, companyType, website', 'CSV: companyName, email, country, companyType, website')}</span></div></div>}
+      {mode === 'research' && <div className="grid lg:grid-cols-[1.2fr_.8fr] gap-6"><div className="space-y-4"><div><label className="text-xs text-slate-500 block mb-1">{t('Hedef şirket tipleri', 'Target company types')}</label><textarea value={research.companyTypes.join('\n')} onChange={event => setResearch(current => ({ ...current, companyTypes: splitList(event.target.value) }))} rows={3} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div><div className="grid md:grid-cols-2 gap-3"><div><label className="text-xs text-slate-500 block mb-1">{t('Ülkeler', 'Countries')}</label><input value={research.countries.join(', ')} onChange={event => setResearch(current => ({ ...current, countries: splitList(event.target.value).map(item => item.toUpperCase()) }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="TR, GR, NL, SG" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Maksimum sonuç', 'Maximum results')}</label><input type="number" min={5} max={100} value={research.maxResults} onChange={event => setResearch(current => ({ ...current, maxResults: Math.min(100, Math.max(5, Number(event.target.value) || 5)) }))} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div></div><div><label className="text-xs text-slate-500 block mb-1">{t('Arama sinyalleri', 'Search signals')}</label><textarea value={research.signals.join('\n')} onChange={event => setResearch(current => ({ ...current, signals: splitList(event.target.value) }))} rows={3} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder={t('Aktif işe alım, fleet management, crew vacancies', 'Active hiring, fleet management, crew vacancies')} /></div><button type="button" onClick={runResearch} disabled={busy} className="bg-ocean text-white px-4 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">{busy ? t('Araştırılıyor…', 'Researching…') : t('AI araştırmasını başlat', 'Start AI research')}</button></div><div className="border-l-4 border-amber-400 bg-amber-50/70 dark:bg-amber-950/20 px-4 py-4 text-sm text-slate-700 dark:text-slate-200"><p className="font-semibold">{t('Sonuçlar nasıl kullanılacak?', 'How results are used')}</p><p className="text-xs leading-relaxed mt-2">{t('AI yalnızca kamuya açık kaynaklardan firma sinyali toplar. Her kayıtta kaynak URL’si, son kontrol zamanı ve puan gerekçesi tutulur.', 'AI uses public sources for company signals. Each record keeps a source URL, last checked time and score rationale.')}</p><p className="text-xs leading-relaxed mt-3 text-amber-800 dark:text-amber-300">{t('LinkedIn otomatik scraping ve izinsiz kişisel e-posta tahmini kullanılmaz. Son gönderim öncesi firma ve iletişim izni incelenmelidir.', 'No LinkedIn scraping or guessed personal emails are used. Review the company and outreach basis before sending.')}</p></div></div>}
+      {mode === 'add' && <div className="max-w-4xl space-y-4"><div className="grid md:grid-cols-2 gap-3"><div><label className="text-xs text-slate-500 block mb-1">{t('Firma adı', 'Company name')} *</label><input value={companyName} onChange={event => setCompanyName(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Genel iletişim e-postası', 'Business email')} *</label><input type="email" value={email} onChange={event => setEmail(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="info@company.com" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Şirket tipi', 'Company type')}</label><select value={companyType} onChange={event => setCompanyType(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm"><option value="">{t('Seçin', 'Select')}</option>{COMPANY_TYPES.map(type => <option key={type} value={type}>{companyTypeLabel(type, lang)}</option>)}</select></div><div><label className="text-xs text-slate-500 block mb-1">{t('Ülke', 'Country')}</label><input value={country} onChange={event => setCountry(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="TR" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Web sitesi', 'Website')}</label><input type="url" value={website} onChange={event => setWebsite(event.target.value)} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder="https://" /></div><div><label className="text-xs text-slate-500 block mb-1">{t('Görüşülen kişi / rol', 'Contact / role')}</label><input value={`${contactName}${contactName && contactRole ? ' — ' : ''}${contactRole}`} onChange={event => { const [namePart, rolePart] = event.target.value.split(' — '); setContactName(namePart || ''); setContactRole(rolePart || ''); }} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" placeholder={t('İsim — Commercial Manager', 'Name — Commercial Manager')} /></div></div><div><label className="text-xs text-slate-500 block mb-1">{t('Görüşme notu / sonraki adım', 'Meeting notes / next step')}</label><textarea value={notes} onChange={event => setNotes(event.target.value)} rows={4} className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 dark:text-white rounded-lg px-3 py-2 text-sm" /></div><div className="flex flex-wrap items-center gap-3"><button type="button" onClick={() => void addManualLead()} disabled={busy} className="bg-ocean text-white px-4 py-2.5 rounded-lg text-sm font-semibold disabled:opacity-50">{busy ? t('Kaydediliyor…', 'Saving…') : t('Lead’i kaydet', 'Save lead')}</button><label className={`border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-4 py-2.5 rounded-lg text-sm ${busy ? 'pointer-events-none opacity-50' : 'cursor-pointer'}`}>{t('CSV içe aktar', 'Import CSV')}<input type="file" accept=".csv,.txt,text/csv,text/plain" className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void importCsv(file); event.target.value = ''; }} /></label><span className="text-xs text-slate-400">{t('CSV: companyName, email, country, companyType, website', 'CSV: companyName, email, country, companyType, website')}</span></div></div>}
       {mode === 'pool' && <div>
         <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -770,7 +772,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
           {expandedLeadId === item.id && <div className="border border-t-0 border-cyan-200 dark:border-cyan-900"><ProspectDecisionPanel item={item} lang={lang} /></div>}
         </div>)}{!filteredLeads.length && <div className="py-10 text-center text-sm text-slate-400">{t('Henüz prospect yok.', 'No prospects yet.')}</div>}</div>
       </div>}
-      {mode === 'pool' && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 dark:border-slate-700 pt-4"><button type="button" onClick={() => void checkSuppression(approvedLeads.filter(item => selectedIds.length === 0 || selectedIds.includes(item.id)))} disabled={busy || !selectedApprovedEmails.length} className="border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili suppression durumunu kontrol et', 'Check suppression for selected')}</button>{selectedApprovedEmails.length === 1 && <button type="button" onClick={() => void suppressLead(approvedLeads.find(item => item.email === selectedApprovedEmails[0])!)} disabled={busy} className="border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili lead’i engelle', 'Suppress selected lead')}</button>}{providerStatus && <span className="text-xs text-slate-500 dark:text-slate-400">{t('Provider:', 'Provider:')} {providerStatus}</span>}{sourceCount !== null && <span className="text-xs text-slate-500 dark:text-slate-400">{sourceCount} {t('araştırma kaynağı', 'research sources')}</span>}{operationMessage && <span className="text-xs text-green-700 dark:text-green-300">{operationMessage}</span>}</div>}
+      {mode === 'pool' && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 dark:border-slate-700 pt-4"><button type="button" onClick={() => void checkSuppression(approvedLeads.filter(item => selectedIds.length === 0 || selectedIds.includes(item.id)))} disabled={busy || !selectedApprovedEmails.length} className="border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili suppression durumunu kontrol et', 'Check suppression for selected')}</button>{selectedApprovedEmails.length === 1 && <button type="button" onClick={() => void suppressLead(approvedLeads.find(item => item.email === selectedApprovedEmails[0])!)} disabled={busy} className="border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili lead’i engelle', 'Suppress selected lead')}</button>}{providerStatus && <span className="text-xs text-slate-500 dark:text-slate-400">{t('Sağlayıcı:', 'Provider:')} {providerStatus}</span>}{sourceCount !== null && <span className="text-xs text-slate-500 dark:text-slate-400">{sourceCount} {t('araştırma kaynağı', 'research sources')}</span>}{operationMessage && <span className="text-xs text-green-700 dark:text-green-300"><Msg text={operationMessage} /></span>}</div>}
     </div>
   </section>;
 }

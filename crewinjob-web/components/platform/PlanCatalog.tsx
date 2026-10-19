@@ -4,6 +4,7 @@ import {Check,CheckCircle2,ArrowRight,Clock3} from 'lucide-react';
 import type {Locale} from '@/lib/platform/catalog';
 import type {PlanUsage} from '@/lib/platform/plan-types';
 import {projectRequest} from '@/lib/platform/client';
+import Msg from '@/components/Msg';
 
 export default function PlanCatalog({data,lang,onSaved}:{data:PlanUsage;lang:Locale;onSaved:(data:PlanUsage)=>void}){
   const tr=lang==='tr', [busy,setBusy]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(false);
@@ -16,7 +17,7 @@ export default function PlanCatalog({data,lang,onSaved}:{data:PlanUsage;lang:Loc
   return <section className="plan-catalog" aria-label={tr?'Paketler':'Packages'}>
     <header className="plan-catalog-heading"><div><span className="studio-eyebrow">{tr?'SIRADAKİ ADIM':'YOUR NEXT STEP'}</span><h3>{tr?'Projenize uygun paketi belirleyin':'Find the right fit for your project'}</h3></div><span className="studio-badge"><Clock3 size={13}/>{tr?'Yakında':'Coming soon'}</span></header>
     <p className="studio-note">{tr?'Aylık USD fiyatları · 1 proje / marka. Tercih kaydı ödeme başlatmaz ve mevcut haklarınızı değiştirmez.':'Monthly USD prices · 1 project / brand. Saving a preference does not start a payment or change your current access.'}</p>
-    {error&&<p className="studio-error" role="alert">{error}</p>}
+    {error&&<p className="studio-error" role="alert"><Msg text={error}/></p>}
     {saved&&<p className="plan-preference-saved" role="status"><CheckCircle2 size={16}/>{tr?'Paket tercihiniz kaydedildi. Ödeme alınmadı.':'Package preference saved. No payment was taken.'}</p>}
     <div className="plan-package-grid">{data.commercial.catalog.map(plan=>{
       const selected=data.commercial.preference?.planId===plan.id,later=plan.availability==='later';

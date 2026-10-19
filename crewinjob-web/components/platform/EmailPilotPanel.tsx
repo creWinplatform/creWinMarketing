@@ -4,6 +4,8 @@ import {useCallback, useEffect, useId, useRef, useState} from 'react';
 import {Check, ClipboardCheck, Clock3, LockKeyhole, Play, Plus, RefreshCw, X} from 'lucide-react';
 import type {Locale} from '@/lib/platform/catalog';
 import {projectRequest} from '@/lib/platform/client';
+import {translateMessage} from '@/lib/i18n/messages';
+import {localeTag} from '@/lib/i18n/shared';
 import {PILOT_REASON_LABELS, PILOT_STATE_LABELS, type EmailPilotJob, type EmailPilotWorkspace} from '@/lib/platform/email-pilot-types';
 import '@/lib/platform/email-pilot.css';
 
@@ -167,10 +169,10 @@ export default function EmailPilotPanel({campaignId, expectedDigest, expectedRev
   }
 
   const busy = pending !== null;
-  const date = (value: string) => new Date(value).toLocaleString(tr ? 'tr-TR' : 'en-GB');
+  const date = (value: string) => new Date(value).toLocaleString(localeTag(lang));
   const failureText = (failure: Failure) => failure.timeout
     ? (tr ? 'İstek zaman aşımına uğradı.' : 'The request timed out.')
-    : failure.message || (tr ? 'İstek tamamlanamadı.' : 'The request could not be completed.');
+    : translateMessage(failure.message, lang) || (tr ? 'İstek tamamlanamadı.' : 'Request failed.');
 
   return <section className="email-pilot" aria-labelledby={headingId}>
     <header className="email-pilot-heading">

@@ -1,9 +1,11 @@
 'use client';
 import { useState, type FormEvent } from 'react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
+import { translateMessage } from '@/lib/i18n/messages';
 
 export default function ProjectProfileEditor({ workspace, lang, onUpdate }: { workspace: WorkspaceContext; lang: Locale; onUpdate?: (workspace: WorkspaceContext) => void }) {
   const tr = lang === 'tr';
+  const failed = tr ? 'İstek tamamlanamadı.' : 'Request failed.';
   const project = workspace.project;
   const [name, setName] = useState(project.name);
   const [website, setWebsite] = useState(project.website);
@@ -21,9 +23,9 @@ export default function ProjectProfileEditor({ workspace, lang, onUpdate }: { wo
       const response = await fetch('/api/workspace', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, website, timezone, language, brandVoice: voice,
         goals: goals.map(goal => ({ id: goal.id, label: localized(goal.title), audience: localized(goal.audience), stages: goal.stages.split('\n').map(stage => stage.trim()).filter(Boolean).map(localized) })) }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Request failed.');
+      if (!response.ok) throw new Error(data.error || failed);
       onUpdate?.(data); setSaved(true);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Request failed.'); }
+    } catch (reason) { setError(reason instanceof Error && reason.message ? reason.message : failed); }
     finally { setBusy(false); }
   };
   const input = 'mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100';
@@ -32,7 +34,7 @@ export default function ProjectProfileEditor({ workspace, lang, onUpdate }: { wo
     <label className="block text-xs">{tr ? 'Marka dili ve tonu' : 'Brand voice'}<textarea rows={3} maxLength={2000} value={voice} onChange={event => setVoice(event.target.value)} className={input} /></label>
     <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-sm font-semibold">{tr ? 'Büyüme hedefleri' : 'Growth goals'}</h2><button disabled={goals.length >= 10 || busy} type="button" onClick={() => setGoals([...goals, { id: crypto.randomUUID(), title: '', audience: '', stages: '' }])} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs dark:border-slate-600">{tr ? 'Hedef ekle' : 'Add goal'}</button></div>
     {goals.map((goal, index) => <fieldset key={goal.id} className="space-y-3 border-t border-slate-200 pt-3 dark:border-slate-700"><legend className="text-xs font-medium">{tr ? `Hedef ${index + 1}` : `Goal ${index + 1}`}</legend><div className="grid grid-cols-1 gap-3 sm:grid-cols-2"><label className="text-xs">{tr ? 'Hedef adı' : 'Goal name'}<input required maxLength={200} value={goal.title} onChange={event => setGoals(goals.map(item => item.id === goal.id ? { ...item, title: event.target.value } : item))} className={input} /></label><label className="text-xs">{tr ? 'Hedef kitle' : 'Audience'}<input required maxLength={200} value={goal.audience} onChange={event => setGoals(goals.map(item => item.id === goal.id ? { ...item, audience: event.target.value } : item))} className={input} /></label></div><label className="block text-xs">{tr ? 'Dönüşüm adımları (her satıra bir adım, en fazla 8)' : 'Conversion stages (one per line, up to 8)'}<textarea required rows={3} value={goal.stages} onChange={event => setGoals(goals.map(item => item.id === goal.id ? { ...item, stages: event.target.value } : item))} className={input} /></label><button type="button" onClick={() => setGoals(goals.filter(item => item.id !== goal.id))} className="text-xs text-red-600 dark:text-red-300">{tr ? 'Hedefi kaldır' : 'Remove goal'}</button></fieldset>)}
-    {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{error}</p>}{saved && <p role="status" className="text-sm text-emerald-600 dark:text-emerald-300">{tr ? 'Proje ayarları kaydedildi.' : 'Project settings saved.'}</p>}
-    <div className="flex justify-end"><button disabled={busy} className="rounded-lg bg-ocean px-4 py-2 text-sm text-white disabled:opacity-50">{tr ? 'Ayarları kaydet' : 'Save settings'}</button></div>
+    {error && <p role="alert" className="text-sm text-red-600 dark:text-red-300">{translateMessage(error, lang)}</p>}{saved && <p role="status" className="text-sm text-emerald-600 dark:text-emerald-300">{tr ? 'Proje ayarları kaydedildi.' : 'Project settings saved.'}</p>}
+    <div className="flex justify-end"><button disabled={busy} className="studio-primary disabled:opacity-50">{tr ? 'Ayarları kaydet' : 'Save settings'}</button></div>
   </form></details>;
 }

@@ -4,6 +4,10 @@ import { Search, Plus, ExternalLink } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import type { PageAudit, AuditFinding } from '@/lib/site-audit';
 import { projectRequest } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
+const PRIORITY_LABELS: Record<string, [string, string]> = { high: ['Yüksek', 'High'], medium: ['Orta', 'Medium'], low: ['Düşük', 'Low'] };
 export default function ProjectAudit({
   workspace,
   lang,
@@ -34,7 +38,7 @@ export default function ProjectAudit({
         }),
       );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setBusy(false);
     }
@@ -57,7 +61,7 @@ export default function ProjectAudit({
       });
       setSaved((current) => [...current, finding.id]);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Request failed.');
+      setError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.');
     } finally {
       setSaving('');
     }
@@ -66,7 +70,7 @@ export default function ProjectAudit({
     <section>
       <header className="studio-page-heading">
         <div>
-          <p className="studio-eyebrow">PUBLIC HTML</p>
+          <p className="studio-eyebrow">{tr ? 'GENEL HTML' : 'PUBLIC HTML'}</p>
           <h1>{tr ? 'Site denetimi' : 'Site audit'}</h1>
           <p className="studio-subtitle">
             {tr
@@ -98,7 +102,7 @@ export default function ProjectAudit({
       </form>
       {error && (
         <p className="studio-error" role="alert">
-          {error}
+          <Msg text={error} />
         </p>
       )}
       {busy && (
@@ -113,8 +117,8 @@ export default function ProjectAudit({
           <div className="studio-data-notice mt-5">
             <span className="status-dot" />
             HTTP {audit.httpStatus} ·{' '}
-            {new Date(audit.checkedAt).toLocaleString(tr ? 'tr-TR' : 'en-GB')} ·
-            public_html
+            {new Date(audit.checkedAt).toLocaleString(localeTag(lang))} ·{' '}
+            {tr ? 'genel HTML' : 'public HTML'}
           </div>
           <div className="studio-stats">
             {[
@@ -172,9 +176,9 @@ export default function ProjectAudit({
                   <div className="studio-draft-top">
                     <div>
                       <span className="studio-badge">
-                        {finding.priority} · {finding.category}
+                        {PRIORITY_LABELS[finding.priority]?.[tr ? 0 : 1] || finding.priority} · {translateMessage(finding.category, lang)}
                       </span>
-                      <h2 className="mt-2">{finding.title}</h2>
+                      <h2 className="mt-2">{translateMessage(finding.title, lang)}</h2>
                     </div>
                     {canWrite && (
                       <button
@@ -193,9 +197,9 @@ export default function ProjectAudit({
                       </button>
                     )}
                   </div>
-                  <p className="studio-draft-content">{finding.detail}</p>
-                  <p className="studio-note">{finding.evidence}</p>
-                  <p className="mt-3 text-xs">{finding.recommendation}</p>
+                  <p className="studio-draft-content">{translateMessage(finding.detail, lang)}</p>
+                  <p className="studio-note">{translateMessage(finding.evidence, lang)}</p>
+                  <p className="mt-3 text-xs">{translateMessage(finding.recommendation, lang)}</p>
                 </article>
               ))
             )}

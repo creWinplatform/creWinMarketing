@@ -5,6 +5,9 @@ import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { PRODUCT_SOURCE_LIMITS, type ProductAttributeType, type ProductPreview, type ProductSource, type ProductSourceConfig } from '@/lib/platform/product-data-types';
 import ProductWebhooksPanel from './ProductWebhooksPanel';
+import { localeTag } from '@/lib/i18n/shared';
+import { translateMessage } from '@/lib/i18n/messages';
+import Msg from '@/components/Msg';
 
 type Job = {id:string;connectionId:string;status:string;attempts:number;message:string};
 type RecordItem = ProductPreview['samples'][number] & {receivedAt:string};
@@ -16,7 +19,7 @@ export default function ProductDataSources({lang}:{lang:Locale}) {
   return <div><div className="product-data-modes" role="tablist" aria-label={lang==='tr'?'Veri kaynağı türü':'Source type'}>{(['rest','webhook'] as const).map(value=><button key={value} role="tab" aria-selected={mode===value} onClick={()=>setMode(value)}>{value==='rest'?'REST API':lang==='tr'?'İmzalı webhook':'Signed webhook'}</button>)}</div>{mode==='rest'?<RestDataSources lang={lang}/>:<ProductWebhooksPanel lang={lang}/>}</div>;
 }
 function RestDataSources({lang}:{lang:Locale}) {
-  const tr=lang==='tr',locale=tr?'tr-TR':'en-GB';
+  const tr=lang==='tr',locale=localeTag(lang),failed=tr?'İstek tamamlanamadı.':'Request failed.';
   const [data,setData]=useState<Data|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
   const [editor,setEditor]=useState(false),[editing,setEditing]=useState<ProductSource|null>(null),[name,setName]=useState(''),[token,setToken]=useState(''),[config,setConfig]=useState(initialConfig);
   const [selected,setSelected]=useState(''),[preview,setPreview]=useState<{id:string;value:ProductPreview}|null>(null);
@@ -27,9 +30,9 @@ function RestDataSources({lang}:{lang:Locale}) {
     try {
       const value=await projectRequest<Data>(`${endpoint}${selected?`?sourceId=${encodeURIComponent(selected)}`:''}`,{signal:controller.signal});
       if(alive.current&&!controller.signal.aborted&&selectedRef.current===selected)setData(value);
-    }catch(reason){if(alive.current&&!controller.signal.aborted)setError(reason instanceof Error?reason.message:'Request failed.');}
+    }catch(reason){if(alive.current&&!controller.signal.aborted)setError(reason instanceof Error&&reason.message?reason.message:failed);}
     finally{requests.current.delete(controller);}
-  },[selected]);
+  },[selected,failed]);
   useEffect(()=>{alive.current=true;void load();return()=>{alive.current=false;requests.current.forEach(controller=>controller.abort());};},[load]);
   const activeJobs=data?.jobs.some(job=>['queued','running'].includes(job.status));
   useEffect(()=>{if(!activeJobs)return;const interval=setInterval(()=>void load(),2500);return()=>clearInterval(interval);},[activeJobs,load]);
@@ -37,7 +40,7 @@ function RestDataSources({lang}:{lang:Locale}) {
   const action=async(input:object)=>{
     setBusy(true);setError('');setNotice('');
     try{const result=await send(input);await load();return result;}
-    catch(reason){if(alive.current)setError(reason instanceof Error?reason.message:'Request failed.');return null;}
+    catch(reason){if(alive.current)setError(reason instanceof Error&&reason.message?reason.message:failed);return null;}
     finally{if(alive.current)setBusy(false);}
   };
   const run=async(id:string)=>{
@@ -69,11 +72,12 @@ function RestDataSources({lang}:{lang:Locale}) {
   };
   const updateAttribute=(index:number,patch:Partial<ProductSourceConfig['attributes'][number]>)=>setConfig(current=>({...current,attributes:current.attributes.map((field,i)=>i===index?{...field,...patch}:field)}));
   const stateLabel=(state:string)=>({draft:tr?'Önizleme gerekli':'Preview needed',ready:tr?'Etkinleştirmeye hazır':'Ready to activate',active:tr?'Etkin':'Active',paused:tr?'Duraklatıldı':'Paused',revoked:tr?'Bağlantı iptal':'Connection revoked',queued:tr?'Kuyrukta':'Queued',running:tr?'Çalışıyor':'Running',completed:tr?'Tamamlandı':'Completed',cancelled:tr?'İptal edildi':'Cancelled',failed:tr?'Başarısız':'Failed'}[state]||state);
+  const entityLabel=(value:string)=>({user:tr?'Kullanıcı':'User',company:tr?'Şirket':'Company',account:tr?'Hesap':'Account',other:tr?'Diğer':'Other'}[value]||value);
   const date=(value:string|null)=>value?new Date(value).toLocaleString(locale):'—';
   return <section className="product-data-section">
     <div className="studio-section-title"><div><h2>{tr?'Ürün veri kaynakları':'Product data sources'}</h2><p className="studio-note">{data?`${data.sourceCount} / ${PRODUCT_SOURCE_LIMITS.sources}`:''} · {tr?'Toplam kaynak':'Total sources'}</p></div><div className="flex items-center gap-2"><button className="icon-button" title={tr?'Yenile':'Refresh'} aria-label={tr?'Yenile':'Refresh'} onClick={()=>{setError('');void load();}}><RefreshCw size={16}/></button><button className="studio-primary" disabled={busy||Boolean(data&&data.sourceCount>=PRODUCT_SOURCE_LIMITS.sources)} onClick={()=>open(null)}><Plus size={16}/>{tr?'Kaynak ekle':'Add source'}</button></div></div>
-    {error&&<div className="studio-error" role="alert">{error}</div>}
-    {notice&&<p className="studio-success" role="status">{notice}</p>}
+    {error&&<div className="studio-error" role="alert">{translateMessage(error,lang)}</div>}
+    {notice&&<p className="studio-success" role="status"><Msg text={notice}/></p>}
     {!data&&!error&&<p role="status" className="studio-skeleton">{tr?'Kaynaklar yükleniyor…':'Loading sources…'}</p>}
     {editor&&<form className="studio-editor product-data-editor" onSubmit={save}>
       <div className="studio-section-title"><h2>{editing?(tr?'Kaynağı düzenle':'Edit source'):(tr?'Yeni REST kaynağı':'New REST source')}</h2><button type="button" className="icon-button" title={tr?'Kapat':'Close'} aria-label={tr?'Kapat':'Close'} onClick={()=>{setEditor(false);setToken('');}}><X size={18}/></button></div>
@@ -102,16 +106,17 @@ function RestDataSources({lang}:{lang:Locale}) {
     </form>}
     {data?.items.length===0&&!editor&&<div className="studio-empty"><Database size={28}/><h3>{tr?'Henüz veri kaynağı yok':'No data sources yet'}</h3><button className="studio-text-button" onClick={()=>open(null)}><Plus size={15}/>{tr?'İlk kaynağı ekle':'Add first source'}</button></div>}
     <div className="product-source-list">{data?.items.map(source=><article className="product-source-row" key={source.id}>
-      <div className="product-source-heading"><div><button className="product-source-name" onClick={()=>setSelected(source.id)}>{source.name}</button><p>{new URL(source.config.url).hostname} · v{source.version} · {source.config.entityType}</p></div><span className={`studio-badge ${source.state==='active'?'product-source-active':''}`}>{stateLabel(source.state)}</span><button className="icon-button" title={tr?'Kaynağı düzenle':'Edit source'} aria-label={`${tr?'Kaynağı düzenle':'Edit source'} ${source.name}`} disabled={busy} onClick={()=>open(source)}><Pencil size={16}/></button></div>
+      <div className="product-source-heading"><div><button className="product-source-name" onClick={()=>setSelected(source.id)}>{source.name}</button><p>{new URL(source.config.url).hostname} · v{source.version} · {entityLabel(source.config.entityType)}</p></div><span className={`studio-badge ${source.state==='active'?'product-source-active':''}`}>{stateLabel(source.state)}</span><button className="icon-button" title={tr?'Kaynağı düzenle':'Edit source'} aria-label={`${tr?'Kaynağı düzenle':'Edit source'} ${source.name}`} disabled={busy} onClick={()=>open(source)}><Pencil size={16}/></button></div>
       <dl className="product-source-facts"><div><dt>{tr?'Güncel sürümdeki kayıt':'Current-version records'}</dt><dd>{source.recordCount.toLocaleString(locale)}</dd></div><div><dt>{tr?'Son önizleme':'Last preview'}</dt><dd>{date(source.previewAt)}</dd></div><div><dt>{tr?'Son aktarım':'Last sync'}</dt><dd>{date(source.lastSyncedAt)}</dd></div></dl>
       <div className="product-source-actions"><button className="studio-secondary" disabled={busy||source.state==='revoked'} onClick={()=>void check(source)}><Eye size={15}/>{tr?'Önizle':'Preview'}</button><label className="product-source-toggle"><input role="switch" type="checkbox" aria-label={`${tr?'Kaynağı etkinleştir':'Activate source'} ${source.name}`} checked={source.state==='active'} disabled={busy||source.state==='revoked'||(!source.previewAt&&source.state!=='active')} onChange={event=>void action({action:event.target.checked?'activate':'pause',id:source.id,version:source.version})}/>{tr?'Etkin':'Active'}</label><button className="icon-button" title={tr?'Bağlantıyı iptal et':'Revoke connection'} aria-label={`${tr?'Bağlantıyı iptal et':'Revoke connection'} ${source.name}`} disabled={busy||source.state==='revoked'} onClick={()=>revoke(source)}><Unplug size={16}/></button><button className="studio-primary" disabled={busy||source.state!=='active'||data.jobs.some(job=>job.connectionId===source.id&&['queued','running'].includes(job.status))} onClick={()=>void start(source)}><RefreshCw size={15}/>{source.hasMore?(tr?'Sonraki sayfaları al':'Continue sync'):(tr?'Senkronize et':'Sync')}</button></div>
     </article>)}</div>
-    {preview&&<section className="studio-band" aria-live="polite"><div className="studio-section-title"><h3>{tr?'Önizleme sonucu':'Preview result'}</h3><span className="studio-badge">{preview.value.valid} / {preview.value.total}</span></div>{preview.value.canActivate?<p className="studio-success">{tr?'Eşleştirme geçerli. Kaynak etkinleştirilebilir.':'Mapping is valid. The source can be activated.'}</p>:<p className="studio-error">{tr?'Kaynak etkinleştirilemez. En az bir geçerli kayıt ve hatasız eşleştirme gerekli.':'Activation requires at least one record and no mapping errors.'}</p>}{preview.value.errors.map((item,index)=><p className="studio-note" key={index}>{tr?'Satır':'Row'} {item.row}: {item.field}</p>)}<SampleTable items={preview.value.samples} tr={tr}/></section>}
-    {selected&&data&&<section className="studio-band"><div className="studio-section-title"><h3>{tr?'Aktarılan kayıt örnekleri':'Imported record samples'}</h3><span className="studio-note">{data.items.find(item=>item.id===selected)?.name}</span></div>{data.records.length?<SampleTable items={data.records} tr={tr}/>:<p className="studio-note">{tr?'Bu sürümde henüz aktarılmış kayıt yok.':'No imported records for this version yet.'}</p>}</section>}
-    {Boolean(data?.jobs.length)&&<section className="studio-band"><div className="studio-section-title"><h3>{tr?'Aktarım işleri':'Sync jobs'}</h3></div>{data!.jobs.slice(0,10).map(job=><div className="product-job-row" key={job.id}><div><strong>{data!.items.find(item=>item.id===job.connectionId)?.name||job.connectionId}</strong><p>{job.message||stateLabel(job.status)}</p></div><span className="studio-badge">{stateLabel(job.status)}</span>{job.status==='queued'&&<button className="icon-button" title={tr?'İşi çalıştır':'Run job'} aria-label={tr?'İşi çalıştır':'Run job'} onClick={()=>void run(job.id)}><Play size={16}/></button>}{['queued','running'].includes(job.status)&&<button className="icon-button" title={tr?'İşi iptal et':'Cancel job'} aria-label={tr?'İşi iptal et':'Cancel job'} onClick={()=>void action({action:'cancel',id:job.id})}><Square size={15}/></button>}</div>)}</section>}
+    {preview&&<section className="studio-band" aria-live="polite"><div className="studio-section-title"><h3>{tr?'Önizleme sonucu':'Preview result'}</h3><span className="studio-badge">{preview.value.valid} / {preview.value.total}</span></div>{preview.value.canActivate?<p className="studio-success">{tr?'Eşleştirme geçerli. Kaynak etkinleştirilebilir.':'Mapping is valid. The source can be activated.'}</p>:<p className="studio-error">{tr?'Kaynak etkinleştirilemez. En az bir geçerli kayıt ve hatasız eşleştirme gerekli.':'Activation requires at least one record and no mapping errors.'}</p>}{preview.value.errors.map((item,index)=><p className="studio-note" key={index}>{tr?'Satır':'Row'} {item.row}: {item.field}</p>)}<SampleTable items={preview.value.samples} lang={lang}/></section>}
+    {selected&&data&&<section className="studio-band"><div className="studio-section-title"><h3>{tr?'Aktarılan kayıt örnekleri':'Imported record samples'}</h3><span className="studio-note">{data.items.find(item=>item.id===selected)?.name}</span></div>{data.records.length?<SampleTable items={data.records} lang={lang}/>:<p className="studio-note">{tr?'Bu sürümde henüz aktarılmış kayıt yok.':'No imported records for this version yet.'}</p>}</section>}
+    {Boolean(data?.jobs.length)&&<section className="studio-band"><div className="studio-section-title"><h3>{tr?'Aktarım işleri':'Sync jobs'}</h3></div>{data!.jobs.slice(0,10).map(job=><div className="product-job-row" key={job.id}><div><strong>{data!.items.find(item=>item.id===job.connectionId)?.name||job.connectionId}</strong><p>{job.message?translateMessage(job.message,lang):stateLabel(job.status)}</p></div><span className="studio-badge">{stateLabel(job.status)}</span>{job.status==='queued'&&<button className="icon-button" title={tr?'İşi çalıştır':'Run job'} aria-label={tr?'İşi çalıştır':'Run job'} onClick={()=>void run(job.id)}><Play size={16}/></button>}{['queued','running'].includes(job.status)&&<button className="icon-button" title={tr?'İşi iptal et':'Cancel job'} aria-label={tr?'İşi iptal et':'Cancel job'} onClick={()=>void action({action:'cancel',id:job.id})}><Square size={15}/></button>}</div>)}</section>}
     <p className="product-data-boundary">{tr?'İletişim izni bu aktarımla belirlenmez. Gönderim ve otomatik kampanya kapalıdır.':'This import does not establish communication consent. Sending and automatic campaigns remain disabled.'}</p>
   </section>;
 }
-function SampleTable({items,tr}:{items:ProductPreview['samples'];tr:boolean}) {
-  return <div className="product-data-table"><table><thead><tr><th>{tr?'Kimlik':'ID'}</th><th>{tr?'Özellikler':'Attributes'}</th><th>{tr?'Kaynak zamanı':'Source time'}</th></tr></thead><tbody>{items.map((item,index)=><tr key={index}><td><code>{item.externalId}</code></td><td>{Object.entries(item.attributes).map(([key,value])=><span className="product-sample-field" key={key}><strong>{key}:</strong> {String(value)}</span>)}</td><td>{new Date(item.observedAt).toLocaleString(tr?'tr-TR':'en-GB')}</td></tr>)}</tbody></table></div>;
+function SampleTable({items,lang}:{items:ProductPreview['samples'];lang:Locale}) {
+  const tr=lang==='tr';
+  return <div className="product-data-table"><table><thead><tr><th>{tr?'Kimlik':'ID'}</th><th>{tr?'Özellikler':'Attributes'}</th><th>{tr?'Kaynak zamanı':'Source time'}</th></tr></thead><tbody>{items.map((item,index)=><tr key={index}><td><code>{item.externalId}</code></td><td>{Object.entries(item.attributes).map(([key,value])=><span className="product-sample-field" key={key}><strong>{key}:</strong> {String(value)}</span>)}</td><td>{new Date(item.observedAt).toLocaleString(localeTag(lang))}</td></tr>)}</tbody></table></div>;
 }

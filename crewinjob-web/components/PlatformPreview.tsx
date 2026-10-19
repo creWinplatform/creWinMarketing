@@ -1,4 +1,5 @@
 'use client';
+import { useLang } from '@/lib/lang';
 
 interface Props {
   platform: string;
@@ -20,6 +21,8 @@ function truncate(text: string, max: number) {
 }
 
 export default function PlatformPreview({ platform, content, username }: Props) {
+  const { lang } = useLang();
+  const tr = lang === 'tr';
   const displayName = username || PLATFORM_USERNAMES[platform] || 'crewinjob';
 
   if (platform === 'twitter') {
@@ -57,22 +60,22 @@ export default function PlatformPreview({ platform, content, username }: Props) 
             <div className="w-12 h-12 rounded-full bg-blue-700 flex items-center justify-center text-white font-bold shrink-0">C</div>
             <div>
               <p className="font-semibold text-sm text-slate-900">CrewinJob</p>
-              <p className="text-xs text-slate-500">CrewinJob • 1st</p>
+              <p className="text-xs text-slate-500">CrewinJob • {tr ? '1.' : '1st'}</p>
               <p className="text-xs text-slate-400">Maritime Recruitment Platform</p>
             </div>
           </div>
           <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
             {text}
             {truncated && (
-              <span> <button className="text-blue-600 font-medium text-xs">...see more</button></span>
+              <span> <button type="button" className="text-blue-600 font-medium text-xs">{tr ? '…devamını gör' : '…see more'}</button></span>
             )}
           </p>
         </div>
         <div className="border-t border-slate-100 px-4 py-2 flex items-center gap-4 text-xs text-slate-500">
-          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">👍 Like</span>
-          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">💬 Comment</span>
-          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">🔁 Repost</span>
-          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer ml-auto">📤 Send</span>
+          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">👍 {tr ? 'Beğen' : 'Like'}</span>
+          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">💬 {tr ? 'Yorum yap' : 'Comment'}</span>
+          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">🔁 {tr ? 'Yeniden yayınla' : 'Repost'}</span>
+          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer ml-auto">📤 {tr ? 'Gönder' : 'Send'}</span>
         </div>
       </div>
     );
@@ -97,10 +100,10 @@ export default function PlatformPreview({ platform, content, username }: Props) 
             <span className="cursor-pointer">📤</span>
             <span className="ml-auto cursor-pointer">🔖</span>
           </div>
-          <p className="text-xs font-semibold text-slate-800 mb-1">0 likes</p>
+          <p className="text-xs font-semibold text-slate-800 mb-1">{tr ? '0 beğenme' : '0 likes'}</p>
           <p className="text-xs text-slate-700 leading-relaxed">
             <span className="font-semibold">{displayName}</span>{' '}
-            {text}{truncated && <span className="text-blue-500 cursor-pointer"> more</span>}
+            {text}{truncated && <span className="text-blue-500 cursor-pointer"> {tr ? 'devamı' : 'more'}</span>}
           </p>
         </div>
       </div>
@@ -115,19 +118,19 @@ export default function PlatformPreview({ platform, content, username }: Props) 
           <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shrink-0">C</div>
           <div>
             <p className="font-semibold text-sm text-slate-900">CrewinJob</p>
-            <p className="text-xs text-slate-400">Just now · 🌐</p>
+            <p className="text-xs text-slate-400">{tr ? 'Az önce' : 'Just now'} · 🌐</p>
           </div>
           <span className="ml-auto text-slate-400 text-lg cursor-pointer">···</span>
         </div>
         <div className="px-4 pb-3">
           <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
-            {text}{truncated && <span className="text-blue-600 cursor-pointer text-xs"> See more</span>}
+            {text}{truncated && <span className="text-blue-600 cursor-pointer text-xs"> {tr ? 'Devamını gör' : 'See more'}</span>}
           </p>
         </div>
         <div className="border-t border-slate-100 px-4 py-2 flex items-center justify-around text-xs text-slate-500">
-          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">👍 Like</span>
-          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">💬 Comment</span>
-          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">↗️ Share</span>
+          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">👍 {tr ? 'Beğen' : 'Like'}</span>
+          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">💬 {tr ? 'Yorum yap' : 'Comment'}</span>
+          <span className="flex items-center gap-1 hover:text-blue-600 cursor-pointer">↗️ {tr ? 'Paylaş' : 'Share'}</span>
         </div>
       </div>
     );
@@ -141,7 +144,7 @@ export default function PlatformPreview({ platform, content, username }: Props) 
         <div className="absolute top-4 left-4 flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-500 to-pink-500 border-2 border-white flex items-center justify-center text-xs font-bold">C</div>
           <span className="text-xs font-semibold">@crewinjob</span>
-          <span className="text-[10px] border border-red-500 text-red-400 px-1.5 rounded">Follow</span>
+          <span className="text-[10px] border border-red-500 text-red-400 px-1.5 rounded">{tr ? 'Takip et' : 'Follow'}</span>
         </div>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-white">
           <div className="flex flex-col items-center gap-1">
@@ -154,7 +157,7 @@ export default function PlatformPreview({ platform, content, username }: Props) 
           </div>
           <div className="flex flex-col items-center gap-1">
             <span className="text-2xl cursor-pointer">↗️</span>
-            <span className="text-[10px]">Share</span>
+            <span className="text-[10px]">{tr ? 'Paylaş' : 'Share'}</span>
           </div>
           <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm">🎵</div>
         </div>
@@ -164,7 +167,7 @@ export default function PlatformPreview({ platform, content, username }: Props) 
           </p>
           <div className="flex items-center gap-1.5 mt-2">
             <span className="text-xs">🎵</span>
-            <span className="text-[10px] text-slate-300 truncate">Original Sound - crewinjob</span>
+            <span className="text-[10px] text-slate-300 truncate">{tr ? 'orijinal ses' : 'Original sound'} - crewinjob</span>
           </div>
         </div>
       </div>

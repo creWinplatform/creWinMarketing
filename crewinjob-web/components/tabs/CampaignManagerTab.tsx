@@ -1,6 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useLang } from '@/lib/lang';
+import { localeTag, type Lang } from '@/lib/i18n/shared';
+import Msg from '@/components/Msg';
 import type {
   AdPlatform, AdPlatformStatus, AdCampaign, CampaignsResponse,
   BudgetAllocation, CreateCampaignRequest, CreateCampaignResponse,
@@ -18,21 +20,32 @@ const STATUS_BADGE: Record<string, string> = {
   UNKNOWN:   'bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500',
 };
 
+// Platform durum değerleri (API anahtarı) çevrilmez; yalnızca ekrandaki etiket
+const STATUS_LABEL: Record<string, { tr: string; en: string }> = {
+  ACTIVE:    { tr: 'Aktif', en: 'Active' },
+  PAUSED:    { tr: 'Duraklatıldı', en: 'Paused' },
+  DELETED:   { tr: 'Silindi', en: 'Deleted' },
+  ARCHIVED:  { tr: 'Arşivlendi', en: 'Archived' },
+  DRAFT:     { tr: 'Taslak', en: 'Draft' },
+  COMPLETED: { tr: 'Tamamlandı', en: 'Completed' },
+  UNKNOWN:   { tr: 'Bilinmiyor', en: 'Unknown' },
+};
+
 const PLATFORM_META: Record<AdPlatform, { icon: string; label: string; color: string; bg: string }> = {
   meta:     { icon: '📘', label: 'Meta (FB + IG)',  color: 'text-blue-600',   bg: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700' },
   linkedin: { icon: '💼', label: 'LinkedIn Ads',    color: 'text-sky-700',    bg: 'bg-sky-50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-700' },
   google:   { icon: '🔍', label: 'Google Ads',      color: 'text-red-600',    bg: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700' },
 };
 
-function fmt(n: number | null | undefined) {
+function fmt(n: number | null | undefined, lang: Lang) {
   if (n == null) return '–';
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+  return new Intl.NumberFormat(localeTag(lang), { notation: n >= 1000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(n);
 }
 // Para birimi sabit USD değil — kampanyanın/hesabın para birimi (ADS_CURRENCY varsayılanı)
-function money(n: number | null | undefined, currency = 'USD', digits = 2) {
+function money(n: number | null | undefined, lang: Lang, currency = 'USD', digits = 2) {
   if (n == null) return '–';
   try {
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
+    return new Intl.NumberFormat(localeTag(lang), { style: 'currency', currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
   } catch {
     return `${n.toFixed(digits)} ${currency}`;
   }
@@ -44,9 +57,16 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<{ ok: bool
   const data = await res.json().catch(() => ({})) as T;
   return { ok: res.ok, status: res.status, data };
 }
-function pct(n: number | null | undefined) {
+function pct(n: number | null | undefined, lang: Lang) {
   if (n == null) return '–';
-  return `${n.toFixed(2)}%`;
+  return new Intl.NumberFormat(localeTag(lang), { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n / 100);
+}
+// Bütçe payı: Türkçede "%40", İngilizcede "40%"
+const share = (v: number, lang: Lang) => (lang === 'tr' ? `%${v}` : `${v}%`);
+// API'den gelen YYYY-MM-DD tarih; okunamazsa olduğu gibi gösterilir
+function day(value: string, lang: Lang) {
+  const parsed = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value);
+  return Number.isFinite(parsed) ? new Date(parsed).toLocaleDateString(localeTag(lang), { day: 'numeric', month: 'short', year: 'numeric' }) : value;
 }
 
 // ─── Sub-component: Campaign card ─────────────────────────────────────────────
@@ -73,17 +93,17 @@ function CampaignCard({
           <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{campaign.name}</p>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[campaign.status] || STATUS_BADGE.UNKNOWN}`}>
-              {campaign.status}
+              {STATUS_LABEL[campaign.status]?.[lang] ?? campaign.status}
             </span>
             <span className="text-[10px] text-slate-400 dark:text-slate-500">{campaign.objective}</span>
             {campaign.budgetDaily && (
               <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                {money(campaign.budgetDaily, campaign.currency)}/{t('gün', 'day')}
+                {money(campaign.budgetDaily, lang, campaign.currency)}/{t('gün', 'day')}
               </span>
             )}
             {campaign.startDate && (
               <span className="text-[10px] text-slate-400 dark:text-slate-500">
-                {t('Başlangıç', 'Start')}: {campaign.startDate}
+                {t('Başlangıç', 'Start')}: {day(campaign.startDate, lang)}
               </span>
             )}
           </div>
@@ -111,12 +131,14 @@ function CampaignCard({
             <button
               onClick={() => {
                 const message = campaign.platform === 'google'
-                  ? t('Google Ads kampanyası KALICI olarak kaldırılacak (geri alınamaz). Emin misiniz?', 'The Google Ads campaign will be PERMANENTLY removed (cannot be undone). Are you sure?')
+                  ? t('Google Ads kampanyası KALICI olarak kaldırılacak (geri alınamaz). Emin misiniz?', "The Google Ads campaign will be PERMANENTLY removed (this can't be undone). Are you sure?")
                   : t('Kampanya arşivlenecek. Emin misiniz?', 'The campaign will be archived. Are you sure?');
                 if (confirm(message))
                   onDelete(campaign.id, campaign.platform);
               }}
               disabled={isUpdating}
+              title={campaign.platform === 'google' ? t('Kaldır', 'Remove') : t('Arşivle', 'Archive')}
+              aria-label={campaign.platform === 'google' ? t('Kaldır', 'Remove') : t('Arşivle', 'Archive')}
               className="text-[11px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 transition-colors"
             >
               🗑️
@@ -129,10 +151,10 @@ function CampaignCard({
       {ins && (
         <div className="grid grid-cols-4 gap-0 divide-x divide-slate-100 dark:divide-slate-700">
           {[
-            { label: t('Gösterim', 'Impressions'), value: fmt(ins.impressions) },
-            { label: t('Tıklama',  'Clicks'),      value: fmt(ins.clicks) },
-            { label: t('Harcama',  'Spend'),        value: money(ins.spend, campaign.currency) },
-            { label: 'CTR',                         value: pct(ins.ctr) },
+            { label: t('Gösterim', 'Impressions'), value: fmt(ins.impressions, lang) },
+            { label: t('Tıklama',  'Clicks'),      value: fmt(ins.clicks, lang) },
+            { label: t('Harcama',  'Spend'),        value: money(ins.spend, lang, campaign.currency) },
+            { label: 'CTR',                         value: pct(ins.ctr, lang) },
           ].map(m => (
             <div key={m.label} className="px-3 py-2.5 text-center">
               <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{m.value}</p>
@@ -143,7 +165,7 @@ function CampaignCard({
       )}
       {!ins && (
         <div className="px-4 py-2.5 text-[11px] text-slate-400 dark:text-slate-500">
-          {t('Performans verisi yok (kampanya henüz yayınlanmadı)', 'No performance data yet')}
+          {t('Performans verisi yok (kampanya henüz yayınlanmadı)', 'No performance data (the campaign isn\'t live yet)')}
         </div>
       )}
     </div>
@@ -182,15 +204,15 @@ function CreateCampaignForm({
   return (
     <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 p-4 flex flex-col gap-3">
       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-        ➕ {t('Yeni Kampanya', 'New Campaign')} — {PLATFORM_META[platform].label}
+        ➕ {t('Yeni kampanya', 'New campaign')} — {PLATFORM_META[platform].label}
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="sm:col-span-2">
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Kampanya Adı', 'Campaign Name')} *</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Kampanya adı', 'Campaign name')} *</label>
           <input
             type="text" value={name} onChange={e => setName(e.target.value)}
-            placeholder={t('Örn: Seafarer Registration Q3 2026', 'e.g. Seafarer Registration Q3 2026')}
+            placeholder={t('Örn: Seafarer Registration Q3 2026', 'e.g. Seafarer registration Q3 2026')}
             className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50"
           />
         </div>
@@ -206,20 +228,20 @@ function CreateCampaignForm({
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t(`Günlük Bütçe (${currency})`, `Daily Budget (${currency})`)} *</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t(`Günlük bütçe (${currency})`, `Daily budget (${currency})`)} *</label>
           <div className="flex items-center gap-2">
             <input
               type="range" min={1} max={500} step={1} value={budgetDaily}
               onChange={e => setBudgetDaily(Number(e.target.value))}
               className="flex-1 accent-ocean"
             />
-            <span className="text-sm font-bold text-ocean w-20 text-right">{money(budgetDaily, currency, 0)}</span>
+            <span className="text-sm font-bold text-ocean w-20 text-right">{money(budgetDaily, lang, currency, 0)}</span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-0.5">≈ {money(budgetDaily * 30, currency, 0)}/{t('ay', 'mo')}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">≈ {money(budgetDaily * 30, lang, currency, 0)}/{t('ay', 'mo')}</p>
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Başlangıç Tarihi', 'Start Date')} *</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Başlangıç tarihi', 'Start date')} *</label>
           <input
             type="date" value={startDate} min={today}
             onChange={e => setStartDate(e.target.value)}
@@ -228,7 +250,7 @@ function CreateCampaignForm({
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Bitiş Tarihi (opsiyonel)', 'End Date (optional)')}</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Bitiş tarihi (opsiyonel)', 'End date (optional)')}</label>
           <input
             type="date" value={endDate} min={startDate || today}
             onChange={e => setEndDate(e.target.value)}
@@ -237,13 +259,13 @@ function CreateCampaignForm({
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Hedef Ülkeler (virgülle)', 'Target Countries (comma-separated)')}</label>
+          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Hedef ülkeler (virgülle)', 'Target countries (comma-separated)')}</label>
           <input
             type="text" value={countries} onChange={e => setCountries(e.target.value)}
             placeholder="TR, PH, IN, ID"
             className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50"
           />
-          <p className="text-[10px] text-slate-400 mt-0.5">{t('ISO ülke kodları: TR, PH, IN...', 'ISO country codes: TR, PH, IN...')}</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">{t('ISO ülke kodları: TR, PH, IN…', 'ISO country codes: TR, PH, IN…')}</p>
         </div>
       </div>
 
@@ -260,7 +282,7 @@ function CreateCampaignForm({
           className="flex-1 bg-ocean hover:bg-ocean-dark disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
         >
           {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          📅 {saving ? t('Oluşturuluyor...', 'Creating...') : t('Kampanya Oluştur', 'Create Campaign')}
+          📅 {saving ? t('Oluşturuluyor…', 'Creating…') : t('Kampanya oluştur', 'Create campaign')}
         </button>
         <button
           onClick={onCancel}
@@ -276,7 +298,7 @@ function CreateCampaignForm({
           'LinkedIn campaigns are created as DRAFT — finish bidding and creatives in LinkedIn Campaign Manager, then launch.',
         ) : t(
           'Kampanya başlangıçta DURAKLATILMIŞ olarak oluşturulur — inceledikten sonra platformdan veya buradan aktifleştirin.',
-          'Campaign is created as PAUSED — review it then activate from here or the platform dashboard.',
+          'The campaign is created as PAUSED — review it, then activate it here or on the platform.',
         )}
       </p>
     </div>
@@ -320,15 +342,15 @@ function BudgetAllocator({
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-        💰 {t('Aylık Bütçe & Dağılım', 'Monthly Budget & Allocation')}
+        💰 {t('Aylık bütçe ve dağılım', 'Monthly budget & allocation')}
       </h3>
 
       <div className="flex flex-col gap-4">
         {/* Total */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t('Toplam Aylık Bütçe', 'Total Monthly Budget')}</label>
-            <span className="text-base font-bold text-ocean">{money(total, currency, 0)}</span>
+            <label className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t('Toplam aylık bütçe', 'Total monthly budget')}</label>
+            <span className="text-base font-bold text-ocean">{money(total, lang, currency, 0)}</span>
           </div>
           <input
             type="range" min={50} max={10000} step={50} value={total}
@@ -336,7 +358,7 @@ function BudgetAllocator({
             className="w-full accent-ocean"
           />
           <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
-            <span>{money(50, currency, 0)}</span><span>{money(10000, currency, 0)}</span>
+            <span>{money(50, lang, currency, 0)}</span><span>{money(10000, lang, currency, 0)}</span>
           </div>
         </div>
 
@@ -348,7 +370,7 @@ function BudgetAllocator({
             { pct: p.google,   color: 'bg-red-500' },
           ].map((seg, i) => (
             <div key={i} className={`${seg.color} flex items-center justify-center transition-all duration-300`} style={{ width: `${seg.pct}%` }}>
-              {seg.pct > 12 && <span className="text-[10px] font-bold text-white">%{seg.pct}</span>}
+              {seg.pct > 12 && <span className="text-[10px] font-bold text-white">{share(seg.pct, lang)}</span>}
             </div>
           ))}
         </div>
@@ -363,8 +385,8 @@ function BudgetAllocator({
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-slate-600 dark:text-slate-300 font-medium">{s.label}</span>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500 dark:text-slate-400">{money(s.usd, currency, 0)}/{t('ay', 'mo')}</span>
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">%{s.val}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{money(s.usd, lang, currency, 0)}/{t('ay', 'mo')}</span>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{share(s.val, lang)}</span>
               </div>
             </div>
             <input
@@ -376,8 +398,8 @@ function BudgetAllocator({
         ))}
 
         <p className="text-[11px] text-slate-400 dark:text-slate-500">
-          ≈ {money(total / 30, currency, 0)}/{t('gün toplam', 'day total')} ·
-          Meta {money(metaUSD / 30, currency, 0)} · LI {money(linkedinUSD / 30, currency, 0)} · Google {money(googleUSD / 30, currency, 0)}
+          ≈ {money(total / 30, lang, currency, 0)}/{t('gün toplam', 'day in total')} ·
+          Meta {money(metaUSD / 30, lang, currency, 0)} · LI {money(linkedinUSD / 30, lang, currency, 0)} · Google {money(googleUSD / 30, lang, currency, 0)}
         </p>
       </div>
     </div>
@@ -433,7 +455,7 @@ export default function CampaignManagerTab() {
       setErrors(nextErrors);
       setCurrencies(nextCurrency);
     }).catch((err: unknown) => {
-      setActionError(`${t('Reklam verileri yüklenemedi', 'Could not load ads data')}: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(`${t('Reklam verileri yüklenemedi.', "Couldn't load ads data.")} ${err instanceof Error ? err.message : String(err)}`);
     }).finally(() => setLoading(false));
   }, []); // yalnızca ilk yüklemede (dil değişimi yeniden çekmez)
 
@@ -464,10 +486,10 @@ export default function CampaignManagerTab() {
       setShowForm(false);
       setSaveSuccess(data.status === 'DRAFT'
         ? t('Kampanya TASLAK olarak oluşturuldu — LinkedIn Campaign Manager’da tamamlayıp yayına alın.', 'Campaign created as DRAFT — finish it in LinkedIn Campaign Manager to launch.')
-        : t('Kampanya oluşturuldu! DURAKLATILMIŞ olarak başlatıldı.', 'Campaign created! Started as PAUSED.'));
+        : t('Kampanya oluşturuldu. DURAKLATILMIŞ olarak başlatıldı.', 'Campaign created. It starts as PAUSED.'));
       setTimeout(() => setSaveSuccess(''), 4000);
     } catch (err: unknown) {
-      setActionError(`${t('Kampanya oluşturulamadı', 'Campaign could not be created')}: ${err instanceof Error ? err.message : t('Hata oluştu', 'An error occurred')}`);
+      setActionError(`${t('Kampanya oluşturulamadı.', "Couldn't create the campaign.")} ${err instanceof Error ? err.message : t('Bir hata oluştu.', 'Something went wrong.')}`);
     } finally {
       setSaving(false);
     }
@@ -497,7 +519,8 @@ export default function CampaignManagerTab() {
           [platform]: prev[platform].map(c => c.id === id ? { ...c, status: previous } : c),
         }));
       }
-      setActionError(`${t('Kampanya durumu güncellenemedi', 'Campaign status could not be updated')}: ${err instanceof Error ? err.message : String(err)}`);
+      const message = t('Kampanya durumu güncellenemedi.', "Couldn't update the campaign status.");
+      setActionError(`${message} ${err instanceof Error ? err.message : String(err)}`);
     } finally { setUpdatingId(null); }
   };
 
@@ -517,7 +540,7 @@ export default function CampaignManagerTab() {
       if (!ok || data.success === false) throw new Error(data.error || `HTTP ${status}`);
     } catch (err: unknown) {
       setCampaigns(prev => ({ ...prev, [platform]: snapshot }));
-      setActionError(`${t('Kampanya silinemedi/arşivlenemedi', 'Campaign could not be removed/archived')}: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(`${t('Kampanya kaldırılamadı veya arşivlenemedi.', "Couldn't remove or archive the campaign.")} ${err instanceof Error ? err.message : String(err)}`);
     } finally { setUpdatingId(null); }
   };
 
@@ -527,8 +550,8 @@ export default function CampaignManagerTab() {
   const totalSpend   = allCampaigns.reduce((s, c) => s + (c.insights?.spend || 0), 0);
   const spendCurrencies = Array.from(new Set(allCampaigns.filter(c => c.insights).map(c => c.currency)));
   const totalSpendText  = spendCurrencies.length > 1
-    ? `${totalSpend.toFixed(2)} (${t('karışık para birimi', 'mixed currencies')})`
-    : money(totalSpend, spendCurrencies[0] || defaultCurrency);
+    ? `${totalSpend.toLocaleString(localeTag(lang), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${t('karışık para birimi', 'mixed currencies')})`
+    : money(totalSpend, lang, spendCurrencies[0] || defaultCurrency);
   const totalClicks  = allCampaigns.reduce((s, c) => s + (c.insights?.clicks || 0), 0);
   const totalImpr    = allCampaigns.reduce((s, c) => s + (c.insights?.impressions || 0), 0);
   const activeCamps  = allCampaigns.filter(c => c.status === 'ACTIVE').length;
@@ -544,10 +567,10 @@ export default function CampaignManagerTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            📣 {t('Kampanya Yöneticisi', 'Campaign Manager')}
+            📣 {t('Kampanya yöneticisi', 'Campaign manager')}
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {t('Meta · LinkedIn · Google Ads — gerçek zamanlı kampanya takibi', 'Meta · LinkedIn · Google Ads — real-time campaign management')}
+            {t('Meta · LinkedIn · Google Ads — gerçek zamanlı kampanya takibi', 'Meta · LinkedIn · Google Ads — real-time campaign tracking')}
           </p>
         </div>
       </div>
@@ -555,10 +578,10 @@ export default function CampaignManagerTab() {
       {/* ── Summary stats ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
-          { icon: '📣', label: t('Aktif Kampanya', 'Active Campaigns'), value: String(activeCamps),               color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 text-green-800 dark:text-green-300' },
-          { icon: '💸', label: t('Toplam Harcama',  'Total Spend'),      value: totalSpendText,                    color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 text-red-800 dark:text-red-300' },
-          { icon: '👁️', label: t('Gösterim',        'Impressions'),      value: fmt(totalImpr),                    color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300' },
-          { icon: '🖱️', label: t('Tıklama',         'Clicks'),           value: fmt(totalClicks),                  color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300' },
+          { icon: '📣', label: t('Aktif kampanya', 'Active campaigns'), value: String(activeCamps),               color: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 text-green-800 dark:text-green-300' },
+          { icon: '💸', label: t('Toplam harcama',  'Total spend'),      value: totalSpendText,                    color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-700 text-red-800 dark:text-red-300' },
+          { icon: '👁️', label: t('Gösterim',        'Impressions'),      value: fmt(totalImpr, lang),                 color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-300' },
+          { icon: '🖱️', label: t('Tıklama',         'Clicks'),           value: fmt(totalClicks, lang),               color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border p-4 flex items-start gap-3 ${s.color}`}>
             <span className="text-2xl">{s.icon}</span>
@@ -586,7 +609,7 @@ export default function CampaignManagerTab() {
                 <p className={`text-[10px] font-medium ${st?.configured ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
                   {st?.configured
                     ? `✅ ${t('Bağlı', 'Connected')} · ${st.accountId}`
-                    : `⚙️ ${t('.env.local\'da token gerekli', 'Token required in .env.local')}`}
+                    : `⚙️ ${t('.env.local dosyasında token gerekli', 'Token required in .env.local')}`}
                 </p>
               </div>
               <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
@@ -626,14 +649,14 @@ export default function CampaignManagerTab() {
       {/* ── Success toast ── */}
       {saveSuccess && (
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
-          ✅ {saveSuccess}
+          ✅ <Msg text={saveSuccess} />
         </div>
       )}
 
       {/* ── Action error (create / pause / delete) ── */}
       {actionError && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
-          <span className="flex-1">❌ {actionError}</span>
+          <span className="flex-1">❌ <Msg text={actionError} /></span>
           <button onClick={() => setActionError('')} className="text-xs opacity-70 hover:opacity-100" aria-label={t('Kapat', 'Dismiss')}>✕</button>
         </div>
       )}
@@ -641,7 +664,7 @@ export default function CampaignManagerTab() {
       {/* ── Error banner ── */}
       {errors[activePlatform] && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300">
-          ❌ {errors[activePlatform]}
+          ❌ <Msg text={errors[activePlatform]} />
         </div>
       )}
 
@@ -683,14 +706,14 @@ export default function CampaignManagerTab() {
             <button
               onClick={() => setShowForm(v => !v)}
               disabled={!activeLive}
-              title={activeLive ? undefined : t('Demo modunda kampanya oluşturulamaz', 'Campaigns cannot be created in demo mode')}
+              title={activeLive ? undefined : t('Demo modunda kampanya oluşturulamaz', "Can't create campaigns in demo mode")}
               className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
                 showForm
                   ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                   : 'bg-ocean hover:bg-ocean-dark text-white'
               }`}
             >
-              {showForm ? `✕ ${t('İptal', 'Cancel')}` : `➕ ${t('Yeni Kampanya', 'New Campaign')}`}
+              {showForm ? `✕ ${t('İptal', 'Cancel')}` : `➕ ${t('Yeni kampanya', 'New campaign')}`}
             </button>
           </div>
 
@@ -716,7 +739,7 @@ export default function CampaignManagerTab() {
                   onClick={() => setShowForm(true)}
                   className="text-xs text-ocean hover:underline font-medium"
                 >
-                  ➕ {t('İlk kampanyayı oluştur →', 'Create first campaign →')}
+                  ➕ {t('İlk kampanyayı oluştur →', 'Create the first campaign →')}
                 </button>
               )}
             </div>
@@ -742,14 +765,14 @@ export default function CampaignManagerTab() {
       {/* ── .env.local setup guide ── */}
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
         <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">
-          ⚙️ {t('API Anahtarları (.env.local)', 'API Keys (.env.local)')}
+          ⚙️ {t('API anahtarları (.env.local)', 'API keys (.env.local)')}
         </p>
         <div className="space-y-2 text-[11px] font-mono text-slate-500 dark:text-slate-400 leading-relaxed">
           <p className="text-slate-400 dark:text-slate-500"># ── Meta Ads (Facebook + Instagram) ──────────────────</p>
-          <p>META_ADS_ACCESS_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;System User Token veya User Token&gt;</span></p>
+          <p>META_ADS_ACCESS_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;{t('System User Token veya User Token', 'System user token or user token')}&gt;</span></p>
           <p>META_ADS_ACCOUNT_ID=<span className="text-amber-600 dark:text-amber-400">act_&lt;Ad Account ID&gt;</span></p>
           <p>META_GRAPH_VERSION=<span className="text-amber-600 dark:text-amber-400">v25.0 ({t('opsiyonel', 'optional')})</span></p>
-          <p>FACEBOOK_PAGE_ID=<span className="text-amber-600 dark:text-amber-400">&lt;{t('Lead Generation için sayfa ID', 'Page ID for Lead Generation')}&gt;</span></p>
+          <p>FACEBOOK_PAGE_ID=<span className="text-amber-600 dark:text-amber-400">&lt;{t('Lead Generation için sayfa ID', 'Page ID for lead generation')}&gt;</span></p>
           <p className="text-slate-400 dark:text-slate-500 mt-1"># ── LinkedIn Ads ──────────────────────────────────────</p>
           <p>LINKEDIN_ACCESS_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;{t('rw_ads yetkili token', 'Token with rw_ads scope')}&gt;</span></p>
           <p>LINKEDIN_API_VERSION=<span className="text-amber-600 dark:text-amber-400">202608 ({t('opsiyonel', 'optional')})</span></p>
@@ -759,7 +782,7 @@ export default function CampaignManagerTab() {
           <p>GOOGLE_ADS_CLIENT_ID=<span className="text-amber-600 dark:text-amber-400">&lt;OAuth Client ID&gt;</span></p>
           <p>GOOGLE_ADS_CLIENT_SECRET=<span className="text-amber-600 dark:text-amber-400">&lt;OAuth Client Secret&gt;</span></p>
           <p>GOOGLE_ADS_REFRESH_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;Refresh Token&gt;</span></p>
-          <p>GOOGLE_ADS_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;Customer ID (no dashes)&gt;</span></p>
+          <p>GOOGLE_ADS_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;{t('Customer ID (tiresiz)', 'Customer ID (no dashes)')}&gt;</span></p>
           <p>GOOGLE_ADS_LOGIN_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;MCC ID ({t('varsa', 'if any')})&gt;</span></p>
           <p>GOOGLE_ADS_API_VERSION=<span className="text-amber-600 dark:text-amber-400">v25 ({t('opsiyonel', 'optional')})</span></p>
           <p className="text-slate-400 dark:text-slate-500 mt-1"># ── {t('Ortak', 'Common')} ─────────────────────────────────────────────</p>

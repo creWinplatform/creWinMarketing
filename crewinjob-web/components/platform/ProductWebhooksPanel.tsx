@@ -4,13 +4,16 @@ import {Plus,X,Check,RefreshCw,Pencil,Unplug,Copy,ChevronLeft,ChevronRight,Trash
 import type {Locale} from '@/lib/platform/catalog';
 import {projectRequest} from '@/lib/platform/client';
 import {PRODUCT_SOURCE_LIMITS,type ProductAttributeType,type ProductPreview} from '@/lib/platform/product-data-types';
+import {localeTag} from '@/lib/i18n/shared';
+import {translateMessage} from '@/lib/i18n/messages';
 import {webhookExample,WEBHOOK_LIMITS,type WebhookConfig,type WebhookSource,type WebhookEventSample} from '@/lib/platform/product-webhook-types';
+import Msg from '@/components/Msg';
 
 type Data={items:WebhookSource[];sourceCount:number;events:{items:WebhookEventSample[];total:number;page:number}};
 const endpoint='/api/platform/product-webhooks';
 const initial=():WebhookConfig=>({entityType:'user',attributes:[{key:'progress',type:'number'}],eventNames:['profile.updated']});
 export default function ProductWebhooksPanel({lang}:{lang:Locale}){
-  const tr=lang==='tr',locale=tr?'tr-TR':'en-GB';
+  const tr=lang==='tr',locale=localeTag(lang),failed=tr?'İstek tamamlanamadı.':'Request failed.';
   const [data,setData]=useState<Data|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
   const [selected,setSelected]=useState(''),[page,setPage]=useState(1),[origin,setOrigin]=useState('');
   const [editor,setEditor]=useState(false),[editing,setEditing]=useState<WebhookSource|null>(null),[name,setName]=useState(''),[secret,setSecret]=useState(''),[config,setConfig]=useState(initial),[eventNames,setEventNames]=useState('profile.updated');
@@ -18,13 +21,13 @@ export default function ProductWebhooksPanel({lang}:{lang:Locale}){
   const mounted=useRef(true),current=useRef(selected);current.current=selected;
   const load=useCallback(async(signal?:AbortSignal)=>{
     try{const value=await projectRequest<Data>(`${endpoint}?page=${page}${selected?`&sourceId=${encodeURIComponent(selected)}`:''}`,{signal});if(mounted.current&&!signal?.aborted&&current.current===selected)setData(value);}
-    catch(reason){if(mounted.current&&!signal?.aborted)setError(reason instanceof Error?reason.message:'Request failed.');}
-  },[selected,page]);
+    catch(reason){if(mounted.current&&!signal?.aborted)setError(reason instanceof Error&&reason.message?reason.message:failed);}
+  },[selected,page,failed]);
   useEffect(()=>{mounted.current=true;setOrigin(window.location.origin);const controller=new AbortController();void load(controller.signal);return()=>{mounted.current=false;controller.abort();};},[load]);
   const action=async<T,>(input:object)=>{
     setBusy(true);setError('');setNotice('');
     try{const value=await projectRequest<T>(endpoint,{method:'POST',body:JSON.stringify(input)});if(mounted.current)await load();return value;}
-    catch(reason){if(mounted.current)setError(reason instanceof Error?reason.message:'Request failed.');return null;}
+    catch(reason){if(mounted.current)setError(reason instanceof Error&&reason.message?reason.message:failed);return null;}
     finally{if(mounted.current)setBusy(false);}
   };
   const select=(source:WebhookSource,openPreview=false)=>{if(source.id!==selected)setData(value=>value?{...value,events:{items:[],total:0,page:1}}:value);setSelected(source.id);setPage(1);setPreview(null);setPayloadOpen(openPreview);setPayload(JSON.stringify(webhookExample(source.version,source.config),null,2));};
@@ -44,11 +47,12 @@ export default function ProductWebhooksPanel({lang}:{lang:Locale}){
     await action({action:operation,id:source.id,version:source.version});
   };
   const stateLabel=(value:string)=>({active:tr?'Olay kabulü açık':'Accepting events',paused:tr?'Duraklatıldı':'Paused',ready:tr?'Etkinleştirmeye hazır':'Ready to activate',draft:tr?'Önizleme gerekli':'Preview needed',revoked:tr?'Bağlantı iptal':'Connection revoked',blocked:tr?'Yönetici yetkisi gerekli':'Manager access required'}[value]||value);
+  const entityLabel=(value:string)=>({user:tr?'Kullanıcı':'User',company:tr?'Şirket':'Company',account:tr?'Hesap':'Account',other:tr?'Diğer':'Other'}[value]||value);
   const date=(value:string|null)=>value?new Date(value).toLocaleString(locale):'—';
   const chosen=data?.items.find(source=>source.id===selected);
   return <section className="product-data-section">
     <div className="studio-section-title"><div><h2>{tr?'İmzalı olay kaynakları':'Signed event sources'}</h2><p className="studio-note">{data?`${data.sourceCount} / ${PRODUCT_SOURCE_LIMITS.sources}`:''} · {tr?'Toplam kaynak':'Total sources'}</p></div><div className="flex items-center gap-2"><button className="icon-button" aria-label={tr?'Yenile':'Refresh'} title={tr?'Yenile':'Refresh'} onClick={()=>void load()}><RefreshCw size={16}/></button><button className="studio-primary" disabled={busy||Boolean(data&&data.sourceCount>=PRODUCT_SOURCE_LIMITS.sources)} onClick={()=>open(null)}><Plus size={16}/>{tr?'Webhook ekle':'Add webhook'}</button></div></div>
-    {error&&<div className="studio-error" role="alert">{error}</div>}{notice&&<p className="studio-success" role="status">{notice}</p>}
+    {error&&<div className="studio-error" role="alert">{translateMessage(error,lang)}</div>}{notice&&<p className="studio-success" role="status"><Msg text={notice}/></p>}
     {!data&&!error&&<p className="studio-skeleton" role="status">{tr?'Kaynaklar yükleniyor…':'Loading sources…'}</p>}
     {editor&&<form className="studio-editor product-data-editor" onSubmit={save}><div className="studio-section-title"><h2>{editing?(tr?'Webhook düzenle':'Edit webhook'):(tr?'Yeni webhook':'New webhook')}</h2><button type="button" className="icon-button" aria-label={tr?'Kapat':'Close'} title={tr?'Kapat':'Close'} onClick={()=>{setEditor(false);setSecret('');}}><X size={18}/></button></div>
       <fieldset disabled={busy}><div className="studio-form-grid"><label>{tr?'Kaynak adı':'Source name'}<input required maxLength={160} value={name} onChange={event=>setName(event.target.value)}/></label><label>{tr?'Kayıt türü':'Entity type'}<select value={config.entityType} onChange={event=>setConfig({...config,entityType:event.target.value as WebhookConfig['entityType']})}>{[['user',tr?'Kullanıcı':'User'],['company',tr?'Şirket':'Company'],['account',tr?'Hesap':'Account'],['other',tr?'Diğer':'Other']].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
@@ -59,12 +63,12 @@ export default function ProductWebhooksPanel({lang}:{lang:Locale}){
       <div className="product-data-form-actions"><span className="studio-note">{tr?'Kaydetmek olay kabulünü açmaz.':'Saving does not enable ingestion.'}</span><button className="studio-primary" disabled={busy}><Check size={16}/>{busy?(tr?'Kaydediliyor…':'Saving…'):(tr?'Kaynağı kaydet':'Save source')}</button></div>
     </form>}
     {data?.items.length===0&&!editor&&<div className="studio-empty"><ShieldCheck size={28}/><h3>{tr?'Henüz webhook kaynağı yok':'No webhook sources yet'}</h3><button className="studio-text-button" onClick={()=>open(null)}><Plus size={15}/>{tr?'İlk webhook kaynağını ekle':'Add first webhook'}</button></div>}
-    <div className="product-source-list">{data?.items.map(source=><article className="product-source-row" key={source.id}><div className="product-source-heading"><div><button className="product-source-name" disabled={busy} onClick={()=>select(source)}>{source.name}</button><p>v{source.version} · {source.config.entityType} · {source.config.eventNames.join(', ')}</p></div><span className="studio-badge">{stateLabel(source.state)}</span><button className="icon-button" disabled={busy} aria-label={`${tr?'Webhook düzenle':'Edit webhook'} ${source.name}`} title={tr?'Düzenle':'Edit'} onClick={()=>open(source)}><Pencil size={16}/></button></div>
-      <dl className="product-source-facts"><div><dt>{tr?'Saklanan olay':'Retained events'}</dt><dd>{source.eventCount}</dd></div><div><dt>{tr?'Güncel sürümdeki kayıt':'Current-version records'}</dt><dd>{source.recordCount}</dd></div><div><dt>{tr?'Son kabul':'Last accepted'}</dt><dd>{date(source.lastReceivedAt)}</dd></div></dl>
+    <div className="product-source-list">{data?.items.map(source=><article className="product-source-row" key={source.id}><div className="product-source-heading"><div><button className="product-source-name" disabled={busy} onClick={()=>select(source)}>{source.name}</button><p>v{source.version} · {entityLabel(source.config.entityType)} · {source.config.eventNames.join(', ')}</p></div><span className="studio-badge">{stateLabel(source.state)}</span><button className="icon-button" disabled={busy} aria-label={`${tr?'Webhook düzenle':'Edit webhook'} ${source.name}`} title={tr?'Düzenle':'Edit'} onClick={()=>open(source)}><Pencil size={16}/></button></div>
+      <dl className="product-source-facts"><div><dt>{tr?'Saklanan olay':'Retained events'}</dt><dd>{source.eventCount.toLocaleString(locale)}</dd></div><div><dt>{tr?'Güncel sürümdeki kayıt':'Current-version records'}</dt><dd>{source.recordCount.toLocaleString(locale)}</dd></div><div><dt>{tr?'Son kabul':'Last accepted'}</dt><dd>{date(source.lastReceivedAt)}</dd></div></dl>
       <div className="product-source-actions"><button className="studio-secondary" disabled={busy||source.state==='revoked'} onClick={()=>select(source,true)}>{tr?'Yükü önizle':'Preview payload'}</button><label className="product-source-toggle"><input type="checkbox" role="switch" aria-label={`${tr?'Olay kabulünü aç':'Enable ingestion'} ${source.name}`} checked={source.state==='active'} disabled={busy||source.state==='revoked'||!source.previewAt} onChange={event=>void change(source,event.target.checked?'activate':'pause')}/>{tr?'Etkin':'Active'}</label><button className="icon-button" disabled={busy||source.state==='revoked'} aria-label={`${tr?'Bağlantıyı iptal et':'Revoke connection'} ${source.name}`} title={tr?'Bağlantıyı iptal et':'Revoke connection'} onClick={()=>void change(source,'revoke')}><Unplug size={16}/></button></div>
     </article>)}</div>
     {chosen&&<><section className="studio-band"><div className="studio-section-title"><h3>{chosen.name}</h3><span className="studio-badge">HMAC-SHA256</span></div><label className="product-webhook-url">{tr?'Webhook adresi':'Webhook URL'}<div><input readOnly value={origin+chosen.endpointPath}/><button className="icon-button" title={tr?'Adresi kopyala':'Copy URL'} aria-label={tr?'Adresi kopyala':'Copy URL'} onClick={()=>void navigator.clipboard.writeText(origin+chosen.endpointPath).then(()=>setNotice(tr?'Adres kopyalandı.':'URL copied.')).catch(()=>setError(tr?'Adres kopyalanamadı.':'Could not copy URL.'))}><Copy size={16}/></button></div></label>
-      <details className="product-webhook-contract"><summary>{tr?'İmza sözleşmesi':'Signature contract'}</summary><dl><dt>X-Ryzevo-Timestamp</dt><dd>Unix seconds · ±{WEBHOOK_LIMITS.signatureSeconds}s</dd><dt>X-Ryzevo-Signature</dt><dd>v1=hex(HMAC-SHA256(key, timestamp + &quot;.&quot; + sourceId + &quot;.&quot; + rawBody))</dd></dl><p>{tr?'Anahtar hex olarak çözümlenir. İmza ham UTF-8 gövdesinden hesaplanır. Origin header gönderilmez.':'Decode the hex key. Sign exact raw UTF-8 bytes. Do not send an Origin header.'}</p></details>
+      <details className="product-webhook-contract"><summary>{tr?'İmza sözleşmesi':'Signature contract'}</summary><dl><dt>X-Ryzevo-Timestamp</dt><dd>{tr?'Unix saniyesi':'Unix seconds'} · ±{WEBHOOK_LIMITS.signatureSeconds}s</dd><dt>X-Ryzevo-Signature</dt><dd>v1=hex(HMAC-SHA256(key, timestamp + &quot;.&quot; + sourceId + &quot;.&quot; + rawBody))</dd></dl><p>{tr?'Anahtar hex olarak çözümlenir. İmza ham UTF-8 gövdesinden hesaplanır. Origin header gönderilmez.':'Decode the hex key. Sign exact raw UTF-8 bytes. Do not send an Origin header.'}</p></details>
       <details className="product-webhook-preview" open={payloadOpen} onToggle={event=>setPayloadOpen(event.currentTarget.open)}><summary>{tr?'Örnek yük ve şema önizlemesi':'Sample payload and schema preview'}</summary><label className="product-webhook-payload">{tr?'Örnek olay yükü':'Sample event payload'}<textarea spellCheck={false} rows={14} maxLength={12000} value={payload} onChange={event=>{setPayload(event.target.value);setPreview(null);}}/></label><div className="product-data-form-actions"><span className="studio-note">{tr?'Önizleme kayıt oluşturmaz veya imzalı teslimatı doğrulamaz.':'Preview does not store events or verify signed delivery.'}</span><button className="studio-primary" disabled={busy||chosen.state==='revoked'} onClick={()=>void check()}>{tr?'Şemayı önizle':'Preview schema'}</button></div>
       {preview&&<p className="studio-success" role="status">{preview.valid} / {preview.total} · {tr?'Şema geçerli. Olay kabulü etkinleştirilebilir.':'Schema valid. Ingestion can be activated.'}</p>}
       </details>

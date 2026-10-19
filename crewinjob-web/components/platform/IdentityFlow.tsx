@@ -1,10 +1,12 @@
 'use client';
 import {useEffect,useRef,useState,type FormEvent} from 'react';
 import {ArrowLeft,ArrowRight,Check,LoaderCircle,Mail,ShieldCheck} from 'lucide-react';
-import {useLang} from '@/lib/lang';
+import {LangToggle,useLang} from '@/lib/lang';
 import Brand from './Brand';
+import Msg from '@/components/Msg';
 
 type Kind='verify'|'reset'|'signup';
+const LANG_TOGGLE_CLASS='absolute right-4 top-4 z-10 inline-flex min-h-10 min-w-10 items-center justify-center gap-1.5 rounded-md border border-[#cfd7c6] bg-white px-3 text-[11px] font-bold tracking-[.04em] text-[#3f5a28] hover:bg-[#f1f5ea] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#789f17]';
 async function send(body:object,signal?:AbortSignal){
   const response=await fetch('/api/auth/identity',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:signal||AbortSignal.timeout(15000)});
   if(!response.ok)throw new Error('request');
@@ -40,7 +42,8 @@ export default function IdentityFlow({kind}:{kind:Kind}){
     finally{setBusy(false);}
   };
   const title=kind==='verify'?(tr?'E-postanızı doğrulayın':'Verify your email'):kind==='reset'?(tr?'Hesabınıza geri dönün':'Get back to your account'):(tr?'Çalışma alanınızı oluşturun':'Create your workspace');
-  return <main className="auth-page ryz-join identity-page" lang={lang}>
+  return <main className="auth-page ryz-join identity-page relative" lang={lang}>
+    <LangToggle className={LANG_TOGGLE_CLASS}/>
     <a className="identity-brand" href="/welcome" aria-label="Ryzevo"><Brand /></a>
     <section className="auth-form-surface">
       <div className="identity-symbol">{done?<Check size={22}/>:kind==='verify'?<ShieldCheck size={22}/>:<Mail size={22}/>}</div>
@@ -55,7 +58,7 @@ export default function IdentityFlow({kind}:{kind:Kind}){
             {kind==='signup'&&<><label>{tr?'Organizasyon adı':'Organization name'}<input required maxLength={160} autoComplete="organization" value={organizationName} onChange={e=>setOrganizationName(e.target.value)}/></label><label>{tr?'Proje adı':'Project name'}<input required maxLength={160} value={projectName} onChange={e=>setProjectName(e.target.value)}/></label><label>{tr?'Web sitesi':'Website'}<input type="url" required maxLength={2000} placeholder="https://" value={website} onChange={e=>setWebsite(e.target.value)}/></label></>}
             {kind!=='verify'&&<><label>{tr?'Yeni şifre':'New password'}<input type="password" required minLength={12} maxLength={256} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)}/></label><label>{tr?'Şifre tekrar':'Repeat password'}<input type="password" required minLength={12} maxLength={256} autoComplete="new-password" value={confirm} onChange={e=>setConfirm(e.target.value)}/></label></>}
           </>}
-          {error&&<p role="alert" className="studio-error">{error}</p>}
+          {error&&<p role="alert" className="studio-error"><Msg text={error}/></p>}
           <button className="studio-primary">{busy?<LoaderCircle size={16} className="animate-spin"/>:<ArrowRight size={16}/>} {busy?(tr?'İşleniyor…':'Working…'):token?(tr?'Onayla ve devam et':'Confirm and continue'):(tr?'Bağlantı gönder':'Send link')}</button>
         </fieldset></form>
       </>}
