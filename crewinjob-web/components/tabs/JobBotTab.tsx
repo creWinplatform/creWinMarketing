@@ -177,7 +177,7 @@ function Combobox({
         <input
           type="text"
           autoComplete="off"
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400 outline-none pr-8"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400 outline-none pr-8 dark:border-slate-700"
           style={{ backgroundColor: value ? '#f0f9ff' : undefined, color: '#1e293b' }}
           placeholder={placeholder}
           value={inputVal}
@@ -189,7 +189,7 @@ function Combobox({
           type="button"
           tabIndex={-1}
           aria-label={lang === 'tr' ? 'Seçenekleri göster' : 'Show options'}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 text-xs dark:text-slate-400"
           onClick={() => setOpen(o => !o)}
         >
           {value ? '✓' : '▾'}
@@ -204,9 +204,9 @@ function Combobox({
           marginTop: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
         }}>
           {loading ? (
-            <div className="px-3 py-2 text-xs text-gray-400">{lang === 'tr' ? 'Yükleniyor…' : 'Loading…'}</div>
+            <div className="px-3 py-2 text-xs text-gray-500 dark:text-slate-400">{lang === 'tr' ? 'Yükleniyor…' : 'Loading…'}</div>
           ) : filtered.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-gray-400">{lang === 'tr' ? 'Bulunamadı' : 'Not found'}</div>
+            <div className="px-3 py-2 text-xs text-gray-500 dark:text-slate-400">{lang === 'tr' ? 'Bulunamadı' : 'Not found'}</div>
           ) : filtered.map(opt => (
             <div
               key={opt.id}
@@ -214,10 +214,10 @@ function Combobox({
               style={{ borderBottom: '1px solid #f3f4f6' }}
               onMouseDown={e => { e.preventDefault(); onSelect(opt.id, opt.label); setOpen(false); }}
             >
-              <span className={opt.id === value ? 'font-semibold text-blue-700' : 'text-gray-800'}>
+              <span className={opt.id === value ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-800 dark:text-slate-100'}>
                 {opt.label}
               </span>
-              {opt.sub && <span className="text-xs text-gray-400 ml-2">{opt.sub}</span>}
+              {opt.sub && <span className="text-xs text-gray-500 ml-2 dark:text-slate-400">{opt.sub}</span>}
             </div>
           ))}
         </div>
@@ -230,10 +230,10 @@ function Combobox({
 function StatusBadge({ status }: { status: QueueItem['status'] }) {
   const { lang } = useLang();
   const map: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-800',
-    posting: 'bg-blue-100 text-blue-800',
-    posted:  'bg-green-100 text-green-800',
-    error:   'bg-red-100 text-red-800',
+    pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
+    posting: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300',
+    posted:  'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
+    error:   'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
   };
   const label: Record<string, string> = lang === 'tr' ? {
     pending: 'Bekliyor', posting: 'Yayınlanıyor…', posted: 'Yayında', error: 'Hata',
@@ -585,15 +585,15 @@ export default function JobBotTab() {
       {/* ── Başlık + statlar ─────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">{t('📋 İlan Botu', '📋 Job bot')}</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{t("crewinjob.com'a denizcilik iş ilanı oluştur", 'Create maritime job postings on crewinjob.com')}</p>
+          <h2 className="text-xl font-bold text-gray-800 dark:text-slate-100">{t('📋 İlan Botu', '📋 Job bot')}</h2>
+          <p className="text-sm text-gray-500 mt-0.5 dark:text-slate-400">{t("crewinjob.com'a denizcilik iş ilanı oluştur", 'Create maritime job postings on crewinjob.com')}</p>
         </div>
         <div className="flex gap-2">
           {[
-            { label: t('Toplam', 'Total'),  val: stats.total,   cls: 'bg-gray-100 text-gray-700' },
-            { label: t('Bekliyor', 'Pending'), val: stats.pending, cls: 'bg-yellow-100 text-yellow-700' },
-            { label: t('Yayında', 'Live'), val: stats.posted,  cls: 'bg-green-100 text-green-700' },
-            { label: t('Hata', 'Error'),    val: stats.errors,  cls: 'bg-red-100 text-red-700' },
+            { label: t('Toplam', 'Total'),  val: stats.total,   cls: 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-200' },
+            { label: t('Bekliyor', 'Pending'), val: stats.pending, cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300' },
+            { label: t('Yayında', 'Live'), val: stats.posted,  cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
+            { label: t('Hata', 'Error'),    val: stats.errors,  cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
           ].map(s => (
             <div key={s.label} className={`px-3 py-1.5 rounded-xl text-center ${s.cls}`}>
               <div className="text-lg font-bold leading-tight">{(s.val ?? 0).toLocaleString(localeTag(lang))}</div>
@@ -605,14 +605,14 @@ export default function JobBotTab() {
 
       {/* ── Mesaj banner ───────────────────────────────────────────────────── */}
       {msg && (
-        <div className={`px-4 py-3 rounded-lg text-sm font-medium flex flex-col gap-1.5 ${msgOk ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+        <div className={`px-4 py-3 rounded-lg text-sm font-medium flex flex-col gap-1.5 ${msgOk ? 'bg-green-50 text-green-800 border border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800' : 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'}`}>
           <span><Msg text={msg} /></span>
           {msgUrl && (
             <a
               href={msgUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline font-semibold text-sm"
+              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline font-semibold text-sm dark:text-blue-400"
             >
               🔗 {msgUrl}
             </a>
@@ -621,7 +621,7 @@ export default function JobBotTab() {
       )}
 
       {/* ── Sub-tab navigation ─────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 dark:bg-slate-700">
         {([
           ['create',  t('✏️ İlan Oluştur', '✏️ Create job posting')],
           ['queue',   `${t('📥 Kuyruk', '📥 Queue')}${stats.pending > 0 ? ` (${stats.pending})` : ''}`],
@@ -631,7 +631,7 @@ export default function JobBotTab() {
             key={key}
             onClick={() => { setSubTab(key); if (key !== 'create') setEditId(null); }}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
-              subTab === key ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'
+              subTab === key ? 'bg-white shadow text-blue-600 dark:bg-slate-800 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:text-slate-400'
             }`}
           >
             {label}
@@ -647,26 +647,26 @@ export default function JobBotTab() {
 
           {/* Düzenleme modu banner */}
           {editId && (
-            <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-700">
+            <div className="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-sm text-blue-700 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300">
               {t('✏️ Kuyruk öğesi düzenleniyor', '✏️ Editing queue item')}
-              <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); }} className="ml-auto underline text-blue-500">{t('İptal', 'Cancel')}</button>
+              <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); }} className="ml-auto underline text-blue-500 dark:text-blue-400">{t('İptal', 'Cancel')}</button>
             </div>
           )}
 
           {/* ── AI Otomatik Doldur ──────────────────────────────────────── */}
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4 space-y-3">
+          <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/40 dark:to-slate-800 border border-purple-200 rounded-xl p-4 space-y-3 dark:border-purple-800">
             <div className="flex items-center gap-2">
               <span className="text-lg">🤖</span>
-              <span className="font-semibold text-gray-700">{t('AI ile Otomatik Doldur', 'Auto-fill with AI')}</span>
-              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Gemini</span>
+              <span className="font-semibold text-gray-700 dark:text-slate-200">{t('AI ile Otomatik Doldur', 'Auto-fill with AI')}</span>
+              <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full dark:bg-purple-900/30 dark:text-purple-300">Gemini</span>
             </div>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-slate-400">
               {t('Metin yapıştırırsan (Telegram, e-posta, LinkedIn…) AI alanları çıkarır.', 'If you paste text (Telegram, email, LinkedIn…), AI extracts the fields.')} <strong>{t('Boş bırakıp butona basarsan AI sıfırdan gerçekçi bir denizcilik ilanı üretir.', 'If you leave it empty and press the button, AI generates a realistic maritime job posting from scratch.')}</strong>
             </p>
             <textarea
               ref={aiTextRef}
               rows={5}
-              className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none resize-none bg-white"
+              className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none resize-none bg-white dark:border-purple-800 dark:bg-slate-800"
               style={{ color: '#1e293b' }}
               placeholder={t('İlan metnini buraya yapıştır — VEYA boş bırak, AI senin için bir ilan üretsin…', 'Paste the job posting text here — or leave it empty and let AI generate one for you…')}
               defaultValue=""
@@ -690,20 +690,20 @@ export default function JobBotTab() {
           </div>
 
           {/* ── Form ───────────────────────────────────────────────────── */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4" style={{ color: '#1e293b' }}>
-            <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+          <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4 dark:bg-slate-800 dark:border-slate-700" style={{ color: '#1e293b' }}>
+            <h3 className="font-semibold text-gray-700 flex items-center gap-2 dark:text-slate-200">
               {t('📝 İlan Detayları', '📝 Job posting details')}
-              <span className="text-xs font-normal text-gray-400">{t('(mavi arka plan = seçildi)', '(blue background = selected)')}</span>
+              <span className="text-xs font-normal text-gray-500 dark:text-slate-400">{t('(mavi arka plan = seçildi)', '(blue background = selected)')}</span>
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
               {/* Pozisyon */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">
                   {t('Pozisyon *', 'Position *')}
                   {posLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor…', 'loading…')}</span>}
-                  {!posLoad && posOptions.length > 0 && <span className="ml-1 text-green-500 font-normal">({posOptions.length} {t('seçenek', 'options')})</span>}
+                  {!posLoad && posOptions.length > 0 && <span className="ml-1 text-green-500 font-normal dark:text-green-400">({posOptions.length} {t('seçenek', 'options')})</span>}
                 </label>
                 <Combobox
                   value={form.positionId}
@@ -718,7 +718,7 @@ export default function JobBotTab() {
 
               {/* Gemi Tipi */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Gemi Tipi', 'Ship type')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Gemi Tipi', 'Ship type')}</label>
                 <Combobox
                   value={form.shipTypeId}
                   inputVal={form.shipTypeText}
@@ -731,7 +731,7 @@ export default function JobBotTab() {
 
               {/* Ülke */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Ülke / Bayrak', 'Country / Flag')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Ülke / Bayrak', 'Country / Flag')}</label>
                 <Combobox
                   value={form.countryId}
                   inputVal={form.countryText}
@@ -744,11 +744,11 @@ export default function JobBotTab() {
 
               {/* Şehir */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">
                   {t('Şehir', 'City')}
                   {cityLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor…', 'loading…')}</span>}
-                  {!cityLoad && cities.length > 0 && <span className="ml-1 text-green-500 font-normal">({cities.length} {t('şehir', 'cities')})</span>}
-                  {!form.countryId && <span className="ml-1 text-gray-400 font-normal">{t('(önce ülke seç)', '(select a country first)')}</span>}
+                  {!cityLoad && cities.length > 0 && <span className="ml-1 text-green-500 font-normal dark:text-green-400">({cities.length} {t('şehir', 'cities')})</span>}
+                  {!form.countryId && <span className="ml-1 text-gray-500 font-normal dark:text-slate-400">{t('(önce ülke seç)', '(select a country first)')}</span>}
                 </label>
                 <Combobox
                   value={form.cityId}
@@ -763,7 +763,7 @@ export default function JobBotTab() {
 
               {/* Kontrat Tipi */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Kontrat Süresi', 'Contract duration')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Kontrat Süresi', 'Contract duration')}</label>
                 <Combobox
                   value={form.contractTypeId}
                   inputVal={form.contractTypeText}
@@ -776,7 +776,7 @@ export default function JobBotTab() {
 
               {/* Para Birimi */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Para Birimi', 'Currency')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Para Birimi', 'Currency')}</label>
                 <Combobox
                   value={form.currencyId}
                   inputVal={form.currencyText}
@@ -789,17 +789,17 @@ export default function JobBotTab() {
 
               {/* Maaş Aralığı */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Maaş Aralığı', 'Salary range')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Maaş Aralığı', 'Salary range')}</label>
                 <div className="flex gap-2">
                   <input
                     type="number" min="0" placeholder="Min" aria-label={t('Minimum maaş', 'Minimum salary')}
-                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
                     value={form.minPrice}
                     onChange={e => setForm(f => ({ ...f, minPrice: e.target.value }))}
                   />
                   <input
                     type="number" min="0" placeholder="Max" aria-label={t('Maksimum maaş', 'Maximum salary')}
-                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
                     value={form.maxPrice}
                     onChange={e => setForm(f => ({ ...f, maxPrice: e.target.value }))}
                   />
@@ -808,10 +808,10 @@ export default function JobBotTab() {
 
               {/* Firma */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">
                   {t('Firma', 'Company')}
                   {compLoad && <span className="ml-1 text-blue-400 font-normal">{t('yükleniyor…', 'loading…')}</span>}
-                  {!compLoad && compOptions.length > 0 && <span className="ml-1 text-green-500 font-normal">({compOptions.length} {t('firma', 'companies')})</span>}
+                  {!compLoad && compOptions.length > 0 && <span className="ml-1 text-green-500 font-normal dark:text-green-400">({compOptions.length} {t('firma', 'companies')})</span>}
                 </label>
                 <Combobox
                   value={form.companyId}
@@ -826,10 +826,10 @@ export default function JobBotTab() {
 
               {/* Email */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('İletişim E-postası', 'Contact email')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('İletişim E-postası', 'Contact email')}</label>
                 <input
                   type="email" placeholder="jobs@company.com" aria-label={t('İletişim E-postası', 'Contact email')}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 />
@@ -837,21 +837,21 @@ export default function JobBotTab() {
 
               {/* Tarihler */}
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Başlangıç Tarihi', 'Start date')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Başlangıç Tarihi', 'Start date')}</label>
                 <input
                   type="date"
                   aria-label={t('Başlangıç Tarihi', 'Start date')}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
                   value={form.startDate}
                   onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Son Başvuru Tarihi', 'Application deadline')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Son Başvuru Tarihi', 'Application deadline')}</label>
                 <input
                   type="date"
                   aria-label={t('Son Başvuru Tarihi', 'Application deadline')}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
                   value={form.expirationDate}
                   onChange={e => setForm(f => ({ ...f, expirationDate: e.target.value }))}
                 />
@@ -861,10 +861,10 @@ export default function JobBotTab() {
 
             {/* Açıklama */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('İş Tanımı / Açıklama', 'Job description')}</label>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('İş Tanımı / Açıklama', 'Job description')}</label>
               <textarea
                 rows={4}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none resize-none"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none resize-none dark:border-slate-700"
                 placeholder={t('İş gereksinimleri, sorumluluklar, avantajlar…', 'Requirements, responsibilities, benefits…')}
                 value={form.explanation}
                 onChange={e => setForm(f => ({ ...f, explanation: e.target.value }))}
@@ -872,14 +872,14 @@ export default function JobBotTab() {
             </div>
 
             {/* ── Ek Gereksinimler ─────────────────────────────────────── */}
-            <div className="border-t border-gray-100 pt-4 space-y-4">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Ek Gereksinimler', 'Additional requirements')}</h4>
+            <div className="border-t border-gray-100 pt-4 space-y-4 dark:border-slate-700">
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Ek Gereksinimler', 'Additional requirements')}</h4>
 
               {/* Diller */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">
                   {t('Dil Gereksinimleri', 'Language requirements')}
-                  {apiLanguages.length > 0 && <span className="ml-1 text-green-500 font-normal">({apiLanguages.length} {t('dil', 'languages')})</span>}
+                  {apiLanguages.length > 0 && <span className="ml-1 text-green-500 font-normal dark:text-green-400">({apiLanguages.length} {t('dil', 'languages')})</span>}
                 </label>
                 <LanguageRows
                   rows={form.languages}
@@ -890,7 +890,7 @@ export default function JobBotTab() {
 
               {/* Vize Tipleri */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('Vize / Pasaport Gereksinimleri', 'Visa / passport requirements')}</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('Vize / Pasaport Gereksinimleri', 'Visa / passport requirements')}</label>
                 <MultiSelectRows
                   rows={form.visaTypes}
                   options={VISA_TYPES.map(v => ({ id: v.id, name: lang === 'tr' ? v.tr : v.name }))}
@@ -902,9 +902,9 @@ export default function JobBotTab() {
 
               {/* Sertifikalar */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">
                   {t('Sertifikalar', 'Certificates')}
-                  {apiCerts.length > 0 && <span className="ml-1 text-green-500 font-normal">({apiCerts.length} {t('sertifika', 'certificates')})</span>}
+                  {apiCerts.length > 0 && <span className="ml-1 text-green-500 font-normal dark:text-green-400">({apiCerts.length} {t('sertifika', 'certificates')})</span>}
                 </label>
                 <MultiSelectRows
                   rows={form.certificates}
@@ -917,7 +917,7 @@ export default function JobBotTab() {
 
               {/* Endorsements */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Endorsements</label>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">Endorsements</label>
                 <EndorsementRows
                   rows={form.endorsements}
                   onChange={rows => setForm(f => ({ ...f, endorsements: rows }))}
@@ -928,12 +928,12 @@ export default function JobBotTab() {
             {/* Seçilen değerler özeti */}
             {(form.positionId || form.shipTypeId || form.countryId) && (
               <div className="flex flex-wrap gap-2 pt-1">
-                {form.positionId && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">✓ {form.positionText}</span>}
-                {form.shipTypeId && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">✓ {form.shipTypeText}</span>}
-                {form.countryId  && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">✓ {form.countryText}</span>}
-                {form.contractTypeId && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">✓ {form.contractTypeText}</span>}
+                {form.positionId && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full dark:bg-blue-900/30 dark:text-blue-300">✓ {form.positionText}</span>}
+                {form.shipTypeId && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full dark:bg-blue-900/30 dark:text-blue-300">✓ {form.shipTypeText}</span>}
+                {form.countryId  && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full dark:bg-blue-900/30 dark:text-blue-300">✓ {form.countryText}</span>}
+                {form.contractTypeId && <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full dark:bg-blue-900/30 dark:text-blue-300">✓ {form.contractTypeText}</span>}
                 {form.currencyId && (form.minPrice || form.maxPrice) && (
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full dark:bg-green-900/30 dark:text-green-300">
                     💰 {form.minPrice||'?'}–{form.maxPrice||'?'} {form.currencyText}
                   </span>
                 )}
@@ -941,13 +941,13 @@ export default function JobBotTab() {
             )}
 
             {/* Butonlar */}
-            <div className="flex gap-3 pt-2 border-t border-gray-100 flex-wrap">
+            <div className="flex gap-3 pt-2 border-t border-gray-100 flex-wrap dark:border-slate-700">
               {editId ? (
                 <>
                   <button onClick={handleUpdateQueue} disabled={busy === 'update'} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
                     {busy === 'update' ? t('Kaydediliyor…', 'Saving…') : t('💾 Kuyruğu Güncelle', '💾 Update queue item')}
                   </button>
-                  <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); }} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold">
+                  <button onClick={() => { setForm(EMPTY_FORM); setEditId(null); }} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold dark:bg-slate-600 dark:text-slate-200">
                     {t('İptal', 'Cancel')}
                   </button>
                 </>
@@ -959,13 +959,13 @@ export default function JobBotTab() {
                   <button onClick={handleAddQueue} disabled={!!busy} className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50">
                     {busy === 'queue' ? t('Ekleniyor…', 'Adding…') : t('📥 Kuyruğa Ekle', '📥 Add to queue')}
                   </button>
-                  <button onClick={() => setForm(EMPTY_FORM)} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold">
+                  <button onClick={() => setForm(EMPTY_FORM)} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-semibold dark:bg-slate-600 dark:text-slate-200">
                     {t('Temizle', 'Clear')}
                   </button>
                 </>
               )}
             </div>
-            <p className="text-xs text-gray-400">
+            <p className="text-xs text-gray-500 dark:text-slate-400">
               <strong>{t('Hemen Yayınla', 'Publish now')}</strong> {t("→ crewinjob API'ye direkt gönderir.", '→ sends directly to the crewinjob API.')} &nbsp;
               <strong>{t('Kuyruğa Ekle', 'Add to queue')}</strong> {t('→ inceleyip onaylarsın.', '→ you review and approve it.')}
             </p>
@@ -979,7 +979,7 @@ export default function JobBotTab() {
       {subTab === 'queue' && (
         <div className="space-y-3">
           {pending.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
+            <div className="text-center py-16 text-gray-500 dark:text-slate-400">
               <div className="text-5xl mb-3">📭</div>
               <p className="text-lg font-medium">{t('Kuyruk boş', 'Queue is empty')}</p>
               <p className="text-sm mt-1">{t('İlan oluştur → Kuyruğa Ekle', 'Create a job posting → Add to queue')}</p>
@@ -996,7 +996,7 @@ export default function JobBotTab() {
       {subTab === 'history' && (
         <div className="space-y-3">
           {posted.length === 0 ? (
-            <div className="text-center py-16 text-gray-400">
+            <div className="text-center py-16 text-gray-500 dark:text-slate-400">
               <div className="text-5xl mb-3">📋</div>
               <p className="text-lg font-medium">{t('Henüz yayınlanan ilan yok', 'No published job postings yet')}</p>
             </div>
@@ -1026,7 +1026,7 @@ function LanguageRows({ rows, languages, onChange }: {
       {rows.map((row, i) => (
         <div key={i} className="flex gap-2 items-center">
           <select
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             value={row.langId ?? ''}
             onChange={e => updateRow(i, { langId: e.target.value ? Number(e.target.value) : null })}
@@ -1035,7 +1035,7 @@ function LanguageRows({ rows, languages, onChange }: {
             {languages.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <select
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             value={row.levelId ?? ''}
             onChange={e => updateRow(i, { levelId: e.target.value ? Number(e.target.value) : null })}
@@ -1052,7 +1052,7 @@ function LanguageRows({ rows, languages, onChange }: {
         </div>
       ))}
       {rows.length < 5 && (
-        <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1">
+        <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1 dark:text-blue-400">
           {lang === 'tr' ? '+ Dil Ekle' : '+ Add language'}
         </button>
       )}
@@ -1079,7 +1079,7 @@ function MultiSelectRows({ rows, options, onChange, placeholder, addLabel }: {
       {rows.map((val, i) => (
         <div key={i} className="flex gap-2 items-center">
           <select
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             value={val ?? ''}
             onChange={e => updateRow(i, e.target.value ? Number(e.target.value) : null)}
@@ -1096,7 +1096,7 @@ function MultiSelectRows({ rows, options, onChange, placeholder, addLabel }: {
         </div>
       ))}
       {rows.length < 5 && (
-        <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1">
+        <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1 dark:text-blue-400">
           {addLabel || (lang === 'tr' ? '+ Ekle' : '+ Add')}
         </button>
       )}
@@ -1121,7 +1121,7 @@ function EndorsementRows({ rows, onChange }: {
         <div key={i} className="flex gap-2 items-center">
           <input
             type="text"
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             placeholder={lang === 'tr' ? 'Endorsement (örn: STCW II/1, IGF…)' : 'Endorsement (e.g. STCW II/1, IGF…)'}
             value={val}
@@ -1136,7 +1136,7 @@ function EndorsementRows({ rows, onChange }: {
         </div>
       ))}
       {rows.length < 5 && (
-        <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1">
+        <button onClick={addRow} className="text-xs text-blue-600 hover:underline mt-1 dark:text-blue-400">
           {lang === 'tr' ? '+ Endorsement Ekle' : '+ Add endorsement'}
         </button>
       )}
@@ -1170,17 +1170,17 @@ function QueueCard({
   const maxP     = d.maxPrice ? String(d.maxPrice) : '';
 
   return (
-    <div className={`bg-white border rounded-xl overflow-visible transition-shadow hover:shadow-md ${
-      item.status === 'error' ? 'border-red-200' : item.status === 'posted' ? 'border-green-200' : 'border-gray-200'
+    <div className={`bg-white dark:bg-slate-800 border rounded-xl overflow-visible transition-shadow hover:shadow-md ${
+      item.status === 'error' ? 'border-red-200 dark:border-red-800' : item.status === 'posted' ? 'border-green-200 dark:border-green-800' : 'border-gray-200 dark:border-slate-700'
     }`}>
       <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => setExpanded(e => !e)}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-800">{pos}</span>
-            {ship && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{ship}</span>}
+            <span className="font-semibold text-gray-800 dark:text-slate-100">{pos}</span>
+            {ship && <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full dark:bg-blue-900/30 dark:text-blue-300">{ship}</span>}
             <StatusBadge status={item.status} />
           </div>
-          <div className="flex gap-3 text-xs text-gray-400 mt-0.5 flex-wrap">
+          <div className="flex gap-3 text-xs text-gray-500 mt-0.5 flex-wrap dark:text-slate-400">
             {country && <span>🏴 {country}</span>}
             {contract && <span>📅 {contract}</span>}
             {(minP || maxP) && currency && <span>💰 {minP||'?'}–{maxP||'?'} {currency}</span>}
@@ -1189,13 +1189,13 @@ function QueueCard({
               : <span>{new Date(item.createdAt).toLocaleDateString(locale)}</span>}
           </div>
         </div>
-        <span className="text-gray-400 text-xs">{expanded ? '▲' : '▼'}</span>
+        <span className="text-gray-500 text-xs dark:text-slate-400">{expanded ? '▲' : '▼'}</span>
       </div>
 
       {expanded && (
-        <div className="border-t border-gray-100 px-4 py-3 space-y-2 text-sm">
+        <div className="border-t border-gray-100 px-4 py-3 space-y-2 text-sm dark:border-slate-700">
           {item.error && (
-            <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-xs">❌ <Msg text={item.error} /></div>
+            <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-xs dark:bg-red-900/30 dark:text-red-300">❌ <Msg text={item.error} /></div>
           )}
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
             {[
@@ -1211,13 +1211,13 @@ function QueueCard({
               [t('Son Başvuru', 'Deadline'), String(d.expirationDate || '')],
             ].filter(([, v]) => v).map(([k, v]) => (
               <div key={k} className="flex gap-1">
-                <span className="text-gray-400 w-24 shrink-0">{k}:</span>
-                <span className="text-gray-700">{v}</span>
+                <span className="text-gray-500 w-24 shrink-0 dark:text-slate-400">{k}:</span>
+                <span className="text-gray-700 dark:text-slate-200">{v}</span>
               </div>
             ))}
           </div>
           {d.explanation != null && d.explanation !== '' && (
-            <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2">{String(d.explanation)}</div>
+            <div className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 dark:text-slate-300 dark:bg-slate-800">{String(d.explanation)}</div>
           )}
           {!readonly && (
             <div className="flex gap-2 pt-1">
@@ -1228,11 +1228,11 @@ function QueueCard({
                 </button>
               )}
               <button onClick={() => onEdit(item)}
-                className="px-4 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold">
+                className="px-4 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold dark:bg-blue-900/30 dark:text-blue-300">
                 {t('✏️ Düzenle', '✏️ Edit')}
               </button>
               <button onClick={() => onRemove(item.id)} disabled={busy === item.id + '_del'}
-                className="px-4 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold disabled:opacity-50">
+                className="px-4 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-semibold disabled:opacity-50 dark:bg-red-900/30 dark:text-red-400">
                 {t('🗑 Sil', '🗑 Delete')}
               </button>
             </div>

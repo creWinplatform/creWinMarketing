@@ -155,9 +155,10 @@ html { font-family:'Manrope Variable',Manrope,'Segoe UI',sans-serif; }
 .workspace-main [class~="text-xs"] { font-size:12px; }
 .workspace-main [class~="text-sm"] { font-size:13px; line-height:1.7; }
 .workspace-main [class~="tracking-wide"],.workspace-main [class~="tracking-wider"] { letter-spacing:0; }
-.workspace-main [class~="bg-slate-800"],.dark .workspace-main [class~="dark:bg-slate-800"] { background:var(--studio-surface); }
-.workspace-main [class~="bg-slate-900"],.dark .workspace-main [class~="dark:bg-slate-900"] { background:var(--studio-bg); }
-.workspace-main [class~="border-slate-700"],.dark .workspace-main [class~="dark:border-slate-700"] { border-color:var(--studio-border); }
+/* Yalnız koyu tema: açık temada bilerek koyu tasarlanmış bg-slate-800/900 öğeleri (etiket, görsel alanı, log) beyaza dönüyordu */
+.dark .workspace-main [class~="bg-slate-800"],.dark .workspace-main [class~="dark:bg-slate-800"] { background:var(--studio-surface); }
+.dark .workspace-main [class~="bg-slate-900"],.dark .workspace-main [class~="dark:bg-slate-900"] { background:var(--studio-bg); }
+.dark .workspace-main [class~="border-slate-700"],.dark .workspace-main [class~="dark:border-slate-700"] { border-color:var(--studio-border); }
 .crewin-detail-disclosure { margin-top:30px; border-top:1px solid var(--studio-border); padding:20px 0; }
 .crewin-detail-disclosure>summary { cursor:pointer; font-size:13px; font-weight:650; color:var(--studio-muted); margin-bottom:20px; }
 .crewin-dashboard-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); border-top:1px solid var(--studio-border); border-bottom:1px solid var(--studio-border); margin:28px 0; }

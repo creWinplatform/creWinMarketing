@@ -520,11 +520,11 @@ export default function PipelineTab() {
             <span className="text-gray-300 text-sm font-mono font-semibold">{t('📟 Canlı Log', '📟 Live log')}</span>
             {busy && <span className="flex items-center gap-1.5 text-xs text-green-400"><span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"/>{backendBusy && !running ? t('arka planda çalışıyor…', 'running in background…') : t('çalışıyor…', 'running…')}</span>}
           </div>
-          <button onClick={() => setLogs([])} className="text-xs text-gray-500 hover:text-gray-300">{t('temizle', 'clear')}</button>
+          <button onClick={() => setLogs([])} className="text-xs text-slate-300 hover:text-white">{t('temizle', 'clear')}</button>
         </div>
         <div ref={logBoxRef} className="px-4 py-3 h-44 overflow-y-auto font-mono text-xs text-gray-300 space-y-0.5">
           {logs.length === 0
-            ? <span className="text-gray-600">{busy ? t('Bekleniyor…', 'Waiting…') : t('Bir aksiyon başlat — loglar burada görünür.', 'Start an action — logs will appear here.')}</span>
+            ? <span className="text-slate-300">{busy ? t('Bekleniyor…', 'Waiting…') : t('Bir aksiyon başlat — loglar burada görünür.', 'Start an action — logs will appear here.')}</span>
             : logs.map((line, i) => (
               <div key={i} className={
                 line.includes('✅') ? 'text-green-400' : line.includes('❌') ? 'text-red-400' :

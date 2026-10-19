@@ -472,3 +472,52 @@
 .hover\:bg-ocean:hover{color:var(--rz-primary-fg)}
 /* Eski sekmelerdeki 8–10px yardımcı yazılar okunur olsun: çalışma alanında en az 11px */
 .workspace-shell :is(.text-\[8px\],.text-\[9px\],.text-\[10px\],.text-\[10\.5px\]){font-size:11px;line-height:1.35}
+/* Dolu ocean yüzeyin içindeki beyaz yazı/rozetler yüzeyin yazı rengini alsın (koyu temada lime üstünde beyaz okunmuyordu) */
+.bg-ocean .text-white,.bg-ocean.text-white{color:var(--rz-primary-fg)}
+/* Eski sekmeler — okunurluk (WCAG AA ≥ 4.5:1). Ryzevo bileşenleri kendi token'larını kullanır; bunlar Tailwind gri/yeşil sınıfları içindir. */
+/* Koyu tema: soluk ikincil metin (dark:text-slate-500 vb.) koyu kart üzerinde 3.5:1 kalıyordu */
+.dark .workspace-shell :is(.dark\:text-slate-500,.dark\:text-slate-600,.dark\:text-gray-500,.dark\:text-gray-600){color:var(--rz-muted)}
+.dark .workspace-shell :is(.text-slate-500,.text-slate-600,.text-gray-500,.text-gray-600):not([class*="dark:text-"]){color:var(--rz-muted)}
+/* Koyu tema: karşılığı olmayan koyu başlık/gövde metni koyu zeminde kayboluyordu */
+.dark .workspace-shell :is(.text-slate-700,.text-slate-800,.text-slate-900,.text-gray-700,.text-gray-800,.text-gray-900):not([class*="dark:text-"]){color:var(--rz-ink)}
+/* Açık tema: gri-400 metin beyaz zeminde 2.6:1 */
+html:not(.dark) .workspace-shell :is(.text-gray-400,.text-slate-400){color:#64748b}
+/* Yeşil eylem düğmeleri: beyaz yazı yeşil-600 üzerinde 3.2:1 → bir ton koyu */
+.workspace-shell :is(.bg-green-600,.bg-emerald-600).text-white{background-color:#15803d}
+.workspace-shell :is(.bg-green-600,.bg-emerald-600).text-white:hover:not(:disabled){background-color:#166534}
+/* Açık tema: beyaz zeminde renkli rakam/etiketler (500–600 tonları 2–3.4:1) bir ton koyu */
+html:not(.dark) .workspace-shell :is(.text-green-500,.text-green-600){color:#15803d}
+html:not(.dark) .workspace-shell :is(.text-emerald-500,.text-emerald-600){color:#047857}
+html:not(.dark) .workspace-shell :is(.text-amber-500,.text-amber-600){color:#b45309}
+html:not(.dark) .workspace-shell :is(.text-orange-500,.text-orange-600){color:#c2410c}
+html:not(.dark) .workspace-shell :is(.text-yellow-500,.text-yellow-600){color:#a16207}
+html:not(.dark) .workspace-shell .text-red-500{color:#dc2626}
+/* Seçili yeşil seçenekler: beyaz yazı yeşil-500 üzerinde 2.2:1 */
+.workspace-shell .bg-green-500:is(.text-white,:has(> .text-white)),.workspace-shell .bg-green-500 .text-white{background-color:#15803d}
+.workspace-shell .bg-amber-600.text-white{background-color:#b45309}
+/* Koyu tema: koyu karşılığı olmayan açık rozet/zeminler koyu yüzeye; üstlerindeki metin açık renge geçtiği için */
+.dark .workspace-shell :is(.bg-slate-50,.bg-slate-100,.bg-gray-50,.bg-gray-100):not([class*="dark:bg-"]){background-color:#334155}
+.dark .workspace-shell :is(.bg-green-50,.bg-blue-50,.bg-red-50,.bg-yellow-50,.bg-amber-50,.bg-emerald-50,.bg-sky-50,.bg-purple-50,.bg-orange-50,.bg-indigo-50):not([class*="dark:bg-"]){background-color:rgba(148,163,184,.12)}
+/* Koyu tema: koyu gri sekme/rozet zemininde soluk yazı (3.9:1) */
+.dark .workspace-shell :is(.dark\:bg-slate-600,.dark\:bg-slate-700):is(.dark\:text-slate-400,.dark\:text-gray-400,.dark\:text-slate-500,.dark\:text-gray-500,.text-slate-500,.text-gray-500),
+.dark .workspace-shell :is(.dark\:bg-slate-600,.dark\:bg-slate-700) :is(.dark\:text-slate-400,.dark\:text-gray-400){color:#cbd5e1}
+.dark .workspace-shell .text-red-500:not([class*="dark:text-"]){color:#f87171}
+/* Koyu tema: koyu karşılığı olmayan renkli 600–800 metinler koyu zeminde okunmuyordu → aynı rengin 400 tonu */
+.dark .workspace-shell :is(.text-red-600,.text-red-700,.text-red-800):not([class*="dark:text-"]){color:#f87171}
+.dark .workspace-shell :is(.text-green-600,.text-green-700,.text-green-800):not([class*="dark:text-"]){color:#4ade80}
+.dark .workspace-shell :is(.text-emerald-600,.text-emerald-700,.text-emerald-800):not([class*="dark:text-"]){color:#34d399}
+.dark .workspace-shell :is(.text-amber-600,.text-amber-700,.text-amber-800):not([class*="dark:text-"]){color:#fbbf24}
+.dark .workspace-shell :is(.text-yellow-600,.text-yellow-700,.text-yellow-800):not([class*="dark:text-"]){color:#facc15}
+.dark .workspace-shell :is(.text-orange-600,.text-orange-700,.text-orange-800):not([class*="dark:text-"]){color:#fb923c}
+.dark .workspace-shell :is(.text-blue-600,.text-blue-700,.text-blue-800):not([class*="dark:text-"]){color:#60a5fa}
+.dark .workspace-shell :is(.text-sky-600,.text-sky-700,.text-sky-800):not([class*="dark:text-"]){color:#38bdf8}
+.dark .workspace-shell :is(.text-purple-600,.text-purple-700,.text-purple-800):not([class*="dark:text-"]){color:#c084fc}
+.dark .workspace-shell :is(.text-indigo-600,.text-indigo-700,.text-indigo-800):not([class*="dark:text-"]){color:#818cf8}
+.dark .workspace-shell :is(.text-pink-600,.text-pink-700,.text-pink-800):not([class*="dark:text-"]){color:#f472b6}
+.dark .workspace-shell :is(.text-teal-600,.text-teal-700,.text-teal-800):not([class*="dark:text-"]){color:#2dd4bf}
+.dark .workspace-shell :is(.text-cyan-600,.text-cyan-700,.text-cyan-800):not([class*="dark:text-"]){color:#22d3ee}
+.dark .workspace-shell :is(.bg-slate-50,.bg-slate-100,.bg-gray-50,.bg-gray-100):not([class*="dark:bg-"]):not([class*="dark:text-"]):is(.text-slate-500,.text-slate-600,.text-gray-500,.text-gray-600){color:#cbd5e1}
+/* Açık tema: açık kırmızı rozette kırmızı-600 yazı 3.9:1 */
+html:not(.dark) .workspace-shell .bg-red-100.text-red-600{color:#b91c1c}
+/* Koyu tema: -100 tonlu açık rozet zeminleri de (metinleri 400 tonuna geçtiği için) koyu, renkli bir tona */
+.dark .workspace-shell :is(.bg-green-100,.bg-blue-100,.bg-red-100,.bg-yellow-100,.bg-amber-100,.bg-emerald-100,.bg-sky-100,.bg-purple-100,.bg-orange-100,.bg-indigo-100,.bg-pink-100,.bg-teal-100,.bg-cyan-100):not([class*="dark:bg-"]){background-color:rgba(148,163,184,.14)}
