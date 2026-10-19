@@ -127,7 +127,7 @@ export default function ProjectDrafts({
     setBrief(prefill.brief.slice(0, 3000));
     setImage(null);setExtraImages([]);setImageChanged(false);
     setShowEditor(true);
-    setNotice(tr ? 'Brief, büyüme koçunun bu haftaki eyleminden dolduruldu. AI taslağı üretin veya kendiniz yazın; kaydetmeden hiçbir şey saklanmaz.' : 'The brief is pre-filled from this week’s growth coach action. Generate an AI draft or write your own; nothing is stored until you save.');
+    setNotice(tr ? 'Brief, büyüme koçundan dolduruldu. AI taslağı üretin veya kendiniz yazın; kaydetmeden hiçbir şey saklanmaz.' : 'The brief is pre-filled from the growth coach. Generate an AI draft or write your own; nothing is stored until you save.');
   }, [canWrite, campaigns]);
   const edit = (item: Draft, clone = false) => {
     setReviewId(null);

@@ -102,7 +102,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
 
   return <section className="coach-panel" aria-labelledby="coach-panel-title">
     <div className="studio-section-title"><h2 id="coach-panel-title"><Lightbulb size={17}/>{brief?(tr?'Bu hafta':'This week'):(tr?'Büyüme koçu':'Growth coach')}</h2>
-      {brief&&<div className="coach-panel-tools">{data?.week&&<span className="studio-badge">{data.week<=4?(tr?`Hafta ${data.week} / 4`:`Week ${data.week} of 4`):(tr?'30 günlük dönem bitti':'30-day period ended')}</span>}<button type="button" className="studio-text-button" onClick={openBrief}>{tr?'Strateji briefi':'Strategy brief'}<ArrowRight size={14}/></button></div>}
+      {brief&&<div className="coach-panel-tools">{data?.week&&<span className="studio-badge">{data.week<=4?(tr?`Hafta ${data.week} / 4`:`Week ${data.week} of 4`):(tr?'30 günlük dönem bitti':'30-day period ended')}</span>}<a className="studio-text-button" href="/?tab=calendar&planning=content">{tr?'İçerik planı':'Content plan'}<ArrowRight size={14}/></a><button type="button" className="studio-text-button" onClick={openBrief}>{tr?'Strateji briefi':'Strategy brief'}<ArrowRight size={14}/></button></div>}
     </div>
     {error&&<div className="studio-error" role="alert"><Msg text={error}/><button type="button" className="icon-button" title={tr?'Yeniden dene':'Retry'} aria-label={tr?'Yeniden dene':'Retry'} onClick={()=>void load()}><RefreshCw size={16}/></button></div>}
     {notice&&<p className="studio-success" role="status"><Msg text={notice}/>{calendarNotice&&<> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}</a></>}</p>}

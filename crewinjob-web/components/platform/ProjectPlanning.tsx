@@ -19,6 +19,7 @@ import { projectRequest, projectDateKey } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
 const SocialPublicationCenter=dynamic(()=>import('./SocialPublicationCenter'));
+const CoachContentPlan=dynamic(()=>import('./CoachContentPlan'));
 const blank = {
   title: '',
   campaignId: '',
@@ -45,8 +46,9 @@ export default function ProjectPlanning({
     [show, setShow] = useState(false),
     [filter, setFilter] = useState('active'),
     [month, setMonth] = useState(() => new Date());
-  const [view,setView]=useState<'work'|'social'>('work');
-  useEffect(()=>{if(new URLSearchParams(window.location.search).get('planning')==='social')setView('social');},[]);
+  const [view,setView]=useState<'work'|'social'|'content'>('work');
+  const views=(['work','social',...(workspace.project.productPack==='standard'?['content' as const]:[])] as const);
+  useEffect(()=>{const value=new URLSearchParams(window.location.search).get('planning');if(value==='social'||value==='content'&&workspace.project.productPack==='standard')setView(value);},[workspace.project.productPack]);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -132,11 +134,12 @@ export default function ProjectPlanning({
   const projectDate = (date: Date) => projectDateKey(date,workspace.project.timezone);
   return (
     <section>
-      <div className="publication-view-tabs" role="tablist" aria-label={tr?'Takvim görünümü':'Calendar view'} onKeyDown={event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();setView(view==='work'?'social':'work');const tabs=event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]');tabs[view==='work'?1:0]?.focus();}}}>
+      <div className="publication-view-tabs" role="tablist" aria-label={tr?'Takvim görünümü':'Calendar view'} onKeyDown={event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();const next=(views.indexOf(view)+(event.key==='ArrowRight'?1:views.length-1))%views.length;setView(views[next]);event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[next]?.focus();}}}>
         <button role="tab" aria-selected={view==='work'} tabIndex={view==='work'?0:-1} onClick={()=>setView('work')}>{tr?'İş planı':'Work plans'}</button>
         <button role="tab" aria-selected={view==='social'} tabIndex={view==='social'?0:-1} onClick={()=>setView('social')}>{tr?'Sosyal yayınlar':'Social publications'}</button>
+        {views.includes('content' as never)&&<button role="tab" aria-selected={view==='content'} tabIndex={view==='content'?0:-1} onClick={()=>setView('content')}>{tr?'İçerik planı':'Content plan'}</button>}
       </div>
-      {view==='social'?<SocialPublicationCenter workspace={workspace} lang={lang}/>:<>
+      {view==='content'?<CoachContentPlan workspace={workspace} lang={lang}/>:view==='social'?<SocialPublicationCenter workspace={workspace} lang={lang}/>:<>
       <header className="studio-page-heading">
         <div>
           <p className="studio-eyebrow">{tr ? 'OPERASYON' : 'OPERATIONS'}</p>

@@ -25,7 +25,19 @@ const many=<T extends readonly string[]>(list:T,value:unknown):T[number][]=>{if(
 const integer=(value:unknown,min:number,max:number)=>{if(typeof value!=='number'||!Number.isInteger(value)||value<min||value>max)throw invalid();return value;};
 const clip=(value:string,max:number)=>value.length>max?value.slice(0,max-1).trimEnd()+'…':value;
 const BANNED=/\d\s*%|%\s*\d|\bguarantee|\bgaranti|\bautonomous|\botonom/i;
-export const coachWeekKey=(date=new Date())=>{const day=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()));day.setUTCDate(day.getUTCDate()-(day.getUTCDay()+6)%7);return day.toISOString().slice(0,10);};
+// Calendar helpers in the project's time zone: "this week", "this month" and "09:00" mean the team's local time.
+const zone=(timeZone:string)=>{try{new Intl.DateTimeFormat('en',{timeZone});return timeZone;}catch{return 'UTC';}};
+export const zonedDateKey=(date:Date,timeZone='UTC')=>{const parts=new Intl.DateTimeFormat('en',{timeZone:zone(timeZone),calendar:'gregory',numberingSystem:'latn',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date),value=(type:string)=>parts.find(part=>part.type===type)?.value;return `${value('year')}-${value('month')}-${value('day')}`;};
+export const zonedInstant=(dateKey:string,hour:number,timeZone='UTC')=>{
+  const [year,month,day]=dateKey.split('-').map(Number),wall=Date.UTC(year,month-1,day,hour),format=new Intl.DateTimeFormat('en',{timeZone:zone(timeZone),hourCycle:'h23',calendar:'gregory',numberingSystem:'latn',year:'numeric',month:'numeric',day:'numeric',hour:'numeric',minute:'numeric',second:'numeric'});
+  const offset=(instant:number)=>{const parts=format.formatToParts(new Date(instant)),value=(type:string)=>Number(parts.find(part=>part.type===type)?.value);return Date.UTC(value('year'),value('month')-1,value('day'),value('hour'),value('minute'),value('second'))-instant;};
+  const first=wall-offset(wall);return new Date(wall-offset(first)).toISOString();
+};
+// Whole local calendar days between two instants (DST-safe: compares local dates, not elapsed hours).
+export const zonedDayDiff=(from:string,to:Date,timeZone='UTC')=>Math.round((Date.parse(`${zonedDateKey(to,timeZone)}T00:00:00Z`)-Date.parse(`${zonedDateKey(new Date(from),timeZone)}T00:00:00Z`))/86400000);
+export const zonedShiftDays=(dateKey:string,days:number)=>{const day=new Date(`${dateKey}T00:00:00Z`);day.setUTCDate(day.getUTCDate()+days);return day.toISOString().slice(0,10);};
+const planWeek=(approvedAt:string,timeZone:string)=>Math.floor(Math.max(0,zonedDayDiff(approvedAt,new Date(),timeZone))/7)+1;
+export const coachWeekKey=(date=new Date(),timeZone='UTC')=>{const day=new Date(`${zonedDateKey(date,timeZone)}T00:00:00Z`);day.setUTCDate(day.getUTCDate()-(day.getUTCDay()+6)%7);return day.toISOString().slice(0,10);};
 export const coachPlanId=(item:Pick<CoachPlanItem,'week'|'title'|'tool'>)=>'plan:'+createHash('sha256').update(`${item.week}\n${item.tool}\n${item.title}`).digest('hex').slice(0,16);
 
 export function normalizeCoachAnswers(raw:unknown):CoachAnswers{
@@ -126,6 +138,19 @@ export class GrowthCoach{
     if(!this.can('read')||this.repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Büyüme koçu için standart proje erişimi gerekli.',403);
     if(!this.can(permission))throw new MarketingStoreError(permission==='campaign.approve'?'Strateji briefini yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
+  // Applies an accepted weekly-review adjustment to the approved plan; same approval right as approving the brief.
+  adjustPlan(expectedRevision:unknown,mutate:(brief:CoachBrief)=>CoachBrief,operation:string){
+    this.authorize('campaign.approve');
+    return this.db.transaction(()=>{
+      this.authorize('campaign.approve');const row=this.expect(expectedRevision);if(!row?.brief_json)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);
+      const brief=normalizeCoachBrief(mutate(JSON.parse(row.brief_json) as CoachBrief)),now=new Date().toISOString();
+      this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),now,this.scope.subject,...this.args());
+      this.audit(operation);return row.revision+1;
+    }).immediate();
+  }
+  timeZone(){return this.repo.workspace(this.scope.subject,...this.args())?.project.timezone||'UTC';}
+  // Approved brief and diagnosis answers for the Phase 2 coach tools (content plan, SEO, weekly review).
+  approved(){this.authorize();const row=this.row(),brief=row?.brief_json?JSON.parse(row.brief_json) as CoachBrief:null;return {brief,answers:row?JSON.parse(row.answers_json) as CoachAnswers:null,revision:row?.revision||0,approvedAt:row?.approved_at||null,week:brief&&row?.approved_at?planWeek(row.approved_at,this.timeZone()):null};}
   private row(){return this.db.prepare('SELECT revision,answers_json,draft_json,draft_source,draft_at,brief_json,approved_at FROM platform_growth_coach WHERE organization_id=? AND project_id=?').get(...this.args()) as Row|undefined;}
   private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
   private expect(raw:unknown){const row=this.row();if(!Number.isSafeInteger(raw)||raw!==(row?.revision||0))throw new MarketingStoreError('Strateji briefi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);return row;}
@@ -186,13 +211,13 @@ export class GrowthCoach{
     const measured=(this.db.prepare('SELECT MAX(observed_at) at FROM platform_metric_entries WHERE organization_id=? AND project_id=?').get(...this.args()) as {at:string|null}).at;
     if(week>=3&&project.goals.length&&(!measured||Date.now()-Date.parse(measured)>3*WEEK))list.push({id:'setup:measure',kind:'setup',week:null,title:l('Hedefiniz için güncel bir ölçüm kaydedin','Record a current measurement for your goal'),why:l('Planın son haftalarındasınız ve son üç haftada ölçüm kaydı yok. Veri yoksa sıfır sayılmaz.','You’re in the last weeks of the plan and nothing was measured in the past three weeks. No data is not zero.'),how:l('Analitik’te hedef aşamaları için tarihli bir değer girin.','In Analytics, enter a dated value for the goal stages.'),minutes:15,tool:'analytics',channel:null});
     // Plan items: current and overdue weeks first, then upcoming ones; with no drafts yet, drafting comes first.
-    const rank=(item:CoachPlanItem)=>(item.week<=week?0:10)+item.week+(drafts===0&&item.tool==='library'&&item.week<=week+1?-20:0);
+    const rank=(item:CoachPlanItem)=>(item.week<=week?0:10)+item.week+(drafts===0&&item.tool==='library'&&item.week<=week?-20:0);
     const plan=brief.plan.map((item,index)=>({item,index})).sort((a,b)=>rank(a.item)-rank(b.item)||a.index-b.index);
     // At most two setup prerequisites so the approved plan always reaches this week's list.
     return [...list.slice(0,2),...plan.map(({item})=>({id:coachPlanId(item),kind:'plan' as const,week:item.week,title:item.title,why:item.why,how:item.how,minutes:item.minutes,tool:item.tool,channel:item.channel}))];
   }
   private derive(){
-    const row=this.row(),brief=row?.brief_json?JSON.parse(row.brief_json) as CoachBrief:null,week=brief&&row?.approved_at?Math.floor(Math.max(0,Date.now()-Date.parse(row.approved_at))/WEEK)+1:null,weekKey=coachWeekKey();
+    const row=this.row(),brief=row?.brief_json?JSON.parse(row.brief_json) as CoachBrief:null,week=brief&&row?.approved_at?planWeek(row.approved_at,this.timeZone()):null,weekKey=coachWeekKey(new Date(),this.timeZone());
     if(!brief||!week)return {row,brief,week,weekKey,all:[] as CoachAction[]};
     const states=this.actionRows(),tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task])),modules=this.repo.workspace(this.scope.subject,...this.args())!.modules;
     const connected=this.connected(),all=this.candidates(brief,Math.min(week,4),connected).map((item):CoachAction=>{
@@ -216,7 +241,7 @@ export class GrowthCoach{
     this.authorize('content.write');const state=choice(['open','done','skipped'] as const,raw.state);
     return this.db.transaction(()=>{
       this.authorize('content.write');const action=this.action(raw.actionId),now=new Date().toISOString();
-      this.db.prepare('INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,?,?,NULL,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET state=excluded.state,week=excluded.week,actor_id=excluded.actor_id,updated_at=excluded.updated_at').run(...this.args(),action.id,state,coachWeekKey(),this.scope.subject,now);
+      this.db.prepare('INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,?,?,NULL,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET state=excluded.state,week=excluded.week,actor_id=excluded.actor_id,updated_at=excluded.updated_at').run(...this.args(),action.id,state,coachWeekKey(new Date(),this.timeZone()),this.scope.subject,now);
       this.audit(`coach.action.${state}`);return this.read();
     }).immediate();
   }
@@ -228,8 +253,9 @@ export class GrowthCoach{
       if(current)return {task:current,created:false,snapshot:this.read()};
       const brief=this.derive().brief!,pick=(value:string|LocalizedText)=>typeof value==='string'?value:value[brief.language];
       const task=operations.saveTask({title:pick(action.title).slice(0,160),dueAt:new Date(Date.now()+86400000).toISOString(),status:'planned',note:[`coach:${action.id}`,pick(action.why),pick(action.how),`${action.minutes} min · ${action.href}`].join('\n').slice(0,2000)});
-      this.db.prepare("INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,'open',?,?,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET task_id=excluded.task_id,actor_id=excluded.actor_id,updated_at=excluded.updated_at").run(...this.args(),action.id,coachWeekKey(),task.id,this.scope.subject,new Date().toISOString());
+      this.db.prepare("INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,'open',?,?,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET task_id=excluded.task_id,actor_id=excluded.actor_id,updated_at=excluded.updated_at").run(...this.args(),action.id,coachWeekKey(new Date(),this.timeZone()),task.id,this.scope.subject,new Date().toISOString());
       this.audit('coach.action.schedule');return {task,created:true,snapshot:this.read()};
     }).immediate();
   }
 }
+export {object as coachObject,text as coachText,choice as coachChoice,integer as coachInteger,clip as coachClip,BANNED as COACH_BANNED,channelName as coachChannelName,toolHref as coachToolHref};

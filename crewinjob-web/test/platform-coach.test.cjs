@@ -134,13 +134,20 @@ test('calendar handoff is explicit, deduplicated and completing the task marks t
   assert.ok(!f.coach.read().actions.some(item=>item.id===action.id));
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_jobs').get().n,0,'no send/publish jobs are created');
 }));
+test('week keys and local times follow the project time zone',run(()=>{
+  const {zonedDateKey,zonedInstant}=load('coach.ts');
+  assert.equal(coachWeekKey(new Date('2026-10-25T22:30:00Z'),'UTC'),'2026-10-19');assert.equal(coachWeekKey(new Date('2026-10-25T22:30:00Z'),'Europe/Istanbul'),'2026-10-26');
+  assert.equal(zonedDateKey(new Date('2026-10-25T22:30:00Z'),'Europe/Istanbul'),'2026-10-26');assert.equal(zonedDateKey(new Date('2026-10-25T22:30:00Z'),'Not/AZone'),'2026-10-25');
+  assert.equal(zonedInstant('2026-11-02',9,'Europe/Istanbul'),'2026-11-02T06:00:00.000Z');assert.equal(zonedInstant('2026-03-08',9,'America/New_York'),'2026-03-08T13:00:00.000Z','DST start day');assert.equal(zonedInstant('2026-11-01',9,'America/New_York'),'2026-11-01T14:00:00.000Z','DST end day');
+  const {zonedDayDiff}=load('coach.ts');assert.equal(zonedDayDiff('2026-10-25T20:00:00Z',new Date('2026-10-25T22:30:00Z'),'UTC'),0);assert.equal(zonedDayDiff('2026-10-25T20:00:00Z',new Date('2026-10-25T22:30:00Z'),'Europe/Istanbul'),1,'Sunday 22:30 UTC is already Monday in Istanbul');assert.equal(zonedInstant('2026-07-01',9,'Europe/London'),'2026-07-01T08:00:00.000Z');assert.equal(zonedInstant('2026-01-15',9,'America/New_York'),'2026-01-15T14:00:00.000Z');
+}));
 test('plan ids and week keys are stable',run(()=>{
   const item={week:1,title:'Draft',tool:'library'};assert.equal(coachPlanId(item),coachPlanId({...item}));assert.notEqual(coachPlanId(item),coachPlanId({...item,week:2}));
   assert.equal(coachWeekKey(new Date('2026-10-21T10:00:00Z')),'2026-10-19');assert.equal(coachWeekKey(new Date('2026-10-25T23:00:00Z')),'2026-10-19');assert.equal(coachWeekKey(new Date('2026-10-26T00:00:00Z')),'2026-10-26');
 }));
 test('schema31 is additive and coach data survives reopening',run(async f=>{
   await f.approved();const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-migration-')),'fixture.sqlite');
-  await f.db.backup(file);let db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,31);assert.ok(new GrowthCoach(db,f.scope).read().brief);db.close();
+  await f.db.backup(file);let db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,34);assert.ok(new GrowthCoach(db,f.scope).read().brief);db.close();
   db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeCoachSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,30);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,31);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach').get().n,0);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,34);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach').get().n,0);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

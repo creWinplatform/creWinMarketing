@@ -1,12 +1,16 @@
 'use client';
-import { useState, type FormEvent } from 'react';
-import { Search, Plus, ExternalLink } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import dynamic from 'next/dynamic';
+import { Search, Plus, ExternalLink, Copy } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
-import type { PageAudit, AuditFinding } from '@/lib/site-audit';
+import type { PageAudit } from '@/lib/site-audit';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
+import { developerTask, rankAuditFindings, type RankedFinding } from '@/lib/platform/seo-impact';
+const CoachSeo=dynamic(()=>import('./CoachSeo'));
+const IMPACT_LABELS: Record<string, [string, string]> = { high: ['Olası etki: yüksek', 'Likely impact: high'], medium: ['Olası etki: orta', 'Likely impact: medium'], low: ['Olası etki: düşük', 'Likely impact: low'] };
 const PRIORITY_LABELS: Record<string, [string, string]> = { high: ['Yüksek', 'High'], medium: ['Orta', 'Medium'], low: ['Düşük', 'Low'] };
 export default function ProjectAudit({
   workspace,
@@ -23,6 +27,10 @@ export default function ProjectAudit({
     [saved, setSaved] = useState<string[]>([]),
     [saving, setSaving] = useState(''),
     canWrite = workspace.permissions?.includes('content.write');
+  const [view, setView] = useState<'audit' | 'topics'>('audit'), [copied, setCopied] = useState('');
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('seoView') === 'topics') setView('topics'); }, []);
+  const ranked = audit ? rankAuditFindings(audit.findings) : [];
+  const task = (finding: RankedFinding) => developerTask(finding, audit?.finalUrl || url, lang, text => translateMessage(text, lang));
   const run = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
@@ -43,20 +51,17 @@ export default function ProjectAudit({
       setBusy(false);
     }
   };
-  const plan = async (finding: AuditFinding) => {
+  const plan = async (finding: RankedFinding) => {
     setSaving(finding.id);
     setError('');
     try {
       await projectRequest('/api/platform/operations?resource=tasks', {
         method: 'POST',
         body: JSON.stringify({
-          title: finding.title.slice(0, 160),
+          title: translateMessage(finding.title, lang).slice(0, 160),
           dueAt: new Date(Date.now() + 86400000).toISOString(),
           status: 'planned',
-          note: `${audit?.finalUrl}\n${finding.recommendation}\n${finding.evidence}`.slice(
-            0,
-            2000,
-          ),
+          note: task(finding),
         }),
       });
       setSaved((current) => [...current, finding.id]);
@@ -66,8 +71,16 @@ export default function ProjectAudit({
       setSaving('');
     }
   };
+  const tabs = (
+    <div className="publication-view-tabs" role="tablist" aria-label={tr ? 'SEO görünümü' : 'SEO view'} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); const next = view === 'audit' ? 'topics' : 'audit'; setView(next); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[next === 'audit' ? 0 : 1]?.focus(); } }}>
+      <button role="tab" aria-selected={view === 'audit'} tabIndex={view === 'audit' ? 0 : -1} onClick={() => setView('audit')}>{tr ? 'Site denetimi' : 'Site audit'}</button>
+      <button role="tab" aria-selected={view === 'topics'} tabIndex={view === 'topics' ? 0 : -1} onClick={() => setView('topics')}>{tr ? 'Konular ve briefler' : 'Topics & briefs'}</button>
+    </div>
+  );
+  if (view === 'topics') return <section>{tabs}<CoachSeo lang={lang} /></section>;
   return (
     <section>
+      {tabs}
       <header className="studio-page-heading">
         <div>
           <p className="studio-eyebrow">{tr ? 'GENEL HTML' : 'PUBLIC HTML'}</p>
@@ -164,6 +177,7 @@ export default function ProjectAudit({
             <div className="studio-section-title">
               <h2>{tr ? 'Kanıtlı bulgular' : 'Evidence-backed findings'}</h2>
             </div>
+            {ranked.length > 0 && <p className="studio-note">{tr ? 'Bulgular olası etkiye göre sıralandı. Bu sıralama sabit bir editoryal kuraldır; trafik, sıralama veya dönüşüm ölçümü değildir.' : 'Findings are ordered by likely impact. The order is a fixed editorial rule, not a traffic, ranking or conversion measurement.'}</p>}
             {audit.findings.length === 0 ? (
               <div className="studio-empty">
                 {tr
@@ -171,12 +185,12 @@ export default function ProjectAudit({
                   : 'No violations found in these checks.'}
               </div>
             ) : (
-              audit.findings.map((finding) => (
+              ranked.map((finding) => (
                 <article key={finding.id} className="studio-draft-row">
                   <div className="studio-draft-top">
                     <div>
                       <span className="studio-badge">
-                        {PRIORITY_LABELS[finding.priority]?.[tr ? 0 : 1] || finding.priority} · {translateMessage(finding.category, lang)}
+                        {finding.rank}. {IMPACT_LABELS[finding.impact]?.[tr ? 0 : 1]} · {PRIORITY_LABELS[finding.priority]?.[tr ? 0 : 1] || finding.priority} · {translateMessage(finding.category, lang)}
                       </span>
                       <h2 className="mt-2">{translateMessage(finding.title, lang)}</h2>
                     </div>
@@ -199,7 +213,9 @@ export default function ProjectAudit({
                   </div>
                   <p className="studio-draft-content">{translateMessage(finding.detail, lang)}</p>
                   <p className="studio-note">{translateMessage(finding.evidence, lang)}</p>
-                  <p className="mt-3 text-xs">{translateMessage(finding.recommendation, lang)}</p>
+                  <p className="mt-3 text-xs"><strong>{tr ? 'Neden önemli: ' : 'Why it matters: '}</strong>{finding.why[lang]}</p>
+                  <p className="mt-2 text-xs"><strong>{tr ? 'Nasıl düzeltilir: ' : 'How to fix: '}</strong>{finding.how[lang]}</p>
+                  <details className="coach-dev-task"><summary>{tr ? 'Geliştirici için görev metni' : 'Developer-ready task'}</summary><pre>{task(finding)}</pre><button type="button" className="studio-text-button" onClick={() => { void navigator.clipboard?.writeText(task(finding)).then(() => setCopied(finding.id)).catch(() => setCopied('')); }}><Copy size={14} />{copied === finding.id ? (tr ? 'Kopyalandı' : 'Copied') : (tr ? 'Metni kopyala' : 'Copy the text')}</button></details>
                 </article>
               ))
             )}

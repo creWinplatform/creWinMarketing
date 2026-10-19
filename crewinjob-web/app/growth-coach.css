@@ -73,3 +73,61 @@
   .coach-action-buttons .studio-secondary{flex:1 1 100%}
   .coach-footer-buttons{width:100%}.coach-footer-buttons>button{flex:1 1 auto}
 }
+/* Faz 2 · aylık içerik planı (Takvim → İçerik planı) */
+.coach-content-plan>*+*{margin-top:16px}
+.coach-content-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.coach-month-switch{display:inline-flex;gap:4px;padding:3px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg)}
+.coach-month-switch button{min-height:34px;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
+.coach-month-switch button[aria-pressed=true]{background:var(--studio-surface);color:var(--studio-ink);box-shadow:var(--rz-shadow-1)}
+.coach-content-item .coach-action-buttons .studio-secondary{flex:0 1 auto;justify-content:center}
+.coach-content-channel h3{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:650;margin-bottom:10px}
+.coach-content-channel ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:12px}
+.coach-content-item{display:flex;flex-direction:column;gap:8px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:14px;background:var(--studio-surface);min-width:0}
+.coach-content-item.suggested{border-style:dashed}
+.coach-content-item h4{font-size:13px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}
+.coach-content-item p{font-size:12px;line-height:1.7;color:var(--studio-muted);overflow-wrap:anywhere}
+.coach-content-item time{font-weight:600;color:var(--studio-ink)}
+.coach-content-new{border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);padding:16px;background:var(--studio-surface)}
+.coach-content-form{margin:0}
+@media (max-width:640px){.coach-content-form{grid-template-columns:1fr}.coach-content-toolbar>.coach-footer-buttons{width:100%}}
+/* Faz 2 · SEO konuları, içerik briefleri ve denetim görev metni */
+.coach-seo{margin-top:20px}
+.coach-seo>*+*{margin-top:14px}
+.coach-seo .studio-section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.coach-seo .studio-section-title h2{display:flex;align-items:center;gap:8px}
+.coach-source{font-size:12px;line-height:1.7;color:var(--studio-muted);border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:10px 12px;background:var(--studio-bg)}
+.coach-source a{color:var(--studio-accent);font-weight:600;text-decoration:underline;text-underline-offset:2px}
+.coach-source-ready{border-color:var(--rz-lime-deep,#7fa81a)}
+.coach-seo-topics{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.coach-keywords{width:100%;border-collapse:collapse;font-size:12px}
+.coach-keywords th{text-align:left;font-weight:600;color:var(--studio-muted);padding:6px 8px;border-bottom:1px solid var(--studio-border);white-space:nowrap}
+.coach-keywords td{padding:7px 8px;border-bottom:1px solid var(--studio-border);overflow-wrap:anywhere}
+.coach-keywords td:nth-child(n+3),.coach-keywords th:nth-child(n+3){text-align:right;white-space:nowrap}
+.coach-seo-brief{border-top:1px solid var(--studio-border);padding-top:10px;display:grid;gap:6px}
+.coach-seo-brief h5{font-size:13px;font-weight:650}
+.coach-seo-brief :is(ol,ul){margin:4px 0 6px;padding-left:18px;font-size:12px;line-height:1.7;color:var(--studio-ink)}
+.coach-seo-brief details summary{font-size:12px;font-weight:600;cursor:pointer;min-height:28px;display:flex;align-items:center}
+.coach-dev-task{margin-top:8px}
+.coach-dev-task summary{font-size:12px;font-weight:600;cursor:pointer;min-height:32px;display:flex;align-items:center}
+.coach-dev-task pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;background:var(--studio-bg);border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:10px;margin:6px 0;color:var(--studio-ink)}
+/* Faz 2 · haftalık özet */
+.coach-review-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.coach-review-grid>section,.coach-review-adjustments{min-width:0}
+.coach-review h3{font-size:13px;font-weight:650;margin-bottom:6px}
+.coach-review-grid ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.coach-review-grid :is(li,p){font-size:12px;line-height:1.7;overflow-wrap:anywhere}
+.coach-review-adjustments ul{list-style:none;margin:8px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(260px,100%),1fr));gap:12px}
+.coach-review-adjustments .coach-action h4{font-size:13px;font-weight:650;line-height:1.45;overflow-wrap:anywhere}
+.coach-review-adjustments .coach-action.rejected{opacity:.7}
+.coach-review-adjustments .coach-action-buttons .studio-secondary{flex:0 1 auto;justify-content:center}
+@media (max-width:1180px){.coach-review-grid{grid-template-columns:1fr}}
+@media (max-width:640px){
+  .coach-keywords thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .coach-keywords tr{display:grid;grid-template-columns:repeat(3,minmax(0,auto));justify-content:start;gap:4px 14px;padding:9px 0;border-bottom:1px solid var(--studio-border)}
+  .coach-keywords td{border:0;padding:0;text-align:left!important;white-space:normal!important}
+  .coach-keywords td:first-child,.coach-keywords td:nth-child(2){grid-column:1/-1}
+  .coach-keywords td:first-child{font-weight:600}
+  .coach-keywords td:nth-child(n+3)::before{content:attr(data-label) ": ";color:var(--studio-muted)}
+}
+.coach-inline-button{display:inline-flex;min-height:28px;vertical-align:middle;margin-left:4px}
+.coach-source-note{color:var(--studio-muted)}

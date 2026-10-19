@@ -695,6 +695,44 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(31,datetime('now'));
   `))();
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=32').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_coach_content_items (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, month TEXT NOT NULL,
+      channel TEXT NOT NULL, theme TEXT NOT NULL, title TEXT NOT NULL, angle TEXT NOT NULL, goal_id TEXT, planned_for TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('suggested','approved','dismissed')), source TEXT NOT NULL CHECK(source IN ('ai','template','human')),
+      revision INTEGER NOT NULL DEFAULT 1, task_id TEXT, approved_by TEXT, approved_at TEXT, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_coach_content_scope ON platform_coach_content_items(organization_id,project_id,month);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(32,datetime('now'));
+  `))();
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=33').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_coach_seo_topics (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, cluster TEXT NOT NULL,
+      intent TEXT NOT NULL CHECK(intent IN ('informational','commercial','transactional','navigational')), keywords_json TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('ai','template')), brief_json TEXT, brief_source TEXT CHECK(brief_source IN ('ai','template','human')),
+      brief_state TEXT CHECK(brief_state IN ('draft','approved')), revision INTEGER NOT NULL DEFAULT 1, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_coach_seo_topic_scope ON platform_coach_seo_topics(organization_id,project_id);
+    CREATE TABLE platform_coach_seo_queries (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ready','no_data','unavailable')), date_from TEXT NOT NULL, date_to TEXT NOT NULL,
+      rows_json TEXT NOT NULL, checked_at TEXT NOT NULL, PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(33,datetime('now'));
+  `))();
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=34').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_coach_reviews (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, week TEXT NOT NULL,
+      facts_json TEXT NOT NULL, adjustments_json TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT NOT NULL, updated_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,week),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(34,datetime('now'));
+  `))();
   return db;
 }
 

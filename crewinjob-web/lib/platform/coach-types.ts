@@ -42,3 +42,39 @@ export type CoachSnapshot={
 // Brief channel → content studio channel (blog for search/SEO work).
 export const coachDraftChannel=(channel:CoachChannel|null)=>channel==='seo'?'blog':channel||'linkedin';
 export const COACH_PREFILL_KEY='ryzevo.coach.prefill';
+// Phase 2 · monthly content plan: AI or rule-based suggestions; each item is approved by a person before use.
+export type CoachContentItem={
+  id:string;month:string;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string|null;plannedFor:string;
+  state:'suggested'|'approved'|'dismissed';source:'ai'|'template'|'human';revision:number;taskId:string|null;approvedAt:string|null;
+  prefill:{brief:string;channel:string;name:string}|null;
+};
+export type CoachContentSnapshot={
+  month:string;months:string[];today:string;items:CoachContentItem[];hasBrief:boolean;language:'tr'|'en'|null;briefChannels:CoachChannel[];
+  goals:{id:string;label:LocalizedText}[];aiConfigured:boolean;canWrite:boolean;
+};
+// Phase 2 · SEO for non-experts. Numbers only ever come from a Search Console snapshot; suggestions carry none.
+export const SEO_INTENTS=['informational','commercial','transactional','navigational'] as const;
+export type SeoIntent=typeof SEO_INTENTS[number];
+export type CoachSeoKeyword={phrase:string;source:'search_console'|'suggested';clicks:number|null;impressions:number|null;position:number|null};
+export type CoachSeoBrief={targetKeyword:string;intent:SeoIntent;title:string;outline:string[];questions:string[];internalLinks:{anchor:string;target:string}[];notes:string};
+export type CoachSeoTopic={
+  id:string;cluster:string;intent:SeoIntent;keywords:CoachSeoKeyword[];source:'ai'|'template';revision:number;
+  brief:CoachSeoBrief|null;briefSource:'ai'|'template'|'human'|null;briefState:'draft'|'approved'|null;
+  prefill:{brief:string;channel:string;name:string}|null;
+};
+export type CoachSeoSnapshot={
+  topics:CoachSeoTopic[];generatedAt:string|null;hasBrief:boolean;language:'tr'|'en'|null;aiConfigured:boolean;canWrite:boolean;
+  searchConsole:{state:'not_connected'|'restricted'|'not_fetched'|'ready'|'no_data'|'unavailable';from:string|null;to:string|null;checkedAt:string|null;queries:number;canRefresh:boolean};
+};
+// Phase 2 · weekly review: facts are counts and dated values read from project records only.
+export type CoachReviewMeasurement={goalId:string;goal:LocalizedText;stage:LocalizedText;latest:number;latestAt:string;previous:number|null;previousAt:string|null;source:string};
+export type CoachReviewFacts={
+  from:string;to:string;measurements:CoachReviewMeasurement[];lastMeasuredAt:string|null;connections:{ga4:boolean;searchConsole:boolean};
+  actions:{done:number;skipped:number;open:number;doneTitles:string[]};
+  content:{drafts:number;draftsByChannel:Record<string,number>;campaigns:number;publications:number;planApproved:number};
+  seo:{audits:number;briefsApproved:number};
+  rose:{goal:LocalizedText;stage:LocalizedText;from:number;to:number}[];
+};
+export type CoachAdjustment={id:string;kind:'add'|'move'|'note';title:LocalizedText;why:LocalizedText;item:CoachPlanItem|null;actionId:string|null;toWeek:number|null;state:'proposed'|'accepted'|'rejected'};
+export type CoachReview={id:string;week:string;createdAt:string;revision:number;hasData:boolean;facts:CoachReviewFacts;adjustments:CoachAdjustment[]};
+export type CoachReviewSnapshot={review:CoachReview|null;history:{id:string;week:string;createdAt:string}[];hasBrief:boolean;planWeek:number|null;coachRevision:number;canWrite:boolean;canApprove:boolean};
