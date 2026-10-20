@@ -1,10 +1,31 @@
-# Ryzevo release status - 18 October 2026
+# Ryzevo release status - 20 October 2026
 
 The core monolith is suitable for continued isolated testing. It is NOT yet an
 accepted public/paid production service. An implementation, a local fixture test
 and an operator-approved live acceptance are different milestones.
 
-## Delivered in this increment
+## Delivered on 19 October 2026
+
+- **Growth coach** for standard projects (see `SAAS-GROWTH-COACH.md`):
+  - growth diagnosis, an approved strategy brief and weekly actions;
+  - monthly content plan, SEO topics and briefs, weekly review and its email;
+  - learning loop: outcomes by week and source, monthly renewal, task owners.
+- **Phase 5 shared modules** (see `SAAS-PHASE5-MODULES.md`):
+  - SEO operations: site scan, findings without duplicates, Search Console opportunities;
+  - lifecycle automation on segments, with approval and the email pilot;
+  - B2B prospects with source URL, check date and evidence;
+  - a Telegram channel target for social publishing;
+  - Meta ad management: caps, exact approval, campaigns created paused, explicit start behind `PLATFORM_ADS_ENABLED`;
+  - a budget and goal planner: assumption ranges, calibrated with this project's measured Meta, Search Console and GA4 values.
+- **Schema 45.** `MAX_RECOVERY_SCHEMA` is 45. Migrations 43–45 were dry-run on a copy of the local database (integrity and foreign keys valid). The local `data/platform.sqlite` is still at schema 42 and moves to 45 the next time the signed-in app opens it; a backup at schema 42 exists.
+- **Tests:** 582 platform tests pass; TypeScript and i18n checks pass.
+- **Checked against real services:**
+  - Gemini output on the coach paths and prospect evidence;
+  - the GA4 and Search Console read pipeline through a service account;
+  - a public HTML scan of example.com and public prospect pages.
+- **Not checked against real services:** a Telegram bot posting to a real channel, a real Meta ad account, and SES sends from automations or the weekly review.
+
+## Delivered on 18 October 2026
 
 - Added a personal, resumable Growth Compass for standard Ryzevo projects.
   Reuses existing goals, campaigns, provider connections, Calendar and reports.
@@ -45,6 +66,7 @@ and an operator-approved live acceptance are different milestones.
 | Email/onboarding | Existing SES/consent/allowlist/identity code is default OFF. Separate Ryzevo domain/account setup and authorized successful/failure/opt-out pilots remain. |
 | Google/social | Facebook photo, Instagram ordered 2-5 image carousel and receipt-bound Facebook/Instagram/X/LinkedIn-organization engagement adapters now extend the existing center. Real project-specific grants, permissions and controlled provider-backed acceptance remain. Video/Reels/Stories, LinkedIn/X image uploads and comment/DM workflows are not implemented. See the social format record. |
 | Paid subscriptions | Sandbox checkout/callback/inquiry and catalog/quotas exist. Live paid activation, renewal, cancellation, reconciliation and fiscal invoicing are NOT implemented or enabled. Merchant account and approved USD/recurring/tokenization contract plus pricing/entitlement/fiscal decisions are prerequisites to finish those adapters safely. This is not merely a missing API key. |
+| Phase 5 provider acceptance | Telegram bot, Meta ad account (create, start, pause, insights) and automation email sends are implemented with approval and server switches. Each needs the operator's own account and an approved live test. Google Ads, LinkedIn ads and WhatsApp targets are not implemented. |
 | Accessibility/capacity | Sampled Chrome keyboard/mobile/tablet/desktop flows passed. Screen-reader/real-device and full legacy-module/contrast acceptance remain. Bounded local load is not production capacity, long-duration stability or internet-facing abuse certification. |
 
 ## Single operator input list

@@ -18,6 +18,14 @@ deployment or completed customer/provider acceptance.
 | 5 | Paid subscriptions | Approved monthly catalog, owner preference, new verified-signup trial and exact quota ledger implemented. Owner-only USD PayTR sandbox checkout, signed callbacks and explicit status inquiry with race/lease protection are implemented, default OFF. No live subscription, paid entitlement or quota upgrade exists. Merchant setup is not ready (owner confirmed 18 October). USD/recurring merchant acceptance, live lifecycle/reconciliation, conflict resolution, cancellation/tax/invoice flows remain. Team and annual sales deferred. See SAAS-PLAN-USAGE.md, SAAS-PAYTR.md and SAAS-PRICING-PROPOSAL.md. |
 | 6 | Production/second-business pilot | Sealed backup/recovery, private probe and bounded worker observations implemented. Node-22 Linux runner packages operator commands and checks native dependencies; offline build gate, isolated two-tenant parallel HTTP/backup/restore smoke and six-client SQLite quota/refund races added. Short bounded mixed-traffic, upload/abort, login-limit and session-revocation regressions extend that same harness; no duplicate test service or schema change. No production restore, deploy, scheduled monitoring, notification or provider call. Actual durable-volume/operator deployment, off-host retention, external uptime/alerts, secrets lifecycle, long-duration load/soak and internet-facing abuse acceptance, responsive/accessibility QA and a real non-Crewin customer remain. Not a production launch yet. See SAAS-RECOVERY.md, SAAS-MONITORING.md and SAAS-RUNTIME-ACCEPTANCE.md. |
 
+19 October update: the growth coach and the Phase 5 shared modules (SEO operations,
+lifecycle automation, B2B prospects, Telegram target, Meta ad management and the
+budget and goal planner) are implemented for standard projects at schema 45, with
+582 platform tests passing. Provider-backed acceptance for Telegram, Meta ads and
+SES sends is still open. Next code-side items: WhatsApp target and separate
+source-reading / suggestion / publishing permissions for messaging, then Google
+Ads and LinkedIn ads. See SAAS-RELEASE-STATUS.md and SAAS-PHASE5-MODULES.md.
+
 External credentials are entered privately in project settings, not in chat.
 Phase 5 update, 18 October: approved monthly catalog (Launch 29 / Growth 79 USD,
 Team 149 USD later), non-financial owner preference and new verified-signup
