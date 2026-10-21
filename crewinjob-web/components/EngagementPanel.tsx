@@ -171,7 +171,7 @@ export default function EngagementPanel({ compact = false }: Props) {
             onKeyDown={e => { if (e.key === 'Enter') handleTrack(); }}
             placeholder={lang === 'tr' ? 'https://twitter.com/... veya linkedin.com/...' : 'https://twitter.com/... or linkedin.com/...'}
             aria-label={lang === 'tr' ? 'Gönderi URL\'si' : 'Post URL'}
-            className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 placeholder-slate-500"
+            className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean placeholder-slate-500"
           />
           <button
             onClick={handleTrack}

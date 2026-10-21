@@ -272,7 +272,7 @@ export default function CalendarTab() {
                     type="date"
                     value={addDate}
                     onChange={e => setAddDate(e.target.value)}
-                    className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-600 dark:text-slate-100"
+                    className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ocean bg-white dark:bg-slate-600 dark:text-slate-100"
                   />
                 </div>
                 <div>
@@ -283,7 +283,7 @@ export default function CalendarTab() {
                     id={`${formId}-platform`}
                     value={addPlatform}
                     onChange={e => setAddPlatform(e.target.value)}
-                    className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-600 dark:text-slate-100"
+                    className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ocean bg-white dark:bg-slate-600 dark:text-slate-100"
                   >
                     {Object.entries(PLATFORM_ICONS).map(([k, icon]) => (
                       <option key={k} value={k}>{icon} {k.charAt(0).toUpperCase() + k.slice(1)}</option>
@@ -321,7 +321,7 @@ export default function CalendarTab() {
                   onChange={e => setAddContent(e.target.value)}
                   placeholder={lang === 'tr' ? 'İçeriği buraya yapıştırın veya yazın…' : 'Paste or type content here…'}
                   rows={3}
-                  className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none bg-white dark:bg-slate-600 dark:text-slate-100 dark:placeholder:text-slate-500"
+                  className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ocean resize-none bg-white dark:bg-slate-600 dark:text-slate-100 dark:placeholder:text-slate-500"
                 />
               </div>
               <div className="flex gap-2">

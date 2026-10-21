@@ -611,12 +611,12 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
               <p className="text-xs text-slate-200 leading-relaxed">
                 {twToast.textCopied && (
                   <><span className="text-green-300">
-                    {lang === 'tr' ? '✅ Metin panoya kopyalandı' : '✅ Text copied to clipboard'}
+                    <span aria-hidden="true">✅ </span>{lang === 'tr' ? 'Metin panoya kopyalandı' : 'Text copied to clipboard'}
                   </span><br /></>
                 )}
                 {twToast.imageCopied && (
                   <><span className="text-green-300">
-                    {lang === 'tr' ? '✅ Görsel indirildi' : '✅ Image downloaded'}
+                    <span aria-hidden="true">✅ </span>{lang === 'tr' ? 'Görsel indirildi' : 'Image downloaded'}
                   </span> {lang === 'tr' ? '(İndirilenler klasörüne bak)' : '(Check your Downloads folder)'}<br /></>
                 )}
                 <br />
@@ -714,14 +714,14 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
             {quickToast.success ? (
               quickToast.url ? (
                 <p className="text-xs text-green-300 leading-relaxed">
-                  {lang === 'tr' ? '✅ İçerik başarıyla yayınlandı.' : '✅ Content published successfully.'}{' '}
+                  <span aria-hidden="true">✅ </span>{lang === 'tr' ? 'İçerik başarıyla yayınlandı.' : 'Content published successfully.'}{' '}
                   <a href={quickToast.url} target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-green-200">
                     {lang === 'tr' ? 'Gönderiyi görüntüle →' : 'View post →'}
                   </a>
                 </p>
               ) : (
                 <p className="text-xs text-green-300">
-                  {lang === 'tr' ? '✅ İçerik başarıyla yayınlandı.' : '✅ Content published successfully.'}
+                  <span aria-hidden="true">✅ </span>{lang === 'tr' ? 'İçerik başarıyla yayınlandı.' : 'Content published successfully.'}
                 </p>
               )
             ) : (
@@ -1176,7 +1176,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                   <button
                                     onClick={() => setAdapted(prev => { const n = {...prev}; delete n[p.id]; return n; })}
                                     className="text-[10px] text-green-500 hover:text-red-500"
-                                  >{lang === 'tr' ? '✕ Kaldır' : '✕ Remove'}</button>
+                                  ><span aria-hidden="true">✕ </span>{lang === 'tr' ? 'Kaldır' : 'Remove'}</button>
                                 </div>
                                 <p className="text-[10px] text-green-800 dark:text-green-200 leading-relaxed line-clamp-3">{adapted[p.id]}</p>
                               </div>
@@ -1234,7 +1234,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                 onChange={e => setEditText(e.target.value)}
                 rows={8}
                 aria-labelledby={`${uid}-content`}
-                className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none leading-relaxed"
+                className="w-full border border-slate-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-ocean resize-none leading-relaxed"
               />
               <div className="flex gap-4 mt-1.5 flex-wrap">
                 {PLATFORMS.map(p => (
@@ -1261,7 +1261,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                     className="h-20 w-auto rounded-lg object-cover"
                   />
                   <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-col gap-1">
-                    <p>{lang === 'tr' ? '✅ Görsel hazır' : '✅ Image ready'}</p>
+                    <p><span aria-hidden="true">✅ </span>{lang === 'tr' ? 'Görsel hazır' : 'Image ready'}</p>
                     {PLATFORMS.map(p => (
                       <p key={p.id} className="text-slate-600 dark:text-slate-400">{p.icon} {p.label}: {p.imageRes[lang]}</p>
                     ))}

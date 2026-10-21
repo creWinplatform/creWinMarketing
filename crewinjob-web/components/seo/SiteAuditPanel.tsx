@@ -184,7 +184,7 @@ export default function SiteAuditPanel({ lang, onExit, onOpenCtrReport }: { lang
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3 items-end">
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">{tr ? 'Herkese açık sayfa URL’si' : 'Public page URL'}</span>
-            <input value={url} onChange={event => setUrl(event.target.value)} inputMode="url" placeholder="https://www.crewinjob.com" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-ocean focus:ring-2 focus:ring-ocean/20 focus-visible:ring-ocean" />
+            <input value={url} onChange={event => setUrl(event.target.value)} inputMode="url" placeholder="https://www.crewinjob.com" className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2.5 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-ocean focus:ring-2 focus:ring-ocean focus-visible:ring-ocean" />
           </label>
           <button type="button" onClick={() => void runAudit()} disabled={loading || !url.trim()} className="bg-ocean px-4 py-2.5 text-sm font-semibold text-white hover:bg-ocean-dark disabled:opacity-50">
             {loading ? (tr ? 'Denetleniyor…' : 'Auditing…') : (tr ? 'Denetimi başlat' : 'Run audit')}

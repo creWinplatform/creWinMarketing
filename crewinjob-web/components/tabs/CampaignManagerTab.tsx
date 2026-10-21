@@ -216,7 +216,7 @@ function CreateCampaignForm({
             id={`${fid}-name`}
             type="text" value={name} onChange={e => setName(e.target.value)}
             placeholder={t('Örn: Seafarer Registration Q3 2026', 'e.g. Seafarer registration Q3 2026')}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean"
           />
         </div>
 
@@ -225,7 +225,7 @@ function CreateCampaignForm({
           <select
             id={`${fid}-objective`}
             value={objective} onChange={e => setObjective(e.target.value)}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean"
           >
             {objectives.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -251,7 +251,7 @@ function CreateCampaignForm({
             id={`${fid}-start`}
             type="date" value={startDate} min={today}
             onChange={e => setStartDate(e.target.value)}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean"
           />
         </div>
 
@@ -261,7 +261,7 @@ function CreateCampaignForm({
             id={`${fid}-end`}
             type="date" value={endDate} min={startDate || today}
             onChange={e => setEndDate(e.target.value)}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean"
           />
         </div>
 
@@ -271,7 +271,7 @@ function CreateCampaignForm({
             id={`${fid}-countries`}
             type="text" value={countries} onChange={e => setCountries(e.target.value)}
             placeholder="TR, PH, IN, ID"
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean"
           />
           <p className="text-[10px] text-slate-600 mt-0.5">{t('ISO ülke kodları: TR, PH, IN…', 'ISO country codes: TR, PH, IN…')}</p>
         </div>

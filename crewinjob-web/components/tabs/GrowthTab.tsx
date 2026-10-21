@@ -97,7 +97,7 @@ export default function GrowthTab() {
               id={`${fieldId}-platform`}
               value={platform}
               onChange={e => setPlatform(e.target.value)}
-              className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean"
+              className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean"
             >
               {PLATFORMS.map(p => (
                 <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
@@ -118,7 +118,7 @@ export default function GrowthTab() {
               id={`${fieldId}-script`}
               value={tiktokType}
               onChange={e => setTiktokType(e.target.value)}
-              className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean"
+              className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean"
             >
               {TIKTOK_TYPES.map(t => (
                 <option key={t.value} value={t.value}>{lang === 'tr' ? t.labelTr : t.labelEn}</option>

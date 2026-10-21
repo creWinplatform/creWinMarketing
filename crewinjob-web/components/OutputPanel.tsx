@@ -533,20 +533,20 @@ export default function OutputPanel({
               className="flex items-center gap-1.5 text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
               title={lang === 'tr' ? 'İleride otomatik yayınlamak için zamanla' : 'Schedule for automatic publishing later'}
             >
-              {lang === 'tr' ? '📅 Zamanla' : '📅 Schedule'}
+              <span aria-hidden="true">📅 </span>{lang === 'tr' ? 'Zamanla' : 'Schedule'}
             </button>
             <button
               onClick={() => setShowHistory(true)}
               className="flex items-center gap-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
               title={lang === 'tr' ? 'Paylaşım geçmişi ve metrikler' : 'Post history and metrics'}
             >
-              {lang === 'tr' ? '📊 Geçmiş' : '📊 History'}
+              <span aria-hidden="true">📊 </span>{lang === 'tr' ? 'Geçmiş' : 'History'}
             </button>
             <button
               onClick={() => setShowShare(true)}
               className="flex items-center gap-1.5 text-xs bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
             >
-              {lang === 'tr' ? '📤 Paylaş' : '📤 Share'}
+              <span aria-hidden="true">📤 </span>{lang === 'tr' ? 'Paylaş' : 'Share'}
             </button>
           </div>
         </div>
@@ -557,7 +557,7 @@ export default function OutputPanel({
             onBlur={() => { if (text !== (undoStack[undoStack.length - 1] ?? content)) setUndoStack(s => [...s, content]); }}
             spellCheck={false}
             aria-label={lang === 'tr' ? 'İçerik metni' : 'Content text'}
-            className="bg-slate-900 text-slate-100 rounded-xl p-5 text-sm h-64 w-full whitespace-pre-wrap font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-sky-500/60 border border-sky-500/40"
+            className="bg-slate-900 text-slate-100 rounded-xl p-5 text-sm h-64 w-full whitespace-pre-wrap font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-sky-600 dark:focus:ring-sky-500 border border-sky-500/40"
           />
         ) : (
           <pre className="bg-slate-900 text-slate-100 rounded-xl p-5 text-sm overflow-auto max-h-64 whitespace-pre-wrap font-mono leading-relaxed">
@@ -616,7 +616,7 @@ export default function OutputPanel({
               placeholder={lang === 'tr'
                 ? 'Ne değişsin? Ör: "hashtag sayısını 5\'e düşür", "stand numarasını ekle"'
                 : 'What should change? e.g. "cut hashtags down to 5", "mention our booth number"'}
-              className="flex-1 min-w-0 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sky-500/50 bg-white dark:bg-slate-700 dark:text-slate-100 disabled:opacity-60"
+              className="flex-1 min-w-0 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sky-600 dark:focus:ring-sky-500 bg-white dark:bg-slate-700 dark:text-slate-100 disabled:opacity-60"
             />
             <button
               onClick={() => void refine(refineInput)}
@@ -736,7 +736,7 @@ export default function OutputPanel({
                     onClick={() => { applyEdit(reviewResult.improved); setReviewResult(null); }}
                     className="flex-1 text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-2 rounded-lg font-medium transition-colors"
                   >
-                    {lang === 'tr' ? '✅ Bu Versiyonu Kullan' : '✅ Use this version'}
+                    <span aria-hidden="true">✅ </span>{lang === 'tr' ? 'Bu Versiyonu Kullan' : 'Use this version'}
                   </button>
                   <button
                     onClick={async () => {
@@ -745,7 +745,7 @@ export default function OutputPanel({
                     }}
                     className="text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg font-medium transition-colors"
                   >
-                    {lang === 'tr' ? '📋 Kopyala' : '📋 Copy'}
+                    <span aria-hidden="true">📋 </span>{lang === 'tr' ? 'Kopyala' : 'Copy'}
                   </button>
                 </div>
               </div>
@@ -770,7 +770,7 @@ export default function OutputPanel({
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-base" aria-hidden="true">🎨</span>
-              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? '🎨 Post Görseli' : '🎨 Post image'}</span>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-200"><span aria-hidden="true">🎨 </span>{lang === 'tr' ? 'Post Görseli' : 'Post image'}</span>
               <span className="text-xs text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 px-2 py-0.5 rounded-full">
                 {platform} · {contentType.replace(/_/g, ' ')}
               </span>
@@ -791,7 +791,7 @@ export default function OutputPanel({
               ) : (
                 <button onClick={() => logoInputRef.current?.click()}
                   className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-600 border border-dashed border-slate-300 dark:border-slate-500 hover:border-ocean hover:text-ocean text-slate-500 dark:text-slate-400 px-3 py-1.5 rounded-lg transition-colors">
-                  {lang === 'tr' ? '🏷️ Logo Yükle' : '🏷️ Upload logo'}
+                  <span aria-hidden="true">🏷️ </span>{lang === 'tr' ? 'Logo Yükle' : 'Upload logo'}
                 </button>
               )}
 
@@ -815,7 +815,7 @@ export default function OutputPanel({
                 <button onClick={() => partnerLogoInputRef.current?.click()}
                   className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-600 border border-dashed border-slate-300 dark:border-slate-500 hover:border-amber-500 hover:text-amber-600 text-slate-500 dark:text-slate-400 px-3 py-1.5 rounded-lg transition-colors"
                   title={lang === 'tr' ? 'Fuar, etkinlik veya işbirliği logosu' : 'Fair, event or partnership logo'}>
-                  {lang === 'tr' ? '🤝 Etkinlik Logosu' : '🤝 Event logo'}
+                  <span aria-hidden="true">🤝 </span>{lang === 'tr' ? 'Etkinlik Logosu' : 'Event logo'}
                 </button>
               )}
 
@@ -848,7 +848,7 @@ export default function OutputPanel({
           <p className="text-xs">
             {logoBase64
               ? <span className="text-green-600 dark:text-green-400">✅ {lang === 'tr' ? 'Logo yüklendi.' : 'Logo uploaded.'}</span>
-              : <span className="text-slate-600 dark:text-slate-400">💡 <strong>{lang === 'tr' ? 'Logo Yükle' : 'Upload logo'}</strong> {lang === 'tr' ? '→ markanız her görsele eklenir.' : '→ your brand is added to every image.'}</span>}
+              : <span className="text-slate-600 dark:text-slate-400">💡 <strong>{lang === 'tr' ? 'Logo Yükle' : 'Upload logo'}</strong> <span aria-hidden="true">→ </span>{lang === 'tr' ? 'markanız her görsele eklenir.' : 'your brand is added to every image.'}</span>}
             {refImages.length > 0 && (
               <span className="text-purple-600 dark:text-purple-400 ml-2">✅ {refImages.length} {lang === 'tr' ? 'referans post yüklendi — stil tutarlılığı için kullanılıyor.' : 'reference posts uploaded — used for style consistency.'}</span>
             )}
@@ -864,7 +864,7 @@ export default function OutputPanel({
                   value={partnerUntil}
                   min={new Date().toISOString().slice(0, 10)}
                   onChange={e => changePartnerUntil(e.target.value)}
-                  className="px-2 py-0.5 rounded border border-amber-300 dark:border-amber-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  className="px-2 py-0.5 rounded border border-amber-300 dark:border-amber-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-amber-600 dark:focus:ring-amber-400"
                 />
               </label>
               {partnerUntil ? (
@@ -893,7 +893,7 @@ export default function OutputPanel({
               placeholder={lang === 'tr'
                 ? 'Sahneyi düzenle… — ör: "gemiyi çıkar, fuar standı olsun", "gün batımı yerine sabah ışığı"'
                 : 'Edit the scene… — e.g. "drop the ship, make it a trade-show booth", "morning light instead of sunset"'}
-              className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-500 dark:placeholder-slate-500 leading-relaxed"
+              className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean resize-none placeholder-slate-500 dark:placeholder-slate-500 leading-relaxed"
             />
             <div className="flex flex-col gap-1 shrink-0">
               <button
@@ -936,7 +936,7 @@ export default function OutputPanel({
               placeholder={lang === 'tr'
                 ? 'Görselde yazacak detay — ör: "3-5 Eylül · ITU Denizcilik Fakültesi · Stant B-42"'
                 : 'Detail line on the image — e.g. "3-5 September · ITU Maritime Faculty · Booth B-42"'}
-              className="flex-1 text-xs border border-sky-200 dark:border-sky-700 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/50 placeholder-slate-500 dark:placeholder-slate-500"
+              className="flex-1 text-xs border border-sky-200 dark:border-sky-700 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-600 dark:focus:ring-sky-500 placeholder-slate-500 dark:placeholder-slate-500"
             />
             <button
               onClick={() => { if (rawBgData) void recomposite(); else void generateImage(); }}
@@ -1052,7 +1052,7 @@ export default function OutputPanel({
               {rawBgData && (
                 <div className="bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex flex-col gap-2">
                   <p id={headlineLabelId} className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    {lang === 'tr' ? '✏️ Görseldeki Başlık' : '✏️ Image headline'}
+                    <span aria-hidden="true">✏️ </span>{lang === 'tr' ? 'Görseldeki Başlık' : 'Image headline'}
                   </p>
                   <textarea
                     aria-labelledby={headlineLabelId}
@@ -1060,14 +1060,14 @@ export default function OutputPanel({
                     onChange={e => setHeadline(e.target.value)}
                     rows={2}
                     placeholder={lang === 'tr' ? 'Başlık metnini düzenle…' : 'Edit the headline text…'}
-                    className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-500 font-medium leading-snug"
+                    className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean resize-none placeholder-slate-500 font-medium leading-snug"
                   />
 
                   {/* Öneri chipleri */}
                   {suggestions.length > 0 && (
                     <div className="flex flex-col gap-1.5">
                       <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
-                        {lang === 'tr' ? '💡 Alternatif öneriler — tıkla, uygula:' : '💡 Alternative suggestions — click to pick:'}
+                        <span aria-hidden="true">💡 </span>{lang === 'tr' ? 'Alternatif öneriler — tıkla, uygula:' : 'Alternative suggestions — click to pick:'}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {suggestions.map((s, i) => (
@@ -1120,7 +1120,7 @@ export default function OutputPanel({
               {rawBgData && (
                 <div className="bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex flex-col gap-3">
                   <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
-                    {lang === 'tr' ? '🎬 Görsel Konsepti & Stil' : '🎬 Visual concept & style'}
+                    <span aria-hidden="true">🎬 </span>{lang === 'tr' ? 'Görsel Konsepti & Stil' : 'Visual concept & style'}
                   </p>
 
                   {/* Sanat yönü */}
@@ -1181,7 +1181,7 @@ export default function OutputPanel({
 
               <div className="flex gap-2">
                 <button onClick={downloadImage} className="flex-1 flex items-center justify-center gap-2 bg-navy hover:bg-navy-light text-white text-sm font-medium py-2.5 rounded-lg transition-colors">
-                  {lang === 'tr' ? '⬇️ Görseli İndir' : '⬇️ Download image'}
+                  <span aria-hidden="true">⬇️ </span>{lang === 'tr' ? 'Görseli İndir' : 'Download image'}
                 </button>
                 <button
                   onClick={async () => {

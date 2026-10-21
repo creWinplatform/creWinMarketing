@@ -209,7 +209,7 @@ export default function ContentLibraryTab() {
             onChange={e => setSearch(e.target.value)}
             placeholder={lang === 'tr' ? 'İçerik veya prompt ara…' : 'Search content or prompt…'}
             aria-label={lang === 'tr' ? 'İçerik veya prompt ara' : 'Search content or prompt'}
-            className="text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 pl-8 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean bg-white dark:bg-slate-700 dark:text-slate-100 w-56 placeholder:text-slate-500"
+            className="text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 pl-8 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean bg-white dark:bg-slate-700 dark:text-slate-100 w-56 placeholder:text-slate-500"
           />
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600 text-xs" aria-hidden="true">🔍</span>
           {search && (
@@ -314,7 +314,7 @@ export default function ContentLibraryTab() {
                         onChange={e => setEditValue(e.target.value)}
                         rows={5}
                         aria-label={lang === 'tr' ? 'İçeriği düzenle' : 'Edit content'}
-                        className="w-full border border-ocean/50 rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100 leading-relaxed"
+                        className="w-full border border-ocean/50 rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-ocean bg-white dark:bg-slate-700 dark:text-slate-100 leading-relaxed"
                         autoFocus
                       />
                       <div className="flex gap-1.5">

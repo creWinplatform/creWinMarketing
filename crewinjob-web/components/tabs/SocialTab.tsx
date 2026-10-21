@@ -686,7 +686,7 @@ export default function SocialTab() {
             placeholder={t('Bir strateji kartına tıkla ya da kendin yaz…', 'Click a strategy card or write your own…')}
             rows={4}
             aria-label={t('Ne üretmek istiyorsun?', 'What do you want to generate?')}
-            className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean resize-none placeholder:text-slate-500 dark:placeholder:text-slate-500 leading-relaxed"
+            className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean resize-none placeholder:text-slate-500 dark:placeholder:text-slate-500 leading-relaxed"
           />
           <p className="text-xs text-slate-600 dark:text-slate-400">
             {t('Ne kadar detaylı yazarsan o kadar iyi sonuç alırsın.', 'The more detail you provide, the better results you get.')}
@@ -701,7 +701,7 @@ export default function SocialTab() {
                     onChange={e => setTplName(e.target.value)}
                     placeholder={t('Şablon adı…', 'Template name…')}
                     aria-label={t('Şablon adı', 'Template name')}
-                    className="flex-1 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100"
+                    className="flex-1 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ocean bg-white dark:bg-slate-700 dark:text-slate-100"
                   />
                   <button
                     onClick={handleSaveTemplate}
@@ -1046,7 +1046,7 @@ export default function SocialTab() {
                   aria-label={t('Tarih', 'Date')}
                   value={calDate}
                   onChange={e => setCalDate(e.target.value)}
-                  className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100"
+                  className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ocean bg-white dark:bg-slate-700 dark:text-slate-100"
                 />
               </div>
               <button
@@ -1295,7 +1295,7 @@ export default function SocialTab() {
                         'Görsel tarifi… (isteğe bağlı) — ör: "Akdeniz\'de gün batımı, yük gemisi, sıcak amber tonlar"',
                         'Image description… (optional) — e.g. "Mediterranean sunset, cargo vessel, warm amber tones"',
                       )}
-                      className="w-full text-xs border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-400/60 resize-none placeholder-slate-500 dark:placeholder-slate-500 leading-relaxed"
+                      className="w-full text-xs border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-600 dark:focus:ring-purple-400 resize-none placeholder-slate-500 dark:placeholder-slate-500 leading-relaxed"
                     />
                     <p className="text-[10px] text-purple-500 dark:text-purple-400 mt-1">
                       {imagePrompt.trim()
@@ -1378,7 +1378,7 @@ export default function SocialTab() {
                             rows={2}
                             aria-label={t('Görsel Başlığı', 'Image headline')}
                             placeholder={t('Başlık yazın… (satır sonu için Enter)', 'Type a headline… (Enter for a new line)')}
-                            className="flex-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-400 resize-none leading-relaxed"
+                            className="flex-1 text-xs border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-600 dark:focus:ring-purple-400 resize-none leading-relaxed"
                           />
                           <button
                             onClick={applyCustomHeadline}
@@ -1434,7 +1434,7 @@ export default function SocialTab() {
                 {/* Başlık şeridi: fareyle her yere tıklanabilir; klavye/ekran okuyucu için açılır düğme soldaki butondur */}
                 <div
                   onClick={() => toggleAllPlatExpand(i)}
-                  className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border-b border-slate-200 dark:border-slate-600 transition-colors"
+                  className="w-full cursor-pointer flex items-center justify-between px-3 py-2 bg-slate-50 dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600 border-b border-slate-200 dark:border-slate-600 transition-colors"
                 >
                   <button
                     type="button"
@@ -1504,7 +1504,7 @@ export default function SocialTab() {
                           value={p.editValue}
                           onChange={e => setAllPlatData(prev => prev.map((pp, ii) => ii === i ? { ...pp, editValue: e.target.value } : pp))}
                           rows={5}
-                          className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100"
+                          className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-ocean bg-white dark:bg-slate-700 dark:text-slate-100"
                         />
                         <div className="flex gap-2">
                           <button onClick={() => saveEditAllPlat(i)} className="flex-1 text-xs bg-ocean text-white py-1.5 rounded-lg font-medium hover:bg-ocean-dark transition-colors">

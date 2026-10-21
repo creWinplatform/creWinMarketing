@@ -362,7 +362,7 @@ function ReasonModal({ title, label, loading, onClose, onSubmit }: {
         value={reason}
         onChange={e => { setReason(e.target.value); setError(''); }}
         rows={4}
-        className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-ocean/50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+        className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-ocean dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
       />
       <FieldError text={error} />
       <div className="mt-4 flex justify-end gap-2">

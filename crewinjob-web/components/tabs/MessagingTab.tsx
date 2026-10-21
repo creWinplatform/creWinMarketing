@@ -904,9 +904,7 @@ export default function MessagingTab({ stats }: Props) {
                     : <>Direct WhatsApp message to existing users. First set <code>WHATSAPP_PHONE_NUMBER_ID</code> and <code>WHATSAPP_ACCESS_TOKEN</code>.</>}
                 </p>
                 <p className="leading-relaxed mt-1 font-medium">
-                  {lang === 'tr'
-                    ? '⚠️ Serbest metin yalnızca son 24 saat içinde size yazmış kullanıcılara ulaşır. Pazarlama/duyuru mesajları için Meta onaylı WhatsApp template gerekir.'
-                    : '⚠️ Free-text messages only reach users who messaged you in the last 24 hours. Marketing/announcement messages require Meta-approved WhatsApp templates.'}
+                  <span aria-hidden="true">⚠️ </span>{lang === 'tr' ? 'Serbest metin yalnızca son 24 saat içinde size yazmış kullanıcılara ulaşır. Pazarlama/duyuru mesajları için Meta onaylı WhatsApp template gerekir.' : 'Free-text messages only reach users who messaged you in the last 24 hours. Marketing/announcement messages require Meta-approved WhatsApp templates.'}
                 </p>
               </div>
             </div>
@@ -1383,7 +1381,7 @@ export default function MessagingTab({ stats }: Props) {
               className="w-full bg-amber-700 hover:bg-amber-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
             >
               {emailSendLoading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {lang === 'tr' ? '📧 Kampanyayı Gönder (tek dil)' : '📧 Send campaign (single language)'}
+              <span aria-hidden="true">📧 </span>{lang === 'tr' ? 'Kampanyayı Gönder (tek dil)' : 'Send campaign (single language)'}
             </button>
           </div>
         )}
@@ -1763,7 +1761,7 @@ export default function MessagingTab({ stats }: Props) {
   );
 }
 
-const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
+const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
 
 // The label is tied to its control: a native input/select/textarea as the first child gets the label's htmlFor;
 // any other content (chip groups, recipient lists) becomes a group named by the label.

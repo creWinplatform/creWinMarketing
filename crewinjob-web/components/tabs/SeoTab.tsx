@@ -1009,7 +1009,7 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
   );
 }
 
-const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
+const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
 
 // Tek kontrol: <label htmlFor> ile bağlanır. group: buton grubu, role="group" + aria-labelledby ile adlandırılır.
 function Field({ label, children, group }: { label: string; children: React.ReactNode; group?: boolean }) {

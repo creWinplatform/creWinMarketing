@@ -46,7 +46,7 @@ function CountInput({ label, value, onChange }: {
         id={id}
         type="number" min={1} max={50} value={value}
         onChange={e => onChange(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)))}
-        className="w-14 text-xs text-center border border-slate-200 dark:border-slate-600 rounded-lg py-1 px-1.5 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 focus-visible:ring-ocean"
+        className="w-14 text-xs text-center border border-slate-200 dark:border-slate-600 rounded-lg py-1 px-1.5 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean"
       />
     </div>
   );
@@ -90,7 +90,7 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
               type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder={lang === 'tr' ? 'Ara…' : 'Search…'}
               aria-label={lang === 'tr' ? 'Ara' : 'Search'}
-              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 focus-visible:ring-ocean w-28 placeholder:text-slate-500"
+              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean w-28 placeholder:text-slate-500"
             />
           </div>
         </div>
@@ -192,7 +192,7 @@ function CompaniesSection({ data, loading, count, onCountChange, lang }: {
               type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder={lang === 'tr' ? 'Ara…' : 'Search…'}
               aria-label={lang === 'tr' ? 'Ara' : 'Search'}
-              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 focus-visible:ring-ocean w-28 placeholder:text-slate-500"
+              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus-visible:ring-ocean w-28 placeholder:text-slate-500"
             />
           </div>
         </div>

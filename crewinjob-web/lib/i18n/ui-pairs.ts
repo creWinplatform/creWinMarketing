@@ -16,7 +16,6 @@ export const UI_PAIRS: Record<string, string> = {
   "❌ Başarısız": "❌ Failed",
   "❌ İlan reddedildi.": "❌ Job posting rejected.",
   "❌ Reddet": "❌ Reject",
-  "📥 Başvuruları Güncelle": "📥 Update applications",
   "🗑️ {0} ilan silindi.": "🗑️ {0} job postings deleted.",
   "🚫 İptal": "🚫 Cancelled",
   "Aboneliğiniz iptal edildi": "You have been unsubscribed",

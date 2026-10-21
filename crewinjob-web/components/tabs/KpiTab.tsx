@@ -476,7 +476,7 @@ export default function KpiTab({ stats }: Props) {
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5 flex flex-col gap-4">
             <div>
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                {lang === 'tr' ? '⚓ Gemi İnsanı Tarafı' : '⚓ Seafarer side'}
+                <span aria-hidden="true">⚓ </span>{lang === 'tr' ? 'Gemi İnsanı Tarafı' : 'Seafarer side'}
               </h3>
               <div className="grid grid-cols-2 gap-2">
                 {kpis.slice(0, 6).map((kpi, i) => (
@@ -492,7 +492,7 @@ export default function KpiTab({ stats }: Props) {
 
             <div>
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                {lang === 'tr' ? '🏢 Şirket Tarafı' : '🏢 Company side'}
+                <span aria-hidden="true">🏢 </span>{lang === 'tr' ? 'Şirket Tarafı' : 'Company side'}
               </h3>
               <div className="grid grid-cols-2 gap-2">
                 {kpis.slice(6).map((kpi, i) => (
@@ -509,7 +509,7 @@ export default function KpiTab({ stats }: Props) {
             {buckets && total > 0 && (
               <div>
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-                  {lang === 'tr' ? '📊 Profil Doluluk Dağılımı' : '📊 Profile fill distribution'}
+                  <span aria-hidden="true">📊 </span>{lang === 'tr' ? 'Profil Doluluk Dağılımı' : 'Profile fill distribution'}
                 </h3>
                 <div className="flex h-6 rounded-md overflow-hidden border border-slate-200 dark:border-slate-600">
                   {([
@@ -556,7 +556,7 @@ export default function KpiTab({ stats }: Props) {
                 {/* Aktivasyon hunisi */}
                 <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-600">
                   <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-2">
-                    {lang === 'tr' ? '🔽 Aktivasyon Hunisi' : '🔽 Activation funnel'}
+                    <span aria-hidden="true">🔽 </span>{lang === 'tr' ? 'Aktivasyon Hunisi' : 'Activation funnel'}
                   </p>
                   {[
                     { lbl: lang === 'tr' ? 'Kayıtlı' : 'Registered',    n: total,            cls: 'bg-slate-200 dark:bg-slate-600' },
@@ -751,7 +751,7 @@ export default function KpiTab({ stats }: Props) {
                   onClick={() => loadKpiHistory(true)}
                   className="text-[10px] text-ocean hover:underline"
                 >
-                  {lang === 'tr' ? '↺ Yenile' : '↺ Refresh'}
+                  <span aria-hidden="true">↺ </span>{lang === 'tr' ? 'Yenile' : 'Refresh'}
                 </button>
               </div>
             </div>
