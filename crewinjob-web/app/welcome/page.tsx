@@ -4,6 +4,8 @@ import Brand from '@/components/platform/Brand';
 import WorkspaceMap from '@/components/marketing/WorkspaceMap';
 import ToolCollapse from '@/components/marketing/ToolCollapse';
 import Reveal from '@/components/marketing/Reveal';
+import CoachShowcase from '@/components/marketing/CoachShowcase';
+import '../landing-coach.css';
 import { LangToggle } from '@/lib/lang';
 import { requestLang } from '@/lib/i18n/server';
 import type { Lang } from '@/lib/i18n/shared';
@@ -49,6 +51,8 @@ const PILOT = [
 ];
 
 const FAQ = [
+  { q: l('Pazarlama bilgimiz yok; yine de kullanabilir miyiz?', 'We have no marketing expertise. Can we still use it?'),
+    a: l('Evet, bunun için tasarlandı. Büyüme koçu sade sorularla başlar, ürününüze özel bir strateji taslağı hazırlar ve her hafta neyi neden yapacağınızı gösterir. Kararları ve onayları ekibiniz verir.', 'Yes, that is who it is built for. The growth coach starts with plain questions, prepares a strategy draft for your product and shows what to do each week and why. Your team makes the decisions and approvals.') },
   { q: l('Kendi ürünüm için kullanabilir miyim?', 'Can I use it for my own product?'),
     a: l('Evet. Ürün profiliniz, hedefleriniz ve ekibiniz kendi çalışma alanınızda yer alır. Müşteriye özel araçlar yalnızca o müşterinin projesinde kalır.', 'Yes. Your product profile, goals and team live in your own workspace. Customer-specific tools stay only in that customer’s project.') },
   { q: l('İçerikler kendiliğinden yayımlanıyor mu?', 'Is content published automatically?'),
@@ -67,7 +71,7 @@ export default async function WelcomePage({ searchParams }: Props) {
   const lang: Lang = await requestLang((await searchParams).lang);
   const t = (tr: string, en: string) => (lang === 'en' ? en : tr);
   const tx = (value: L) => value[lang];
-  const nav = <><a href="#map">{t('Harita', 'Map')}</a><a href="#collapse">{t('Neden tek yer', 'Why one place')}</a><a href="#flow">{t('Akış', 'Flow')}</a><a href="#pilot">Pilot</a></>;
+  const nav = <><a href="#map">{t('Harita', 'Map')}</a><a href="#coach">{t('Koç', 'Coach')}</a><a href="#collapse">{t('Neden tek yer', 'Why one place')}</a><a href="#flow">{t('Akış', 'Flow')}</a><a href="#pilot">Pilot</a></>;
   return (
     <div className="ryz-map" lang={lang}>
       <Reveal />
@@ -88,6 +92,8 @@ export default async function WelcomePage({ searchParams }: Props) {
 
       <main id="ryzevo-main">
         <WorkspaceMap lang={lang} />
+
+        <CoachShowcase lang={lang} />
 
         <section className="rm-collapse" id="collapse">
           <div className="rm-wrap rm-col-grid">
