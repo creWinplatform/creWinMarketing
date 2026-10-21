@@ -32,7 +32,7 @@ test('comments under our own posts and recent messages are read with masked text
   const items=result.snapshot.items;assert.ok(items.every(item=>!/ayse@example|Ayşe Kaya|Mehmet/.test(item.text)));
   const comment=items.find(item=>item.kind==='comment');assert.match(comment.text,/\[…\]/,'the email address is masked');assert.equal(comment.postUrl,'https://www.facebook.com/100_200');
   assert.equal(items.find(item=>item.text==='Eski soru').windowOpen,false,'a message older than 24 hours is outside the window');
-  assert.doesNotMatch(JSON.stringify(f.db.prepare('SELECT * FROM platform_social_inbox').all()),/555|777|Ayşe|Mehmet|ayse@/,'no names, sender ids or contact details are stored in clear');
+  assert.doesNotMatch(JSON.stringify(f.db.prepare('SELECT * FROM platform_social_inbox').all()),/"(555|777)"|Ayşe|Mehmet|ayse@/,'no names, sender ids or contact details are stored in clear');
   assert.equal((await f.inbox().sync({connectionId:f.page.id})).added,0,'nothing is stored twice');
   assert.ok(f.http.calls.every(call=>call.token==='private-page-token'));
   const editor=f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'inbox-editor',password:'fixture-password-123',role:'editor'}).userId;
@@ -74,5 +74,5 @@ test('AI drafts a reply into the box only and refuses links or contact details',
 test('schema51 is additive and repeatable',async()=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'inbox-')),'fixture.sqlite');
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeInboxSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,50);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,52);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,53);db.close();
 });

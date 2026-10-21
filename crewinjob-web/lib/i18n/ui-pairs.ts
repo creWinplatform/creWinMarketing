@@ -308,6 +308,7 @@ export const UI_PAIRS: Record<string, string> = {
   "X OAuth yayın izni kaydı ve hesap erişimi doğrulandı.": "X OAuth publishing grant record and account access verified.",
   "X yetkilendirme adresi geçersiz.": "Invalid X authorization URL.",
   "yalnız yorum": "comments only",
+  "yanıtlar": "replies",
   "Yayın işi kaydedildi.": "Publication job saved.",
   "Yayın izni doğrulandı.": "Publishing access verified.",
   "Yayın saati değişti. Önizlemeyi kontrol edip yeniden onaylayın.": "Publication time changed. Review the preview and approve again.",

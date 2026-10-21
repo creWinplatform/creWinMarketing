@@ -1,4 +1,4 @@
-export type PublicationSource = { kind: 'content' | 'campaign'; id: string; platform: string; title: string; text: string; digest: string; eligible: boolean; imagePreview?: string; imagePreviews?: string[]; format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number }; weightedLength?: number };
+export type PublicationSource = { story?: boolean; kind: 'content' | 'campaign'; id: string; platform: string; title: string; text: string; digest: string; eligible: boolean; imagePreview?: string; imagePreviews?: string[]; format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number }; weightedLength?: number };
 export type PublicationTarget = { id: string; name: string; platform: string; accountId: string; accountType?:'person'|'organization'; revision: string; configured: boolean; ready: boolean; checkedAt: string | null; expiresAt?: string | null };
 export type Publication = {
   id: string; mode: 'rehearsal' | 'publish'; status: string; state: string;

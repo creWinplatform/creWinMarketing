@@ -2,7 +2,7 @@ import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionIdentity } from '@/lib/auth';
-import { buildCampaign, type CreateCampaignInput, type UnifiedCampaign } from '@/lib/campaigns';
+import { buildCampaign, type CampaignContent, type CreateCampaignInput, type UnifiedCampaign } from '@/lib/campaigns';
 import type { HistoryItem } from '@/lib/content-history';
 import { getPlatformAccess } from './workspace-server';
 import { platformDatabase } from './database';
@@ -15,6 +15,7 @@ import type {SegmentBinding} from './segment-types';
 import type { SmtpConfiguration } from './email-configuration';
 import type { SocialConfiguration } from './social-configuration';
 import { normalizePublicationImage } from './publication-image';
+import { normalizeContentVideo } from './social-video';
 import { readBoundedJsonBytes } from './request-json';
 import { COACH_REF } from './coach-types';
 
@@ -41,9 +42,21 @@ function campaignInput(raw: Record<string, unknown>, timezone: string, goalIds: 
   if (platforms.length === 0 && channels.email !== true) throw new MarketingStoreError('En az bir kanal seçin.');
   const ctaUrl = string(content.ctaUrl, 2048).trim();
   if (ctaUrl) { const url = new URL(ctaUrl); if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new MarketingStoreError('Geçersiz hedef bağlantı.'); }
+  // A campaign video goes to Instagram and/or the Facebook Page in the format chosen for each; other channels get the text.
+  let video: CampaignContent['video'];
+  if (content.video && typeof content.video === 'object') {
+    const value = content.video as Record<string, unknown>, formats: { instagram?: 'reel' | 'story'; facebook?: 'feed' | 'reel' } = {};
+    for (const platform of ['instagram', 'facebook'] as const) if (value[platform] !== undefined && value[platform] !== '') {
+      if (!platforms.includes(platform)) throw new MarketingStoreError('Video biçimi yalnız kampanyada seçili Instagram veya Facebook kanalı için verilebilir.');
+      const normalized = normalizeContentVideo({ url: value.url, format: value[platform] }, platform);
+      (formats as Record<string, string>)[platform] = normalized.format;
+      video = { url: normalized.url, ...formats };
+    }
+    if (!video) throw new MarketingStoreError('Video için Instagram veya Facebook biçimini seçin.');
+  }
   return { name, ...(goalId ? { goalId } : {}), objective: objective as CreateCampaignInput['objective'], audience: { fillBuckets: [] },
     channels: { social: Array.from(new Set(platforms)) as string[], email: channels.email === true, whatsapp: false, telegram: false, paidAds: [] },
-    content: { text, subject: string(content.subject, 200), ctaUrl: ctaUrl || undefined }, timezone };
+    content: { text, subject: string(content.subject, 200), ctaUrl: ctaUrl || undefined, ...(video ? { video } : {}) }, timezone };
 }
 
 // Growth coach origin of a draft; optional, never required, kept on later edits.
@@ -74,12 +87,14 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   if(images?.length&&imageData)throw new MarketingStoreError('Tek gorsel veya coklu gorsel secin; ikisini birlikte gondermeyin.');
   let video=current?.video;
   if(raw.video===''||raw.video===null)video=undefined;
-  else if(raw.video!==undefined){const {normalizeContentVideo}=await import('./social-video');video=normalizeContentVideo(raw.video,platform);}
+  else if(raw.video!==undefined)video=normalizeContentVideo(raw.video,platform);
   if(video&&(images?.length||imageData))throw new MarketingStoreError('Video ile görsel aynı içerikte kullanılamaz.');
-  if(video&&!['instagram','facebook'].includes(platform))throw new MarketingStoreError('Video yalnız Instagram (Reels, Story) ve Facebook sayfası için destekleniyor.');
+  if(video&&!['instagram','facebook'].includes(platform))throw new MarketingStoreError('Video yalnız Instagram (Reels, Story) ve Facebook sayfası (video, Reels) için destekleniyor.');
+  const story=raw.story===undefined?Boolean(current?.story):raw.story===true;
+  if(story&&(platform!=='instagram'||!imageData||images?.length||video))throw new MarketingStoreError('Görselli Story yalnız tek görselli Instagram içeriği için seçilebilir.');
   return { id: current?.id || `hist_${randomUUID()}`, timestamp: current?.timestamp || Date.now(),
     content, platform, language, prompt: string(raw.prompt, 3000, current?.prompt),
-    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(video?{video}:{}),...(coachRef(raw.coachRef,current?.coachRef)) };
+    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(video?{video}:{}),...(story?{story:true}:{}),...(coachRef(raw.coachRef,current?.coachRef)) };
 }
 
 async function context(request: NextRequest) {

@@ -5,7 +5,7 @@ import { PlatformRepository } from './repository';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { hasMessagingDuty } from './messaging-duties';
-import { WHATSAPP_LIMITS, WHATSAPP_STOP_WORDS, type WhatsAppBatchView, type WhatsAppDelivery, type WhatsAppMessageState, type WhatsAppSnapshot, type WhatsAppTemplateView } from './whatsapp-types';
+import { WHATSAPP_LIMITS, WHATSAPP_STOP_WORDS, type WhatsAppBatchExtras, type WhatsAppBatchView, type WhatsAppDelivery, type WhatsAppHeaderFormat, type WhatsAppMessageState, type WhatsAppSnapshot, type WhatsAppTemplateView } from './whatsapp-types';
 
 // WhatsApp Cloud API client: fixed host, token only in the Authorization header, a short path allowlist.
 export type WhatsAppGraph=(method:'GET'|'POST',path:string,token:string,params?:Record<string,string>,body?:Record<string,unknown>)=>Promise<{status:number;payload:Record<string,unknown>}>;
@@ -19,7 +19,7 @@ export const whatsAppGraph:WhatsAppGraph=async(method,path,token,params={},body)
 };
 export const whatsAppSendEnabled=()=>process.env.PLATFORM_WHATSAPP_SEND_ENABLED==='1';
 type Credentials={accessToken:string;refreshToken:string;phoneNumberId:string;wabaId:string;displayPhone:string;verifiedName:string;quality:string|null;checkedAt:string};
-type Batch={id:string;connection_id:string;name:string;template_name:string;template_language:string;params_json:string;overrides_json:string;contacts_json:string;digest:string;state:WhatsAppBatchView['state'];mode:'rehearsal'|'send'|null;approved_digest:string|null;approved_at:string|null;queued_by:string|null;queued_at:string|null;revision:number;updated_at:string;created_by:string};
+type Batch={id:string;connection_id:string;name:string;template_name:string;template_language:string;params_json:string;overrides_json:string;extras_json:string;contacts_json:string;digest:string;state:WhatsAppBatchView['state'];mode:'rehearsal'|'send'|null;approved_digest:string|null;approved_at:string|null;queued_by:string|null;queued_at:string|null;revision:number;updated_at:string;created_by:string};
 const E164=/^\+[1-9]\d{7,14}$/;
 export const normalizePhone=(value:string)=>{const compact=value.replace(/[\s().-]/g,'').replace(/^00/,'+');return E164.test(compact)?compact:null;};
 const hint=(phone:string)=>`${phone.slice(0,3)}•••${phone.slice(-2)}`;
@@ -27,6 +27,17 @@ const clean=(value:unknown,max:number)=>typeof value==='string'?value.replace(/[
 // Template variables are plain text: WhatsApp rejects new lines, tabs and long runs of spaces in them.
 const param=(value:unknown)=>{const text=typeof value==='string'?value.trim():'';if(!text||text.length>WHATSAPP_LIMITS.param||/[\n\r\t]| {4,}|\{\{|\}\}/.test(text))throw new MarketingStoreError(`Her şablon değişkeni 1–${WHATSAPP_LIMITS.param} karakterlik tek satır metin olmalı.`);return text;};
 export const templateParams=(body:string)=>new Set([...body.matchAll(/\{\{(\d{1,2})\}\}/g)].map(match=>match[1])).size;
+// A media header link is fetched by Meta, not by Ryzevo; it must still be a public https address.
+const mediaLink=(value:unknown)=>{
+  const text=typeof value==='string'?value.trim():'';let url:URL|null=null;try{url=new URL(text);}catch{url=null;}
+  const host=url?.hostname.toLowerCase()||'';
+  if(!url||text.length>1000||url.protocol!=='https:'||url.username||url.password||url.port&&url.port!=='443'||!host.includes('.')||host==='localhost'||host.endsWith('.localhost')||host.endsWith('.local')||host.endsWith('.internal')||/^[\d.]+$/.test(host)||host.startsWith('['))
+    throw new MarketingStoreError('Başlık medyası için herkese açık bir https bağlantısı girin.');
+  return url.href;
+};
+const batchDigest=(connectionId:string,template:WhatsAppTemplateView,params:string[],contactIds:string[],overrides:Record<string,string[]>,extras:WhatsAppBatchExtras)=>createHash('sha256').update(JSON.stringify([connectionId,template.name,template.language,template.body,params,contactIds,overrides,template.headerFormat,template.buttonUrl,extras])).digest('hex');
+// The dynamic end of a URL button: a short path or query piece, never a whole new address.
+const buttonParam=(value:unknown)=>{const text=typeof value==='string'?value.trim():'';if(!/^[A-Za-z0-9._~\-\/?=&%+]{1,200}$/.test(text)||text.includes('//'))throw new MarketingStoreError('Düğme bağlantısının değişken kısmı boşluksuz, 1–200 karakterlik bir yol veya sorgu parçası olmalı.');return text;};
 
 // WhatsApp template sending. Contacts carry their own WhatsApp consent; a batch is approved on its exact content and
 // sent one message at a time, each re-checked just before it goes. Meta bills each message; no price is shown here.
@@ -48,7 +59,10 @@ export class ProjectWhatsApp{
   private phone(contactId:string,encrypted:string){return decryptCredentials<{phone:string}>(encrypted,this.key,...this.args(),`whatsapp-contact:${contactId}`).phone;}
   private templates(connectionId?:string):WhatsAppTemplateView[]{
     const id=connectionId??this.connection()?.id;if(!id)return [];
-    return (this.db.prepare('SELECT name,language,category,body,params,fetched_at FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=? ORDER BY name,language').all(id,...this.args()) as {name:string;language:string;category:string;body:string;params:number;fetched_at:string}[]).map(row=>({name:row.name,language:row.language,category:row.category,body:row.body,params:row.params,fetchedAt:row.fetched_at}));
+    return (this.db.prepare('SELECT name,language,category,body,params,header_format,button_url,fetched_at FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=? ORDER BY name,language').all(id,...this.args()) as {name:string;language:string;category:string;body:string;params:number;header_format:WhatsAppHeaderFormat;button_url:string|null;fetched_at:string}[]).map(row=>({name:row.name,language:row.language,category:row.category,body:row.body,params:row.params,headerFormat:row.header_format,buttonUrl:row.button_url,fetchedAt:row.fetched_at}));
+  }
+  private buttonIndex(connectionId:string,name:string,language:string){
+    return (this.db.prepare('SELECT button_index FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=? AND name=? AND language=?').get(connectionId,...this.args(),name,language) as {button_index:number|null}|undefined)?.button_index??null;
   }
   private batch(id:unknown){const row=typeof id==='string'?this.db.prepare('SELECT * FROM platform_whatsapp_batches WHERE id=? AND organization_id=? AND project_id=?').get(id,...this.args()) as Batch|undefined:undefined;if(!row)throw new MarketingStoreError('WhatsApp gönderisi bulunamadı.',404);return row;}
   private sentToday(){return (this.db.prepare("SELECT COUNT(*) n FROM platform_whatsapp_messages m JOIN platform_whatsapp_batches b ON b.id=m.batch_id WHERE b.organization_id=? AND b.project_id=? AND m.state IN ('submitting','accepted','uncertain') AND m.submitted_at>=?").get(...this.args(),`${new Date().toISOString().slice(0,10)}T00:00:00.000Z`) as {n:number}).n;}
@@ -57,7 +71,7 @@ export class ProjectWhatsApp{
     const counts:Partial<Record<WhatsAppMessageState,number>>={};for(const item of this.db.prepare('SELECT state,COUNT(*) n FROM platform_whatsapp_messages WHERE batch_id=? GROUP BY state').all(row.id) as {state:WhatsAppMessageState;n:number}[])counts[item.state]=item.n;
     const delivery:Partial<Record<WhatsAppDelivery,number>>={};for(const item of this.db.prepare('SELECT delivery,COUNT(*) n FROM platform_whatsapp_messages WHERE batch_id=? AND delivery IS NOT NULL GROUP BY delivery').all(row.id) as {delivery:WhatsAppDelivery;n:number}[])delivery[item.delivery]=item.n;
     const params=JSON.parse(row.params_json) as string[],template=this.templates(row.connection_id).find(item=>item.name===row.template_name&&item.language===row.template_language);
-    return {id:row.id,name:row.name,templateName:row.template_name,templateLanguage:row.template_language,params,overrides:JSON.parse(row.overrides_json||'{}'),contactIds:JSON.parse(row.contacts_json),digest:row.digest,state:row.state,mode:row.mode,approved:row.approved_digest===row.digest,approvedAt:row.approved_at,queuedAt:row.queued_at,counts,delivery,
+    return {id:row.id,name:row.name,templateName:row.template_name,templateLanguage:row.template_language,params,overrides:JSON.parse(row.overrides_json||'{}'),extras:JSON.parse(row.extras_json||'{}') as WhatsAppBatchExtras,contactIds:JSON.parse(row.contacts_json),digest:row.digest,state:row.state,mode:row.mode,approved:row.approved_digest===row.digest,approvedAt:row.approved_at,queuedAt:row.queued_at,counts,delivery,
       preview:template?template.body.replace(/\{\{(\d{1,2})\}\}/g,(match,index)=>params[Number(index)-1]??match):null,revision:row.revision,updatedAt:row.updated_at};
   }
   read():WhatsAppSnapshot{
@@ -94,7 +108,8 @@ export class ProjectWhatsApp{
       this.audit('whatsapp.connect');return this.read();
     }).immediate();
   }
-  // Approved templates whose variables are all in the body. Others (media headers, dynamic buttons) are left out.
+  // Approved templates: body variables, an optional image/video/document header and at most one URL button with a dynamic ending.
+  // Text-header variables, copy-code, flow, catalogue and one-time-password buttons are left out.
   async refreshTemplates(){
     this.authorize('content.write');const {connection,credentials}=this.credentials();let data:unknown;
     try{const result=await this.graph('GET',`${credentials.wabaId}/message_templates`,credentials.accessToken,{fields:'name,language,status,category,components',limit:'100'});if(result.status!==200)throw new Error();data=result.payload.data;}catch{throw new MarketingStoreError('WhatsApp şablonları okunamadı. Anahtarın whatsapp_business_management iznini kontrol edin.',502);}
@@ -102,13 +117,21 @@ export class ProjectWhatsApp{
       const value=item&&typeof item==='object'?item as Record<string,unknown>:{},components=Array.isArray(value.components)?value.components as Record<string,unknown>[]:[];
       if(value.status!=='APPROVED'||!['MARKETING','UTILITY'].includes(String(value.category))||typeof value.name!=='string'||!/^[a-z0-9_]{1,512}$/.test(value.name)||typeof value.language!=='string'||!/^[a-z]{2,3}(_[A-Z]{2})?$/.test(value.language))return [];
       const body=components.find(part=>part.type==='BODY'),header=components.find(part=>part.type==='HEADER'),buttons=components.find(part=>part.type==='BUTTONS');
-      if(!body||typeof body.text!=='string'||header&&(header.format!=='TEXT'||/\{\{/.test(String(header.text)))||JSON.stringify(buttons??{}).includes('{{'))return [];
-      return [{name:value.name,language:value.language,category:String(value.category),body:body.text.slice(0,1024),params:templateParams(body.text)}];
+      if(!body||typeof body.text!=='string')return [];
+      const headerFormat=(header?String(header.format):'NONE') as WhatsAppHeaderFormat;
+      if(!['NONE','TEXT','IMAGE','VIDEO','DOCUMENT'].includes(headerFormat)||headerFormat==='TEXT'&&/\{\{/.test(String(header?.text)))return [];
+      const list=Array.isArray(buttons?.buttons)?buttons.buttons as Record<string,unknown>[]:[];
+      if(list.some(button=>!['QUICK_REPLY','URL','PHONE_NUMBER'].includes(String(button.type))||button.type!=='URL'&&JSON.stringify(button).includes('{{')))return [];
+      const dynamic=list.map((button,index)=>({button,index})).filter(item=>item.button.type==='URL'&&String(item.button.url).includes('{{'));
+      if(dynamic.length>1)return [];
+      const url=dynamic[0]?String(dynamic[0].button.url):null;
+      if(url&&!/^https:\/\/[^\s{}]+\{\{1\}\}$/.test(url))return [];
+      return [{name:value.name,language:value.language,category:String(value.category),body:body.text.slice(0,1024),params:templateParams(body.text),headerFormat,buttonUrl:url?url.slice(0,1000):null,buttonIndex:dynamic[0]?.index??null}];
     });
     return this.db.transaction(()=>{
       this.authorize('content.write');const now=new Date().toISOString();
       this.db.prepare('DELETE FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=?').run(connection.id,...this.args());
-      for(const row of rows)this.db.prepare('INSERT OR REPLACE INTO platform_whatsapp_templates VALUES(?,?,?,?,?,?,?,?,?)').run(connection.id,...this.args(),row.name,row.language,row.category,row.body,row.params,now);
+      for(const row of rows)this.db.prepare('INSERT OR REPLACE INTO platform_whatsapp_templates(connection_id,organization_id,project_id,name,language,category,body,params,fetched_at,header_format,button_url,button_index) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(connection.id,...this.args(),row.name,row.language,row.category,row.body,row.params,now,row.headerFormat,row.buttonUrl,row.buttonIndex);
       this.audit('whatsapp.templates.refresh');return this.read();
     }).immediate();
   }
@@ -155,16 +178,19 @@ export class ProjectWhatsApp{
     // Per-recipient values: an empty value keeps the batch's own value for that variable.
     const rawOverrides=raw.overrides&&typeof raw.overrides==='object'?raw.overrides as Record<string,unknown>:{},overrides:Record<string,string[]>={};
     for(const contactId of contactIds){const list=rawOverrides[contactId];if(!Array.isArray(list)||!list.some(item=>typeof item==='string'&&item.trim()))continue;if(list.length!==template.params)throw new MarketingStoreError(`Bu şablon ${template.params} değişken bekliyor.`);overrides[contactId]=list.map(item=>typeof item==='string'&&item.trim()?param(item):'');}
-    const digest=createHash('sha256').update(JSON.stringify([connection.id,templateName,language,template.body,params,contactIds,overrides])).digest('hex');
+    const rawExtras=raw.extras&&typeof raw.extras==='object'?raw.extras as Record<string,unknown>:{},extras:WhatsAppBatchExtras={};
+    if(['IMAGE','VIDEO','DOCUMENT'].includes(template.headerFormat))extras.headerLink=mediaLink(rawExtras.headerLink);
+    if(template.buttonUrl)extras.buttonParam=buttonParam(rawExtras.buttonParam);
+    const digest=batchDigest(connection.id,template,params,contactIds,overrides,extras);
     return this.db.transaction(()=>{
       this.authorize('content.write');const now=new Date().toISOString();
       if(raw.id===undefined){
         if((this.db.prepare("SELECT COUNT(*) n FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? AND state IN ('draft','approved')").get(...this.args()) as {n:number}).n>=WHATSAPP_LIMITS.batches)throw new MarketingStoreError('Taslak gönderi sınırına ulaşıldı.',429);
-        this.db.prepare("INSERT INTO platform_whatsapp_batches(id,organization_id,project_id,connection_id,name,template_name,template_language,params_json,overrides_json,contacts_json,digest,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)").run(`wabatch_${randomUUID()}`,...this.args(),connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(contactIds),digest,this.scope.subject,now,now);
+        this.db.prepare("INSERT INTO platform_whatsapp_batches(id,organization_id,project_id,connection_id,name,template_name,template_language,params_json,overrides_json,extras_json,contacts_json,digest,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)").run(`wabatch_${randomUUID()}`,...this.args(),connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,this.scope.subject,now,now);
       }else{
         const row=this.batch(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Gönderi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
         if(!['draft','approved'].includes(row.state))throw new MarketingStoreError('Kuyruğa alınmış bir gönderi değiştirilemez.',409);
-        this.db.prepare("UPDATE platform_whatsapp_batches SET connection_id=?,name=?,template_name=?,template_language=?,params_json=?,overrides_json=?,contacts_json=?,digest=?,state='draft',approved_by=NULL,approved_digest=NULL,approved_at=NULL,revision=revision+1,updated_at=? WHERE id=?").run(connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(contactIds),digest,now,row.id);
+        this.db.prepare("UPDATE platform_whatsapp_batches SET connection_id=?,name=?,template_name=?,template_language=?,params_json=?,overrides_json=?,extras_json=?,contacts_json=?,digest=?,state='draft',approved_by=NULL,approved_digest=NULL,approved_at=NULL,revision=revision+1,updated_at=? WHERE id=?").run(connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,now,row.id);
       }
       this.audit('whatsapp.batch.save');return this.read();
     }).immediate();
@@ -207,6 +233,9 @@ export class ProjectWhatsApp{
         const actor=batch.queued_by||'';let allowed=true;try{this.authorize(batch.mode==='send'?'publish':'campaign.dispatch',actor);}catch{allowed=false;}
         const approver=this.db.prepare('SELECT approved_by FROM platform_whatsapp_batches WHERE id=?').get(id) as {approved_by:string|null};
         if(!allowed||batch.approved_digest!==batch.digest||!approver.approved_by||!this.can('campaign.approve',approver.approved_by)||batch.connection_id!==this.connection()?.id)return skip('changed');
+        // A template refreshed after approval must still have the same body, header kind and button.
+        const extras=JSON.parse(batch.extras_json||'{}') as WhatsAppBatchExtras,template=this.templates(batch.connection_id).find(item=>item.name===batch.template_name&&item.language===batch.template_language);
+        if(!template||batchDigest(batch.connection_id,template,JSON.parse(batch.params_json),JSON.parse(batch.contacts_json),JSON.parse(batch.overrides_json||'{}'),extras)!==batch.digest)return skip('changed');
         const contact=this.sendable(next.contact_id);if(!contact)return skip('not_consented');
         if(batch.mode==='rehearsal'){this.db.prepare("UPDATE platform_whatsapp_messages SET state='rehearsed',finished_at=? WHERE batch_id=? AND contact_id=?").run(now,id,next.contact_id);return 'rehearsed' as const;}
         if(!whatsAppSendEnabled())return skip('switch_off');if(this.sentToday()>=WHATSAPP_LIMITS.sendsPerDay)return skip('daily_limit');
@@ -215,9 +244,15 @@ export class ProjectWhatsApp{
       }).immediate();
       if(!claim)break;if(typeof claim==='string')continue;
       const {credentials}=this.credentials(),base=JSON.parse(claim.batch.params_json) as string[],override=(JSON.parse(claim.batch.overrides_json||'{}') as Record<string,string[]>)[claim.contactId],params=base.map((value,index)=>override?.[index]||value);
+      const extras=JSON.parse(claim.batch.extras_json||'{}') as WhatsAppBatchExtras,template=this.templates(claim.batch.connection_id).find(item=>item.name===claim.batch.template_name&&item.language===claim.batch.template_language);
+      const components:Record<string,unknown>[]=[];
+      if(extras.headerLink&&template&&['IMAGE','VIDEO','DOCUMENT'].includes(template.headerFormat)){const type=template.headerFormat.toLowerCase();components.push({type:'header',parameters:[{type,[type]:{link:extras.headerLink}}]});}
+      if(params.length)components.push({type:'body',parameters:params.map(text=>({type:'text',text}))});
+      const buttonIndex=extras.buttonParam?this.buttonIndex(claim.batch.connection_id,claim.batch.template_name,claim.batch.template_language):null;
+      if(extras.buttonParam&&buttonIndex!==null)components.push({type:'button',sub_type:'url',index:String(buttonIndex),parameters:[{type:'text',text:extras.buttonParam}]});
       let state:WhatsAppMessageState='uncertain',messageId:string|null=null,reason:string|null=null;
       try{
-        const result=await this.graph('POST',`${credentials.phoneNumberId}/messages`,credentials.accessToken,{},{messaging_product:'whatsapp',recipient_type:'individual',to:claim.phone.slice(1),type:'template',template:{name:claim.batch.template_name,language:{code:claim.batch.template_language},...(params.length?{components:[{type:'body',parameters:params.map(text=>({type:'text',text}))}]}:{})}});
+        const result=await this.graph('POST',`${credentials.phoneNumberId}/messages`,credentials.accessToken,{},{messaging_product:'whatsapp',recipient_type:'individual',to:claim.phone.slice(1),type:'template',template:{name:claim.batch.template_name,language:{code:claim.batch.template_language},...(components.length?{components}:{})}});
         const messages=result.payload.messages;const first=Array.isArray(messages)?messages[0] as Record<string,unknown>:undefined;
         if(result.status===200&&typeof first?.id==='string'&&/^[A-Za-z0-9._=:-]{8,200}$/.test(first.id)){state='accepted';messageId=first.id;}
         else if(result.status>=400&&result.status<500){state='rejected';const error=result.payload.error as Record<string,unknown>|undefined;reason=Number.isSafeInteger(error?.code)?`meta_${error!.code}`:`http_${result.status}`;}

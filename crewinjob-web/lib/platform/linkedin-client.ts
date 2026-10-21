@@ -13,7 +13,7 @@ export function linkedinClient() {
     auth: { tokenHost: 'https://www.linkedin.com', tokenPath: '/oauth/v2/accessToken', authorizeHost: 'https://www.linkedin.com', authorizePath: '/oauth/v2/authorization' },
     options: { authorizationMethod: 'body', bodyFormat: 'form' }, http: { timeout: 12000, redirects: false, maxBytes: 65536 } });
   return {
-    authorizationUrl: (state: string, publishing = false, target: 'person' | 'organization' = 'person') => client.authorizeURL({ redirect_uri: configuration.redirectUri, scope: target === 'organization' ? `openid profile r_organization_admin${publishing ? ' w_organization_social' : ''}${process.env.PLATFORM_LINKEDIN_ANALYTICS_ENABLED==='1'?' r_organization_social':''}` : publishing ? 'openid profile w_member_social' : 'openid profile', state }),
+    authorizationUrl: (state: string, publishing = false, target: 'person' | 'organization' = 'person') => client.authorizeURL({ redirect_uri: configuration.redirectUri, scope: target === 'organization' ? `openid profile r_organization_admin${publishing ? ' w_organization_social' : ''}${process.env.PLATFORM_LINKEDIN_ANALYTICS_ENABLED==='1'?' r_organization_social':''}` : publishing ? `openid profile w_member_social${process.env.PLATFORM_LINKEDIN_MEMBER_COMMENTS_ENABLED==='1'?' r_member_social':''}` : 'openid profile', state }),
     exchange: async (code: string) => {
       const result = await client.getToken({ code, redirect_uri: configuration.redirectUri });
       const token = result.token;

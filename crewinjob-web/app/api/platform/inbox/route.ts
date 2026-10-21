@@ -15,6 +15,8 @@ const handle=coachRoute(async(scope,request)=>{
   if(raw.action==='aiReply')return inbox.aiReply(raw,coachGemini(600));
   if(raw.action==='decide')return inbox.decide(raw);
   if(raw.action==='send')return inbox.send(raw);
+  if(raw.action==='autoRead')return inbox.setAutoRead(raw);
+  if(raw.action==='live')return inbox.subscribeLive(raw);
   throw new MarketingStoreError('Geçersiz gelen kutusu işlemi.');
 });
 export const GET=handle,POST=handle;

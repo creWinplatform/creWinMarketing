@@ -13,7 +13,10 @@ const fakeGraph=(overrides={})=>{const calls=[];const graph=async(method,path,to
   if(path==='9988776655/message_templates')return {status:200,payload:{data:[
     {name:'kampanya_duyuru',language:'tr',status:'APPROVED',category:'MARKETING',components:[{type:'HEADER',format:'TEXT',text:'Duyuru'},{type:'BODY',text:'Merhaba, {{1}} için yeni dönem {{2}} tarihinde başlıyor.'}]},
     {name:'bekleyen',language:'tr',status:'PENDING',category:'MARKETING',components:[{type:'BODY',text:'x'}]},
-    {name:'gorselli',language:'tr',status:'APPROVED',category:'MARKETING',components:[{type:'HEADER',format:'IMAGE'},{type:'BODY',text:'y'}]},
+    {name:'gorselli',language:'tr',status:'APPROVED',category:'MARKETING',components:[{type:'HEADER',format:'IMAGE'},{type:'BODY',text:'Yeni dönem {{1}}'},{type:'BUTTONS',buttons:[{type:'QUICK_REPLY',text:'Bilgi'},{type:'URL',text:'Kayıt',url:'https://ryzevo.example/kayit/{{1}}'}]}]},
+    {name:'kuponlu',language:'tr',status:'APPROVED',category:'MARKETING',components:[{type:'BODY',text:'z'},{type:'BUTTONS',buttons:[{type:'COPY_CODE',example:'KOD'}]}]},
+    {name:'iki_dugme',language:'tr',status:'APPROVED',category:'MARKETING',components:[{type:'BODY',text:'z'},{type:'BUTTONS',buttons:[{type:'URL',text:'A',url:'https://a.example/{{1}}'},{type:'URL',text:'B',url:'https://b.example/{{1}}'}]}]},
+    {name:'baslik_degiskenli',language:'tr',status:'APPROVED',category:'MARKETING',components:[{type:'HEADER',format:'TEXT',text:'Merhaba {{1}}'},{type:'BODY',text:'z'}]},
     {name:'giris_kodu',language:'tr',status:'APPROVED',category:'AUTHENTICATION',components:[{type:'BODY',text:'{{1}}'}]}]}};
   if(path==='1234567890/messages')return {status:200,payload:{messages:[{id:`wamid.${calls.length}FixtureOnly`}]}};
   return {status:404,payload:{}};};return {calls,graph};};
@@ -38,7 +41,8 @@ test('connect, templates and contacts: approved body-only templates, separate co
   const {graph,calls}=fakeGraph();
   await assert.rejects(new ProjectWhatsApp(f.db,f.scope,KEY,fakeGraph({'9988776655/phone_numbers':()=>({status:200,payload:{data:[{id:'111'}]}})}).graph).connect({phoneNumberId:'1234567890',wabaId:'9988776655',accessToken:TOKEN}),error=>error.status===409,'the number must belong to the WABA');
   const wa=await setup(f,graph),snapshot=wa.read();
-  assert.equal(snapshot.account.verifiedName,'Ryzevo QA');assert.deepEqual(plain(snapshot.templates.map(t=>t.name)),['kampanya_duyuru'],'pending, media-header and authentication templates are left out');assert.equal(snapshot.templates[0].params,2);
+  assert.equal(snapshot.account.verifiedName,'Ryzevo QA');assert.deepEqual(plain(snapshot.templates.map(t=>t.name)),['gorselli','kampanya_duyuru'],'pending, authentication, copy-code, two-dynamic-button and text-header-variable templates are left out');
+  const media=snapshot.templates[0];assert.equal(media.headerFormat,'IMAGE');assert.equal(media.buttonUrl,'https://ryzevo.example/kayit/{{1}}');assert.equal(snapshot.templates[1].params,2);assert.equal(snapshot.templates[1].headerFormat,'TEXT');assert.equal(snapshot.templates[1].buttonUrl,null);
   assert.equal(snapshot.contacts.length,3);assert.ok(snapshot.contacts.every(c=>/^\+90•••\d{2}$/.test(c.hint)));
   const dump=JSON.stringify(f.db.prepare('SELECT * FROM platform_whatsapp_contacts').all())+JSON.stringify(f.db.prepare('SELECT * FROM platform_connections').all())+JSON.stringify(snapshot);
   assert.doesNotMatch(dump,/5321112233|EAAFixture/,'numbers and the token are stored only encrypted and never reach the browser');
@@ -123,5 +127,24 @@ test('a queued batch stops when its approver loses the approval right',run(async
 test('schema47 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'whatsapp-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeWhatsAppSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,46);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,52);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,53);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
+}));
+test('image-header and URL-button templates: the batch carries a public https link and the button ending, both approved and sent',run(async f=>{
+  const {graph,calls}=fakeGraph(),wa=await setup(f,graph);process.env.PLATFORM_WHATSAPP_SEND_ENABLED='1';
+  const ids=wa.read().contacts.map(c=>c.id).slice(0,1),base={name:'Görselli',templateName:'gorselli',templateLanguage:'tr',params:['STCW'],contactIds:ids};
+  assert.throws(()=>wa.saveBatch(base),/https/,'a media header needs a link');
+  for(const link of ['http://cdn.example/a.jpg','https://localhost/a.jpg','https://127.0.0.1/a.jpg','https://user:pw@cdn.example/a.jpg','https://cdn.example:8443/a.jpg','https://intranet/a.jpg'])assert.throws(()=>wa.saveBatch({...base,extras:{headerLink:link,buttonParam:'stcw'}}),/https/,link);
+  for(const ending of ['','a b','//evil.example','x'.repeat(201)])assert.throws(()=>wa.saveBatch({...base,extras:{headerLink:'https://cdn.example/a.jpg',buttonParam:ending}}),/Düğme/,ending);
+  let batch=wa.saveBatch({...base,extras:{headerLink:'https://cdn.example/a.jpg',buttonParam:'stcw-2026?ref=wa'}}).batches[0];
+  assert.deepEqual(plain(batch.extras),{headerLink:'https://cdn.example/a.jpg',buttonParam:'stcw-2026?ref=wa'});
+  const other=wa.saveBatch({...base,extras:{headerLink:'https://cdn.example/b.jpg',buttonParam:'stcw-2026?ref=wa'}}).batches[0];assert.notEqual(other.digest,batch.digest,'the link is part of what is approved');
+  batch=wa.approve({id:batch.id,expectedDigest:batch.digest}).batches.find(b=>b.id===batch.id);batch=wa.queue({id:batch.id,expectedDigest:batch.digest,mode:'send',acknowledged:true}).batches.find(b=>b.id===batch.id);
+  assert.equal((await wa.process(batch.id)).counts.accepted,1);
+  const sent=calls.filter(call=>call.path==='1234567890/messages').at(-1);
+  assert.deepEqual(plain(sent.body.template.components),[{type:'header',parameters:[{type:'image',image:{link:'https://cdn.example/a.jpg'}}]},{type:'body',parameters:[{type:'text',text:'STCW'}]},{type:'button',sub_type:'url',index:'1',parameters:[{type:'text',text:'stcw-2026?ref=wa'}]}]);
+  // A template whose content changed on Meta after approval is not sent with the old approval.
+  let again=wa.saveBatch({...base,extras:{headerLink:'https://cdn.example/a.jpg',buttonParam:'stcw'}}).batches[0];again=wa.approve({id:again.id,expectedDigest:again.digest}).batches.find(b=>b.id===again.id);
+  wa.queue({id:again.id,expectedDigest:again.digest,mode:'send',acknowledged:true});
+  f.db.prepare("UPDATE platform_whatsapp_templates SET body='Başka metin {{1}}' WHERE name='gorselli'").run();
+  const before=calls.length;const result=await wa.process(again.id);assert.equal(result.counts.skipped,1);assert.equal(calls.length,before);
 }));

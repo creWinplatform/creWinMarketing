@@ -358,6 +358,41 @@ The ad manager now has a provider tab: Meta, Google Ads and LinkedIn. Each provi
 - **Provider-reported AI usage (schema 50):** token counts returned by Gemini (input, output, thinking, total) are stored with the quota reservation of each completed AI call and shown on the plan page. They are usage, not a bill or a price.
 - **Accessibility:** all new and Phase 5 tablists support arrow keys, Home and End, and keep focus while a provider loads. A low-contrast dashboard text (4.48:1) was raised to 5.42:1.
 
+## 12. Optional additions (schema 53)
+
+Everything here keeps the same rule: the team writes and approves, nothing is sent or published on its own.
+
+- **Instagram image Story:** a single-image Instagram item can be marked "share as a Story". Stories carry no caption, so the text stays only in Ryzevo's record.
+- **Facebook Reels:** Page videos can go out as Reels. Ryzevo starts an upload session, Meta fetches the team's https file, then Ryzevo publishes. A failed upload is recorded as rejected and nothing is posted; only an unclear final step is uncertain.
+- **Video in campaign drafts:** one team-hosted https video per campaign, with a format each for Instagram (Reels, Story) and the Facebook Page (video, Reels). Other channels of the campaign get the text. The same file checks as for content items apply.
+- **WhatsApp media and button templates:**
+  - approved templates with an image, video or document header and at most one URL button with a dynamic ending are now listed;
+  - the batch carries a public https link for the header and the button ending, and both are part of what is approved;
+  - Meta fetches the media itself;
+  - before each message the template is checked again: if its body, header kind or button changed on Meta after approval, the message is skipped;
+  - templates with text-header variables, coupon codes, forms, catalogues or one-time passwords stay out.
+- **Inbox, automatic reading:** an account can be read every 30 minutes by the worker, as the person who turned it on. That person needs the reading duty and connection management. Automatic reads do not use the manual daily limit. If the person loses the reading duty, automatic reading switches off. X accounts are never read automatically.
+- **Inbox, instant updates (Meta webhook):**
+  - one server-wide route `/api/platform/meta/hooks`, opened in the middleware for that exact path only;
+  - the route checks Meta's `X-Hub-Signature-256` with `PLATFORM_META_APP_SECRET`, and the subscription check with `PLATFORM_META_WEBHOOK_VERIFY_TOKEN`;
+  - it stores only new comments under the project's own accepted posts and inbound Page/Instagram messages, in each standard project connected to that Page or account;
+  - texts are masked, authors hashed, and the reply address is encrypted;
+  - "Turn on instant updates" subscribes the Page (for Instagram, its linked Page) to the app with `feed,messages`;
+  - the Meta app must be Live and its webhook fields set in the App Dashboard.
+- **X replies (`PLATFORM_X_INBOX_ENABLED=1`):**
+  - replies to the project's own X posts of the last seven days, read with X's recent search by conversation (at most five posts per refresh);
+  - a reply goes into the thread, within 280 characters;
+  - this needs paid X API search access, and each read uses that quota;
+  - X access expires after about two hours, so the account may need reconnecting.
+- **LinkedIn personal profile comments (`PLATFORM_LINKEDIN_MEMBER_COMMENTS_ENABLED=1`):** comments under posts on a member's own profile, answered as that person. The switch also adds LinkedIn's restricted `r_member_social` scope to new personal connections, and LinkedIn must approve that permission first.
+- **Schema 53:**
+  - the inbox table is copied so its platform list also allows `twitter`;
+  - new `platform_social_inbox_accounts` (automatic reading, last webhook event);
+  - WhatsApp templates gain `header_format`, `button_url` and `button_index`, and batches gain `extras_json`;
+  - dry-run on a copy of the local database: 52 → 53, integrity ok, no foreign-key problems, a second open changes nothing;
+  - `MAX_RECOVERY_SCHEMA` is 53.
+- **A fix found on the way:** LinkedIn comment times arrive as milliseconds and were not read, so LinkedIn company page comments were skipped. They are read now.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**

@@ -1086,6 +1086,34 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_ad_plan_scope ON platform_ad_plans(organization_id,project_id,state);
     INSERT INTO platform_migrations(version,applied_at) VALUES(52,datetime('now'));
   `))();
+  // Inbox: X replies (behind a server switch), automatic refresh per account; WhatsApp media headers and URL buttons.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=53').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_social_inbox_v53 (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('facebook','instagram','linkedin','twitter')), kind TEXT NOT NULL CHECK(kind IN ('comment','message')),
+      thread_id TEXT NOT NULL, item_id TEXT NOT NULL, publication_id TEXT, author_hash TEXT NOT NULL, recipient_encrypted TEXT,
+      text TEXT NOT NULL, received_at TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'new' CHECK(state IN ('new','replied','dismissed')),
+      reply_text TEXT NOT NULL DEFAULT '', reply_state TEXT CHECK(reply_state IN ('draft','sending','sent','rejected','uncertain')),
+      reply_id TEXT, reply_by TEXT, replied_at TEXT, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+      UNIQUE(connection_id,item_id),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    INSERT INTO platform_social_inbox_v53 SELECT id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,publication_id,author_hash,recipient_encrypted,text,received_at,state,reply_text,reply_state,reply_id,reply_by,replied_at,revision,created_at FROM platform_social_inbox;
+    DROP TABLE platform_social_inbox;
+    ALTER TABLE platform_social_inbox_v53 RENAME TO platform_social_inbox;
+    CREATE INDEX platform_social_inbox_scope ON platform_social_inbox(organization_id,project_id,state,received_at);
+    CREATE TABLE platform_social_inbox_accounts (
+      connection_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      auto_read INTEGER NOT NULL DEFAULT 0, manager_id TEXT, attempted_at TEXT, hook_event_at TEXT, updated_at TEXT NOT NULL,
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    ALTER TABLE platform_whatsapp_templates ADD COLUMN header_format TEXT NOT NULL DEFAULT 'NONE' CHECK(header_format IN ('NONE','TEXT','IMAGE','VIDEO','DOCUMENT'));
+    ALTER TABLE platform_whatsapp_templates ADD COLUMN button_url TEXT;
+    ALTER TABLE platform_whatsapp_templates ADD COLUMN button_index INTEGER;
+    ALTER TABLE platform_whatsapp_batches ADD COLUMN extras_json TEXT NOT NULL DEFAULT '{}';
+    INSERT INTO platform_migrations(version,applied_at) VALUES(53,datetime('now'));
+  `))();
   return db;
 }
 

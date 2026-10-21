@@ -33,6 +33,8 @@ export interface HistoryItem {
   coachRef?: string;
   /** A video the team hosts at its own https address (Instagram Reels/Story, Facebook Page video). Only the address is stored. */
   video?: { url: string; format: 'reel' | 'story' | 'feed' };
+  /** Instagram only: publish the single image as a Story instead of a feed post (Stories carry no caption). */
+  story?: boolean;
 }
 
 /** Görselle birlikte saklanan yeniden düzenleme verisi. */

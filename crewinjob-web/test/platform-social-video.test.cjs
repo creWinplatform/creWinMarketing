@@ -21,7 +21,7 @@ const run=(fn,...args)=>async()=>{const f=setup(...args);try{await fn(f);}finall
 
 test('video addresses and formats are checked; only the address is stored',async()=>{
   assert.deepEqual({...normalizeContentVideo({url:VIDEO,format:'reel'},'instagram')},{url:VIDEO,format:'reel'});
-  for(const [raw,platform] of [[{url:'http://x.example/v.mp4',format:'reel'},'instagram'],[{url:VIDEO,format:'feed'},'instagram'],[{url:VIDEO,format:'reel'},'facebook'],[{url:VIDEO,format:'reel'},'linkedin']])assert.throws(()=>normalizeContentVideo(raw,platform),JSON.stringify([raw,platform]));
+  for(const [raw,platform] of [[{url:'http://x.example/v.mp4',format:'reel'},'instagram'],[{url:VIDEO,format:'feed'},'instagram'],[{url:VIDEO,format:'story'},'facebook'],[{url:VIDEO,format:'reel'},'linkedin']])assert.throws(()=>normalizeContentVideo(raw,platform),JSON.stringify([raw,platform]));
   const ok=await checkPublicationVideo({url:VIDEO,format:'reel'},reader());assert.equal(ok.bytes,52428800);assert.equal(ok.etag,'"v1"');
   await assert.rejects(checkPublicationVideo({url:VIDEO,format:'reel'},reader(undefined,'https://other.example/x.mp4')),/yönlendirme/);
   await assert.rejects(checkPublicationVideo({url:VIDEO,format:'reel'},reader({type:'text/html',length:'10',etag:''})),/MP4/);
@@ -63,3 +63,54 @@ test('video and images cannot be mixed, and other channels do not take videos',(
     const service=new SocialPublications(f.db,f.scope,KEY);assert.equal(service.workspace().sources.find(s=>s.id==='li-video')?.eligible??false,false);
   }finally{f.db.close();}
 });
+test('a single Instagram image can go out as a Story: no caption is sent',async()=>{
+  const sharp=require('sharp');const f=setup('instagram','reel');
+  try{
+    const imageData=(await sharp({create:{width:640,height:640,channels:3,background:'#5e963c'}}).png().toBuffer()).toString('base64');
+    f.store.saveContent({id:'ig-story',platform:'instagram',language:'tr',headline:'Story',content:'Story metni',prompt:'',timestamp:Date.now(),imageData,imageMime:'image/png',story:true},true);
+    let created=null;f.adapter.create=async(_t,_id,text,url,story)=>{created={text,story};return '702';};
+    const source=f.service.workspace().sources.find(s=>s.id==='ig-story');assert.equal(source.format,'story');assert.equal(source.eligible,true);
+    process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';await f.service.check(f.conn.id,access);
+    const job=await f.service.create({sourceKind:'content',sourceId:'ig-story',connectionId:f.conn.id,expectedDigest:source.digest,expectedTargetRevision:f.service.workspace().targets.find(t=>t.id===f.conn.id).revision,mode:'publish',acknowledged:true,idempotencyKey:'ig-story-publish'});
+    assert.equal(job.format,'story');await f.service.process(job.id,access);assert.deepEqual(created,{text:'Story metni',story:true});
+  }finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}
+});
+test('Facebook Reels: start, Meta fetches the file, then publish; a failed upload is never published',run(async f=>{
+  const original=globalThis.fetch,seen=[];
+  globalThis.fetch=async(url,options={})=>{const href=String(url);seen.push({href,body:String(options.body||''),headers:options.headers||{}});
+    if(href.includes('/video_reels')){const phase=new URLSearchParams(String(options.body)).get('upload_phase');return Response.json(phase==='start'?{video_id:'7700000000001',upload_url:'https://rupload.facebook.com/video-upload/v25.0/7700000000001'}:{success:true});}
+    if(href.startsWith('https://rupload.facebook.com/'))return Response.json({success:true});
+    if(href.includes('/permissions'))return Response.json({data:['pages_show_list','pages_read_engagement','pages_manage_posts'].map(permission=>({permission,status:'granted'}))});
+    return Response.json(href.includes('/accounts')?{data:[{id:'100',access_token:'private-page-token',tasks:['CREATE_CONTENT']}]}:{id:'100'});};
+  try{
+    const job=await f.publish();assert.equal(job.format,'reel');await f.service.process(job.id);const done=f.service.get(job.id);
+    assert.equal(done.state,'accepted');assert.equal(done.providerPostId,'7700000000001');assert.equal(done.providerUrl,'https://www.facebook.com/reel/7700000000001');
+    const upload=seen.find(call=>call.href.startsWith('https://rupload.facebook.com/'));assert.equal(upload.href,'https://rupload.facebook.com/video-upload/v25.0/7700000000001');assert.equal(upload.headers.file_url,VIDEO);
+    const finish=seen.filter(call=>call.href.includes('/video_reels')).at(-1),body=new URLSearchParams(finish.body);
+    assert.equal(body.get('upload_phase'),'finish');assert.equal(body.get('video_state'),'PUBLISHED');assert.equal(body.get('video_id'),'7700000000001');
+    assert.ok(seen.every(call=>!/private-/.test(call.href)));
+  }finally{globalThis.fetch=original;}
+},'facebook','reel'));
+test('Facebook Reels: when Meta cannot fetch the file, nothing is published',run(async f=>{
+  const original=globalThis.fetch,seen=[];
+  globalThis.fetch=async(url,options={})=>{const href=String(url);seen.push({href,body:String(options.body||'')});
+    if(href.includes('/video_reels'))return Response.json({video_id:'7700000000002'});
+    if(href.startsWith('https://rupload.facebook.com/'))return Response.json({success:false});
+    if(href.includes('/permissions'))return Response.json({data:['pages_show_list','pages_read_engagement','pages_manage_posts'].map(permission=>({permission,status:'granted'}))});
+    return Response.json(href.includes('/accounts')?{data:[{id:'100',access_token:'private-page-token',tasks:['CREATE_CONTENT']}]}:{id:'100'});};
+  try{
+    const job=await f.publish();await f.service.process(job.id);assert.equal(f.service.get(job.id).state,'rejected');
+    assert.equal(seen.filter(call=>call.href.includes('/video_reels')&&new URLSearchParams(call.body).get('upload_phase')==='finish').length,0);
+  }finally{globalThis.fetch=original;}
+},'facebook','reel'));
+test('campaign drafts can carry a video: Instagram gets it in the chosen format, other channels get the text',run(async f=>{
+  f.store.saveCampaign({id:'video-campaign',name:'Bahar videosu',status:'draft',updatedAt:new Date().toISOString(),objective:'awareness',content:{text:'Bahar dönemi başlıyor.',video:{url:VIDEO,instagram:'story'}},channels:{email:false,social:['instagram','linkedin'],whatsapp:false,telegram:false,paidAds:[]}},true);
+  const sources=f.service.workspace().sources.filter(s=>s.id==='video-campaign');
+  const instagram=sources.find(s=>s.platform==='instagram');assert.equal(instagram.format,'story');assert.equal(instagram.eligible,true);assert.deepEqual(JSON.parse(JSON.stringify(instagram.video)),{url:VIDEO,format:'story'});
+  const linkedin=sources.find(s=>s.platform==='linkedin');if(linkedin){assert.equal(linkedin.format,'text');assert.equal(linkedin.video,undefined);}
+  process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';await f.service.check(f.conn.id,access);
+  const target=f.service.workspace().targets.find(t=>t.id===f.conn.id);
+  const job=await f.service.create({sourceKind:'campaign',sourceId:'video-campaign',connectionId:f.conn.id,expectedDigest:instagram.digest,expectedTargetRevision:target.revision,mode:'publish',acknowledged:true,idempotencyKey:'campaign-video-publish'});
+  assert.equal(job.format,'story');await f.service.process(job.id,access);
+  assert.deepEqual(f.calls[0],['createVideo',VIDEO,'story','Bahar dönemi başlıyor.']);
+},'instagram','reel'));

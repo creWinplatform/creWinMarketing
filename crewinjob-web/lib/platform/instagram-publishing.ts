@@ -20,7 +20,7 @@ export function instagramPermalink(value: unknown): string | null {
   try { const u = new URL(value); return u.protocol === 'https:' && u.hostname === 'www.instagram.com' && !u.username && !u.password && !u.port && !u.search && !u.hash && /^\/(p|reel)\/[A-Za-z0-9_-]{1,100}\/$/.test(u.pathname) ? u.href : null; } catch { return null; }
 }
 export type InstagramPublisher = {
-  create: (token:string,id:string,text:string,url:string) => Promise<string>;
+  create: (token:string,id:string,text:string,url:string,story?:boolean) => Promise<string>;
   createCarousel?: (token:string,id:string,text:string,urls:string[],stillValid:()=>boolean) => Promise<string>;
   createVideo?: (token:string,id:string,text:string,url:string,format:'reel'|'story') => Promise<string>;
   status: (token:string,id:string) => Promise<string>;
@@ -60,10 +60,11 @@ export const instagramPublisher: InstagramPublisher = {
     const result=await post(token,id,'media',new URLSearchParams({media_type:'CAROUSEL',children:children.join(','),caption:text}),signal);
     if(!result.id)throw new Error('Carousel outcome unavailable.');return result.id;
   },
-  async create(token,id,text,url){
+  async create(token,id,text,url,story=false){
     const config=instagramPublishingConfiguration(),image=new URL(url);
     if(text.length>2200||image.origin!==config.origin||!/^\/api\/platform\/publication-media\/[a-f0-9-]{36}$/.test(image.pathname)||!/^\?signature=[a-f0-9]{64}$/.test(image.search))throw new Error('Invalid Instagram image request.');
-    const result=await post(token,id,'media',new URLSearchParams({image_url:image.href,caption:text}));
+    // A Story carries no caption; the team's text stays only in Ryzevo's record.
+    const result=await post(token,id,'media',new URLSearchParams(story?{image_url:image.href,media_type:'STORIES'}:{image_url:image.href,caption:text}));
     if(!result.id)throw new Error('Container creation outcome unavailable.');return result.id;
   },
   async status(token,id){

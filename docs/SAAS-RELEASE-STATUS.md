@@ -56,6 +56,25 @@ See `SAAS-PHASE5-MODULES.md` sections 7–11 for scope and safety details.
   - Telegram, Meta, WhatsApp, Google Ads, LinkedIn ads and SES;
   - every new provider path was tested only with disposable stubs and the isolated QA fixture.
 
+### Optional additions (same day, schema 53)
+
+See `SAAS-PHASE5-MODULES.md` section 12.
+
+- **Social formats:** Instagram image Story, Facebook Reels, and a video in campaign drafts.
+- **WhatsApp:** templates with an image, video or document header and one URL button.
+- **Inbox:**
+  - automatic reading every 30 minutes;
+  - instant updates through one signed Meta webhook (`/api/platform/meta/hooks`, an exact-path middleware exception);
+  - X replies and LinkedIn personal profile comments, each behind its own server switch.
+- **Fix:** LinkedIn comment times are now read, so company page comments are no longer skipped.
+- **Legacy Crewin screens:** a read-only accessibility scan found 2 blocker, 7 serious, 4 moderate and 5 minor items. Nothing was changed yet; fixes wait for the owner's choice.
+- **Checks:** 633 platform tests pass.
+- **Schema:**
+  - migration 53 was dry-run on a copy, then applied after a backup at schema 52;
+  - the local `data/platform.sqlite` is at schema 53;
+  - `MAX_RECOVERY_SCHEMA` is 53.
+- **Not checked against real services:** the Meta webhook, Reels, media WhatsApp templates, X search and LinkedIn member comments.
+
 ## Delivered on 19 October 2026
 
 - **Growth coach** for standard projects (see `SAAS-GROWTH-COACH.md`):

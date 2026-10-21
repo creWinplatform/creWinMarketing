@@ -98,3 +98,26 @@ export async function publishFacebookVideo(token:string,accountId:string,text:st
     return !payload.error&&facebookVideoId(payload.id)?{state:'accepted',postId:payload.id}:{state:'uncertain',postId:null};
   }catch{return {state:'uncertain',postId:null};}
 }
+// Facebook Reels: start an upload session, let Meta fetch the team's file (rupload with file_url), then publish.
+// Nothing is visible before the finish call, so only a failed or unclear finish is recorded as uncertain.
+export async function publishFacebookReel(token:string,accountId:string,text:string,videoUrl:string,reserve:()=>boolean):Promise<PublishResult> {
+  const {graphVersion}=facebookPublishingConfiguration();let url:URL;try{url=new URL(videoUrl);}catch{return {state:'blocked',postId:null};}
+  if(!/^\d{1,30}$/.test(accountId)||!text.trim()||text.length>2200||!token||/[\r\n\x00]/.test(token)||url.protocol!=='https:'||url.username||url.password)return {state:'blocked',postId:null};
+  if(!reserve())return {state:'blocked',postId:null};
+  const form=(values:Record<string,string>)=>({method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:new URLSearchParams(values).toString(),cache:'no-store' as const,redirect:'error' as const,signal:AbortSignal.timeout(20000)});
+  let videoId:string;
+  try{
+    const start=await fetch(`https://graph.facebook.com/${graphVersion}/${accountId}/video_reels`,form({upload_phase:'start'}));
+    if(!start.ok){await start.body?.cancel();return {state:'rejected',postId:null};}
+    const session=await readSocialResponse(start);if(!facebookVideoId(session.video_id))return {state:'rejected',postId:null};videoId=session.video_id;
+    const upload=await fetch(`https://rupload.facebook.com/video-upload/${graphVersion}/${videoId}`,{method:'POST',headers:{Authorization:`OAuth ${token}`,file_url:url.href,Accept:'application/json'},cache:'no-store',redirect:'error',signal:AbortSignal.timeout(30000)});
+    const uploaded=upload.ok?await readSocialResponse(upload):null;if(!upload.ok)await upload.body?.cancel();
+    if(!uploaded||uploaded.success!==true)return {state:'rejected',postId:null};
+  }catch{return {state:'rejected',postId:null};}
+  try{
+    const finish=await fetch(`https://graph.facebook.com/${graphVersion}/${accountId}/video_reels`,form({upload_phase:'finish',video_id:videoId,video_state:'PUBLISHED',description:text}));
+    if(!finish.ok){await finish.body?.cancel();return {state:[400,401,403,404,405,409,422,429].includes(finish.status)?'rejected':'uncertain',postId:null};}
+    const payload=await readSocialResponse(finish);
+    return !payload.error&&payload.success===true?{state:'accepted',postId:videoId}:{state:'uncertain',postId:null};
+  }catch{return {state:'uncertain',postId:null};}
+}

@@ -8,7 +8,7 @@ import { decryptCredentials, encryptCredentials, type StoredCredentials } from '
 import { linkedinPublishingConfiguration, socialPublishingEnabled, checkLinkedInPublishing, publishLinkedInText, publishLinkedInOrganizationText, type PublishCheck, type PublishTransport, type PublishResult } from './linkedin-publishing';
 import { checkLinkedInOrganizationPublishing } from './linkedin-organization-publishing';
 import { isLinkedInOrganization } from './social-configuration';
-import { facebookPublishingConfiguration, checkFacebookPublishing, publishFacebookText, publishFacebookImage, publishFacebookVideo, facebookVideoId, validFacebookPost } from './facebook-publishing';
+import { facebookPublishingConfiguration, checkFacebookPublishing, publishFacebookText, publishFacebookImage, publishFacebookVideo, publishFacebookReel, facebookVideoId, validFacebookPost } from './facebook-publishing';
 import { VIDEO_FORMATS, checkPublicationVideo, readVideoHeaders, sameVideo, type ContentVideo, type PublicationVideo, type VideoReader } from './social-video';
 import { instagramPublishingConfiguration, checkInstagramPublishing, instagramPublisher, instagramId, instagramPermalink, type InstagramPublisher } from './instagram-publishing';
 import { normalizePublicationImages, type PublicationImage } from './publication-image';
@@ -22,7 +22,7 @@ import type { Publication, PublicationSource, PublicationWorkspace, PublicationE
 import { cleanEngagementCounts, readPublicationEngagement, type EngagementReader } from './social-engagement';
 
 type Connection = { id: string; account_name: string; encrypted_credentials: string; account_id: string; platform: string; expires_at: number | null; integration_id:string; accountType?:'organization' };
-type Snapshot = { title: string; text: string; accountName: string; accountId: string; platform?: string; accountType?:'organization'; image?: PublicationImage; images?: PublicationImage[]; video?: PublicationVideo };
+type Snapshot = { title: string; text: string; accountName: string; accountId: string; platform?: string; accountType?:'organization'; image?: PublicationImage; images?: PublicationImage[]; video?: PublicationVideo; story?: boolean };
 const snapshotImages=(snapshot:Snapshot)=>snapshot.images|| (snapshot.image?[snapshot.image]:[]);
 type Row = { id: string; actor_id: string; connection_id: string; revision: string; idempotency_key: string; status: string; attempts: number; lease_until: string | null; updated_at: string; source_kind: 'content' | 'campaign'; source_id: string; source_digest: string; body_digest: string; encrypted_snapshot: string; mode: 'rehearsal' | 'publish'; state: string; scheduled_at: string; timezone: string; configuration_revision: string; submitted_at: string | null; provider_post_id: string | null; provider_url: string | null; reason: string | null; cancel_requested: number; preparation_started_at:string|null;provider_container_id:string|null;next_check_at:string|null;image_bytes:number };
 type EnqueueInput = {sourceKind:string;sourceId:string;connectionId:string;expectedDigest:string;expectedTargetRevision:string;mode:string;scheduledAt?:string;idempotencyKey:string;acknowledged?:boolean};
@@ -50,7 +50,7 @@ export class SocialPublications {
   private source(kind: unknown, id: unknown, platform = 'linkedin'): PublicationSource {
     if (typeof kind!=='string'||!['content','campaign'].includes(kind) || typeof id !== 'string' || !id || id.length > 150) throw new MarketingStoreError('Geçerli içerik kaynağı gerekli.');
     const project = this.repo.workspace(this.scope.subject, ...this.args())!.project;
-    let title: string, text: string, media: boolean, raw: unknown, imageCount=0,unsupportedHtml=false,video:ContentVideo|undefined;
+    let title: string, text: string, media: boolean, raw: unknown, imageCount=0,unsupportedHtml=false,video:ContentVideo|undefined,story=false;
     if (kind === 'campaign') {
       const campaign = this.store.campaign(id);
       if (!campaign?.channels.social.includes(platform) || campaign.status !== 'draft') throw new MarketingStoreError('Sosyal kampanya taslağı bulunamadı.', 404);
@@ -59,7 +59,9 @@ export class SocialPublications {
       if (link && !text.includes(link)) text += `\n\n${link}`;
       imageCount=campaign.content.imageData?1:0;
       unsupportedHtml=Boolean(campaign.content.html);
-      media = Boolean(campaign.content.imageData || campaign.content.html); raw = campaign;
+      const format=platform==='instagram'||platform==='facebook'?campaign.content.video?.[platform]:undefined;
+      video = format && campaign.content.video ? {url:campaign.content.video.url,format} : undefined;
+      media = Boolean(campaign.content.imageData || campaign.content.html || video); raw = campaign;
     } else {
       const row = this.db.prepare('SELECT payload FROM platform_content_history WHERE id=? AND organization_id=? AND project_id=?').get(id, ...this.args()) as { payload: string } | undefined;
       const content = row ? JSON.parse(row.payload) : null;
@@ -67,13 +69,14 @@ export class SocialPublications {
       imageCount=content.images?.length|| (content.imageData?1:0);
       title = content.headline || platform; text = content.content; media = Boolean(imageCount || content.rawBgData || content.video); raw = content;
       video = content.video && typeof content.video==='object' ? content.video as ContentVideo : undefined;
+      story = platform==='instagram' && content.story===true && imageCount===1;
     }
     // A video item is its own format: no images, a format the channel supports and the channel's caption limit.
     const videoOk = Boolean(video && !imageCount && !(raw as {rawBgData?:string}).rawBgData && ((VIDEO_FORMATS as Record<string,readonly string[]>)[platform]||[]).includes(video.format) && typeof text === 'string' && Boolean(text.trim()) && text.length <= (platform==='instagram'?2200:3000) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text));
     const eligible = video ? videoOk : !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && (platform==='twitter'?xText(text).valid:text.length <= (platform==='instagram'?2200:platform==='telegram'?TELEGRAM_TEXT_LIMIT:3000)) && (platform==='instagram'?imageCount>=1&&imageCount<=5:['facebook','linkedin','twitter'].includes(platform)?imageCount<=1&&(!media||imageCount===1):!media) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
     const digest=hash(JSON.stringify(platform === 'linkedin' ? [kind,id,raw,project] : [kind,id,raw,project,platform]));
     const previews=!video&&['instagram','facebook','linkedin','twitter'].includes(platform)?Array.from({length:Math.min(imageCount,5)},(_,index)=>`/api/platform/publication-preview?kind=${kind}&id=${encodeURIComponent(id)}&digest=${digest}&platform=${platform}&index=${index}`):[];
-    return { kind: kind as 'content' | 'campaign', id, platform, title, text, eligible, digest, format:video?(video.format==='reel'?'reel':video.format==='story'?'story':'video'):imageCount>1?'carousel':imageCount?'image':'text',...(video?{video:{url:video.url,format:video.format}}:{}), ...(platform==='twitter'?{weightedLength:xText(text).length}:{}), ...(previews.length?{imagePreview:previews[0],imagePreviews:previews}:{}) };
+    return { kind: kind as 'content' | 'campaign', id, platform, title, text, eligible, digest, format:video?(video.format==='reel'?'reel':video.format==='story'?'story':'video'):story?'story':imageCount>1?'carousel':imageCount?'image':'text',...(story?{story:true}:{}),...(video?{video:{url:video.url,format:video.format}}:{}), ...(platform==='twitter'?{weightedLength:xText(text).length}:{}), ...(previews.length?{imagePreview:previews[0],imagePreviews:previews}:{}) };
   }
   async previewImage(kind:string,id:string,digest:string,platform='instagram',index=0) {
     const image=(await this.previewImages(kind,id,digest,platform))[this.imageIndex(index)];
@@ -145,7 +148,7 @@ export class SocialPublications {
   private snapshot(row: Row) { return decryptCredentials<Snapshot>(row.encrypted_snapshot,this.key,...this.args(),`publication:${row.id}`); }
   private describe(row: Row): Publication {
     const snapshot=this.snapshot(row),images=snapshotImages(snapshot).map((image,index)=>({width:image.width,height:image.height,bytes:image.bytes,previewUrl:`/api/platform/publication-preview?jobId=${row.id}&index=${index}`}));
-    return {id:row.id,mode:row.mode,status:row.status,state:row.state,title:snapshot.title,text:snapshot.text,platform:snapshot.platform||'linkedin',accountType:snapshot.accountType||'person',accountName:snapshot.accountName,accountId:snapshot.accountId,sourceKind:row.source_kind,sourceId:row.source_id,scheduledAt:row.scheduled_at,timezone:row.timezone,submittedAt:row.submitted_at,updatedAt:row.updated_at,reason:row.reason,providerPostId:row.provider_post_id,providerUrl:row.provider_url,cancelRequested:Boolean(row.cancel_requested),nextCheckAt:row.next_check_at,format:snapshot.video?(snapshot.video.format==='reel'?'reel':snapshot.video.format==='story'?'story':'video'):images.length>1?'carousel':images.length?'image':'text',...(snapshot.video?{video:{url:snapshot.video.url,format:snapshot.video.format,bytes:snapshot.video.bytes}}:{}),engagement:this.engagement(row),...(images.length?{image:images[0],images}:{})};
+    return {id:row.id,mode:row.mode,status:row.status,state:row.state,title:snapshot.title,text:snapshot.text,platform:snapshot.platform||'linkedin',accountType:snapshot.accountType||'person',accountName:snapshot.accountName,accountId:snapshot.accountId,sourceKind:row.source_kind,sourceId:row.source_id,scheduledAt:row.scheduled_at,timezone:row.timezone,submittedAt:row.submitted_at,updatedAt:row.updated_at,reason:row.reason,providerPostId:row.provider_post_id,providerUrl:row.provider_url,cancelRequested:Boolean(row.cancel_requested),nextCheckAt:row.next_check_at,format:snapshot.video?(snapshot.video.format==='reel'?'reel':snapshot.video.format==='story'?'story':'video'):snapshot.story?'story':images.length>1?'carousel':images.length?'image':'text',...(snapshot.video?{video:{url:snapshot.video.url,format:snapshot.video.format,bytes:snapshot.video.bytes}}:{}),engagement:this.engagement(row),...(images.length?{image:images[0],images}:{})};
   }
   get(id: string) { this.authorize(); return this.describe(this.row(id)); }
   private engagementSupported(row:Row){if(row.mode!=='publish'||row.state!=='accepted'||!row.provider_post_id)return false;const s=this.snapshot(row);return s.platform==='linkedin'?(s.accountType==='organization'&&process.env.PLATFORM_LINKEDIN_ANALYTICS_ENABLED==='1'):['facebook','instagram','twitter'].includes(s.platform||'');}
@@ -209,7 +212,7 @@ export class SocialPublications {
       if(input.mode==='publish'&&this.db.prepare(query+" AND j.connection_id=? AND p.body_digest=? AND p.mode='publish' AND p.state IN ('pending','checking','preparing','container_processing','submitting','accepted','uncertain')").get(...this.args(),connection.id,bodyDigest))throw new MarketingStoreError('Bu içerik bu hesapta zaten kuyrukta veya gönderilmiş olabilir.',409);
       const id=randomUUID(),now=new Date().toISOString(),scheduledAt=new Date(at).toISOString(),timezone=this.repo.workspace(this.scope.subject,...this.args())!.project.timezone;
       this.db.prepare("INSERT INTO platform_jobs(id,organization_id,project_id,actor_id,connection_id,revision,idempotency_key,status,created_at,updated_at,job_type) VALUES(?,?,?,?,?,?,?,'queued',?,?,'social.publish')").run(id,...this.args(),this.scope.subject,connection.id,revision,key,now,now);
-      this.db.prepare('INSERT INTO platform_social_publications(job_id,organization_id,project_id,source_kind,source_id,source_digest,body_digest,encrypted_snapshot,mode,scheduled_at,timezone,configuration_revision,image_bytes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,...this.args(),source.kind,source.id,source.digest,bodyDigest,encryptCredentials({title:source.title,text:source.text,platform:connection.platform,accountName:connection.account_name,accountId:connection.account_id,...(connection.accountType?{accountType:connection.accountType}:{}),...(video?{video}:images.length>1?{images}:image?{image}:{})},this.key,...this.args(),`publication:${id}`),input.mode,scheduledAt,timezone,config,bytes);
+      this.db.prepare('INSERT INTO platform_social_publications(job_id,organization_id,project_id,source_kind,source_id,source_digest,body_digest,encrypted_snapshot,mode,scheduled_at,timezone,configuration_revision,image_bytes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,...this.args(),source.kind,source.id,source.digest,bodyDigest,encryptCredentials({title:source.title,text:source.text,platform:connection.platform,accountName:connection.account_name,accountId:connection.account_id,...(connection.accountType?{accountType:connection.accountType}:{}),...(video?{video}:images.length>1?{images}:image?{image}:{}),...(source.story?{story:true}:{})},this.key,...this.args(),`publication:${id}`),input.mode,scheduledAt,timezone,config,bytes);
       this.db.prepare("INSERT INTO platform_usage VALUES(?,?,?,'social_enqueue',1) ON CONFLICT(organization_id,project_id,period,resource) DO UPDATE SET count=count+1").run(...this.args(),day);
       this.audit(input.mode==='publish'?'social.publish.approve':'social.rehearsal.enqueue');return this.get(id);
     }).immediate();
@@ -277,7 +280,7 @@ export class SocialPublications {
         const urls=images.map((_,index)=>`${origin}/api/platform/publication-media/${id}?signature=${this.imageSignature(fresh,index)}&index=${index}`);
         const stillValid=()=>{try{return this.holder(id,lease)&&Boolean(this.live(fresh,manualRunner))&&!this.row(id).cancel_requested;}catch{return false;}};
         if(images.length>1&&!this.instagram.createCarousel)throw new Error('Carousel adapter unavailable.');
-        const container=images.length>1?await this.instagram.createCarousel!(credentials.accessToken,snapshot.accountId,snapshot.text,urls,stillValid):await this.instagram.create(credentials.accessToken,snapshot.accountId,snapshot.text,imageUrl);
+        const container=images.length>1?await this.instagram.createCarousel!(credentials.accessToken,snapshot.accountId,snapshot.text,urls,stillValid):await this.instagram.create(credentials.accessToken,snapshot.accountId,snapshot.text,imageUrl,snapshot.story===true);
         if(!instagramId(container))throw new Error();
         this.db.transaction(()=>{if(!this.holder(id,lease))return;this.live(row,manualRunner);this.db.prepare('UPDATE platform_social_publications SET provider_container_id=? WHERE job_id=?').run(container,id);this.waitForImage(row,lease,manualRunner);}).immediate();
       }catch{settle('uncertain','container_unknown');}
@@ -327,7 +330,7 @@ export class SocialPublications {
       }else if(connection.platform==='facebook'&&snapshot.video){
         let current:PublicationVideo|null=null;try{current=await checkPublicationVideo(snapshot.video,this.videoReader);}catch{current=null;}
         if(!this.holder(id,lease))return;this.live(claimed,manualRunner);
-        result=current&&sameVideo(current,snapshot.video)?await publishFacebookVideo(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.video.url,reserve):{state:'blocked',postId:null};if(result.state==='blocked'&&!current)reason='media_changed';
+        result=current&&sameVideo(current,snapshot.video)?await (snapshot.video.format==='reel'?publishFacebookReel:publishFacebookVideo)(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.video.url,reserve):{state:'blocked',postId:null};if(result.state==='blocked'&&!current)reason='media_changed';
       }else if(connection.platform==='facebook'&&snapshot.image)result=await publishFacebookImage(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.image,reserve);
       else if(connection.platform==='linkedin'&&snapshot.image)result=await (connection.accountType==='organization'?publishLinkedInOrganizationImage:publishLinkedInImage)(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.image,reserve);
       // X image posts need the media.write grant, which older X connections do not have; they reconnect first.
@@ -339,7 +342,7 @@ export class SocialPublications {
       if(row.submitted_at){
         const snapshot=this.snapshot(row),facebook=snapshot.platform==='facebook',instagram=snapshot.platform==='instagram',x=snapshot.platform==='twitter',telegram=snapshot.platform==='telegram';
         const accepted=result.state==='accepted'&&typeof result.postId==='string'&&(x?xPostId(result.postId):telegram?telegramPostId(result.postId):instagram?instagramId(result.postId):facebook?(snapshot.video?facebookVideoId(result.postId):validFacebookPost(result.postId,snapshot.accountId)):/^urn:li:(share|ugcPost):\d{1,30}$/.test(result.postId));
-        if(accepted){this.db.prepare('UPDATE platform_social_publications SET provider_post_id=?,provider_url=? WHERE job_id=?').run(result.postId,x?`https://x.com/i/status/${result.postId}`:telegram?(typeof result.postUrl==='string'&&/^https:\/\/t\.me\/[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(result.postUrl)?result.postUrl:null):instagram?instagramPermalink(result.postUrl):facebook?`https://www.facebook.com/${result.postId}`:`https://www.linkedin.com/feed/update/${result.postId}`,id);this.finish(id,'accepted',null);}
+        if(accepted){this.db.prepare('UPDATE platform_social_publications SET provider_post_id=?,provider_url=? WHERE job_id=?').run(result.postId,x?`https://x.com/i/status/${result.postId}`:telegram?(typeof result.postUrl==='string'&&/^https:\/\/t\.me\/[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(result.postUrl)?result.postUrl:null):instagram?instagramPermalink(result.postUrl):facebook?(snapshot.video?.format==='reel'?`https://www.facebook.com/reel/${result.postId}`:`https://www.facebook.com/${result.postId}`):`https://www.linkedin.com/feed/update/${result.postId}`,id);this.finish(id,'accepted',null);}
         else this.finish(id,result.state==='rejected'?'rejected':'uncertain',result.state==='rejected'?'unavailable':'interrupted');
       }else this.finish(id,'blocked',reason);
     }).immediate();
