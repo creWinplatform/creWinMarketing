@@ -4,6 +4,24 @@ The core monolith is suitable for continued isolated testing. It is NOT yet an
 accepted public/paid production service. An implementation, a local fixture test
 and an operator-approved live acceptance are different milestones.
 
+## Pre-launch configuration check - 21 October 2026
+
+A read-only review of the local configuration (no secret values printed or
+recorded here) found these items to close before any public launch, in addition
+to the infrastructure list below.
+
+| Priority | Item | State / action |
+| --- | --- | --- |
+| Critical | `ADMIN_PASSWORD` | A former hard-coded default remains in git history (`c48ac30`, `lib/auth.ts`; removed from code in `c3cb60d`). Set a new, long, unique admin password on every environment; it must not match any value that ever appeared in the repository. Rotating it is an owner action. |
+| Critical | Public origins | `NEXT_PUBLIC_APP_URL` still points to `http://localhost:3033`; `PLATFORM_PUBLIC_ORIGIN` and `PLATFORM_AUTH_ORIGIN` are unset. Set them to the production HTTPS origin, otherwise OAuth callbacks, email links and unsubscribe links point to the wrong host. |
+| Critical | Credential encryption key | `PLATFORM_ENCRYPTION_KEY` is unset, so the key file `data/platform-credentials.key` is used. Losing it makes every stored provider credential unreadable. In production supply the key from the environment or a secret store and back it up separately from the database. Do not replace an existing key without a credential migration. |
+| High | Email feedback | `SES_SNS_TOPIC_ARN` and `SES_CONFIGURATION_SET` are unset: bounces and complaints are not received. Required before any real sending beyond the bounded pilot. |
+| High | Backups | `npm run backup:platform` works (snapshots exist under `data/backups`), but no scheduled task is registered locally and backups live on the same disk. Register tasks with `deployment/windows/Register-RyzevoTasks.ps1` and point `PLATFORM_BACKUP_PATH` to an off-host destination. |
+| High | HSS invitation | The local owner invitation expired on 20 October 2026, 22:44 Istanbul time; issue a new one when the owner is ready. |
+| Done | Tracking signature | `TRACKING_SECRET` is now set separately (same value as the previous fallback, so links in sent emails stay valid). |
+| Done | Local Claude settings | Permission rules that contained a provider password were removed from the git-ignored `.claude/settings.local.json`; the Crewin API password itself should still be rotated by the owner. |
+| OK | Dependencies / history | `npm audit --omit=dev`: 0 findings. No `.env`, database, key or local settings file was ever committed. `AUTH_SECRET` and `CRON_SECRET` have adequate length. |
+
 ## Delivered on 19 October 2026
 
 - **Growth coach** for standard projects (see `SAAS-GROWTH-COACH.md`):
