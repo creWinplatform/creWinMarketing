@@ -17,6 +17,7 @@ import { deliverNextCoachDigest } from '@/lib/platform/coach-digest';
 import { advanceSeoScans } from '@/lib/platform/seo-operations';
 import { evaluateDueAutomations } from '@/lib/platform/automations';
 import { readDueMessagingSources } from '@/lib/platform/messaging-sources';
+import { deliverWhatsAppBatches } from '@/lib/platform/whatsapp';
 export const dynamic = 'force-dynamic',
   maxDuration = 60;
 export async function POST(request: NextRequest) {
@@ -82,5 +83,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   let automations=0;try{automations=evaluateDueAutomations(db,credentialEncryptionKey());}catch{automations=0;}
   // Channel posts wait about 24 hours on Telegram, so sources with automatic reading are read every 30 minutes.
   const messagingReads=Date.now()-startedAt<20000?await readDueMessagingSources(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, seoPages, automations, messagingReads };
+  // Approved WhatsApp batches continue a few messages per tick; each message is re-checked before it goes.
+  const whatsappBatches=Date.now()-startedAt<20000?await deliverWhatsAppBatches(db,credentialEncryptionKey()).catch(()=>0):0;
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, seoPages, automations, messagingReads, whatsappBatches };
 }

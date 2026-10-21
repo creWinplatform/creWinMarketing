@@ -298,6 +298,7 @@ export const UI_PAIRS: Record<string, string> = {
   "Uygulandı": "Applied",
   "Üretiliyor…": "Generating…",
   "Web sitesi kontrol edildi.": "Website checked.",
+  "WhatsApp yükleniyor…": "Loading WhatsApp…",
   "X hesabı bağla": "Connect X account",
   "X OAuth yayın izni kaydı ve hesap erişimi doğrulandı.": "X OAuth publishing grant record and account access verified.",
   "X yetkilendirme adresi geçersiz.": "Invalid X authorization URL.",

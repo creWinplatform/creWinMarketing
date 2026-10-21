@@ -9,7 +9,8 @@ Social publishing (LinkedIn, Facebook, Instagram, X) existed before this phase. 
 - a Telegram channel target for social publishing;
 - ad management;
 - a budget and goal planner;
-- messaging sources with separate duties.
+- messaging sources with separate duties;
+- WhatsApp template sending.
 
 All of it lives in the modular monolith and reuses existing pieces: RBAC, encrypted connections, the job queue and worker, segments, consent and suppression, campaign review, the email pilot, the social pipeline and the Calendar.
 
@@ -240,12 +241,59 @@ Roadmap item 5: messaging sources per project, with reading, content suggestion 
 
 **Files:** `lib/platform/messaging-sources.ts`, `messaging-duties.ts`, `messaging-types.ts`; readers in `telegram-publishing.ts`; `app/api/platform/messaging`; `components/platform/ProjectMessaging.tsx`; worker step in `app/api/platform/worker`.
 
+## 8. WhatsApp template sending (Campaigns → WhatsApp)
+
+WhatsApp has no channel broadcast API. The Cloud API sends messages to individual people, outside a 24-hour reply window only with Meta-approved templates. So WhatsApp is a consented, template-based sending channel, not a publishing target.
+
+### Number and templates
+
+- **Number:** the project connects its own WhatsApp Business number:
+  - a phone number ID, a WhatsApp Business account (WABA) ID and a system-user token;
+  - the token must see the number, and the number must belong to that WABA;
+  - the token is stored encrypted;
+  - replacing the number cancels open batches.
+- **Templates:** fetched from Meta. Only `APPROVED` marketing or utility templates whose variables are all in the body are kept. Media headers, dynamic buttons and authentication templates are left out.
+
+### Contacts and consent
+
+- **Separate consent:** contacts are added with their own WhatsApp consent: an evidence reference, a consent date that is not in the future, and an explicit acknowledgement. Email consent never counts.
+- **Numbers:** must be international (E.164). Each is stored encrypted, de-duplicated by a keyed hash, and shown only as a hint (`+90•••67`).
+- **Opt-out:** permanent for that number in the project. Pending messages to it are skipped.
+- **Limits:** 500 contacts, 100 per add.
+
+### Batches
+
+- **Draft:** a batch is one template, its fixed variables (single-line text) and 1–20 contacts. It is approved on its exact content, and any edit clears the approval.
+- **Rehearsal:** checks every message without contacting WhatsApp.
+- **Real send requires all of:**
+  - `PLATFORM_WHATSAPP_SEND_ENABLED=1` (default off);
+  - dispatch rights and the "publish" messaging duty;
+  - an explicit acknowledgement;
+  - the daily limit (50 messages per project).
+- **One message at a time:** the worker (or "Process now") sends messages one by one. Each is re-checked just before it goes: approval, the queuing person's duty, the number and consent. Each is marked as submitted before the network call.
+- **Message results:** an interrupted send is recorded as uncertain and never repeated. Meta's answer is recorded as accepted (with the message id), rejected or uncertain.
+- **Cost:** Meta bills each template message by category and country. No price is stored, shown or estimated; the UI points to the WhatsApp Business billing screen.
+
+### Not done
+
+- Delivery and read receipts.
+- Inbound replies and STOP handling through webhooks: opt-outs are recorded by the team.
+- Per-recipient personalisation.
+- A real-account acceptance.
+
+### Storage
+
+- **Schema 47:**
+  - `platform_whatsapp_templates`, `platform_whatsapp_contacts`, `platform_whatsapp_batches`, `platform_whatsapp_messages`.
+
+**Files:** `lib/platform/whatsapp.ts`, `whatsapp-types.ts`; `app/api/platform/whatsapp`; `components/platform/ProjectWhatsApp.tsx`; worker step in `app/api/platform/worker`.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**
-  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads`, `platform-budget-planner` and `platform-messaging` `.test.cjs`;
+  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads`, `platform-budget-planner`, `platform-messaging` and `platform-whatsapp` `.test.cjs`;
   - recovery and schema fixtures updated.
-- **Recovery:** `MAX_RECOVERY_SCHEMA` is 46.
+- **Recovery:** `MAX_RECOVERY_SCHEMA` is 47.
 - **Browser QA** on isolated fixtures, TR/EN, 375–1440, light/dark:
   - a real public-HTML scan of example.com, a rescan without duplicates, one work item, opportunities, and viewer read-only;
   - an automation created, activated, evaluated (21 enrolled) and rehearsed (pilot limit 3; send disabled without SES);
@@ -253,15 +301,19 @@ Roadmap item 5: messaging sources per project, with reading, content suggestion 
   - the Telegram connection form;
   - ad caps, approval and the paused-on-Meta state, with start disabled;
   - the budget planner: measured values used, a scenario saved, updated, saved as new and deleted, and no overflow at 375 px;
-  - messaging: a draft created from a suggestion, a post hidden, a reading duty given to an editor (publish not offered for that role), the dictionary edited, TR/EN and no overflow at 375 px.
+  - messaging: a draft created from a suggestion, a post hidden, a reading duty given to an editor (publish not offered for that role), the dictionary edited, TR/EN and no overflow at 375 px;
+  - WhatsApp: an approved batch rehearsed (no call to Meta), a draft approved, an opt-out removing that contact from new batches, the switch-off state shown, TR/EN and no overflow at 375 px.
 - **QA fixture flags:**
   - `--ads` (fake ad account, no Meta call);
   - `--budget` (with `--ads`: fake Meta totals and stub GA4 and Search Console readings);
   - `--messaging` (fake bot, one source, stored posts, an editor without duties);
-  - the `ryzevo-automation-qa`, `ryzevo-ads-qa`, `ryzevo-budget-qa` and `ryzevo-messaging-qa` launch configurations.
+  - `--whatsapp` (fake number answered by a stub Graph client, fixture contacts, an approved and a draft batch);
+  - the `ryzevo-automation-qa`, `ryzevo-ads-qa`, `ryzevo-budget-qa`, `ryzevo-messaging-qa` and `ryzevo-whatsapp-qa` launch configurations.
 - **Not verified against real providers:**
   - a Telegram bot posting to a real channel;
   - a real Meta ad account (create, start, pause, insights);
-  - a real email send from an automation (needs SES).
+  - a real email send from an automation (needs SES);
+  - Telegram source reading with a real bot;
+  - a real WhatsApp Business number (templates, a send, an opt-out).
 
   Each needs the operator's own account and an approved test.

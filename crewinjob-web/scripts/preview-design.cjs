@@ -70,6 +70,17 @@ if(process.argv.includes('--messaging')){
     db.prepare("INSERT INTO platform_messaging_posts(id,organization_id,project_id,source_id,message_id,posted_at,text,topics_json,created_at) VALUES(?,?,?,'qa-msg-source',?,?,?,?,?)").run(`qa-msg-post-${i}`,fixture.organizationId,fixture.projectId,100+i,new Date(Date.now()-(i+1)*3600000).toISOString(),text,JSON.stringify(matchTopics(text,dictionary)),now);
   repo.addMember(fixture.userId,fixture.organizationId,fixture.projectId,{username:'messaging-editor',password:'design-fixture-only-123',role:'editor'});
   console.log('Messaging QA: fake bot, one source, three stored posts and an editor without duties; no Telegram call is made.');}
+if(process.argv.includes('--whatsapp')){
+  // WhatsApp QA: a fake number and template answered by a stub Graph client, fixture contacts and one approved batch. No Meta call.
+  const {ProjectWhatsApp}=load('whatsapp.ts'),scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId};
+  const stub=async(method,path)=>path==='1234567890'?{status:200,payload:{display_phone_number:'+90 212 000 00 00',verified_name:'QA numarası · gerçek değil',quality_rating:'GREEN'}}
+    :path==='9988776655/phone_numbers'?{status:200,payload:{data:[{id:'1234567890'}]}}
+    :path==='9988776655/message_templates'?{status:200,payload:{data:[{name:'yeni_donem',language:'tr',status:'APPROVED',category:'MARKETING',components:[{type:'BODY',text:'Merhaba, {{1}} için yeni dönem {{2}} tarihinde başlıyor. Ayrıntılar için bu mesaja yanıt verin.'}]}]}}:{status:404,payload:{}};
+  const wa=new ProjectWhatsApp(db,scope,encryptionKey,stub);await wa.connect({phoneNumberId:'1234567890',wabaId:'9988776655',accessToken:'EAAFixtureWhatsAppTokenOnly_not_real'});await wa.refreshTemplates();
+  wa.addContacts({phones:'+905550000001,+905550000002,+905550000003',evidence:'QA kayıt formu · gerçek değil',consentAt:new Date().toISOString().slice(0,10),acknowledged:true});
+  const contacts=wa.read().contacts,saved=wa.saveBatch({name:'Kasım dönemi duyurusu',templateName:'yeni_donem',templateLanguage:'tr',params:['STCW kursu','3 Kasım'],contactIds:contacts.map(item=>item.id)}).batches[0];wa.approve({id:saved.id,expectedDigest:saved.digest});
+  wa.saveBatch({name:'Taslak · hatırlatma',templateName:'yeni_donem',templateLanguage:'tr',params:['ileri seviye kurs','10 Kasım'],contactIds:[contacts[0].id]});
+  console.log('WhatsApp QA: fake number, one approved template, three fixture contacts, one approved and one draft batch; no Meta call is made.');}
 if(compassQa){repo.addMember(fixture.userId,fixture.organizationId,fixture.projectId,{username:'compass-viewer',password:'design-fixture-only-123',role:'viewer'});console.log('Compass QA: first-run owner design-fixture and viewer compass-viewer. No provider grants or real sends.');}
 if(billingChecksQa){
   const {ProjectBilling}=load('billing.ts'),scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId};

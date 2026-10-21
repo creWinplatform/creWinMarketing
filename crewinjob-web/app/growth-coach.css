@@ -276,3 +276,13 @@
 .messaging-duties td{text-align:center}
 .messaging-duties input{width:18px;height:18px;accent-color:var(--studio-accent)}
 @media (max-width:640px){.messaging-topics .ads-form-row{grid-template-columns:1fr}}
+/* WhatsApp template sending */
+.whatsapp-connect{grid-template-columns:repeat(3,minmax(0,1fr)) auto}
+.whatsapp-contacts,.whatsapp-batch{display:grid;gap:10px;max-width:760px}
+.messaging-center :is(.whatsapp-contacts,.whatsapp-batch)>label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
+.messaging-center :is(.whatsapp-contacts,.whatsapp-batch)>label :is(input,textarea){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:8px 10px;font:inherit;font-weight:500;width:100%;min-width:0}
+.whatsapp-recipients{border:1px solid var(--studio-border);border-radius:var(--rz-r-card,8px);padding:10px 12px;display:grid;gap:6px;max-height:260px;overflow:auto;margin:0;min-width:0}
+.whatsapp-recipients legend{font-size:12px;font-weight:600;padding:0 4px}
+.whatsapp-recipients .automation-choice{flex-wrap:wrap;min-width:0;overflow-wrap:anywhere}
+.whatsapp-recipients .automation-choice .coach-muted{min-width:0;overflow-wrap:anywhere}
+@media (max-width:900px){.whatsapp-connect{grid-template-columns:1fr}}

@@ -970,6 +970,38 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_messaging_post_scope ON platform_messaging_posts(organization_id,project_id,state,posted_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(46,datetime('now'));
   `))();
+  // WhatsApp template sending: the project's own WhatsApp Business number, Meta-approved templates, contacts with their own
+  // WhatsApp consent (phone numbers encrypted), and approved batches sent one message at a time behind a server switch.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=47').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_whatsapp_templates (
+      connection_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, name TEXT NOT NULL, language TEXT NOT NULL,
+      category TEXT NOT NULL, body TEXT NOT NULL, params INTEGER NOT NULL, fetched_at TEXT NOT NULL,
+      PRIMARY KEY(connection_id,name,language),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_whatsapp_contacts (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, phone_hash TEXT NOT NULL, phone_encrypted TEXT NOT NULL, phone_hint TEXT NOT NULL,
+      consent_evidence TEXT NOT NULL, consent_at TEXT NOT NULL, consent_by TEXT NOT NULL, opted_out_at TEXT, created_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,phone_hash),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_whatsapp_batches (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL, name TEXT NOT NULL,
+      template_name TEXT NOT NULL, template_language TEXT NOT NULL, params_json TEXT NOT NULL, contacts_json TEXT NOT NULL, digest TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('draft','approved','queued','done','cancelled')), mode TEXT CHECK(mode IN ('rehearsal','send')),
+      approved_by TEXT, approved_digest TEXT, approved_at TEXT, queued_by TEXT, queued_at TEXT,
+      revision INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_whatsapp_batch_scope ON platform_whatsapp_batches(organization_id,project_id,state,updated_at);
+    CREATE TABLE platform_whatsapp_messages (
+      batch_id TEXT NOT NULL REFERENCES platform_whatsapp_batches(id) ON DELETE CASCADE, contact_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('pending','submitting','accepted','rejected','uncertain','skipped','rehearsed')),
+      reason TEXT, provider_message_id TEXT, submitted_at TEXT, finished_at TEXT,
+      PRIMARY KEY(batch_id,contact_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(47,datetime('now'));
+  `))();
   return db;
 }
 

@@ -1,0 +1,92 @@
+'use client';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Ban, Check, FlaskConical, Link2, Plus, RefreshCw, Send, ShieldCheck, Trash2, X } from 'lucide-react';
+import type { Locale } from '@/lib/platform/catalog';
+import { projectRequest } from '@/lib/platform/client';
+import { localeTag } from '@/lib/i18n/shared';
+import { WHATSAPP_LIMITS, type WhatsAppBatchView, type WhatsAppMessageState, type WhatsAppSnapshot } from '@/lib/platform/whatsapp-types';
+import Msg from '@/components/Msg';
+
+const BATCH:Record<WhatsAppBatchView['state'],[string,string]>={draft:['Taslak','Draft'],approved:['Onaylı','Approved'],queued:['Kuyrukta','Queued'],done:['Tamamlandı','Done'],cancelled:['İptal edildi','Cancelled']};
+const MESSAGE:Record<WhatsAppMessageState,[string,string]>={pending:['bekliyor','pending'],submitting:['gönderiliyor','sending'],accepted:['WhatsApp kabul etti','accepted by WhatsApp'],rejected:['reddedildi','rejected'],uncertain:['belirsiz','uncertain'],skipped:['atlandı','skipped'],rehearsed:['prova edildi','rehearsed']};
+const today=()=>new Date().toISOString().slice(0,10);
+
+// WhatsApp template sending: Meta-approved templates only, contacts with their own WhatsApp consent, approval on the exact
+// content and a real send only behind the server switch. Meta bills each message; no price is shown or estimated here.
+export default function ProjectWhatsApp({lang}:{lang:Locale}){
+  const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
+  const [data,setData]=useState<WhatsAppSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState('');
+  const [account,setAccount]=useState({phoneNumberId:'',wabaId:'',accessToken:''}),[contact,setContact]=useState({phones:'',evidence:'',consentAt:today(),acknowledged:false});
+  const [batch,setBatch]=useState<{name:string;template:string;params:string[];contactIds:string[]}|null>(null),[ack,setAck]=useState<Record<string,boolean>>({});
+  const load=useCallback(()=>{projectRequest<WhatsAppSnapshot>('/api/platform/whatsapp').then(setData).catch(reason=>setError(reason.message));},[]);
+  useEffect(()=>{load();},[load]);
+  const post=async(key:string,body:object,message?:string)=>{if(busy)return false;setBusy(key);setError('');setNotice('');
+    try{setData(await projectRequest<WhatsAppSnapshot>('/api/platform/whatsapp',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(45000)}));if(message)setNotice(message);return true;}
+    catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));load();return false;}finally{setBusy('');}};
+  if(!data)return error?<p className="studio-error" role="alert"><Msg text={error}/></p>:<div className="studio-skeleton" role="status">{tr?'WhatsApp yükleniyor…':'Loading WhatsApp…'}</div>;
+  const date=(value:string)=>new Date(value.length===10?`${value}T12:00:00Z`:value).toLocaleDateString(locale,{day:'numeric',month:'short',year:'numeric'});
+  const sendable=data.contacts.filter(item=>!item.optedOut),template=batch?data.templates.find(item=>`${item.name}|${item.language}`===batch.template):undefined;
+  const connect=async(event:FormEvent)=>{event.preventDefault();if(await post('connect',{action:'connect',...account},tr?'WhatsApp numarası bağlandı. Şimdi şablonları çekin.':'WhatsApp number connected. Now fetch the templates.'))setAccount({phoneNumberId:'',wabaId:'',accessToken:''});};
+  const addContacts=async(event:FormEvent)=>{event.preventDefault();if(await post('contacts',{action:'addContacts',...contact},tr?'Kişiler eklendi; aynı numara ikinci kez eklenmez.':'Contacts added; the same number is never added twice.'))setContact({phones:'',evidence:'',consentAt:today(),acknowledged:false});};
+  const saveBatch=async(event:FormEvent)=>{event.preventDefault();if(!batch||!template)return;if(await post('batch',{action:'save',name:batch.name,templateName:template.name,templateLanguage:template.language,params:batch.params,contactIds:batch.contactIds},tr?'Taslak kaydedildi. Gönderim için onay gerekir.':'Draft saved. Sending needs approval.'))setBatch(null);};
+  const counts=(item:WhatsAppBatchView)=>Object.entries(item.counts).filter(([,n])=>n).map(([state,n])=>`${n} ${MESSAGE[state as WhatsAppMessageState][idx]}`).join(' · ');
+  return <section className="ads-center messaging-center" aria-labelledby="whatsapp-title">
+    <div className="studio-section-title"><h2 id="whatsapp-title">{tr?'WhatsApp şablon gönderimi':'WhatsApp template sending'}</h2><span className="studio-badge">{data.sendEnabled?(tr?`Gerçek gönderim açık · bugün ${data.sentToday}/${WHATSAPP_LIMITS.sendsPerDay}`:`Real sending on · today ${data.sentToday}/${WHATSAPP_LIMITS.sendsPerDay}`):(tr?'Gerçek gönderim kapalı (yalnız prova)':'Real sending off (rehearsal only)')}</span></div>
+    <p className="studio-note">{tr?'WhatsApp’ta kanala yayın API’si yoktur; mesajlar yalnız WhatsApp için ayrıca izin vermiş kişilere, Meta’nın onayladığı şablonlarla tek tek gider. E-posta izni WhatsApp için geçerli sayılmaz. Numaralar şifreli saklanır ve tarayıcıya yalnız son iki hanesi gelir.':'WhatsApp has no channel broadcast API; messages go one by one, with Meta-approved templates, only to people who separately agreed to WhatsApp messages. Email consent does not count for WhatsApp. Numbers are stored encrypted and only their last two digits reach the browser.'}</p>
+    <p className="coach-note">{tr?'Ücret: Meta her şablon mesajını kendi fiyat tablosuna göre, şablon kategorisine ve alıcının ülkesine göre faturalar. Ryzevo bu fiyatı bilmez ve tahmin göstermez; maliyeti WhatsApp Business hesabınızın faturalandırma ekranından izleyin.':'Cost: Meta bills each template message on its own price list, by template category and the recipient’s country. Ryzevo does not know that price and shows no estimate; follow the cost in your WhatsApp Business account’s billing.'}</p>
+    {error&&<p className="studio-error" role="alert"><Msg text={error}/></p>}{notice&&<p className="coach-note" role="status">{notice}</p>}
+
+    <div className="ads-account"><h3>{tr?'WhatsApp Business numarası':'WhatsApp Business number'}</h3>
+      {data.account?<p><strong>{data.account.verifiedName||data.account.displayPhone}</strong> <span className="coach-muted">· {data.account.displayPhone}{data.account.quality?` · ${tr?'kalite':'quality'} ${data.account.quality}`:''} · {tr?'kontrol':'checked'} {date(data.account.checkedAt)}</span></p>:<p className="coach-muted">{tr?'Henüz bağlı numara yok.':'No number connected yet.'}</p>}
+      {data.can.connect&&<form className="ads-form-row whatsapp-connect" onSubmit={event=>void connect(event)}>
+        <label>{tr?'Telefon numarası kimliği':'Phone number ID'}<input inputMode="numeric" value={account.phoneNumberId} onChange={event=>setAccount(old=>({...old,phoneNumberId:event.target.value}))}/></label>
+        <label>{tr?'WhatsApp Business hesap kimliği':'WhatsApp Business account ID'}<input inputMode="numeric" value={account.wabaId} onChange={event=>setAccount(old=>({...old,wabaId:event.target.value}))}/></label>
+        <label>{tr?'Sistem kullanıcısı erişim anahtarı':'System user access token'}<input type="password" autoComplete="off" value={account.accessToken} onChange={event=>setAccount(old=>({...old,accessToken:event.target.value}))}/></label>
+        <button type="submit" className="studio-secondary" disabled={Boolean(busy)||!account.phoneNumberId||!account.wabaId||!account.accessToken}><Link2 size={14}/>{data.account?(tr?'Numarayı değiştir':'Replace number'):(tr?'Bağla':'Connect')}</button>
+      </form>}
+    </div>
+
+    {data.account&&<div className="ads-account"><div className="studio-section-title"><h3>{tr?'Onaylı şablonlar':'Approved templates'}</h3>{data.can.write&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void post('templates',{action:'templates'},tr?'Şablonlar Meta’dan çekildi.':'Templates fetched from Meta.')}><RefreshCw size={14}/>{tr?'Şablonları çek':'Fetch templates'}</button>}</div>
+      {data.templates.length?<ul className="messaging-dictionary">{data.templates.map(item=><li key={`${item.name}|${item.language}`}><strong>{item.name}</strong> <span className="coach-muted">({item.language} · {item.category} · {tr?`${item.params} değişken`:`${item.params} variables`})</span><br/>{item.body}</li>)}</ul>
+        :<p className="coach-muted">{tr?'Onaylı, değişkenleri yalnız gövdede olan pazarlama veya bilgilendirme şablonu yok. Şablonlar WhatsApp Business yöneticisinde oluşturulur ve Meta tarafından onaylanır.':'No approved marketing or utility template with variables only in the body. Templates are created in WhatsApp Manager and approved by Meta.'}</p>}
+    </div>}
+
+    {(data.can.contacts||data.can.write)&&<div className="ads-account"><h3>{tr?`WhatsApp kişileri (${data.contacts.length})`:`WhatsApp contacts (${data.contacts.length})`}</h3>
+      {data.can.contacts&&<form className="whatsapp-contacts" onSubmit={event=>void addContacts(event)}>
+        <label>{tr?'Numaralar (ülke koduyla, her satıra bir tane)':'Numbers (with country code, one per line)'}<textarea rows={3} value={contact.phones} placeholder="+905321234567" onChange={event=>setContact(old=>({...old,phones:event.target.value}))}/></label>
+        <div className="ads-form-row"><label>{tr?'İzin kanıtı (form, kayıt veya belge referansı)':'Consent evidence (form, record or document reference)'}<input maxLength={160} value={contact.evidence} onChange={event=>setContact(old=>({...old,evidence:event.target.value}))}/></label>
+          <label>{tr?'İzin tarihi':'Consent date'}<input type="date" max={today()} value={contact.consentAt} onChange={event=>setContact(old=>({...old,consentAt:event.target.value}))}/></label></div>
+        <label className="automation-choice"><input type="checkbox" checked={contact.acknowledged} onChange={event=>setContact(old=>({...old,acknowledged:event.target.checked}))}/>{tr?'Bu kişilerin her biri, bu işletmeden WhatsApp ile pazarlama mesajı almayı açıkça kabul etti.':'Each of these people explicitly agreed to receive marketing messages on WhatsApp from this business.'}</label>
+        <button type="submit" className="studio-secondary" disabled={Boolean(busy)||!contact.phones.trim()||!contact.evidence.trim()||!contact.acknowledged}><Plus size={14}/>{tr?'Kişileri ekle':'Add contacts'}</button>
+      </form>}
+      {data.contacts.length>0&&<ul className="ads-list">{data.contacts.map(item=><li key={item.id} className="studio-draft-row"><div className="studio-draft-top"><div><strong>{item.hint}</strong>{item.optedOut&&<span className="coach-state"> {tr?'izinden çıktı':'opted out'}</span>}<p className="coach-muted">{item.consentEvidence} · {date(item.consentAt)}</p></div>
+        {data.can.contacts&&<div className="coach-action-buttons">{!item.optedOut&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void post(item.id,{action:'optOut',id:item.id},tr?'Kişi izinden çıkarıldı; bu numaraya bir daha gönderilmez.':'Contact opted out; this number is never messaged again.')}><Ban size={14}/>{tr?'İzinden çıkar':'Opt out'}</button>}
+          <button type="button" className="studio-text-button" aria-label={tr?`${item.hint} kişisini sil`:`Delete ${item.hint}`} disabled={Boolean(busy)} onClick={()=>void post(item.id,{action:'removeContact',id:item.id})}><Trash2 size={14}/></button></div>}</div></li>)}</ul>}
+    </div>}
+
+    {data.account&&<div className="ads-account"><div className="studio-section-title"><h3>{tr?'Gönderiler':'Batches'}</h3>{data.can.write&&!batch&&data.templates.length>0&&sendable.length>0&&<button type="button" className="studio-text-button" onClick={()=>setBatch({name:'',template:`${data.templates[0].name}|${data.templates[0].language}`,params:Array(data.templates[0].params).fill(''),contactIds:[]})}><Plus size={14}/>{tr?'Yeni gönderi':'New batch'}</button>}</div>
+      {batch&&<form className="whatsapp-batch" onSubmit={event=>void saveBatch(event)}>
+        <div className="ads-form-row"><label>{tr?'Gönderi adı':'Batch name'}<input maxLength={80} value={batch.name} onChange={event=>setBatch(old=>old&&({...old,name:event.target.value}))}/></label>
+          <label>{tr?'Şablon':'Template'}<select value={batch.template} onChange={event=>{const next=data.templates.find(item=>`${item.name}|${item.language}`===event.target.value);setBatch(old=>old&&({...old,template:event.target.value,params:Array(next?.params||0).fill('')}));}}>{data.templates.map(item=><option key={`${item.name}|${item.language}`} value={`${item.name}|${item.language}`}>{item.name} ({item.language})</option>)}</select></label></div>
+        {template&&<p className="coach-muted">{template.body}</p>}
+        {batch.params.map((value,index)=><label key={index}>{`{{${index+1}}}`}<input maxLength={WHATSAPP_LIMITS.param} value={value} onChange={event=>setBatch(old=>old&&({...old,params:old.params.map((item,i)=>i===index?event.target.value:item)}))}/></label>)}
+        <fieldset className="whatsapp-recipients"><legend>{tr?`Alıcılar (en fazla ${WHATSAPP_LIMITS.batchRecipients})`:`Recipients (up to ${WHATSAPP_LIMITS.batchRecipients})`}</legend>{sendable.map(item=><label key={item.id} className="automation-choice"><input type="checkbox" checked={batch.contactIds.includes(item.id)} disabled={!batch.contactIds.includes(item.id)&&batch.contactIds.length>=WHATSAPP_LIMITS.batchRecipients} onChange={event=>setBatch(old=>old&&({...old,contactIds:event.target.checked?[...old.contactIds,item.id]:old.contactIds.filter(id=>id!==item.id)}))}/>{item.hint} <span className="coach-muted">· {item.consentEvidence}</span></label>)}</fieldset>
+        <div className="coach-action-buttons"><button type="submit" className="studio-secondary" disabled={Boolean(busy)||!batch.name.trim()||!batch.contactIds.length||batch.params.some(item=>!item.trim())}><Check size={14}/>{tr?'Taslağı kaydet':'Save draft'}</button><button type="button" className="studio-text-button" onClick={()=>setBatch(null)}>{tr?'Vazgeç':'Cancel'}</button></div>
+      </form>}
+      {data.batches.length?<ul className="ads-list">{data.batches.map(item=><li key={item.id} className="studio-draft-row">
+        <div className="studio-draft-top"><div><span className={`coach-state ${item.state==='done'?'done':''}`}>{BATCH[item.state][idx]}{item.mode?` · ${item.mode==='send'?(tr?'gerçek':'real'):(tr?'prova':'rehearsal')}`:''}</span><h2 className="mt-2">{item.name}</h2>
+          <p className="coach-muted">{item.templateName} ({item.templateLanguage}) · {tr?`${item.contactIds.length} alıcı`:`${item.contactIds.length} recipients`}{counts(item)?` · ${counts(item)}`:''}</p></div></div>
+        {item.preview&&<p className="messaging-text">{item.preview}</p>}
+        <div className="coach-action-buttons">
+          {item.state==='draft'&&data.can.approve&&<button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={()=>void post(item.id,{action:'approve',id:item.id,expectedDigest:item.digest},tr?'Gönderi bu haliyle onaylandı.':'Batch approved as it is.')}><Check size={14}/>{tr?'Onayla':'Approve'}</button>}
+          {item.state==='approved'&&data.can.dispatch&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void post(item.id,{action:'queue',id:item.id,expectedDigest:item.digest,mode:'rehearsal'},tr?'Prova kuyruğa alındı; WhatsApp’a hiçbir şey gitmez.':'Rehearsal queued; nothing goes to WhatsApp.')}><FlaskConical size={14}/>{tr?'Prova et':'Rehearse'}</button>}
+          {item.state==='approved'&&data.can.publish&&data.sendEnabled&&<><label className="automation-choice"><input type="checkbox" checked={Boolean(ack[item.id])} onChange={event=>setAck(old=>({...old,[item.id]:event.target.checked}))}/>{tr?`${item.contactIds.length} kişiye gerçek WhatsApp mesajı gönderilecek ve Meta ücretlendirecek.`:`${item.contactIds.length} people will get a real WhatsApp message and Meta will bill it.`}</label>
+            <button type="button" className="studio-secondary" disabled={Boolean(busy)||!ack[item.id]} onClick={()=>void post(item.id,{action:'queue',id:item.id,expectedDigest:item.digest,mode:'send',acknowledged:true},tr?'Gönderim kuyruğa alındı.':'Sending queued.')}><Send size={14}/>{tr?'Gerçek gönder':'Send for real'}</button></>}
+          {item.state==='queued'&&data.can.dispatch&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void post(item.id,{action:'deliver',id:item.id})}><RefreshCw size={14}/>{tr?'Şimdi işle':'Process now'}</button>}
+          {['draft','approved','queued'].includes(item.state)&&data.can.dispatch&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void post(item.id,{action:'cancel',id:item.id},tr?'Gönderi iptal edildi.':'Batch cancelled.')}><X size={14}/>{tr?'İptal':'Cancel'}</button>}
+        </div></li>)}</ul>:<p className="coach-muted">{tr?'Henüz gönderi yok.':'No batches yet.'}</p>}
+      {data.can.dispatch&&!data.can.publish&&<p className="coach-muted">{tr?'Gerçek gönderim için ayrıca "yayın" mesajlaşma görevi gerekir (Mesajlaşma → Mesajlaşma görevleri).':'Real sending also needs the "publish" messaging duty (Messaging → Messaging duties).'}</p>}
+    </div>}
+    <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Hiçbir mesaj kendiliğinden gitmez: şablon Meta’nın onaylı listesinden gelir, gönderi tam içeriğiyle onaylanır ve gerçek gönderim sunucu anahtarı, "yayın" görevi ve açık onay ister. Her mesaj gitmeden hemen önce izin yeniden kontrol edilir; yarıda kalan bir gönderim belirsiz sayılır ve tekrarlanmaz.':'No message goes on its own: the template comes from Meta’s approved list, the batch is approved on its exact content, and a real send needs the server switch, the publish duty and an explicit acknowledgement. Consent is checked again just before each message; an interrupted send is recorded as uncertain and never repeated.'}</p>
+  </section>;
+}
