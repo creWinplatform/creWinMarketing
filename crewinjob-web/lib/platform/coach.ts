@@ -7,6 +7,7 @@ import { PlatformRepository } from './repository';
 import type { MarketingScope } from './marketing-store';
 import { MarketingStoreError } from './errors';
 import { ProjectOperations } from './operations';
+import { recordAiUsage } from './coach-ai';
 import { compassSiteReceipt } from './guidance';
 import { COACH_CHANNELS,COACH_CURRENT,COACH_HOURS,COACH_MARKETS,COACH_OBSTACLES,COACH_PRICES,COACH_SALES,COACH_SKILLS,COACH_TOOLS,coachDraftChannel,type CoachAction,type CoachAnswers,type CoachBrief,type CoachBriefKind,type CoachChannel,type CoachPlanItem,type CoachSnapshot,type CoachTool } from './coach-types';
 import { compassFromBrief,seedCompassFromBrief } from './coach-compass';
@@ -16,7 +17,9 @@ type Lang='tr'|'en';
 type Row={revision:number;answers_json:string;draft_json:string|null;draft_source:'ai'|'template'|null;draft_at:string|null;brief_json:string|null;approved_at:string|null};
 type ActionRow={action_id:string;state:'open'|'done'|'skipped';week:string;task_id:string|null};
 type Candidate=Omit<CoachAction,'state'|'taskId'|'canAct'|'href'|'prefill'|'assignment'>;
-export type CoachGenerator=(prompt:string)=>Promise<string>;
+// A generator returns the model's text, optionally with the token counts the provider reported for that call.
+export type CoachUsage={provider:string;model:string;prompt:number;output:number;thinking:number;total:number};
+export type CoachGenerator=(prompt:string)=>Promise<string|{text:string;usage?:CoachUsage|null}>;
 const l=(tr:string,en:string):LocalizedText=>({tr,en});
 const WEEK=7*86400000;
 const object=(raw:unknown):Record<string,unknown>=>raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:{};
@@ -185,11 +188,12 @@ export class GrowthCoach{
     }).immediate();
     const operations=new ProjectOperations(this.db,this.scope),reservation=mode==='ai'?operations.reserveAi():undefined;let completed=false;
     try{
-      const draft=mode==='ai'?parseCoachDraft(await generator!(coachPrompt(answers,language,project)),language):coachStarterBrief(answers,language,project.name);
+      const output=mode==='ai'?await generator!(coachPrompt(answers,language,project)):null,usage=output&&typeof output!=='string'?output.usage||null:null;
+      const draft=output!==null?parseCoachDraft(typeof output==='string'?output:output.text,language):coachStarterBrief(answers,language,project.name);
       this.db.transaction(()=>{
         this.authorize('content.write');const row=this.row();if(row?.revision!==revision)throw new MarketingStoreError('Strateji briefi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
         const now=new Date().toISOString();this.db.prepare('UPDATE platform_growth_coach SET revision=?,draft_json=?,draft_source=?,draft_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(revision+1,JSON.stringify(draft),mode,now,now,this.scope.subject,...this.args());
-        if(reservation){operations.completeAi(reservation);completed=true;}this.audit(mode==='ai'?'coach.draft.ai':'coach.draft.template');
+        if(reservation){operations.completeAi(reservation);completed=true;if(usage)recordAiUsage(this.db,this.scope,reservation,usage);}this.audit(mode==='ai'?'coach.draft.ai':'coach.draft.template');
       }).immediate();
     }catch(error){
       if(reservation&&!completed){try{operations.refundAi(reservation);}catch{console.error('platform_usage_release_failed');}}

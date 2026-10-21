@@ -38,6 +38,9 @@ export async function verifyGoogleConnection(provider: string, resource: string,
       catch { return { status: 'failed', message: 'Geçerli Search Console mülk URL veya sc-domain değeri gerekli.' }; }
     }
     url = `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(resource)}`;
+  } else if (provider === 'google_ads') {
+    // The OAuth exchange already required the adwords scope; the account itself is read in Ads with the developer token.
+    return /^\d{10}$/.test(resource) ? { status: 'verified', message: 'Google Ads erişim izni verildi. Hesap, Reklamlar bölümünde doğrulanır.' } : { status: 'failed', message: 'Google Ads müşteri kimliği 10 haneli olmalı.' };
   } else return { status: 'unsupported', message: 'Bu sağlayıcının doğrulama adaptörü henüz etkin değil.' };
   try {
     const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(12000) });

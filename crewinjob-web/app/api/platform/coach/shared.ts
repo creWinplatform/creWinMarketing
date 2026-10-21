@@ -19,7 +19,8 @@ export const coachGemini=(maxOutputTokens=6000):CoachGenerator|undefined=>{
   const thinking=/gemini-(?:2\.5|[3-9])/.test(modelId);
   const generationConfig={temperature:0.4,maxOutputTokens:maxOutputTokens+(thinking?THINKING_BUDGET:0),responseMimeType:'application/json',...(thinking?{thinkingConfig:{thinkingBudget:THINKING_BUDGET}}:{})} as GenerationConfig;
   const model=new GoogleGenerativeAI(key).getGenerativeModel({model:modelId,generationConfig});
-  return async prompt=>(await model.generateContent(prompt,{timeout:30000})).response.text();
+  return async prompt=>{const {response}=await model.generateContent(prompt,{timeout:30000}),meta=response.usageMetadata as {promptTokenCount?:number;candidatesTokenCount?:number;thoughtsTokenCount?:number;totalTokenCount?:number}|undefined;
+    return {text:response.text(),usage:meta?{provider:'gemini',model:modelId,prompt:meta.promptTokenCount??0,output:meta.candidatesTokenCount??0,thinking:meta.thoughtsTokenCount??0,total:meta.totalTokenCount??0}:null};};
 };
 export function coachRoute(run:(scope:MarketingScope,request:NextRequest)=>Promise<unknown>){
   return async (request:NextRequest)=>{const headers={'Cache-Control':'private, no-store'};try{

@@ -31,6 +31,8 @@ export interface HistoryItem {
   metadata?: Record<string, unknown>;
   /** Growth coach suggestion this draft was opened from (plan action, content plan item or SEO topic). */
   coachRef?: string;
+  /** A video the team hosts at its own https address (Instagram Reels/Story, Facebook Page video). Only the address is stored. */
+  video?: { url: string; format: 'reel' | 'story' | 'feed' };
 }
 
 /** Görselle birlikte saklanan yeniden düzenleme verisi. */

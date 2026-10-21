@@ -1,11 +1,12 @@
 'use client';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { BookText, EyeOff, FilePlus2, Plus, RefreshCw, Save, ShieldCheck, Trash2, Undo2, UserCog } from 'lucide-react';
+import { BookText, EyeOff, FilePlus2, Plus, RefreshCw, Save, ShieldCheck, Sparkles, Trash2, Undo2, UserCog } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import { MESSAGING_DUTIES, type MessagingDuty, type MessagingPostView, type MessagingSnapshot, type MessagingTopic } from '@/lib/platform/messaging-types';
 import Msg from '@/components/Msg';
+import { onTabKeys } from './tab-keys';
 
 type State=MessagingPostView['state'];
 const STATES:Record<State,[string,string]>={new:['Yeni','New'],suggested:['Önerildi','Suggested'],dismissed:['Gizlendi','Hidden']};
@@ -23,6 +24,10 @@ export default function ProjectMessaging({lang}:{lang:Locale}){
   const post=async(key:string,body:object,message?:string)=>{if(busy)return false;setBusy(key);setError('');setNotice('');
     try{setData(await projectRequest<MessagingSnapshot>('/api/platform/messaging',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(45000)}));if(message)setNotice(message);return true;}
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));load();return false;}finally{setBusy('');}};
+  // AI only fills the text box; the person reads, edits and saves it.
+  const aiSuggest=async(id:string)=>{if(busy)return;setBusy(`ai:${id}`);setError('');setNotice('');
+    try{const value=await projectRequest<{suggestion:string;snapshot:MessagingSnapshot}>('/api/platform/messaging',{method:'POST',body:JSON.stringify({action:'aiSuggest',id}),signal:AbortSignal.timeout(45000)});setData(value.snapshot);setDrafts(old=>({...old,[id]:value.suggestion}));setNotice(tr?'AI önerisi metin kutusuna yazıldı. Okuyup düzenleyin; kaydetmeden hiçbir şey saklanmaz.':'The AI suggestion is in the text box. Read and edit it; nothing is kept until you save.');}
+    catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}finally{setBusy('');}};
   if(!data)return error?<p className="studio-error" role="alert"><Msg text={error}/></p>:<div className="studio-skeleton" role="status">{tr?'Mesajlaşma kaynakları yükleniyor…':'Loading messaging sources…'}</div>;
   const when=(value:string)=>new Date(value).toLocaleString(locale,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
   const topicName=(id:string)=>data.dictionary.find(item=>item.id===id)?.label||id;
@@ -66,7 +71,7 @@ export default function ProjectMessaging({lang}:{lang:Locale}){
     </div>
 
     {data.me['source.read']&&<div className="ads-account"><h3>{tr?'Okunan gönderiler':'Posts read'}</h3>
-      <div className="publication-view-tabs" role="tablist" aria-label={tr?'Gönderi durumu':'Post state'}>{(Object.keys(STATES) as State[]).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}</div>
+      <div className="publication-view-tabs" role="tablist" onKeyDown={onTabKeys} aria-label={tr?'Gönderi durumu':'Post state'}>{(Object.keys(STATES) as State[]).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}</div>
       {data.dictionary.length>0&&<label className="budget-currency">{tr?'Konu':'Topic'}<select value={topic} onChange={event=>setTopic(event.target.value)}><option value="">{tr?'Tümü':'All'}</option>{data.dictionary.map(item=><option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
       {shown.length?<ul className="ads-list">{shown.map(item=><li key={item.id} className="studio-draft-row">
         <p className="coach-muted">{item.sourceTitle} · {when(item.postedAt)}{item.link&&<> · <a href={item.link} target="_blank" rel="noreferrer">{tr?'Telegram’da aç':'Open in Telegram'}</a></>}</p>
@@ -77,6 +82,7 @@ export default function ProjectMessaging({lang}:{lang:Locale}){
           {item.state!=='dismissed'&&!item.contentId&&<><label className="sr-only" htmlFor={`suggest-${item.id}`}>{tr?'Kendi öneriniz':'Your suggestion'}</label>
             <textarea id={`suggest-${item.id}`} rows={3} maxLength={1000} placeholder={tr?'Bu gönderiden esinlenen kendi içerik fikriniz (kopya değil).':'Your own content idea inspired by this post (not a copy).'} value={drafts[item.id]??item.suggestion} onChange={event=>setDrafts(old=>({...old,[item.id]:event.target.value}))}/>
             <div className="coach-action-buttons">
+              {data.aiConfigured&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void aiSuggest(item.id)}><Sparkles size={14}/>{busy===`ai:${item.id}`?(tr?'AI yazıyor…':'AI is writing…'):(tr?'AI ile öner':'Suggest with AI')}</button>}
               <button type="button" className="studio-text-button" disabled={Boolean(busy)||!(drafts[item.id]??item.suggestion).trim()} onClick={()=>void post(item.id,{action:'suggest',id:item.id,expectedRevision:item.revision,suggestion:drafts[item.id]??item.suggestion},tr?'Öneri kaydedildi.':'Suggestion saved.')}><Save size={14}/>{tr?'Öneri olarak kaydet':'Save as suggestion'}</button>
               <button type="button" className="studio-secondary" disabled={Boolean(busy)||!(drafts[item.id]??item.suggestion).trim()} onClick={()=>void post(item.id,{action:'suggest',id:item.id,expectedRevision:item.revision,suggestion:drafts[item.id]??item.suggestion,draft:true},tr?'Telegram içerik taslağı oluşturuldu. Yayın, yayın görevi olan kişinin onayıyla yapılır.':'Telegram content draft created. Publishing needs someone with the publish duty.')}><FilePlus2 size={14}/>{tr?'Telegram taslağı oluştur':'Create Telegram draft'}</button>
             </div></>}

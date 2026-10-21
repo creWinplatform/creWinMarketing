@@ -6,9 +6,12 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import { paidScenario, paidSensitivity, requiredBudget, seoScenario, seoSensitivity, type Outcome, type PaidInputs, type Range, type Scenario, type SeoInputs } from '@/lib/platform/budget-math';
 import type { BudgetSnapshot } from '@/lib/platform/budget-planner';
+import { BENCHMARKS, benchmarkSource, includeValue, type Benchmark } from '@/lib/platform/budget-benchmarks';
 import Msg from '@/components/Msg';
+import { onTabKeys } from './tab-keys';
 
 type View='paid'|'seo'|'goal';
+const METRIC:Record<Benchmark['metric'],[string,string]>={cpc:['Tıklama başı maliyet','Cost per click'],conversion:['Dönüşüm oranı (raporun tanımıyla)','Conversion rate (as the report defines it)'],ctr:['Tıklama oranı','Click-through rate'],cpl:['Lead başı maliyet','Cost per lead']};
 type Pair={low:string;high:string};
 const pair=(low:number,high=low):Pair=>({low:String(low),high:String(high)});
 const num=(value:string)=>Number(String(value).replace(',','.'));
@@ -52,14 +55,21 @@ export default function BudgetPlanner({lang}:{lang:Locale}){
   const m=data.measured,src=(label:string,from:string|null,to:string|null)=>`${label}${from?`, ${day(from)}–${day(to)}`:''}`;
   // Saved with the scenario, so the period stays in ISO dates and reads the same in either language.
   const stored=(label:string,from:string|null,to:string|null)=>`${label}${from?`, ${from.slice(0,10)}–${(to||from).slice(0,10)}`:''}`;
+  // A published reference value widens the team's range so it also covers that value; the label names the source.
+  const applyBenchmark=(item:Benchmark)=>{const source=benchmarkSource(item),label=`${source.name}, ${source.updated}`;
+    if(item.metric==='cpc'){const widen=(value:Pair)=>{const next=includeValue(money(value),item.value);return pair(next.low,next.high);};
+      use('cpc',label,()=>{if(view==='paid')setPaid(old=>({...old,cpc:widen(old.cpc)}));else setGoal(old=>({...old,cpc:widen(old.cpc)}));});}
+    else{const widen=(value:Pair)=>{const next=includeValue(rate(value),item.value);return pair(+(next.low*100).toFixed(2),+(next.high*100).toFixed(2));};
+      use('conversion',label,()=>{if(view==='paid')setPaid(old=>({...old,conversion:widen(old.conversion)}));else setGoal(old=>({...old,conversion:widen(old.conversion)}));});}
+  };
   // A measured value fills the field and keeps its source label until someone edits that field by hand.
   const use=(key:string,label:string,apply:()=>void)=>{apply();setSources(old=>({...old,[key]:label}));};
   const forget=(key:string)=>setSources(old=>{if(!(key in old))return old;const next={...old};delete next[key];return next;});
   const rangeField=(label:string,value:Pair,onChange:(next:Pair)=>void,suffix:string,key?:string)=><fieldset className="budget-range"><legend>{label}{suffix?` (${suffix})`:''}</legend>
     <label><span>{tr?'en az':'min'}</span><input inputMode="decimal" value={value.low} onChange={event=>{onChange({...value,low:event.target.value});if(key)forget(key);}}/></label>
     <label><span>{tr?'en çok':'max'}</span><input inputMode="decimal" value={value.high} onChange={event=>{onChange({...value,high:event.target.value});if(key)forget(key);}}/></label>
-    {key&&sources[key]&&<small className="coach-muted">{tr?'Ölçülen: ':'Measured: '}{sources[key]}</small>}</fieldset>;
-  const field=(label:string,value:string,onChange:(next:string)=>void,key?:string)=><label className="budget-field">{label}<input inputMode="decimal" value={value} onChange={event=>{onChange(event.target.value);if(key)forget(key);}}/>{key&&sources[key]&&<small className="coach-muted">{tr?'Ölçülen: ':'Measured: '}{sources[key]}</small>}</label>;
+    {key&&sources[key]&&<small className="coach-muted">{tr?'Kaynak: ':'Source: '}{sources[key]}</small>}</fieldset>;
+  const field=(label:string,value:string,onChange:(next:string)=>void,key?:string)=><label className="budget-field">{label}<input inputMode="decimal" value={value} onChange={event=>{onChange(event.target.value);if(key)forget(key);}}/>{key&&sources[key]&&<small className="coach-muted">{tr?'Kaynak: ':'Source: '}{sources[key]}</small>}</label>;
   const row=(label:string,pick:(item:Outcome)=>number|null,kind:'money'|'count'|'ratio'='count')=>scenario&&<tr><th scope="row">{label}</th><td>{fmt(pick(scenario.low),kind)}</td><td><strong>{fmt(pick(scenario.expected),kind)}</strong></td><td>{fmt(pick(scenario.high),kind)}</td></tr>;
   const ctr=m.ctr?m.ctr.value:null;
   return <section className="studio-band mt-6 budget-planner" aria-labelledby="budget-planner-title">
@@ -67,7 +77,7 @@ export default function BudgetPlanner({lang}:{lang:Locale}){
       <label className="budget-currency">{tr?'Para birimi':'Currency'}<select value={currency} onChange={event=>setCurrency(event.target.value)}>{[...new Set([data.currency,'TRY','USD','EUR','GBP'])].map(item=><option key={item}>{item}</option>)}</select></label></div>
     <p className="studio-note">{tr?'Kendi varsayımlarınızı en az–en çok aralığı olarak girin; varsa bu projede ölçülen gerçek değerleri tek tıkla kullanın. Sonuç bir hesaptır, tahmin veya garanti değildir.':'Enter your own assumptions as a min–max range; where available, use values measured for this project with one click. The result is arithmetic, not a forecast or a guarantee.'}</p>
     {error&&<p className="studio-error" role="alert"><Msg text={error}/></p>}{notice&&<p className="coach-note" role="status">{notice}</p>}
-    <div className="publication-view-tabs" role="tablist" aria-label={tr?'Planlayıcı görünümü':'Planner view'}>{(['paid','seo','goal'] as const).map(item=><button key={item} role="tab" aria-selected={view===item} tabIndex={view===item?0:-1} onClick={()=>{setView(item);setNotice('');}}>{item==='paid'?(tr?'Reklam (Meta)':'Ads (Meta)'):item==='seo'?'SEO':(tr?'Hedeften bütçe':'Budget from a goal')}</button>)}</div>
+    <div className="publication-view-tabs" role="tablist" onKeyDown={onTabKeys} aria-label={tr?'Planlayıcı görünümü':'Planner view'}>{(['paid','seo','goal'] as const).map(item=><button key={item} role="tab" aria-selected={view===item} tabIndex={view===item?0:-1} onClick={()=>{setView(item);setNotice('');}}>{item==='paid'?(tr?'Reklam (Meta)':'Ads (Meta)'):item==='seo'?'SEO':(tr?'Hedeften bütçe':'Budget from a goal')}</button>)}</div>
     <div className="budget-measured"><h3>{tr?'Bu projede ölçülenler':'Measured for this project'}</h3>
       {!m.cpc&&!m.organicClicksPerDay&&!m.conversions.length?<p className="coach-muted">{tr?'Henüz ölçülmüş değer yok. Meta reklam harcaması, Search Console ve GA4 ölçümleri biriktikçe burada görünür; o zamana kadar hesap yalnız varsayımlarınızla yapılır.':'Nothing measured yet. Meta ad spend, Search Console and GA4 readings appear here as they accumulate; until then the calculation uses only your assumptions.'}</p>:<ul>
         {m.cpc&&<li>{tr?'Tıklama başı maliyet':'Cost per click'}: <strong>{m.cpc.value.toLocaleString(locale,{style:'currency',currency:data.currency,maximumFractionDigits:2})}</strong> <span className="coach-muted">({src('Meta',m.cpc.from,m.cpc.to)})</span>{view!=='seo'&&<button type="button" className="studio-text-button" onClick={()=>use('cpc',stored('Meta',m.cpc!.from,m.cpc!.to),()=>{const value=pair(+m.cpc!.value.toFixed(2));setCurrency(data.currency);if(view==='paid')setPaid(old=>({...old,cpc:value}));else setGoal(old=>({...old,cpc:value}));})}>{tr?'Kullan':'Use'}</button>}</li>}
@@ -76,6 +86,14 @@ export default function BudgetPlanner({lang}:{lang:Locale}){
         {m.conversions.map((item,index)=><li key={index}>{item.goal[lang]} · {item.label[lang]}: <strong>{pctText(item.value)}</strong> <span className="coach-muted">({item.source==='ga4'?'GA4':item.source==='product_event'?(tr?'ürün olayları':'product events'):item.source}, {day(item.from)}–{day(item.to)})</span>
           <button type="button" className="studio-text-button" onClick={()=>use('conversion',stored(item.label[lang],item.from,item.to),()=>{const value=pair(+(item.value*100).toFixed(2));if(view==='paid')setPaid(old=>({...old,conversion:value}));else if(view==='seo')setSeo(old=>({...old,conversion:value}));else setGoal(old=>({...old,conversion:value}));})}>{tr?'Dönüşüm olarak kullan':'Use as conversion'}</button></li>)}
       </ul>}</div>
+    {view!=='seo'&&<details className="budget-measured budget-benchmarks"><summary><h3>{tr?'Yayınlanmış karşılaştırma değerleri':'Published reference values'}</h3></summary>
+      <p className="coach-muted">{tr?'Bir reklam ajansının kendi müşteri kampanyalarından yayımladığı, tüm sektörlerin ortalaması. Sizin sektörünüz, ülkeniz ve teklifiniz için tahmin değildir; yalnız aralığınızı kontrol etmek içindir. Değerler “$” ile yayımlanmıştır ve başka para birimine çevrilmez.':'All-industry averages an advertising agency published from its own customers’ campaigns. Not a forecast for your industry, country or offer; only a check for your range. Values are published with “$” and are not converted.'}</p>
+      {(['google_search','meta_traffic','meta_leads'] as const).map(channel=>{const items=BENCHMARKS.filter(item=>item.channel===channel),source=benchmarkSource(items[0]);return <div key={channel} className="budget-benchmark-group">
+        <h4>{channel==='google_search'?(tr?'Arama reklamları (Google/Microsoft)':'Search ads (Google/Microsoft)'):channel==='meta_traffic'?(tr?'Facebook · trafik kampanyası':'Facebook · traffic campaign'):(tr?'Facebook · lead kampanyası':'Facebook · lead campaign')}</h4>
+        <ul>{items.map(item=><li key={item.id}>{METRIC[item.metric][tr?0:1]}: <strong>{item.unit==='USD'?`$${item.value.toLocaleString('en-US',{minimumFractionDigits:2})}`:pctText(item.value)}</strong>
+          {(item.metric==='cpc'||item.metric==='conversion')&&<button type="button" className="studio-text-button" disabled={item.metric==='cpc'&&currency!=='USD'} title={item.metric==='cpc'&&currency!=='USD'?(tr?'Yalnız USD planlarında kullanılabilir.':'Only for USD plans.'):undefined} onClick={()=>applyBenchmark(item)}>{tr?'Aralığa kat':'Include in range'}</button>}</li>)}</ul>
+        <p className="coach-muted"><a href={source.url} target="_blank" rel="noreferrer">{source.name}</a> · {tr?'son güncelleme':'last updated'} {source.updated} · {source.scope[tr?'tr':'en']}</p></div>;})}
+    </details>}
     {view==='paid'&&<div className="budget-grid">
       {field(tr?`Bütçe (${currency})`:`Budget (${currency})`,paid.budget,value=>setPaid(old=>({...old,budget:value})))}
       {rangeField(tr?'Tıklama başı maliyet':'Cost per click',paid.cpc,value=>setPaid(old=>({...old,cpc:value})),currency,'cpc')}
@@ -117,6 +135,6 @@ export default function BudgetPlanner({lang}:{lang:Locale}){
         :<button type="button" className="studio-secondary" disabled={!name.trim()} onClick={()=>void save(true)}><Save size={14}/>{tr?'Senaryoyu kaydet':'Save scenario'}</button>}</div>}
     </>:<p className="studio-error" role="alert">{tr?'Değerleri kontrol edin: tutarlar 0 veya üzeri, yüzdeler 0–100 arası, tıklama maliyeti 0’dan büyük ve her aralıkta “en az” değer “en çok” değerden büyük olmamalı.':'Check the values: amounts 0 or more, percentages 0–100, cost per click above 0, and in each range “min” must not exceed “max”.'}</p>)}
     {data.scenarios.length>0&&<details className="coach-resolved"><summary>{tr?`Kayıtlı senaryolar (${data.scenarios.length})`:`Saved scenarios (${data.scenarios.length})`}</summary><ul>{data.scenarios.map(item=><li key={item.id}><span className="coach-state">{item.kind==='paid'?(tr?'Reklam':'Ads'):'SEO'}</span><span>{item.name} · {item.currency}</span><button type="button" className="studio-text-button" onClick={()=>open(item)}>{tr?'Aç':'Open'}</button>{data.canWrite&&<button type="button" className="studio-text-button" aria-label={tr?'Sil':'Delete'} onClick={()=>void remove(item.id)}><Trash2 size={14}/></button>}</li>)}</ul></details>}
-    <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Sektör ortalaması veya garanti kullanılmaz: sayılar yalnız sizin varsayımlarınızdan ve bu projede ölçülen kayıtlardan gelir. Ölçülen değerin kaynağı ve dönemi her zaman yanında yazar.':'No industry averages or guarantees are used: numbers come only from your assumptions and this project’s measured records. Each measured value shows its source and period.'}</p>
+    <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Garanti yoktur: sayılar sizin varsayımlarınızdan ve bu projede ölçülen kayıtlardan gelir. Yayınlanmış sektör ortalamaları yalnız kaynağı ve tarihiyle, karşılaştırma için gösterilir; siz aralığa katmadıkça hesaba girmez. Her değerin kaynağı yanında yazar.':'No guarantees: numbers come from your assumptions and this project’s measured records. Published industry averages are shown only for comparison, with their source and date, and enter the calculation only if you add them to a range. Each value shows its source.'}</p>
   </section>;
 }

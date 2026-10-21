@@ -13,5 +13,5 @@ export type MessagingMemberView={userId:string;name:string;role:string;implicit:
 export type MessagingSnapshot={
   sources:MessagingSourceView[];bots:{id:string;name:string;channel:string}[];posts:MessagingPostView[];counts:Record<'new'|'suggested'|'dismissed',number>;
   dictionary:MessagingTopic[];dictionaryRevision:number;readsLeft:number;
-  me:Record<MessagingDuty,boolean>;canManage:boolean;canConnect:boolean;members:MessagingMemberView[]|null;
+  me:Record<MessagingDuty,boolean>;canManage:boolean;canConnect:boolean;aiConfigured:boolean;members:MessagingMemberView[]|null;
 };

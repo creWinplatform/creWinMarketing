@@ -242,6 +242,8 @@
 .budget-measured{border:1px solid var(--studio-border);border-radius:var(--rz-r-card,8px);padding:12px 14px}
 .budget-measured h3{font-size:13px;font-weight:650;margin-bottom:6px}
 .budget-measured ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.budget-benchmarks summary{cursor:pointer;list-style:revert}.budget-benchmarks summary h3{display:inline;margin:0}
+.budget-benchmark-group{margin-top:10px}.budget-benchmark-group h4{font-size:12px;font-weight:650;margin-bottom:4px}
 .budget-measured li{font-size:12px;line-height:1.6;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;overflow-wrap:anywhere}
 .budget-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;max-width:760px;align-items:start}
 .budget-grid>.automation-choice,.budget-grid>.coach-muted,.budget-grid>.budget-result{grid-column:1/-1}
@@ -285,4 +287,6 @@
 .whatsapp-recipients legend{font-size:12px;font-weight:600;padding:0 4px}
 .whatsapp-recipients .automation-choice{flex-wrap:wrap;min-width:0;overflow-wrap:anywhere}
 .whatsapp-recipients .automation-choice .coach-muted{min-width:0;overflow-wrap:anywhere}
+.whatsapp-code{font-size:12px;overflow-wrap:anywhere;word-break:break-all;background:var(--studio-surface,transparent);padding:1px 4px;border-radius:4px}
+.whatsapp-override{grid-template-columns:minmax(80px,auto) repeat(auto-fit,minmax(140px,1fr));align-items:end}
 @media (max-width:900px){.whatsapp-connect{grid-template-columns:1fr}}

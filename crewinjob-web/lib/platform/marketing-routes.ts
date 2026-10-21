@@ -72,9 +72,14 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   if(raw.imageData===''){imageData=undefined;imageMime=undefined;}
   else if(raw.imageData!==undefined){const image=await normalizePublicationImage(raw.imageData,raw.imageMime);imageData=image.data;imageMime='image/jpeg';}
   if(images?.length&&imageData)throw new MarketingStoreError('Tek gorsel veya coklu gorsel secin; ikisini birlikte gondermeyin.');
+  let video=current?.video;
+  if(raw.video===''||raw.video===null)video=undefined;
+  else if(raw.video!==undefined){const {normalizeContentVideo}=await import('./social-video');video=normalizeContentVideo(raw.video,platform);}
+  if(video&&(images?.length||imageData))throw new MarketingStoreError('Video ile görsel aynı içerikte kullanılamaz.');
+  if(video&&!['instagram','facebook'].includes(platform))throw new MarketingStoreError('Video yalnız Instagram (Reels, Story) ve Facebook sayfası için destekleniyor.');
   return { id: current?.id || `hist_${randomUUID()}`, timestamp: current?.timestamp || Date.now(),
     content, platform, language, prompt: string(raw.prompt, 3000, current?.prompt),
-    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(coachRef(raw.coachRef,current?.coachRef)) };
+    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(video?{video}:{}),...(coachRef(raw.coachRef,current?.coachRef)) };
 }
 
 async function context(request: NextRequest) {

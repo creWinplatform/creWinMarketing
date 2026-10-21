@@ -26,6 +26,8 @@ export async function middleware(req: NextRequest) {
   if (/^\/api\/platform\/product-events\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
   if (/^\/api\/platform\/mobile-hooks\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
   if (/^\/api\/platform\/email-feedback\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
+  // Meta's WhatsApp webhook; the route verifies the app-secret signature (X-Hub-Signature-256) itself.
+  if (/^\/api\/platform\/whatsapp\/hooks\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
   // Exact provider-only image route verifies its short-lived per-job HMAC itself.
   if (/^\/api\/platform\/publication-media\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(pathname)) return NextResponse.next();
   if (pathname === '/api/platform/x/callback') return NextResponse.next();

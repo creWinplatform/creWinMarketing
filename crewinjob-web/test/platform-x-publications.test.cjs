@@ -27,7 +27,9 @@ test('X rehearsal reuses saved content, reveals weighted counter, and never cont
  assert.doesNotMatch(JSON.stringify(f.service.workspace()),/private-x|xPublishing|scopes|configurationRevision/);
 }));
 test('X sources reject overlength, media and variables, and cannot target another channel',()=>run(async f=>{
- for(const patch of [{content:'x'.repeat(281)},{imageData:'image'},{rawBgData:'image'},{content:'{{firstName}}'},{content:'bad\x00'}]){f.store.saveContent({...f.content,...patch},false);assert.equal(f.service.workspace().sources[0].eligible,false);assert.throws(()=>f.service.enqueue(f.input()),e=>e.status===409);}
+ for(const patch of [{content:'x'.repeat(281)},{rawBgData:'image'},{content:'{{firstName}}'},{content:'bad\x00'}]){f.store.saveContent({...f.content,...patch},false);assert.equal(f.service.workspace().sources[0].eligible,false);assert.throws(()=>f.service.enqueue(f.input()),e=>e.status===409);}
+ // One image is an X image post now; it still needs the verified image before it can be queued.
+ f.store.saveContent({...f.content,imageData:'image'},false);assert.equal(f.service.workspace().sources[0].format,'image');assert.throws(()=>f.service.enqueue(f.input()),e=>e.status===409);
  f.store.saveContent(f.content,false);
  const li=f.store.saveConnection({provider:'social',integrationId:'li',accountName:'LinkedIn',accessToken:'other',social:{platform:'linkedin',accountId:'user'}},KEY);
  assert.throws(()=>f.service.enqueue(f.input({connectionId:li.id,expectedTargetRevision:f.service.workspace().targets.find(t=>t.id===li.id).revision})),e=>e.status===404);

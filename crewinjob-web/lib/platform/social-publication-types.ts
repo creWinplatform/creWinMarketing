@@ -1,4 +1,4 @@
-export type PublicationSource = { kind: 'content' | 'campaign'; id: string; platform: string; title: string; text: string; digest: string; eligible: boolean; imagePreview?: string; imagePreviews?: string[]; format?: 'text'|'image'|'carousel'; weightedLength?: number };
+export type PublicationSource = { kind: 'content' | 'campaign'; id: string; platform: string; title: string; text: string; digest: string; eligible: boolean; imagePreview?: string; imagePreviews?: string[]; format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number }; weightedLength?: number };
 export type PublicationTarget = { id: string; name: string; platform: string; accountId: string; accountType?:'person'|'organization'; revision: string; configured: boolean; ready: boolean; checkedAt: string | null; expiresAt?: string | null };
 export type Publication = {
   id: string; mode: 'rehearsal' | 'publish'; status: string; state: string;
@@ -8,7 +8,7 @@ export type Publication = {
   providerPostId: string | null; providerUrl: string | null; cancelRequested: boolean;
   nextCheckAt: string | null; image?: {width:number;height:number;bytes:number;previewUrl:string};
   images?: {width:number;height:number;bytes:number;previewUrl:string}[];
-  format?: 'text'|'image'|'carousel';
+  format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number };
   engagement?: PublicationEngagement;
 };
 export type EngagementCounts = Partial<Record<'likes'|'comments'|'shares'|'impressions'|'clicks'|'reach'|'bookmarks'|'quotes',number>>;

@@ -12,6 +12,7 @@ const handle=coachRoute(async(scope,request)=>{
   const raw=await coachBody(request);
   if(raw.action==='connect')return whatsapp.connect(raw);
   if(raw.action==='templates')return whatsapp.refreshTemplates();
+  if(raw.action==='hooks')return whatsapp.setupHooks(raw);
   if(raw.action==='addContacts')return (whatsapp.addContacts(raw)).snapshot;
   if(raw.action==='optOut')return whatsapp.optOut(raw);
   if(raw.action==='removeContact')return whatsapp.removeContact(raw);

@@ -89,6 +89,8 @@ export default function ProjectDrafts({
   const [selectedChannels, setSelectedChannels] = useState<string[]>(['email']);
   const [reviewId,setReviewId]=useState<string|null>(null),[coachRef,setCoachRef]=useState('');
   const [image,setImage]=useState<{data:string;mime:string}|null>(null),[imageChanged,setImageChanged]=useState(false);
+  // A video the team hosts itself (Instagram Reels/Story, Facebook Page video); only its https address is stored.
+  const [video,setVideo]=useState<{url:string;format:'reel'|'story'|'feed'}|null>(null),[videoChanged,setVideoChanged]=useState(false);
   const [extraImages,setExtraImages]=useState<{data:string;mime:string}[]>([]),[imageBusy,setImageBusy]=useState(false);
   const draftImages=image?[image,...extraImages]:[];
   const replaceImages=(images:{data:string;mime:string}[])=>{setImage(images[0]||null);setExtraImages(images.slice(1));setImageChanged(true);};
@@ -127,7 +129,7 @@ export default function ProjectDrafts({
     setSelectedChannels([channel]);
     setBrief(prefill.brief.slice(0, 3000));
     setCoachRef(typeof prefill.ref === 'string' && COACH_REF.test(prefill.ref) ? prefill.ref : '');
-    setImage(null);setExtraImages([]);setImageChanged(false);
+    setImage(null);setExtraImages([]);setImageChanged(false);setVideo(null);setVideoChanged(false);
     setShowEditor(true);
     setNotice(tr ? 'Brief, büyüme koçundan dolduruldu. AI taslağı üretin veya kendiniz yazın; kaydetmeden hiçbir şey saklanmaz.' : 'The brief is pre-filled from the growth coach. Generate an AI draft or write your own; nothing is stored until you save.');
   }, [canWrite, campaigns]);
@@ -135,6 +137,7 @@ export default function ProjectDrafts({
     setReviewId(null);
     const media='name' in item?[]:item.images?.length?item.images:item.imageData?[{data:item.imageData,mime:item.imageMime||'image/jpeg'}]:[];
     setImage(media[0]||null);setExtraImages(media.slice(1));setImageChanged(clone);
+    setVideo('name' in item?null:item.video||null);setVideoChanged(clone&&!('name' in item)&&Boolean(item.video));
     if ('name' in item)
       setSelectedChannels([
         ...(item.channels.email ? ['email'] : []),
@@ -202,6 +205,7 @@ export default function ProjectDrafts({
           prompt: brief,
           ...(!editingId && coachRef ? { coachRef } : {}),
           ...(imageChanged?(draftImages.length>1?{imageData:'',images:draftImages}:{imageData:image?.data||'',imageMime:image?.mime||'',images:[]}):{}),
+          ...(videoChanged?{video:video&&video.url.trim()?{url:video.url.trim(),format:video.format}:''}:{}),
         };
     const url = editingId
       ? campaigns
@@ -508,6 +512,9 @@ export default function ProjectDrafts({
               try{const images=[];for(const file of files){const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error());reader.readAsDataURL(file);});images.push({data,mime:file.type});}replaceImages(images);setError('');}catch{setError(tr?'Görsel okunamadı.':'Image could not be read.');}finally{setImageBusy(false);}
             }}/></label>{imageBusy&&<p role="status">{tr?'Görseller okunuyor…':'Reading images…'}</p>}
             <div className="publication-gallery">{draftImages.map((media,index)=><figure key={`${index}-${media.data.slice(-32)}`}><img src={`data:${media.mime};base64,${media.data}`} alt={`${tr?'Taslak görseli':'Draft image'} ${index+1}`} className="publication-image"/><figcaption><span>{index+1} / {draftImages.length}</span><div className="publication-gallery-actions">{draftImages.length>1&&<><button className="icon-button" type="button" disabled={index===0||imageBusy} title={tr?'Öne taşı':'Move earlier'} aria-label={`${tr?'Görseli öne taşı':'Move image earlier'} ${index+1}`} onClick={()=>{const next=[...draftImages];[next[index-1],next[index]]=[next[index],next[index-1]];replaceImages(next);}}><ArrowUp size={16}/></button><button className="icon-button" type="button" disabled={index===draftImages.length-1||imageBusy} title={tr?'Sona taşı':'Move later'} aria-label={`${tr?'Görseli sona taşı':'Move image later'} ${index+1}`} onClick={()=>{const next=[...draftImages];[next[index+1],next[index]]=[next[index],next[index+1]];replaceImages(next);}}><ArrowDown size={16}/></button></>}<button className="icon-button" type="button" disabled={imageBusy} title={tr?'Görseli kaldır':'Remove image'} aria-label={`${tr?'Görseli kaldır':'Remove image'} ${index+1}`} onClick={()=>replaceImages(draftImages.filter((_,i)=>i!==index))}><X size={16}/></button></div></figcaption></figure>)}</div><small>{tr?'En az 320 px genişlik · En/boy 0,8–1,91 · Instagram: en fazla 5 görsel':'At least 320 px wide · Aspect ratio 0.8–1.91 · Instagram: up to 5 images'}</small></div>}
+            {!campaigns&&['instagram','facebook'].includes(form.channel)&&<div className="studio-form-full publication-video-editor"><label>{tr?'Video (kendi sitenizdeki https adresi)':'Video (https address you host)'}<input type="url" inputMode="url" placeholder="https://…/video.mp4" value={video?.url||''} onChange={event=>{const url=event.target.value;setVideo(url?{url,format:video?.format||(form.channel==='facebook'?'feed':'reel')}:null);setVideoChanged(true);}}/></label>
+              {video&&<label>{tr?'Biçim':'Format'}<select value={video.format} onChange={event=>{setVideo({...video,format:event.target.value as 'reel'|'story'|'feed'});setVideoChanged(true);}}>{form.channel==='facebook'?<option value="feed">{tr?'Sayfa videosu':'Page video'}</option>:<><option value="reel">Reels</option><option value="story">Story</option></>}</select></label>}
+              <p className="studio-note">{tr?'MP4 veya MOV, en çok 300 MB; adres yönlendirmesiz olarak doğrudan dosyayı vermeli. Ryzevo yalnız adresi saklar; yayından önce dosyanın değişmediğini kontrol eder. Video ile görsel aynı içerikte kullanılamaz.':'MP4 or MOV, up to 300 MB; the address must return the file directly, without redirects. Ryzevo stores only the address and checks before publishing that the file has not changed. A video and images cannot be used in the same item.'}</p></div>}
             <div className="studio-form-full studio-ai-brief">
               <label>
                 {tr ? 'AI içerik briefi' : 'AI content brief'}

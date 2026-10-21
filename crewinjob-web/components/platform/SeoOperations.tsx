@@ -8,6 +8,7 @@ import { translateMessage } from '@/lib/i18n/messages';
 import { developerTask } from '@/lib/platform/seo-impact';
 import type { SeoFindingState, SeoFindingView, SeoOperationsSnapshot } from '@/lib/platform/seo-operations-types';
 import Msg from '@/components/Msg';
+import { onTabKeys } from './tab-keys';
 
 const IMPACT:Record<string,[string,string]>={high:['Olası etki: yüksek','Likely impact: high'],medium:['Olası etki: orta','Likely impact: medium'],low:['Olası etki: düşük','Likely impact: low']};
 const STATES:Record<SeoFindingState,[string,string]>={open:['Açık','Open'],fixed:['Düzeldi','Fixed'],ignored:['Yok sayıldı','Ignored']};
@@ -54,7 +55,7 @@ export default function SeoOperations({workspace,lang}:{workspace:WorkspaceConte
         {running&&<progress className="seo-ops-progress" max={scan.pages.total} value={scan.pages.done+scan.pages.failed} aria-label={tr?'Tarama ilerlemesi':'Scan progress'}/>}
       </div>}
     {running&&!data.canWrite&&<p className="coach-muted">{tr?'Tarama süreniyor; sayfa kapatılsa da arka planda tamamlanır.':'The scan is running; it finishes in the background even if this page is closed.'}</p>}
-    <div className="publication-view-tabs seo-ops-filter" role="tablist" aria-label={tr?'Bulgu durumu':'Finding state'}>
+    <div className="publication-view-tabs seo-ops-filter" role="tablist" onKeyDown={onTabKeys} aria-label={tr?'Bulgu durumu':'Finding state'}>
       {(['open','fixed','ignored'] as const).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}
     </div>
     {shown.length===0?<div className="studio-empty"><p>{filter==='open'?(scan&&!running?(tr?'Açık bulgu yok. Bu, kontrol edilen kurallarda sorun bulunmadığı anlamına gelir; indeks veya hız başarısı değildir.':'No open findings. This means the checked rules found no issue; it is not indexing or speed success.'):(tr?'Henüz açık bulgu yok.':'No open findings yet.')):filter==='fixed'?(tr?'Henüz düzelen bulgu yok. Bir bulgu, sayfası başarıyla yeniden tarandığında görünmüyorsa düzeldi sayılır.':'Nothing fixed yet. A finding counts as fixed when its page is scanned again successfully and the finding is gone.'):(tr?'Yok sayılan bulgu yok.':'No ignored findings.')}</p></div>

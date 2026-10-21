@@ -80,3 +80,30 @@ were 71/70/72 (nonblank), both visible brand images loaded. OS reduced-motion,
 actual devices and full screen-reader/contrast acceptance are still not claimed.
 Current Linux application QA image is `ryzevo-monolith:qa-release-20261018`,
 not the earlier historical image referenced above. See SAAS-RELEASE-STATUS.md.
+
+## 21 October 2026 automated audit
+
+An in-page script was run on the isolated QA fixture, in light and dark themes. It used no external library and checked:
+
+- controls and form fields without an accessible name;
+- images without alt text;
+- duplicate ids and broken ARIA references;
+- positive tabindex values;
+- heading jumps;
+- the main landmark;
+- tablists without a selected tab;
+- WCAG 2.x text contrast against the nearest opaque background.
+
+Gradient and image backgrounds were skipped as unknown.
+
+Pages: dashboard; every Campaigns view (drafts, audiences, recipients, sender, automations, prospects, ads with all three providers, messaging, WhatsApp, inbox); Analytics with the budget planner; SEO & Blog; content library with the video fields; calendar; plan; mobile.
+
+| Finding | Fix |
+| --- | --- |
+| Dashboard focus bar text 4.48:1 on the lime tile (10 px) | Text colour `#57654a`, 5.42:1 |
+| Tablists added in Phase 5 and later (budget planner, prospects, SEO findings, messaging, ads providers, inbox, data source type) kept unselected tabs at `tabIndex=-1` without arrow-key handling, so keyboard users could not reach them | Shared `onTabKeys` handler: arrow keys, Home and End move and select. The ads provider tabs stay mounted while a provider loads, so focus is kept |
+
+After the fixes the script reported no findings on these pages.
+
+This is an automated and keyboard check only. No screen reader (NVDA, JAWS, VoiceOver) or real mobile device was used, and legacy Crewin tool screens were not audited.
+

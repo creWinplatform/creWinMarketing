@@ -14,4 +14,5 @@ export type AdPlanView={
 export type AdsSnapshot={
   account:AdAccountView|null;policy:AdPolicyView|null;plans:AdPlanView[];minorUnit:number;
   plannedActiveMinor:number;launchEnabled:boolean;canWrite:boolean;canManage:boolean;canApprove:boolean;
+  provider:'meta'|'google'|'linkedin';pendingVerification:boolean;providerReady:boolean;
 };

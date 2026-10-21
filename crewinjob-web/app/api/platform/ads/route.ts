@@ -2,14 +2,15 @@ import { platformDatabase } from '@/lib/platform/database';
 import { MarketingStoreError } from '@/lib/platform/errors';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ProjectAds } from '@/lib/platform/ad-manager';
+import type { AdProvider } from '@/lib/platform/ad-providers';
 import { coachBody,coachRoute } from '../coach/shared';
 export const dynamic='force-dynamic';
 export const maxDuration=40;
 // Ad management: plans are approved, created on Meta as PAUSED and started only after a second explicit go-ahead.
 const handle=coachRoute(async(scope,request)=>{
-  const ads=new ProjectAds(platformDatabase(),scope,credentialEncryptionKey());
-  if(request.method==='GET')return ads.read();
-  const raw=await coachBody(request);
+  const pick=(value:unknown):AdProvider=>value==='google'||value==='linkedin'?value:'meta';
+  if(request.method==='GET')return new ProjectAds(platformDatabase(),scope,credentialEncryptionKey(),undefined,pick(new URL(request.url).searchParams.get('provider'))).read();
+  const raw=await coachBody(request),ads=new ProjectAds(platformDatabase(),scope,credentialEncryptionKey(),undefined,pick(raw.provider));
   if(raw.action==='connect')return ads.connect(raw);
   if(raw.action==='policy')return ads.setPolicy(raw);
   if(raw.action==='save')return ads.savePlan(raw);

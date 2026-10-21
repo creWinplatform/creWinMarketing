@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const {test}=require('node:test');
 const {load}=require('./platform-loader.cjs');
 const {coachRun,plain}=require('./coach-fixture.cjs');
-const {ProjectWhatsApp,deliverWhatsAppBatches,normalizePhone,templateParams,whatsAppGraph}=load('whatsapp.ts');
+const {ProjectWhatsApp,deliverWhatsAppBatches,normalizePhone,templateParams,whatsAppGraph,verifyWhatsAppHook,receiveWhatsAppHook}=load('whatsapp.ts');
 const {ProjectMessaging}=load('messaging-sources.ts');
 const KEY='56'.repeat(32),TOKEN='EAAFixtureWhatsAppTokenOnly_not_real';
 // Disposable Graph API: answers by path, records each call. No network is used.
@@ -84,8 +84,36 @@ test('real sends need the switch, the publish duty and consent at the moment of 
   const before=calls.length;assert.equal(await deliverWhatsAppBatches(f.db,KEY,graph),1);assert.equal(calls.length,before,'nothing was sent after the duty was taken away');
   assert.ok(f.db.prepare("SELECT COUNT(*) n FROM platform_audit WHERE operation LIKE 'whatsapp.%'").get().n>=10);
 }));
+test('per-recipient values, signed delivery receipts and STOP replies; reply text is never stored',run(async f=>{
+  const {graph,calls}=fakeGraph(),wa=await setup(f,graph),{createHmac}=require('node:crypto'),SECRET='ab'.repeat(16);process.env.PLATFORM_WHATSAPP_SEND_ENABLED='1';
+  const contacts=wa.read().contacts.slice().sort((a,b)=>a.hint.localeCompare(b.hint)),ids=contacts.map(c=>c.id);
+  assert.throws(()=>draft(wa,{overrides:{[ids[0]]:['tek']}}),/2 değişken/);
+  let batch=draft(wa,{overrides:{[ids[0]]:['Ayşe’nin kursu','']}}).batches[0];assert.deepEqual(plain(batch.overrides),{[ids[0]]:['Ayşe’nin kursu','']});
+  batch=wa.approve({id:batch.id,expectedDigest:batch.digest}).batches[0];wa.queue({id:batch.id,expectedDigest:batch.digest,mode:'send',acknowledged:true});await wa.process(batch.id);
+  const bodies=calls.filter(c=>c.path==='1234567890/messages').map(c=>c.body.template.components[0].parameters.map(p=>p.text));
+  assert.equal(bodies.filter(values=>values[0]==='Ayşe’nin kursu'&&values[1]==='3 Kasım').length,1,'one recipient got its own value, the other variable kept the batch value');assert.equal(bodies.filter(values=>values[0]==='STCW kursu').length,2);
+  assert.throws(()=>wa.setupHooks({appSecret:'short'}));
+  const setup_=wa.setupHooks({appSecret:SECRET}),hookId=setup_.snapshot.hook.callbackPath.split('/').pop();assert.match(hookId,/^[a-f0-9]{32}$/);
+  assert.doesNotMatch(JSON.stringify(f.db.prepare('SELECT * FROM platform_whatsapp_hooks').all()),new RegExp(setup_.verifyToken+'|'+SECRET),'the verify token and the app secret are not stored in clear');
+  const q=(token,mode='subscribe')=>new URLSearchParams({'hub.mode':mode,'hub.verify_token':token,'hub.challenge':'12345'});
+  assert.equal(verifyWhatsAppHook(f.db,hookId,q(setup_.verifyToken)),'12345');assert.equal(verifyWhatsAppHook(f.db,hookId,q('wrong')),null);assert.equal(verifyWhatsAppHook(f.db,'0'.repeat(32),q(setup_.verifyToken)),null);
+  const ids_=f.db.prepare("SELECT provider_message_id id,contact_id FROM platform_whatsapp_messages WHERE state='accepted'").all();
+  const sign=body=>`sha256=${createHmac('sha256',SECRET).update(body).digest('hex')}`;
+  const event=(value)=>Buffer.from(JSON.stringify({object:'whatsapp_business_account',entry:[{id:'9988776655',changes:[{field:'messages',value:{messaging_product:'whatsapp',metadata:{phone_number_id:'1234567890'},...value}}]}]}));
+  const delivered=event({statuses:[{id:ids_[0].id,status:'read',timestamp:'1760000100'},{id:ids_[0].id,status:'delivered',timestamp:'1760000050'},{id:ids_[1].id,status:'failed',timestamp:'1760000060'}]});
+  assert.throws(()=>receiveWhatsAppHook(f.db,KEY,hookId,delivered,'sha256='+'0'.repeat(64)),error=>error.status===401,'unsigned callbacks are refused');
+  assert.equal(receiveWhatsAppHook(f.db,KEY,hookId,delivered,sign(delivered)).statuses,2,'read is not downgraded by a late delivered');
+  assert.deepEqual(plain(wa.read().batches.find(b=>b.id===batch.id).delivery),{failed:1,read:1});
+  const other=event({statuses:[{id:ids_[2].id,status:'read'}]}),wrong=JSON.parse(other);wrong.entry[0].changes[0].value.metadata.phone_number_id='111';const wrongBytes=Buffer.from(JSON.stringify(wrong));
+  assert.equal(receiveWhatsAppHook(f.db,KEY,hookId,wrongBytes,sign(wrongBytes)).statuses,0,'events for another number are ignored');
+  const phone=require('node:crypto');void phone;
+  const stop=event({contacts:[{wa_id:'905321112233',profile:{name:'Private Name'}}],messages:[{from:'905321112233',id:'wamid.in1',type:'text',text:{body:'  STOP. '}}]}),chat=event({messages:[{from:'905321112234',id:'wamid.in2',type:'text',text:{body:'Merhaba, fiyat nedir?'}}]});
+  assert.equal(receiveWhatsAppHook(f.db,KEY,hookId,stop,sign(stop)).optOuts,1);assert.equal(receiveWhatsAppHook(f.db,KEY,hookId,chat,sign(chat)).optOuts,0,'other replies do not opt out');
+  const after=wa.read().contacts.find(c=>c.optedOut);assert.equal(after.optOutSource,'reply');
+  assert.doesNotMatch(JSON.stringify(f.db.prepare('SELECT * FROM platform_whatsapp_contacts').all())+JSON.stringify(f.db.prepare('SELECT * FROM platform_audit').all()),/Private Name|fiyat nedir|905321112233/,'reply text, names and numbers are not stored');
+}));
 test('schema47 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'whatsapp-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeWhatsAppSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,46);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,47);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
 }));

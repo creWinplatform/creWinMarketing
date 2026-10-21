@@ -8,6 +8,7 @@ import ProductWebhooksPanel from './ProductWebhooksPanel';
 import { localeTag } from '@/lib/i18n/shared';
 import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
+import { onTabKeys } from './tab-keys';
 
 type Job = {id:string;connectionId:string;status:string;attempts:number;message:string};
 type RecordItem = ProductPreview['samples'][number] & {receivedAt:string};
@@ -16,7 +17,7 @@ const endpoint='/api/platform/data-sources';
 const initialConfig=():ProductSourceConfig=>({url:'',auth:'bearer',itemsPath:'result.items',idPath:'id',updatedAtPath:'updatedAt',entityType:'user',attributes:[{key:'progress',path:'progress',type:'number'}],nextCursorPath:'',cursorParam:''});
 export default function ProductDataSources({lang}:{lang:Locale}) {
   const [mode,setMode]=useState<'rest'|'webhook'>('rest');
-  return <div><div className="product-data-modes" role="tablist" aria-label={lang==='tr'?'Veri kaynağı türü':'Source type'}>{(['rest','webhook'] as const).map(value=><button key={value} role="tab" aria-selected={mode===value} onClick={()=>setMode(value)}>{value==='rest'?'REST API':lang==='tr'?'İmzalı webhook':'Signed webhook'}</button>)}</div>{mode==='rest'?<RestDataSources lang={lang}/>:<ProductWebhooksPanel lang={lang}/>}</div>;
+  return <div><div className="product-data-modes" role="tablist" onKeyDown={onTabKeys} aria-label={lang==='tr'?'Veri kaynağı türü':'Source type'}>{(['rest','webhook'] as const).map(value=><button key={value} role="tab" aria-selected={mode===value} tabIndex={mode===value?0:-1} onClick={()=>setMode(value)}>{value==='rest'?'REST API':lang==='tr'?'İmzalı webhook':'Signed webhook'}</button>)}</div>{mode==='rest'?<RestDataSources lang={lang}/>:<ProductWebhooksPanel lang={lang}/>}</div>;
 }
 function RestDataSources({lang}:{lang:Locale}) {
   const tr=lang==='tr',locale=localeTag(lang),failed=tr?'İstek tamamlanamadı.':'Request failed.';

@@ -6,6 +6,7 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import type { ProspectState, ProspectsSnapshot, ProspectView } from '@/lib/platform/prospect-types';
 import Msg from '@/components/Msg';
+import { onTabKeys } from './tab-keys';
 
 const STATES:Record<ProspectState,[string,string]>={candidate:['Aday','Candidate'],approved:['Onaylı','Approved'],rejected:['Reddedildi','Rejected']};
 type Edit={id:string;revision:number;reason:string;contactRole:string;sector:string;country:string};
@@ -72,7 +73,7 @@ export default function ProjectProspects({lang}:{lang:Locale}){
       <p className="coach-muted">{tr?'Kişi adı, e-posta, telefon veya kullanıcı adı yazmayın; liste yalnız firmaları ve rolleri tutar.':'Don’t enter names, emails, phone numbers or handles; the list keeps companies and roles only.'}</p>
       <div className="coach-action-buttons"><button type="submit" className="studio-primary" disabled={Boolean(busy)}><Building2 size={15}/>{tr?'Ekle':'Add'}</button><button type="button" className="studio-text-button" onClick={()=>setAdding(false)}>{tr?'Vazgeç':'Cancel'}</button></div>
     </form>}
-    <div className="publication-view-tabs" role="tablist" aria-label={tr?'Aday durumu':'Prospect state'}>{(['candidate','approved','rejected'] as const).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}</div>
+    <div className="publication-view-tabs" role="tablist" onKeyDown={onTabKeys} aria-label={tr?'Aday durumu':'Prospect state'}>{(['candidate','approved','rejected'] as const).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}</div>
     {shown.length?<ul className="prospect-list">{shown.map(card)}</ul>:<div className="studio-empty"><p>{filter==='candidate'?(tr?'Aday yok. Hedef müşteri profilinize uyan bir firmayı ve web sitesini ekleyin.':'No candidates. Add a company that fits your target customer, with its website.'):(tr?'Bu durumda aday yok.':'No prospects in this state.')}</p></div>}
     <p className="compass-safety"><Building2 size={15}/>{tr?`Yalnız firmanın herkese açık sayfası okunur (bugün ${data.checksLeft} kontrol hakkı kaldı). AI kişi veya iletişim bilgisi üretmez; gerekçesi sayfada birebir geçen bir alıntıya dayanmak zorundadır. Bu listeden kimseye ileti gönderilmez.`:`Only the company’s public page is read (${data.checksLeft} checks left today). AI never produces people or contact details; its reason must rest on a quote that appears word for word on the page. Nothing is sent to anyone from this list.`}</p>
   </section>;

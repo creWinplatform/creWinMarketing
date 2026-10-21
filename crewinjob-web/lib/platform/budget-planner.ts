@@ -28,11 +28,11 @@ export class BudgetPlanner{
     if(!this.can('read')||this.repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Bütçe planlayıcı için standart proje erişimi gerekli.',403);
     if(!this.can(permission))throw new MarketingStoreError('Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
-  private currency(){const plan=this.db.prepare("SELECT currency FROM platform_ad_plans WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC LIMIT 1").get(...this.args()) as {currency:string}|undefined;
+  private currency(){const plan=this.db.prepare("SELECT currency FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider='meta' ORDER BY updated_at DESC LIMIT 1").get(...this.args()) as {currency:string}|undefined;
     return plan?.currency||(this.repo.workspace(this.scope.subject,...this.args())!.project.language==='en'?'USD':'TRY');}
   // Meta-reported totals across this project's ad plans: CPC = spend ÷ clicks, CTR = clicks ÷ impressions.
   private meta(currency:string){
-    const row=this.db.prepare("SELECT SUM(spend_minor) spend,SUM(clicks) clicks,SUM(impressions) impressions,MAX(spend_checked_at) at,MIN(start_date) from_,MIN(MAX(end_date),substr(MAX(spend_checked_at),1,10)) to_ FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND currency=? AND spend_checked_at IS NOT NULL AND clicks IS NOT NULL").get(...this.args(),currency) as {spend:number|null;clicks:number|null;impressions:number|null;at:string|null;from_:string|null;to_:string|null};
+    const row=this.db.prepare("SELECT SUM(spend_minor) spend,SUM(clicks) clicks,SUM(impressions) impressions,MAX(spend_checked_at) at,MIN(start_date) from_,MIN(MAX(end_date),substr(MAX(spend_checked_at),1,10)) to_ FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider='meta' AND currency=? AND spend_checked_at IS NOT NULL AND clicks IS NOT NULL").get(...this.args(),currency) as {spend:number|null;clicks:number|null;impressions:number|null;at:string|null;from_:string|null;to_:string|null};
     if(!row.at||!row.clicks)return {cpc:null,ctr:null};
     const unit=adMinorUnit(currency),base={source:'meta',from:row.from_,to:row.to_,at:row.at};
     return {cpc:{...base,value:(row.spend||0)/unit/row.clicks,label:{tr:'Meta’nın bildirdiği tıklama başı maliyet',en:'Cost per click reported by Meta'}},

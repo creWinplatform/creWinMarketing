@@ -1002,6 +1002,68 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(47,datetime('now'));
   `))();
+  // WhatsApp receipts and replies: a signed Meta webhook per number, delivery state per message, opt-outs from STOP replies,
+  // and per-recipient template values on a batch.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=48').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_whatsapp_hooks (
+      hook_id TEXT PRIMARY KEY, connection_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      verify_hash TEXT NOT NULL, secret_encrypted TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, last_event_at TEXT,
+      UNIQUE(connection_id),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    ALTER TABLE platform_whatsapp_messages ADD COLUMN delivery TEXT CHECK(delivery IN ('sent','delivered','read','failed'));
+    ALTER TABLE platform_whatsapp_messages ADD COLUMN delivery_at TEXT;
+    ALTER TABLE platform_whatsapp_contacts ADD COLUMN opt_out_source TEXT CHECK(opt_out_source IN ('team','reply'));
+    ALTER TABLE platform_whatsapp_batches ADD COLUMN overrides_json TEXT NOT NULL DEFAULT '{}';
+    CREATE INDEX platform_whatsapp_message_provider ON platform_whatsapp_messages(provider_message_id);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(48,datetime('now'));
+  `))();
+  // Google Ads and LinkedIn ads next to Meta: budget caps and plans are kept per ad provider. Existing rows stay Meta.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=49').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ad_policies_v49 (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, provider TEXT NOT NULL DEFAULT 'meta' CHECK(provider IN ('meta','google','linkedin')),
+      connection_id TEXT NOT NULL, currency TEXT NOT NULL,
+      daily_cap_minor INTEGER NOT NULL CHECK(daily_cap_minor>0), monthly_cap_minor INTEGER NOT NULL CHECK(monthly_cap_minor>0),
+      revision INTEGER NOT NULL DEFAULT 1, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,provider),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    INSERT INTO platform_ad_policies_v49(organization_id,project_id,provider,connection_id,currency,daily_cap_minor,monthly_cap_minor,revision,updated_by,updated_at)
+      SELECT organization_id,project_id,'meta',connection_id,currency,daily_cap_minor,monthly_cap_minor,revision,updated_by,updated_at FROM platform_ad_policies;
+    DROP TABLE platform_ad_policies;
+    ALTER TABLE platform_ad_policies_v49 RENAME TO platform_ad_policies;
+    ALTER TABLE platform_ad_plans ADD COLUMN provider TEXT NOT NULL DEFAULT 'meta' CHECK(provider IN ('meta','google','linkedin'));
+    INSERT INTO platform_migrations(version,applied_at) VALUES(49,datetime('now'));
+  `))();
+  // Provider-reported AI usage (token counts as the model returned them), kept next to the quota reservation.
+  // It is usage, not a bill: no price is stored here.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=50').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ai_provider_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, period TEXT NOT NULL, reservation_id TEXT,
+      provider TEXT NOT NULL, model TEXT NOT NULL, prompt_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, thinking_tokens INTEGER NOT NULL, total_tokens INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_ai_provider_usage_scope ON platform_ai_provider_usage(organization_id,project_id,period);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(50,datetime('now'));
+  `))();
+  // Social inbox: comments on the project's own published posts and Page/Instagram messages, with the team's replies.
+  // Text is stored with contact details masked; authors only as a keyed hash; a message sender id only encrypted.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=51').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_social_inbox (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('facebook','instagram','linkedin')), kind TEXT NOT NULL CHECK(kind IN ('comment','message')),
+      thread_id TEXT NOT NULL, item_id TEXT NOT NULL, publication_id TEXT, author_hash TEXT NOT NULL, recipient_encrypted TEXT,
+      text TEXT NOT NULL, received_at TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'new' CHECK(state IN ('new','replied','dismissed')),
+      reply_text TEXT NOT NULL DEFAULT '', reply_state TEXT CHECK(reply_state IN ('draft','sending','sent','rejected','uncertain')),
+      reply_id TEXT, reply_by TEXT, replied_at TEXT, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+      UNIQUE(connection_id,item_id),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_social_inbox_scope ON platform_social_inbox(organization_id,project_id,state,received_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(51,datetime('now'));
+  `))();
   return db;
 }
 

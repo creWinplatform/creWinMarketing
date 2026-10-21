@@ -10,7 +10,10 @@ Social publishing (LinkedIn, Facebook, Instagram, X) existed before this phase. 
 - ad management;
 - a budget and goal planner;
 - messaging sources with separate duties;
-- WhatsApp template sending.
+- WhatsApp template sending;
+- Google Ads and LinkedIn ads next to Meta;
+- social image, video, comment and message workflows;
+- provider-reported AI usage.
 
 All of it lives in the modular monolith and reuses existing pieces: RBAC, encrypted connections, the job queue and worker, segments, consent and suppression, campaign review, the email pilot, the social pipeline and the Calendar.
 
@@ -274,11 +277,17 @@ WhatsApp has no channel broadcast API. The Cloud API sends messages to individua
 - **Message results:** an interrupted send is recorded as uncertain and never repeated. Meta's answer is recorded as accepted (with the message id), rejected or uncertain.
 - **Cost:** Meta bills each template message by category and country. No price is stored, shown or estimated; the UI points to the WhatsApp Business billing screen.
 
+### Receipts, STOP replies and per-recipient values (schema 48)
+
+- **Webhook setup:** whoever manages connections enters the Meta app secret. Ryzevo creates a random callback path (`/api/platform/whatsapp/hooks/<32 hex>`) and a verify token. The token is shown once and stored only as a hash; the secret is stored encrypted.
+- **Middleware:** that exact path pattern is the only addition, matching the existing product-event, mobile and email-feedback hooks. Session, tenant and auth logic are unchanged.
+- **Signature:** every POST must carry a valid `X-Hub-Signature-256` for the stored secret. Events for another phone number id are ignored.
+- **Delivery states:** sent, delivered, read and failed are recorded per message. A state only moves forward; a late "delivered" never downgrades "read".
+- **Replies:** inbound text is never stored. A reply that is exactly a stop word (STOP, DUR, İPTAL, ABONELİKTEN ÇIK, UNSUBSCRIBE…) opts that number out permanently; its pending messages are skipped and the opt-out shows "by a STOP reply".
+- **Per-recipient values:** a batch can override any template variable for a selected contact; empty values keep the batch value. The overrides are part of the approved digest.
+
 ### Not done
 
-- Delivery and read receipts.
-- Inbound replies and STOP handling through webhooks: opt-outs are recorded by the team.
-- Per-recipient personalisation.
 - A real-account acceptance.
 
 ### Storage
@@ -288,12 +297,73 @@ WhatsApp has no channel broadcast API. The Cloud API sends messages to individua
 
 **Files:** `lib/platform/whatsapp.ts`, `whatsapp-types.ts`; `app/api/platform/whatsapp`; `components/platform/ProjectWhatsApp.tsx`; worker step in `app/api/platform/worker`.
 
+## 9. Google Ads and LinkedIn ads (Campaigns → Ads, schema 49)
+
+The ad manager now has a provider tab: Meta, Google Ads and LinkedIn. Each provider has its own connection, budget caps and plans; existing Meta rows stay Meta. The safety model is the same for all three: caps, approval on the exact content, objects created **PAUSED**, an explicit start behind `PLATFORM_ADS_ENABLED`, pause always allowed, spend only as the provider reports it.
+
+| | Google Ads | LinkedIn |
+|---|---|---|
+| Connect | Google sign-in with the `adwords` scope (existing Google OAuth flow), then "Verify account" reads name and currency with Ryzevo's developer token (`PLATFORM_GOOGLE_ADS_DEVELOPER_TOKEN`, optional `PLATFORM_GOOGLE_ADS_LOGIN_CUSTOMER_ID`) | Ad account id and a token with `rw_ads` |
+| Plans | Website traffic only: a Search campaign with Maximize clicks and its own daily budget | Awareness (`BRAND_AWARENESS`, `MAX_IMPRESSION`) or traffic (`WEBSITE_VISITS`, `MAX_CLICK`) text ads |
+| Created as | Budget + PAUSED campaign (`start_date_time`/`end_date_time`, API v23) + country criteria from Google's own geo list | PAUSED campaign group + PAUSED campaign; countries matched to LinkedIn's location list by name (Turkey/Türkiye both accepted) |
+| Start / pause | `campaigns:mutate` status ENABLED / PAUSED | `PARTIAL_UPDATE` status ACTIVE / PAUSED |
+| Spend | `metrics.cost_micros`, impressions, clicks | `adAnalytics` cost in local currency, impressions, clicks |
+
+- **Special ad categories:** Meta only.
+- **Unknown countries:** an unknown country is never guessed; the plan fails before anything is created.
+- **Google tokens:** refreshed and stored encrypted again before use.
+- **Creatives:** ads, keywords and creatives are added by the team in each provider's own tool.
+
+**Files:** `lib/platform/ad-providers.ts`, `ad-manager.ts`; the Google OAuth `google_ads` provider.
+
+## 10. Social formats, comments and messages
+
+### Images on LinkedIn and X
+
+- **LinkedIn (member or company page):** one image per post. The image goes up through the Images API first; that creates no post. Then `/rest/posts` is called with `content.media.id`.
+- **X:** one image per post. The one-shot `POST /2/media/upload` is used, then the post with `media.media_ids`.
+- **X permission:** new X connections ask for `media.write`. Older connections reconnect before an image post; until then the image post is blocked.
+- **Upload address:** an upload address outside linkedin.com is refused before anything is reserved.
+
+### Video (Instagram Reels and Story, Facebook Page video)
+
+- **Where the video lives:** the team hosts the file at its own https address; content items keep only that address and a format.
+- **Check when queued:** the address is checked with the SSRF-safe fetcher: no redirects, MP4 or MOV, a known size up to 300 MB.
+- **Check before posting:** the same check runs again right before the Instagram container or the Facebook post. If the file changed, the post is blocked (`media_changed`).
+- **Instagram:** `media_type=REELS` (shared to feed) or `STORIES` with `video_url`, then the existing container status polling and `media_publish`.
+- **Facebook:** `/{page}/videos` with `file_url`.
+- **Not done:** image Stories.
+
+### Inbox (Campaigns → Inbox, schema 51)
+
+- **What it reads:** comments under the project's own accepted posts of the last 30 days (Facebook, Instagram, LinkedIn company pages) and the latest inbound Messenger and Instagram message of recent conversations.
+- **X:** reading X replies needs paid search access, so X is not included.
+- **What is stored:** text with contact details masked; authors only as a keyed hash; a message sender id only encrypted, for the reply.
+- **Duties:** reading needs the reading duty, writing a reply the suggesting duty, sending the publish duty plus dispatch rights, `PLATFORM_SOCIAL_PUBLISH_ENABLED` and an acknowledgement.
+- **Replies:** a reply cannot contain contact details. Messages are answered only inside the 24-hour window. A reply is attempted once; an unclear outcome is marked uncertain and never resent.
+- **AI:** AI can suggest a reply into the text box; links, contact details and promises are refused.
+- **Limits:** 50 refreshes per project per day; items older than 90 days are deleted.
+
+**Files:** `lib/platform/social-image-publishing.ts`, `social-video.ts`, `social-inbox.ts` (+ types); changes in `social-publications.ts`, `facebook-publishing.ts`, `instagram-publishing.ts`, `x-client.ts`; `app/api/platform/inbox`; `components/platform/ProjectSocialInbox.tsx`; video fields in `ProjectDrafts.tsx`.
+
+## 11. Other additions in this round
+
+- **Messaging AI suggestions:** AI writes one original post idea into the team's text box.
+  - A draft that repeats six or more consecutive words of the source post is refused, as are contact details and banned claims.
+  - Refused answers refund the AI quota.
+- **Budget planner reference values:** LocaliQ's published all-industry averages are shown with source, update date and their limits.
+  - Search: last updated 2026-06-01. Facebook: last updated 2026-09-23.
+  - The pages state no region and no data period, and show amounts only with "$".
+  - "Include in range" widens a range to cover a value. For cost per click it works only in USD plans.
+- **Provider-reported AI usage (schema 50):** token counts returned by Gemini (input, output, thinking, total) are stored with the quota reservation of each completed AI call and shown on the plan page. They are usage, not a bill or a price.
+- **Accessibility:** all new and Phase 5 tablists support arrow keys, Home and End, and keep focus while a provider loads. A low-contrast dashboard text (4.48:1) was raised to 5.42:1.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**
-  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads`, `platform-budget-planner`, `platform-messaging` and `platform-whatsapp` `.test.cjs`;
+  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads`, `platform-budget-planner`, `platform-messaging`, `platform-whatsapp`, `platform-ad-providers`, `platform-ai-usage`, `platform-social-images`, `platform-social-video` and `platform-social-inbox` `.test.cjs`;
   - recovery and schema fixtures updated.
-- **Recovery:** `MAX_RECOVERY_SCHEMA` is 47.
+- **Recovery:** `MAX_RECOVERY_SCHEMA` is 51.
 - **Browser QA** on isolated fixtures, TR/EN, 375–1440, light/dark:
   - a real public-HTML scan of example.com, a rescan without duplicates, one work item, opportunities, and viewer read-only;
   - an automation created, activated, evaluated (21 enrolled) and rehearsed (pilot limit 3; send disabled without SES);

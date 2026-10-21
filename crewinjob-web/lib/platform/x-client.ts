@@ -16,7 +16,7 @@ export function xClient() {
     authorizationUrl(state: string, verifier: string, publishing: boolean) {
       const url = new URL('https://x.com/i/oauth2/authorize');
       url.search = new URLSearchParams({ response_type:'code', client_id:config.clientId, redirect_uri:config.redirectUri, state,
-        scope:publishing ? 'tweet.read users.read tweet.write' : 'tweet.read users.read',
+        scope:publishing ? 'tweet.read users.read tweet.write media.write' : 'tweet.read users.read',
         code_challenge:createHash('sha256').update(verifier).digest('base64url'), code_challenge_method:'S256' }).toString();
       return url.href;
     },

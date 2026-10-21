@@ -13,8 +13,10 @@ export class ProjectGoogleOAuth {
   private authorize() { new ProjectMarketingStore(this.db, this.scope).connections(); }
   async start(input: { provider: string; resource: string; accountName: string }) {
     this.authorize();
-    if (!['ga4', 'search_console'].includes(input.provider) || typeof input.resource !== 'string' || !input.resource || input.resource.length > 160 || typeof input.accountName !== 'string' || !input.accountName.trim() || input.accountName.length > 160) throw new MarketingStoreError('Google sağlayıcısı, mülk ve hesap adı gerekli.');
+    if (!['ga4', 'search_console', 'google_ads'].includes(input.provider) || typeof input.resource !== 'string' || !input.resource || input.resource.length > 160 || typeof input.accountName !== 'string' || !input.accountName.trim() || input.accountName.length > 160) throw new MarketingStoreError('Google sağlayıcısı, mülk ve hesap adı gerekli.');
     if (input.provider === 'ga4' && !/^\d{1,20}$/.test(input.resource)) throw new MarketingStoreError('GA4 Property ID sayısal olmalı.');
+    if (input.provider === 'google_ads' && !/^\d{10}$/.test(input.resource.replace(/-/g, ''))) throw new MarketingStoreError('Google Ads müşteri kimliği 10 haneli olmalı.');
+    if (input.provider === 'google_ads') input = { ...input, resource: input.resource.replace(/-/g, '') };
     if (input.provider === 'search_console' && !/^sc-domain:[a-z0-9.-]+$/i.test(input.resource)) {
       try { const url = new URL(input.resource); if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash || url.search) throw new Error(); }
       catch { throw new MarketingStoreError('Geçerli Search Console mülkü gerekli.'); }
@@ -27,7 +29,7 @@ export class ProjectGoogleOAuth {
     this.authorize();
     if (!/^[a-zA-Z0-9_-]{43}$/.test(state) || !/^[a-zA-Z0-9_-]{43}$/.test(browser) || !code || code.length > 4096) throw new MarketingStoreError('Google bağlantı isteği geçersiz.', 400);
     const requests = new OAuthRequests(this.db, this.scope, this.key);
-    const pending = requests.claim(state, browser, ['ga4', 'search_console']);
+    const pending = requests.claim(state, browser, ['ga4', 'search_console', 'google_ads']);
     try {
       const { codeVerifier } = requests.secret<{ codeVerifier: string }>(pending);
       const { tokens } = await this.clientFactory().getToken({ code, codeVerifier });

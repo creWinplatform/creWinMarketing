@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const {test}=require('node:test');
 const {load}=require('./platform-loader.cjs');
 const {coachRun,plain}=require('./coach-fixture.cjs');
-const {ProjectMessaging,readDueMessagingSources,maskPersonal,matchTopics}=load('messaging-sources.ts');
+const {ProjectMessaging,readDueMessagingSources,maskPersonal,matchTopics,copiesSource}=load('messaging-sources.ts');
 const {hasMessagingDuty}=load('messaging-duties.ts');
 const {ProjectMarketingStore}=load('marketing-store.ts');
 const {readTelegramPosts,TelegramReadError}=load('telegram-publishing.ts');
@@ -72,8 +72,22 @@ test('automatic reading runs as the person who enabled it and stops when that du
   owner.setDuty({userId:admin.subject,duty:'source.read',granted:false});assert.equal(owner.read().sources[0].autoRead,false,'taking the duty away stops automatic reading');
   assert.equal(hasMessagingDuty(f.db,admin.subject,f.scope.organizationId,f.scope.projectId,'source.read'),false);
 }));
+test('AI suggestions are original, go only to the team’s text box and refund the AI quota when refused',coachRun(async f=>{
+  setup(f);const reader=fakeReader([post(1,1,'Mersin limanında konteyner hacmi bu çeyrekte yüzde on iki arttı ve yeni rıhtım açıldı.')]),owner=new ProjectMessaging(f.db,f.scope,KEY,reader);
+  await owner.addSource({connectionId:f.bot.id,channel:'@ryzevo_news'});await owner.readNow();const target=owner.read().posts[0];
+  assert.equal(copiesSource('Bugün Mersin limanında konteyner hacmi bu çeyrekte çok arttı',target.text),true);assert.equal(copiesSource('Liman hacmi artınca lojistik planlaması nasıl değişir?',target.text),false);
+  await assert.rejects(owner.aiSuggest({id:target.id}),error=>error.status===503,'no provider, no AI');
+  const before=f.aiUsage();
+  for(const bad of ['{"post":"Mersin limanında konteyner hacmi bu çeyrekte yüzde on iki arttı!"}','{"post":"Bilgi için ali@example.com adresine yazın."}','not json'])
+    await assert.rejects(owner.aiSuggest({id:target.id},async()=>bad),error=>error.status===422||error.status===502,bad);
+  assert.equal(f.aiUsage(),before,'refused answers refund the quota');assert.equal(f.reserved(),0);
+  const prompts=[],result=await owner.aiSuggest({id:target.id},async prompt=>{prompts.push(prompt);return '{"post":"Liman hacmi artınca lojistik planlaması nasıl değişir? Müşterilerimizle bu hafta kısa bir kontrol listesi paylaşıyoruz."}';});
+  assert.match(result.suggestion,/kontrol listesi/);assert.equal(f.aiUsage(),before+1);assert.match(prompts[0],/inspiration only/);
+  assert.equal(owner.read().posts[0].state,'new','nothing is saved until a person saves it');
+  const viewer=f.member('viewer');await assert.rejects(new ProjectMessaging(f.db,viewer,KEY,reader).aiSuggest({id:target.id},async()=>'{}'),error=>error.status===403);
+}));
 test('schema46 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'messaging-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeMessagingSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,45);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,47);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_messaging_posts'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_messaging_posts'").get());db.close();
 }));

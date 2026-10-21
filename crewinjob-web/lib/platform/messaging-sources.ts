@@ -6,6 +6,8 @@ import { MarketingStoreError, ProjectMarketingStore, type MarketingScope } from 
 import { decryptCredentials, type StoredCredentials } from './credential-envelope';
 import { readTelegramPosts, readTelegramSource, TelegramReadError, type TelegramPost, type TelegramSource } from './telegram-publishing';
 import { dutyEligible, hasMessagingDuty, isProjectOwner } from './messaging-duties';
+import { COACH_BANNED, coachClip, coachObject, coachText, type CoachGenerator } from './coach';
+import { parseCoachJson, runCoachAi } from './coach-ai';
 import { MESSAGING_DUTIES, MESSAGING_LIMITS, type MessagingDuty, type MessagingPostView, type MessagingSnapshot, type MessagingTopic } from './messaging-types';
 
 export type MessagingReader={source:(token:string,channel:string)=>Promise<TelegramSource>;posts:(token:string,offset:number)=>Promise<{posts:TelegramPost[];nextOffset:number}>};
@@ -19,6 +21,12 @@ const fold=(value:string)=>value.toLocaleLowerCase('tr').normalize('NFC');
 export const matchTopics=(text:string,dictionary:MessagingTopic[])=>{const body=fold(text);return dictionary.filter(topic=>topic.terms.some(term=>body.includes(fold(term)))).map(topic=>topic.id);};
 const clean=(value:unknown,max:number)=>typeof value==='string'?value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').trim().slice(0,max):'';
 
+// True when the draft repeats six or more consecutive words of the source post (case and punctuation ignored).
+export const copiesSource=(draft:string,source:string,size=6)=>{
+  const words=(value:string)=>fold(value).replace(/[^\p{L}\p{N}\s]/gu,' ').split(/\s+/).filter(Boolean),from=words(source),grams=new Set<string>();
+  for(let i=0;i+size<=from.length;i++)grams.add(from.slice(i,i+size).join(' '));
+  const to=words(draft);for(let i=0;i+size<=to.length;i++)if(grams.has(to.slice(i,i+size).join(' ')))return true;return false;
+};
 // Messaging sources for standard projects. Reading channel posts, turning one into a content suggestion and publishing
 // are separate duties. Only channels the project's own bot was added to can be read; nothing here posts or messages anyone.
 export class ProjectMessaging{
@@ -55,7 +63,7 @@ export class ProjectMessaging{
     return {
       sources:this.sources().map(row=>({id:row.id,connectionId:row.connection_id,botName:row.bot_name,chatId:row.chat_id,title:row.title,username:row.username,autoRead:row.auto_read===1,lastReadAt:row.last_read_at,lastError:row.last_error,revision:row.revision})),
       bots:this.bots().map(({id,name,channel})=>({id,name,channel})),posts,counts:me['source.read']?counts:{new:0,suggested:0,dismissed:0},
-      dictionary:this.dictionary(),dictionaryRevision:this.settings()?.revision||0,readsLeft:Math.max(0,MESSAGING_LIMITS.readsPerDay-this.readsToday()),me,canManage,canConnect:this.repo.can(this.scope.subject,...this.args(),'connections.manage'),members,
+      dictionary:this.dictionary(),dictionaryRevision:this.settings()?.revision||0,readsLeft:Math.max(0,MESSAGING_LIMITS.readsPerDay-this.readsToday()),me,canManage,canConnect:this.repo.can(this.scope.subject,...this.args(),'connections.manage'),aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),members,
     };
   }
   // Adds a channel the bot was added to. The bot must be a member or administrator there; groups are refused.
@@ -137,6 +145,25 @@ export class ProjectMessaging{
       this.db.prepare("UPDATE platform_messaging_posts SET state='suggested',suggestion=?,content_id=?,decided_by=?,decided_at=?,revision=revision+1 WHERE id=?").run(suggestion,contentId,this.scope.subject,now,row.id);
       this.audit(raw.draft===true?'messaging.post.draft':'messaging.post.suggest');return this.read();
     }).immediate();
+  }
+  // AI writes one original post idea inspired by the topic of a source post. It is returned to the team's text box only;
+  // nothing is saved until a person saves it. Copies of the source, contact details and banned claims are refused.
+  async aiSuggest(raw:Record<string,unknown>,generator?:CoachGenerator){
+    this.authorize('suggest');if(!this.repo.can(this.scope.subject,...this.args(),'content.write'))throw new MarketingStoreError('Bu işlem için içerik yazma yetkisi gerekir.',403);
+    if(!generator)throw new MarketingStoreError('Bu platform için AI sağlayıcısı ve model henüz yapılandırılmadı.',503);
+    const row=this.post(raw.id),project=this.repo.workspace(this.scope.subject,...this.args())!.project,lang=project.language==='en'?'en':'tr';
+    const topics=JSON.parse(row.topics_json).map((id:string)=>this.dictionary().find(topic=>topic.id===id)?.label).filter(Boolean).join(', ');
+    const prompt=`You help a small team write their OWN short Telegram channel post. Write in ${lang==='tr'?'Turkish':'English'}. The team's project: ${project.name}${project.website?` (${project.website})`:''}. Brand voice: ${(project.brandVoice||'clear, practical, trustworthy').slice(0,300)}.${topics?` Topic: ${topics}.`:''}
+Below is a post from another channel, given ONLY as inspiration for the topic. Rules: do not copy or closely paraphrase its sentences; do not repeat its numbers, names or claims as facts; do not invent facts, statistics, prices, dates, people, email addresses, phone numbers or links; no guarantees or promises of results; at most 600 characters; no hashtags spam (at most 2).
+Answer only as JSON: {"post":"..."}
+Source post (inspiration only):
+"""${row.text.slice(0,2000)}"""`;
+    return runCoachAi(this.db,this.scope,generator,prompt,output=>{
+      const fail=()=>new MarketingStoreError('AI önerisi kurallara uymadı (kaynağın kopyası, kişisel bilgi veya garanti iddiası). Öneriyi kendiniz yazabilirsiniz.',422);
+      let post:string;try{post=coachClip(coachText(coachObject(parseCoachJson(output)).post,3000),MESSAGING_LIMITS.suggestion);}catch{throw fail();}
+      if(!post.trim()||copiesSource(post,row.text)||maskPersonal(post)!==post||COACH_BANNED.test(post))throw fail();
+      return post;
+    },post=>{this.authorize('suggest');this.audit('messaging.post.ai');return {suggestion:post,snapshot:this.read()};});
   }
   decide(raw:Record<string,unknown>){
     this.authorize('suggest');const state=raw.state==='dismissed'||raw.state==='new'?raw.state:null;if(!state)throw new MarketingStoreError('Geçersiz gönderi durumu.');

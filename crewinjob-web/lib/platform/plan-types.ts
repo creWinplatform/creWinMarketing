@@ -15,4 +15,6 @@ export type PlanUsage={
   resources:{resource:PlanResource;used:number;limit:number;remaining:number;kind:'monthly'|'stored';state:'available'|'near_limit'|'at_limit'|'over_limit'}[];
   monthly:{resource:MonthlyResource;reserved:number;committed:number;released:number;previousCounter:number|null;consistent:boolean}[];
   recent:{id:string;resource:MonthlyResource;status:ReservationState;createdAt:string;settledAt:string|null;needsReview:boolean}[];
+  // Token counts as the AI provider reported them for this period. Usage only: not a bill and not a price.
+  providerUsage:{provider:string;model:string;calls:number;prompt:number;output:number;thinking:number;total:number}[];
 };

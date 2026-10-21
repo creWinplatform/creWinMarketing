@@ -28,6 +28,13 @@ test('the goal solver and sensitivity explain the ranges without inventing numbe
   assert.equal(seoSensitivity({hours:1,hourlyRate:1,tools:0,pieces:0,pieceCost:0,clicks:0,growth:{low:0,high:1},conversion:{low:0.01,high:0.02}}).every(item=>item.share===0),true,'no clicks, no swing');
   assert.equal(validRange({low:2,high:1},0,10),false);assert.equal(validRange({low:0,high:1},0,1),true);
 });
+test('published reference values carry their source and date, stay in USD and only widen a range',()=>{
+  const {BENCHMARKS,BENCHMARK_SOURCES,benchmarkSource,includeValue}=load('budget-benchmarks.ts');
+  for(const item of BENCHMARKS){const source=benchmarkSource(item);assert.match(source.url,/^https:\/\/localiq\.com\/blog\//);assert.match(source.updated,/^\d{4}-\d{2}-\d{2}$/);assert.ok(['USD','ratio'].includes(item.unit));assert.ok(item.value>0&&(item.unit==='USD'||item.value<1));}
+  assert.equal(BENCHMARKS.find(item=>item.id==='search-cpc').value,5.42);assert.equal(BENCHMARKS.find(item=>item.id==='meta-leads-conversion').value,0.0854);
+  for(const source of Object.values(BENCHMARK_SOURCES))assert.match(source.scope.en,/not stated/,'the missing region and period are said, not hidden');
+  assert.deepEqual(plain(includeValue({low:3,high:4},5.42)),{low:3,high:5.42});assert.deepEqual(plain(includeValue({low:3,high:6},5.42)),{low:3,high:6},'a range that already covers the value is unchanged');
+});
 test('measured values come from this project’s records with source and period; scenarios are saved per project',coachRun(async f=>{
   f.setGoals([{id:'demo',label:{tr:'Talep',en:'Demand'},audience:{tr:'K',en:'A'},stages:[{tr:'Ziyaret',en:'Visit'},{tr:'Talep',en:'Request'},{tr:'Organik',en:'Organic'}]}]);
   let snapshot=new BudgetPlanner(f.db,f.scope).read();
@@ -60,5 +67,5 @@ test('measured values come from this project’s records with source and period;
 test('schema45 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'budget-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeBudgetSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,44);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,47);assert.ok(db.prepare('PRAGMA table_info(platform_ad_plans)').all().some(column=>column.name==='clicks'));db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);assert.ok(db.prepare('PRAGMA table_info(platform_ad_plans)').all().some(column=>column.name==='clicks'));db.close();
 }));

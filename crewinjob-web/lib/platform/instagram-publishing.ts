@@ -17,11 +17,12 @@ export const checkInstagramPublishing: PublishCheck = (token, id, credentials) =
 };
 export function instagramPermalink(value: unknown): string | null {
   if (typeof value !== 'string' || value.length > 300) return null;
-  try { const u = new URL(value); return u.protocol === 'https:' && u.hostname === 'www.instagram.com' && !u.username && !u.password && !u.port && !u.search && !u.hash && /^\/p\/[A-Za-z0-9_-]{1,100}\/$/.test(u.pathname) ? u.href : null; } catch { return null; }
+  try { const u = new URL(value); return u.protocol === 'https:' && u.hostname === 'www.instagram.com' && !u.username && !u.password && !u.port && !u.search && !u.hash && /^\/(p|reel)\/[A-Za-z0-9_-]{1,100}\/$/.test(u.pathname) ? u.href : null; } catch { return null; }
 }
 export type InstagramPublisher = {
   create: (token:string,id:string,text:string,url:string) => Promise<string>;
   createCarousel?: (token:string,id:string,text:string,urls:string[],stillValid:()=>boolean) => Promise<string>;
+  createVideo?: (token:string,id:string,text:string,url:string,format:'reel'|'story') => Promise<string>;
   status: (token:string,id:string) => Promise<string>;
   publish: (token:string,id:string,container:string,reserve:()=>boolean) => Promise<PublishResult>;
 };
@@ -37,6 +38,13 @@ async function post(token:string,id:string,edge:'media'|'media_publish',body:URL
   return {status:response.status,id:payload&&!payload.error&&instagramId(payload.id)?payload.id:null};
 }
 export const instagramPublisher: InstagramPublisher = {
+  // Reels and Stories from the team's own https video address; Meta fetches the file itself.
+  async createVideo(token,id,text,url,format){
+    const video=new URL(url);if(text.length>2200||video.protocol!=='https:'||video.username||video.password)throw new Error('Invalid Instagram video request.');
+    const body=new URLSearchParams(format==='reel'?{media_type:'REELS',video_url:video.href,caption:text,share_to_feed:'true'}:{media_type:'STORIES',video_url:video.href});
+    const result=await post(token,id,'media',body,AbortSignal.timeout(20000));
+    if(!result.id)throw new Error('Video container outcome unavailable.');return result.id;
+  },
   async createCarousel(token,id,text,urls,stillValid){
     const config=instagramPublishingConfiguration(),signal=AbortSignal.timeout(20000);
     if(text.length>2200||urls.length<2||urls.length>5)throw new Error('Invalid carousel.');

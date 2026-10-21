@@ -5,6 +5,7 @@ import type { StoredCredentials } from './credential-envelope';
 export const GOOGLE_SCOPES: Record<string, string> = {
   ga4: 'https://www.googleapis.com/auth/analytics.readonly',
   search_console: 'https://www.googleapis.com/auth/webmasters.readonly',
+  google_ads: 'https://www.googleapis.com/auth/adwords',
 };
 export function googleConfiguration() {
   const clientId = process.env.PLATFORM_GOOGLE_CLIENT_ID;

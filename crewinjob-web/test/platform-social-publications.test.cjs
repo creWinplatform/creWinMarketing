@@ -36,7 +36,9 @@ test('publication access is project-scoped and only owner/admin can approve, che
 
 test('only saved text is approved; media, unresolved variables and edited/deleted sources fail closed',()=>close(async f=>{
  const stale=f.input();f.store.saveContent({...f.content,content:'Changed after preview'},false);assert.throws(()=>f.social.enqueue(stale),e=>e.status===409);
- for(const patch of [{content:'{{firstName}}'},{imageData:'fixture-image'},{content:'x'.repeat(3001)},{content:'\x00private'}]){f.store.saveContent({...f.content,...patch},false);assert.equal(f.social.workspace().sources[0].eligible,false);assert.throws(()=>f.social.enqueue(f.input()),e=>e.status===409);}
+ for(const patch of [{content:'{{firstName}}'},{content:'x'.repeat(3001)},{content:'\x00private'}]){f.store.saveContent({...f.content,...patch},false);assert.equal(f.social.workspace().sources[0].eligible,false);assert.throws(()=>f.social.enqueue(f.input()),e=>e.status===409);}
+ // One image is a LinkedIn image post now; it still cannot be queued until the image itself has been verified.
+ f.store.saveContent({...f.content,imageData:'fixture-image'},false);assert.equal(f.social.workspace().sources[0].format,'image');assert.throws(()=>f.social.enqueue(f.input()),e=>e.status===409);
  f.store.saveContent(f.content,false);const job=f.social.enqueue(f.input());f.store.deleteContent(f.content.id);await f.social.process(job.id);assert.equal(f.social.get(job.id).state,'blocked');assert.equal(f.social.get(job.id).reason,'changed');
 }));
 

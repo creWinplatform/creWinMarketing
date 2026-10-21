@@ -84,3 +84,17 @@ export async function publishFacebookImage(token:string,accountId:string,text:st
     return !payload.error&&validFacebookPost(payload.post_id,accountId)?{state:'accepted',postId:payload.post_id}:{state:'uncertain',postId:null};
   }catch{return {state:'uncertain',postId:null};}
 }
+
+// Page video from the team's own https address (file_url). The answer is the video id; a lost answer is not retried.
+export const facebookVideoId=(id:unknown):id is string=>typeof id==='string'&&/^\d{1,30}$/.test(id);
+export async function publishFacebookVideo(token:string,accountId:string,text:string,videoUrl:string,reserve:()=>boolean):Promise<PublishResult> {
+  const {graphVersion}=facebookPublishingConfiguration();let url:URL;try{url=new URL(videoUrl);}catch{return {state:'blocked',postId:null};}
+  if(!/^\d{1,30}$/.test(accountId)||!text.trim()||text.length>3000||!token||/[\r\n\x00]/.test(token)||url.protocol!=='https:'||url.username||url.password)return {state:'blocked',postId:null};
+  if(!reserve())return {state:'blocked',postId:null};
+  try{
+    const response=await fetch(`https://graph-video.facebook.com/${graphVersion}/${accountId}/videos`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:new URLSearchParams({file_url:url.href,description:text,published:'true'}).toString(),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
+    if(!response.ok){await response.body?.cancel();return {state:[400,401,403,404,405,409,422,429].includes(response.status)?'rejected':'uncertain',postId:null};}
+    const payload=await readSocialResponse(response);
+    return !payload.error&&facebookVideoId(payload.id)?{state:'accepted',postId:payload.id}:{state:'uncertain',postId:null};
+  }catch{return {state:'uncertain',postId:null};}
+}
