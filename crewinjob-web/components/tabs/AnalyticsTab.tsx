@@ -299,13 +299,13 @@ function SmallMetric({ label, value, hint }: { label: string; value: string; hin
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4">
       <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">{label}</div>
       <div className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100 leading-none">{value}</div>
-      {hint && <div className="text-xs text-slate-400 mt-1">{hint}</div>}
+      {hint && <div className="text-xs text-slate-600 mt-1">{hint}</div>}
     </div>
   );
 }
 
 function BarList({ rows, label, color = 'bg-blue-500', lang }: { rows: BarRow[]; label: string; color?: string; lang: Lang }) {
-  if (!rows.length) return <div className="text-sm text-slate-400 py-4 text-center">{L(lang, 'Veri yok', 'No data')}</div>;
+  if (!rows.length) return <div className="text-sm text-slate-600 py-4 text-center">{L(lang, 'Veri yok', 'No data')}</div>;
   const unknown = L(lang, '(bilinmiyor)', '(unknown)');
   const max = Math.max(...rows.map(r => r.value), 1);
   return (
@@ -322,11 +322,11 @@ function BarList({ rows, label, color = 'bg-blue-500', lang }: { rows: BarRow[];
             <div className={`${color} h-1.5 rounded-full transition-all`} style={{ width: `${(r.value / max) * 100}%` }} />
           </div>
           {r.sub !== undefined && (
-            <div className="text-xs text-slate-400 mt-0.5 text-right">{fmtDur(r.sub, lang)}</div>
+            <div className="text-xs text-slate-600 mt-0.5 text-right">{fmtDur(r.sub, lang)}</div>
           )}
         </div>
       ))}
-      {rows.length > 0 && <div className="text-xs text-slate-400 pt-0.5 text-right">{label}</div>}
+      {rows.length > 0 && <div className="text-xs text-slate-600 pt-0.5 text-right">{label}</div>}
     </div>
   );
 }
@@ -345,7 +345,7 @@ function DeviceBars({ rows, lang }: { rows: BarRow[]; lang: Lang }) {
         const key = r.name.toLowerCase();
         return (
           <div key={i} className="flex items-center gap-2 text-xs">
-            <span>{DEVICE_ICONS[key] ?? '🖥️'}</span>
+            <span aria-hidden="true">{DEVICE_ICONS[key] ?? '🖥️'}</span>
             <span className="text-slate-600 dark:text-slate-400 w-20 shrink-0">{DEVICE_LABELS[key]?.[lang === 'tr' ? 0 : 1] ?? r.name}</span>
             <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-1.5 min-w-0">
               <div className={`${DEVICE_COLORS[i] ?? 'bg-slate-400'} h-1.5 rounded-full`} style={{ width: `${share}%` }} />
@@ -360,7 +360,7 @@ function DeviceBars({ rows, lang }: { rows: BarRow[]; lang: Lang }) {
 
 function AreaChart({ data, lang }: { data: DayRow[]; lang: Lang }) {
   if (data.length < 2) return (
-    <div className="h-28 flex items-center justify-center text-sm text-slate-400">{L(lang, 'Yeterli veri yok', 'Not enough data')}</div>
+    <div className="h-28 flex items-center justify-center text-sm text-slate-600">{L(lang, 'Yeterli veri yok', 'Not enough data')}</div>
   );
   const W = 700, H = 110, PX = 4, PY = 10;
   const maxVal = Math.max(...data.map(d => Math.max(d.sessions, d.users)), 1);
@@ -370,7 +370,7 @@ function AreaChart({ data, lang }: { data: DayRow[]; lang: Lang }) {
   const uPts = data.map((d, i) => `${tx(i).toFixed(1)},${ty(d.users).toFixed(1)}`).join(' ');
   const sArea = [`${tx(0).toFixed(1)},${(H - PY).toFixed(1)}`, sPts, `${tx(data.length - 1).toFixed(1)},${(H - PY).toFixed(1)}`].join(' ');
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 110 }} preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 110 }} preserveAspectRatio="none" role="img" aria-label={L(lang, 'Günlük oturum ve kullanıcı trendi', 'Daily sessions and users trend')}>
       <defs>
         <linearGradient id="ga-area-grad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.28" />
@@ -388,7 +388,7 @@ function AreaChart({ data, lang }: { data: DayRow[]; lang: Lang }) {
   );
 }
 
-function GscMiniChart({ data }: { data: { date: string; clicks: number; impressions: number }[] }) {
+function GscMiniChart({ data, lang }: { data: { date: string; clicks: number; impressions: number }[]; lang: Lang }) {
   if (data.length < 2) return null;
   const W = 700, H = 70, PX = 4, PY = 6;
   const maxC = Math.max(...data.map(d => d.clicks), 1);
@@ -400,7 +400,7 @@ function GscMiniChart({ data }: { data: { date: string; clicks: number; impressi
   const iPts = data.map((d, i) => `${tx(i).toFixed(1)},${tyI(d.impressions).toFixed(1)}`).join(' ');
   const cArea = [`${tx(0).toFixed(1)},${(H - PY).toFixed(1)}`, cPts, `${tx(data.length-1).toFixed(1)},${(H-PY).toFixed(1)}`].join(' ');
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 70 }} preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 70 }} preserveAspectRatio="none" role="img" aria-label={L(lang, 'Organik tıklama ve gösterim trendi', 'Organic clicks and impressions trend')}>
       <defs>
         <linearGradient id="gsc-grad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#f97316" stopOpacity="0.25" />
@@ -415,12 +415,12 @@ function GscMiniChart({ data }: { data: { date: string; clicks: number; impressi
 }
 
 function QueryTable({ rows, lang }: { rows: ReturnType<typeof parseGscRows>; lang: Lang }) {
-  if (!rows.length) return <div className="text-sm text-slate-400 py-4 text-center">{L(lang, 'Veri yok', 'No data')}</div>;
+  if (!rows.length) return <div className="text-sm text-slate-600 py-4 text-center">{L(lang, 'Veri yok', 'No data')}</div>;
   return (
     <div className="overflow-x-auto -mx-1">
       <table className="w-full text-xs">
         <thead>
-          <tr className="text-slate-400 border-b border-slate-100 dark:border-slate-700">
+          <tr className="text-slate-600 border-b border-slate-100 dark:border-slate-700">
             <th className="text-left py-2 px-1 font-medium">{L(lang, 'Arama sorgusu', 'Search query')}</th>
             <th className="text-right py-2 px-1 font-medium">{L(lang, 'Tıklama', 'Clicks')}</th>
             <th className="text-right py-2 px-1 font-medium">{L(lang, 'Gösterim', 'Impressions')}</th>
@@ -449,7 +449,7 @@ function QueryTable({ rows, lang }: { rows: ReturnType<typeof parseGscRows>; lan
 }
 
 function PageClickList({ rows, lang }: { rows: ReturnType<typeof parseGscRows>; lang: Lang }) {
-  if (!rows.length) return <div className="text-sm text-slate-400 py-4 text-center">{L(lang, 'Veri yok', 'No data')}</div>;
+  if (!rows.length) return <div className="text-sm text-slate-600 py-4 text-center">{L(lang, 'Veri yok', 'No data')}</div>;
   const max = Math.max(...rows.map(r => r.clicks), 1);
   return (
     <div className="space-y-2.5">
@@ -464,7 +464,7 @@ function PageClickList({ rows, lang }: { rows: ReturnType<typeof parseGscRows>; 
           </div>
         </div>
       ))}
-      <div className="text-xs text-slate-400 pt-0.5 text-right">{L(lang, 'tıklama', 'clicks')}</div>
+      <div className="text-xs text-slate-600 pt-0.5 text-right">{L(lang, 'tıklama', 'clicks')}</div>
     </div>
   );
 }
@@ -544,14 +544,14 @@ function GrowthReports({
       </div>
 
       {waitingForBackend && !loading && (
-        <div className="border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 rounded-lg">
+        <div role="status" className="border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-300 rounded-lg">
           {L(lang,
             'Crewin edinim ve aktivasyon raporları backend yayını tamamlandığında bu bölüm otomatik dolacak. GA4 UTM performansı çalışmaya devam ediyor.',
             'This section fills in once the Crewin acquisition and activation reports are live on the backend. GA4 UTM performance keeps working.')}
         </div>
       )}
       {error && !loading && (
-        <div className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300 rounded-lg"><Msg text={error} /></div>
+        <div role="alert" className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-4 py-3 text-sm text-red-700 dark:text-red-300 rounded-lg"><Msg text={error} /></div>
       )}
 
       {summary && acquisition?.available && (
@@ -592,7 +592,7 @@ function GrowthReports({
       {rows.length > 0 && (
         <div className="overflow-x-auto border-y border-slate-200 dark:border-slate-700">
           <table className="w-full text-sm">
-            <thead><tr className="text-left text-xs text-slate-400"><th className="py-2 px-2">{L(lang, 'Ülke', 'Country')}</th><th className="py-2 px-2">{L(lang, 'Kaynak / Medium', 'Source / Medium')}</th><th className="py-2 px-2">{L(lang, 'Kampanya', 'Campaign')}</th><th className="py-2 px-2 text-right">{L(lang, 'Kayıt', 'Registrations')}</th><th className="py-2 px-2 text-right">{L(lang, 'Aktive', 'Activated')}</th><th className="py-2 px-2 text-right">{L(lang, 'Oran', 'Rate')}</th></tr></thead>
+            <thead><tr className="text-left text-xs text-slate-600"><th className="py-2 px-2">{L(lang, 'Ülke', 'Country')}</th><th className="py-2 px-2">{L(lang, 'Kaynak / Medium', 'Source / Medium')}</th><th className="py-2 px-2">{L(lang, 'Kampanya', 'Campaign')}</th><th className="py-2 px-2 text-right">{L(lang, 'Kayıt', 'Registrations')}</th><th className="py-2 px-2 text-right">{L(lang, 'Aktive', 'Activated')}</th><th className="py-2 px-2 text-right">{L(lang, 'Oran', 'Rate')}</th></tr></thead>
             <tbody>{rows.map((row, index) => <tr key={`${row.countryCode || ''}-${row.source || ''}-${row.campaignId || row.campaign || index}`} className="border-t border-slate-100 dark:border-slate-800"><td className="py-2 px-2 text-slate-700 dark:text-slate-200">{row.countryName || row.countryCode || L(lang, 'Bilinmiyor', 'Unknown')}</td><td className="py-2 px-2 text-slate-600 dark:text-slate-300">{row.source || '(direct)'} / {row.medium || '(none)'}</td><td className="py-2 px-2 text-slate-600 dark:text-slate-300">{row.campaign || row.campaignId || '-'}</td><td className="py-2 px-2 text-right">{fmt(row.registrations || 0, lang)}</td><td className="py-2 px-2 text-right">{fmt(row.activatedSeafarers || 0, lang)}</td><td className="py-2 px-2 text-right">{pct(Number(row.activationRate || 0), lang)}</td></tr>)}</tbody>
           </table>
         </div>
@@ -603,7 +603,7 @@ function GrowthReports({
           <div className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">{L(lang, 'Aktivasyon trendi', 'Activation trend')}</div>
           <div className="overflow-x-auto border-y border-slate-200 dark:border-slate-700">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-slate-400"><th className="py-2 px-2">{L(lang, 'Tarih', 'Date')}</th><th className="py-2 px-2 text-right">{L(lang, 'Kayıt', 'Registrations')}</th>{hasStartedProfiles && <th className="py-2 px-2 text-right">{L(lang, 'Profil başlatan', 'Started profiles')}</th>}<th className="py-2 px-2 text-right">{L(lang, 'Aktive', 'Activated')}</th><th className="py-2 px-2 text-right">{L(lang, 'Oran', 'Rate')}</th></tr></thead>
+              <thead><tr className="text-left text-xs text-slate-600"><th className="py-2 px-2">{L(lang, 'Tarih', 'Date')}</th><th className="py-2 px-2 text-right">{L(lang, 'Kayıt', 'Registrations')}</th>{hasStartedProfiles && <th className="py-2 px-2 text-right">{L(lang, 'Profil başlatan', 'Started profiles')}</th>}<th className="py-2 px-2 text-right">{L(lang, 'Aktive', 'Activated')}</th><th className="py-2 px-2 text-right">{L(lang, 'Oran', 'Rate')}</th></tr></thead>
               <tbody>{trendRows.map((row, index) => <tr key={row.date || row.day || index} className="border-t border-slate-100 dark:border-slate-800"><td className="py-2 px-2 text-slate-700 dark:text-slate-200">{fmtDate(row.date || row.day, lang)}</td><td className="py-2 px-2 text-right">{fmtOptional(row.registrations, lang)}</td>{hasStartedProfiles && <td className="py-2 px-2 text-right">{fmtOptional(row.startedProfiles, lang)}</td>}<td className="py-2 px-2 text-right">{fmtOptional(row.activatedSeafarers, lang)}</td><td className="py-2 px-2 text-right">{pctOptional(row.activationRate, lang)}</td></tr>)}</tbody>
             </table>
           </div>
@@ -706,11 +706,11 @@ export default function AnalyticsTab() {
 
   const Header = (
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">📊 {L(lang, 'crewinjob.com analitik', 'crewinjob.com analytics')}</h2>
+      <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100"><span aria-hidden="true">📊</span> {L(lang, 'crewinjob.com analitik', 'crewinjob.com analytics')}</h2>
       <div className="flex items-center gap-2">
         <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
           {RANGES.map(({ key, label }) => (
-            <button key={key} onClick={() => { const next = rangeFilters(key); setRange(key); setGrowthFilters(next); setAppliedGrowthFilters(next); }} disabled={loading}
+            <button key={key} onClick={() => { const next = rangeFilters(key); setRange(key); setGrowthFilters(next); setAppliedGrowthFilters(next); }} disabled={loading} aria-pressed={range === key}
               className={`px-3 py-1.5 font-medium transition-colors disabled:cursor-wait ${
                 range === key
                   ? 'bg-blue-600 text-white'
@@ -720,8 +720,9 @@ export default function AnalyticsTab() {
           ))}
         </div>
         <button onClick={() => { loadGa4(range); loadGsc(range); loadGrowth(appliedGrowthFilters); }} disabled={loading || gscLoading || growthLoading}
+          aria-label={data?.fetchedAt && !loading ? `${L(lang, 'Yenile', 'Refresh')} · ${fmtTime(data.fetchedAt, lang)}` : undefined}
           className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors">
-          {(loading || gscLoading || growthLoading) ? <Spinner size={3} /> : <span>↻</span>}
+          {(loading || gscLoading || growthLoading) ? <Spinner size={3} /> : <span aria-hidden="true">↻</span>}
           {data?.fetchedAt && !loading ? fmtTime(data.fetchedAt, lang) : L(lang, 'Yenile', 'Refresh')}
         </button>
       </div>
@@ -734,7 +735,7 @@ export default function AnalyticsTab() {
     <div className="space-y-6">
       {Header}
       {growthReports}
-      <div className="flex items-center gap-3 text-slate-400 py-8">
+      <div className="flex items-center gap-3 text-slate-600 py-8">
         <Spinner size={5} /> {L(lang, 'GA4 verileri yükleniyor…', 'Loading GA4 data…')}
       </div>
     </div>
@@ -762,8 +763,8 @@ export default function AnalyticsTab() {
     <div className="space-y-4">
       {Header}
       {growthReports}
-      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-sm text-red-700 dark:text-red-300 flex items-center gap-3">
-        <span>❌ <Msg text={errorText(error, 'Bilinmeyen hata', 'Unknown error')} /></span>
+      <div role="alert" className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-sm text-red-700 dark:text-red-300 flex items-center gap-3">
+        <span><span aria-hidden="true">❌</span> <Msg text={errorText(error, 'Bilinmeyen hata', 'Unknown error')} /></span>
         <button onClick={() => loadGa4(range)} className="underline shrink-0">{L(lang, 'Tekrar dene', 'Retry')}</button>
       </div>
     </div>
@@ -809,17 +810,17 @@ export default function AnalyticsTab() {
             <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'Günlük trend', 'Daily trend')}</div>
             <div className="flex items-center gap-4 text-xs text-slate-500">
               <span className="flex items-center gap-1.5">
-                <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#3b82f6" strokeWidth="2" /></svg>
+                <svg width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" stroke="#3b82f6" strokeWidth="2" /></svg>
                 {L(lang, 'Oturum', 'Sessions')}
               </span>
               <span className="flex items-center gap-1.5">
-                <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#22c55e" strokeWidth="1.5" strokeDasharray="5 3" /></svg>
+                <svg width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" stroke="#22c55e" strokeWidth="1.5" strokeDasharray="5 3" /></svg>
                 {L(lang, 'Kullanıcı', 'Users')}
               </span>
             </div>
           </div>
           <AreaChart data={trend} lang={lang} />
-          <div className="flex justify-between text-xs text-slate-400 mt-2">
+          <div className="flex justify-between text-xs text-slate-600 mt-2">
             <span>{fmtDate(trend[0]?.date, lang)}</span><span>{fmtDate(trend[trend.length - 1]?.date, lang)}</span>
           </div>
         </div>
@@ -861,11 +862,11 @@ export default function AnalyticsTab() {
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
           <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
             <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'UTM kampanya performansı', 'UTM campaign performance')}</div>
-            <span className="text-xs text-slate-400">{L(lang, 'Oturum · aktif kullanıcı', 'Sessions · active users')}</span>
+            <span className="text-xs text-slate-600">{L(lang, 'Oturum · aktif kullanıcı', 'Sessions · active users')}</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-slate-400 border-b border-slate-100 dark:border-slate-700"><th className="py-2">{L(lang, 'Kampanya', 'Campaign')}</th><th className="py-2 text-right">{L(lang, 'Oturum', 'Sessions')}</th><th className="py-2 text-right">{L(lang, 'Aktif kullanıcı', 'Active users')}</th></tr></thead>
+              <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-100 dark:border-slate-700"><th className="py-2">{L(lang, 'Kampanya', 'Campaign')}</th><th className="py-2 text-right">{L(lang, 'Oturum', 'Sessions')}</th><th className="py-2 text-right">{L(lang, 'Aktif kullanıcı', 'Active users')}</th></tr></thead>
               <tbody>{campaignRows.map(row => <tr key={row.name} className="border-b border-slate-50 dark:border-slate-800"><td className="py-2 text-slate-700 dark:text-slate-200 font-medium">{row.name}</td><td className="py-2 text-right text-slate-600 dark:text-slate-300">{fmt(row.value, lang)}</td><td className="py-2 text-right text-slate-500">{fmt(row.sub || 0, lang)}</td></tr>)}</tbody>
             </table>
           </div>
@@ -877,7 +878,7 @@ export default function AnalyticsTab() {
       {/* ── Search Console section ─────────────────────────────────────────── */}
       <div className="border-t border-slate-200 dark:border-slate-700 pt-5">
         <div className="flex items-center gap-3 mb-4">
-          <div className="text-base font-bold text-slate-900 dark:text-slate-100">🔍 {L(lang, 'Organik arama (Search Console)', 'Organic search (Search Console)')}</div>
+          <div className="text-base font-bold text-slate-900 dark:text-slate-100"><span aria-hidden="true">🔍</span> {L(lang, 'Organik arama (Search Console)', 'Organic search (Search Console)')}</div>
           {gscLoading && <Spinner size={3} />}
           {gscData?.notConfigured && (
             <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2 py-0.5 rounded-full">
@@ -885,7 +886,7 @@ export default function AnalyticsTab() {
             </span>
           )}
           {gscError && !gscLoading && (
-            <span className="text-xs text-red-600 dark:text-red-400"><Msg text={errorText(gscError, 'GSC hatası', 'GSC error')} /></span>
+            <span role="alert" className="text-xs text-red-600 dark:text-red-400"><Msg text={errorText(gscError, 'GSC hatası', 'GSC error')} /></span>
           )}
         </div>
 
@@ -906,17 +907,17 @@ export default function AnalyticsTab() {
                   <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">{L(lang, 'Organik tıklama trendi', 'Organic click trend')}</div>
                   <div className="flex items-center gap-4 text-xs text-slate-500">
                     <span className="flex items-center gap-1.5">
-                      <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#f97316" strokeWidth="2" /></svg>
+                      <svg width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" stroke="#f97316" strokeWidth="2" /></svg>
                       {L(lang, 'Tıklama', 'Clicks')}
                     </span>
                     <span className="flex items-center gap-1.5">
-                      <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="#94a3b8" strokeWidth="1" strokeDasharray="4 3" /></svg>
+                      <svg width="16" height="8" aria-hidden="true"><line x1="0" y1="4" x2="16" y2="4" stroke="#94a3b8" strokeWidth="1" strokeDasharray="4 3" /></svg>
                       {L(lang, 'Gösterim', 'Impressions')}
                     </span>
                   </div>
                 </div>
-                <GscMiniChart data={gscDaily} />
-                <div className="flex justify-between text-xs text-slate-400 mt-1">
+                <GscMiniChart data={gscDaily} lang={lang} />
+                <div className="flex justify-between text-xs text-slate-600 mt-1">
                   <span>{fmtDate(gscDaily[0]?.date, lang)}</span><span>{fmtDate(gscDaily[gscDaily.length-1]?.date, lang)}</span>
                 </div>
               </div>
@@ -937,13 +938,13 @@ export default function AnalyticsTab() {
         )}
 
         {!gscOv && !gscLoading && !gscData?.notConfigured && !gscError && (
-          <div className="text-sm text-slate-400 py-4 text-center">{L(lang, 'Search Console verisi bulunamadı', 'No Search Console data found')}</div>
+          <div className="text-sm text-slate-600 py-4 text-center">{L(lang, 'Search Console verisi bulunamadı', 'No Search Console data found')}</div>
         )}
       </div>
 
       {/* Footer */}
       {data?.fetchedAt && (
-        <div className="text-xs text-slate-400 text-right">
+        <div className="text-xs text-slate-600 text-right">
           {L(lang, 'Son güncelleme', 'Last updated')}: {new Date(data.fetchedAt).toLocaleString(localeOf(lang))} · {RANGES.find(r => r.key === range)?.label} {L(lang, 'verisi', 'of data')}
         </div>
       )}

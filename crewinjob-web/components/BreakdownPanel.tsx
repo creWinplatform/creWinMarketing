@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useId } from 'react';
 import type { BreakdownItem, BreakdownData, CompanyItem, CompaniesResponse } from '@/lib/types';
 import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
@@ -18,9 +18,9 @@ function BarRow({ item, rank, max, color, lang }: {
   const pct = max > 0 ? Math.max((item.count / max) * 100, item.count > 0 ? 1.5 : 0) : 0;
   return (
     <div className="flex items-center gap-2 group">
-      <span className="w-5 text-right text-[11px] text-slate-400 dark:text-slate-500 font-mono shrink-0">{rank}</span>
+      <span className="w-5 text-right text-[11px] text-slate-600 dark:text-slate-400 font-mono shrink-0">{rank}</span>
       <div className="w-36 shrink-0 flex items-center gap-1.5 overflow-hidden">
-        {item.code && <span className="shrink-0 text-sm">{flag(item.code)}</span>}
+        {item.code && <span className="shrink-0 text-sm" aria-hidden="true">{flag(item.code)}</span>}
         <span className="text-xs text-slate-700 dark:text-slate-200 truncate font-medium" title={item.name}>
           {item.name}
         </span>
@@ -38,13 +38,15 @@ function BarRow({ item, rank, max, color, lang }: {
 function CountInput({ label, value, onChange }: {
   label: string; value: number; onChange: (n: number) => void;
 }) {
+  const id = useId();
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
+      <label htmlFor={id} className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</label>
       <input
+        id={id}
         type="number" min={1} max={50} value={value}
         onChange={e => onChange(Math.max(1, Math.min(50, parseInt(e.target.value, 10) || 1)))}
-        className="w-14 text-xs text-center border border-slate-200 dark:border-slate-600 rounded-lg py-1 px-1.5 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40"
+        className="w-14 text-xs text-center border border-slate-200 dark:border-slate-600 rounded-lg py-1 px-1.5 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 focus-visible:ring-ocean"
       />
     </div>
   );
@@ -72,10 +74,10 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
       <div className="bg-slate-50 dark:bg-slate-700/50 px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-lg">{icon}</span>
+          <span className="text-lg" aria-hidden="true">{icon}</span>
           <div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{title}</p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
               {items.length} {lang === 'tr' ? 'kayıt · toplam' : 'records · total'} {total.toLocaleString(localeTag(lang))} {lang === 'tr' ? 'gemi adamı' : 'seafarers'}
             </p>
           </div>
@@ -83,11 +85,12 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
         <div className="flex items-center gap-3 flex-wrap">
           <CountInput label={lang === 'tr' ? 'Göster:' : 'Show:'} value={count} onChange={onCountChange} />
           <div className="relative">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]">🔍</span>
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600 text-[11px]" aria-hidden="true">🔍</span>
             <input
               type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder={lang === 'tr' ? 'Ara…' : 'Search…'}
-              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 w-28 placeholder:text-slate-400"
+              aria-label={lang === 'tr' ? 'Ara' : 'Search'}
+              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 focus-visible:ring-ocean w-28 placeholder:text-slate-500"
             />
           </div>
         </div>
@@ -95,12 +98,12 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
 
       <div className="p-4 flex flex-col gap-2 flex-1">
         {items.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 gap-2 text-slate-400 dark:text-slate-500">
-            <span className="text-3xl opacity-20">📭</span>
+          <div className="flex flex-col items-center justify-center py-10 gap-2 text-slate-600 dark:text-slate-400">
+            <span className="text-3xl opacity-20" aria-hidden="true">📭</span>
             <p className="text-xs text-center">{emptyMsg}</p>
           </div>
         ) : filtered.length === 0 ? (
-          <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-6">&ldquo;{search}&rdquo; {lang === 'tr' ? 'için sonuç yok.' : 'returned no results.'}</p>
+          <p className="text-xs text-slate-600 dark:text-slate-400 text-center py-6">&ldquo;{search}&rdquo; {lang === 'tr' ? 'için sonuç yok.' : 'returned no results.'}</p>
         ) : (
           visible.map((item, idx) => (
             <BarRow key={item.id} item={item} rank={idx + 1} max={maxCount} color={color} lang={lang} />
@@ -111,7 +114,9 @@ function BreakdownSection({ title, icon, items, color, emptyMsg, count, onCountC
       {filtered.length > PAGE && (
         <div className="px-4 pb-4">
           <button
+            type="button"
             onClick={() => setShowAll(v => !v)}
+            aria-expanded={showAll}
             className="w-full text-xs text-ocean hover:text-ocean-dark font-medium py-2 rounded-lg border border-ocean/30 hover:border-ocean/60 transition-colors"
           >
             {showAll
@@ -130,11 +135,11 @@ function CompanyRow({ item, rank, lang }: { item: CompanyItem; rank: number; lan
     : '–';
   return (
     <div className="flex items-center gap-3 py-2 border-b border-slate-50 dark:border-slate-700/50 last:border-0 group">
-      <span className="w-6 text-center text-[11px] text-slate-400 font-mono shrink-0">{rank}</span>
-      <div className="w-5 shrink-0 text-base">{flag(item.countryCode) || '🏢'}</div>
+      <span className="w-6 text-center text-[11px] text-slate-600 font-mono shrink-0">{rank}</span>
+      <div className="w-5 shrink-0 text-base" aria-hidden="true">{flag(item.countryCode) || '🏢'}</div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold text-slate-800 dark:text-slate-100 truncate" title={item.name}>{item.name}</p>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">
+        <p className="text-[10px] text-slate-600 dark:text-slate-400 truncate">
           {item.country}{item.type ? ` · ${item.type}` : ''}
         </p>
       </div>
@@ -143,7 +148,7 @@ function CompanyRow({ item, rank, lang }: { item: CompanyItem; rank: number; lan
           {item.crewCount} {lang === 'tr' ? 'mür.' : 'crew'}
         </span>
       )}
-      <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 tabular-nums">{date}</span>
+      <span className="text-[10px] text-slate-600 dark:text-slate-400 shrink-0 tabular-nums">{date}</span>
     </div>
   );
 }
@@ -169,12 +174,12 @@ function CompaniesSection({ data, loading, count, onCountChange, lang }: {
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col">
       <div className="bg-slate-50 dark:bg-slate-700/50 px-5 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="text-lg">🏢</span>
+          <span className="text-lg" aria-hidden="true">🏢</span>
           <div>
             <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {lang === 'tr' ? 'Son Kayıt Olan Firmalar' : 'Recently registered companies'}
             </p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
               GetLastRegisteredCompanies · {data?.companies?.length ?? 0} {lang === 'tr' ? 'firma' : 'companies'}
             </p>
           </div>
@@ -182,11 +187,12 @@ function CompaniesSection({ data, loading, count, onCountChange, lang }: {
         <div className="flex items-center gap-3 flex-wrap">
           <CountInput label={lang === 'tr' ? 'Göster:' : 'Show:'} value={count} onChange={onCountChange} />
           <div className="relative">
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-[11px]">🔍</span>
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600 text-[11px]" aria-hidden="true">🔍</span>
             <input
               type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder={lang === 'tr' ? 'Ara…' : 'Search…'}
-              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 w-28 placeholder:text-slate-400"
+              aria-label={lang === 'tr' ? 'Ara' : 'Search'}
+              className="pl-7 pr-3 py-1.5 text-xs border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/40 focus-visible:ring-ocean w-28 placeholder:text-slate-500"
             />
           </div>
         </div>
@@ -194,19 +200,19 @@ function CompaniesSection({ data, loading, count, onCountChange, lang }: {
 
       <div className="px-5 py-3 flex-1">
         {loading ? (
-          <div className="flex items-center gap-2 py-6 text-slate-400 text-xs">
+          <div className="flex items-center gap-2 py-6 text-slate-600 text-xs">
             <div className="w-4 h-4 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
             {lang === 'tr' ? 'Firmalar yükleniyor…' : 'Loading companies…'}
           </div>
         ) : !data || data.companies.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-8 gap-2 text-slate-400 dark:text-slate-500">
-            <span className="text-3xl opacity-20">📭</span>
+          <div className="flex flex-col items-center justify-center py-8 gap-2 text-slate-600 dark:text-slate-400">
+            <span className="text-3xl opacity-20" aria-hidden="true">📭</span>
             <p className="text-xs text-center">
               {lang === 'tr' ? 'GetLastRegisteredCompanies veri döndürmedi' : 'GetLastRegisteredCompanies returned no data'}
             </p>
           </div>
         ) : filtered.length === 0 ? (
-          <p className="text-xs text-slate-400 text-center py-6">&ldquo;{search}&rdquo; {lang === 'tr' ? 'için sonuç yok.' : 'returned no results.'}</p>
+          <p className="text-xs text-slate-600 text-center py-6">&ldquo;{search}&rdquo; {lang === 'tr' ? 'için sonuç yok.' : 'returned no results.'}</p>
         ) : (
           <div>
             {filtered.map((c, i) => (
@@ -287,11 +293,13 @@ export default function BreakdownPanel() {
   return (
     <div className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
       <button
+        type="button"
         onClick={() => setOpen(v => !v)}
+        aria-expanded={open}
         className="w-full flex items-center justify-between px-6 py-3 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
       >
         <div className="flex items-center gap-2 flex-wrap">
-          <span>📊</span>
+          <span aria-hidden="true">📊</span>
           <span>{lang === 'tr' ? 'Ülke & Pozisyon & Firma Dağılımı' : 'Country, position & company distribution'}</span>
           {data && !loading && (
             <>
@@ -302,28 +310,28 @@ export default function BreakdownPanel() {
               }`}>
                 {data.source === 'api' ? (lang === 'tr' ? '● Gerçek API' : '● Live API') : (lang === 'tr' ? '◐ Örnek veri' : '◐ Mock data')}
               </span>
-              <span className="text-xs text-slate-400 dark:text-slate-500">
+              <span className="text-xs text-slate-600 dark:text-slate-400">
                 {data.countries.length} {lang === 'tr' ? 'ülke' : 'countries'} · {data.positions.length} {lang === 'tr' ? 'pozisyon' : 'positions'}
                 {compData ? ` · ${compData.companies.length} ${lang === 'tr' ? 'firma' : 'companies'}` : ''}
               </span>
             </>
           )}
         </div>
-        <span className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
+        <span aria-hidden="true" className={`text-slate-600 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>▼</span>
       </button>
 
       {open && (
         <div className="px-6 pb-6 pt-1">
           {loading && (
-            <div className="flex items-center gap-3 py-8 text-slate-400 dark:text-slate-500 text-sm">
+            <div className="flex items-center gap-3 py-8 text-slate-600 dark:text-slate-400 text-sm">
               <div className="w-5 h-5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
               {lang === 'tr' ? 'Veriler yükleniyor…' : 'Loading data…'}
             </div>
           )}
 
           {data?.error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-red-700 dark:text-red-300 text-sm flex gap-2 mb-4">
-              <span>❌</span>
+            <div role="alert" className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-red-700 dark:text-red-300 text-sm flex gap-2 mb-4">
+              <span aria-hidden="true">❌</span>
               <div>
                 <p className="font-semibold">{lang === 'tr' ? 'Veri çekilemedi' : "Couldn't load data"}</p>
                 <p className="text-xs mt-0.5 opacity-80"><Msg text={data.error} /></p>
@@ -334,12 +342,12 @@ export default function BreakdownPanel() {
           {data && !loading && (
             <>
               <div className="flex items-center justify-between mb-4">
-                <p className="text-xs text-slate-400 dark:text-slate-500">
+                <p className="text-xs text-slate-600 dark:text-slate-400">
                   {data.source === 'api' && data.fetchedAt
                     ? `api.crewin.org · ${new Date(data.fetchedAt).toLocaleString(localeTag(lang))}`
                     : (lang === 'tr' ? 'Mock veri — CREWINJOB_API_KEY eksik' : 'Mock data — CREWINJOB_API_KEY missing')}
                 </p>
-                <button onClick={refresh} className="text-xs text-ocean hover:text-ocean-dark font-medium flex items-center gap-1 transition-colors">
+                <button type="button" onClick={refresh} className="text-xs text-ocean hover:text-ocean-dark font-medium flex items-center gap-1 transition-colors">
                   🔄 {lang === 'tr' ? 'Yenile' : 'Refresh'}
                 </button>
               </div>

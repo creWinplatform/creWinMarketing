@@ -1,6 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import OutputPanel from '../OutputPanel';
+import { onTabKeys } from '@/components/platform/tab-keys';
 import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
 import { translateMessage } from '@/lib/i18n/messages';
@@ -26,6 +27,7 @@ export default function GrowthTab() {
   const [output,     setOutput]     = useState('');
   const [loading,    setLoading]    = useState(false);
   const [error,      setError]      = useState('');
+  const fieldId = useId();
 
   const generate = async () => {
     setLoading(true);
@@ -64,13 +66,16 @@ export default function GrowthTab() {
           </p>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="tablist" aria-label={lang === 'tr' ? 'İçerik türü' : 'Content type'} onKeyDown={onTabKeys}>
           {([
             { id: 'registration', label: lang === 'tr' ? '🎯 Kayıt içeriği' : '🎯 Registration content' },
             { id: 'tiktok', label: lang === 'tr' ? '🎵 TikTok scripti' : '🎵 TikTok script' },
           ] as { id: SubTab; label: string }[]).map(t => (
             <button
               key={t.id}
+              role="tab"
+              aria-selected={subTab === t.id}
+              tabIndex={subTab === t.id ? 0 : -1}
               onClick={() => { setSubTab(t.id); setOutput(''); setError(''); }}
               className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                 subTab === t.id
@@ -85,10 +90,11 @@ export default function GrowthTab() {
 
         {subTab === 'registration' && (
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            <label htmlFor={`${fieldId}-platform`} className="text-sm font-medium text-slate-700 dark:text-slate-200">
               Platform
             </label>
             <select
+              id={`${fieldId}-platform`}
               value={platform}
               onChange={e => setPlatform(e.target.value)}
               className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean"
@@ -105,10 +111,11 @@ export default function GrowthTab() {
 
         {subTab === 'tiktok' && (
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            <label htmlFor={`${fieldId}-script`} className="text-sm font-medium text-slate-700 dark:text-slate-200">
               {lang === 'tr' ? 'Script tipi' : 'Script type'}
             </label>
             <select
+              id={`${fieldId}-script`}
               value={tiktokType}
               onChange={e => setTiktokType(e.target.value)}
               className="w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean"
@@ -124,8 +131,8 @@ export default function GrowthTab() {
         )}
 
         {/* Content language */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+        <div className="flex flex-col gap-1.5" role="group" aria-labelledby={`${fieldId}-language`}>
+          <label id={`${fieldId}-language`} className="text-sm font-medium text-slate-700 dark:text-slate-200">
             {lang === 'tr' ? 'İçerik dili' : 'Content language'}
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -136,13 +143,14 @@ export default function GrowthTab() {
               <button
                 key={l.value}
                 onClick={() => setLanguage(l.value)}
+                aria-pressed={language === l.value}
                 className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-colors border-2 ${
                   language === l.value
                     ? 'bg-ocean text-white border-ocean'
                     : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50 hover:bg-slate-50 dark:hover:bg-slate-600'
                 }`}
               >
-                <span className="text-base">{l.flag}</span>
+                <span className="text-base" aria-hidden="true">{l.flag}</span>
                 <span>{l.label}</span>
               </button>
             ))}
@@ -167,7 +175,7 @@ export default function GrowthTab() {
 
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
-          <span>📄</span> {lang === 'tr' ? 'Üretilen içerik' : 'Generated content'}
+          <span aria-hidden="true">📄</span> {lang === 'tr' ? 'Üretilen içerik' : 'Generated content'}
         </h3>
         <OutputPanel
           content={output}

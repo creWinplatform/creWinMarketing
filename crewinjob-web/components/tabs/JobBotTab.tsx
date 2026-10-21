@@ -1,5 +1,6 @@
 'use client';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { onTabKeys } from '@/components/platform/tab-keys';
 import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
@@ -155,6 +156,7 @@ function Combobox({
   const { lang } = useLang();
   const [open, setOpen] = useState(false);
   const wrapRef         = useRef<HTMLDivElement>(null);
+  const inputRef        = useRef<HTMLInputElement>(null);
 
   const filtered = inputVal
     ? options.filter(o =>
@@ -172,23 +174,26 @@ function Combobox({
   }, []);
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
+    <div ref={wrapRef} style={{ position: 'relative' }} onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); inputRef.current?.focus(); } }}>
       <div style={{ position: 'relative' }}>
         <input
+          ref={inputRef}
           type="text"
           autoComplete="off"
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400 outline-none pr-8 dark:border-slate-700"
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 focus:border-blue-400 outline-none pr-8 dark:border-slate-700"
           style={{ backgroundColor: value ? '#f0f9ff' : undefined, color: '#1e293b' }}
           placeholder={placeholder}
           value={inputVal}
           onChange={e => { onChange(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           aria-label={placeholder}
+          aria-expanded={open}
         />
         <button
           type="button"
           tabIndex={-1}
           aria-label={lang === 'tr' ? 'Seçenekleri göster' : 'Show options'}
+          aria-expanded={open}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-600 text-xs dark:text-slate-400"
           onClick={() => setOpen(o => !o)}
         >
@@ -208,17 +213,19 @@ function Combobox({
           ) : filtered.length === 0 ? (
             <div className="px-3 py-2 text-xs text-gray-500 dark:text-slate-400">{lang === 'tr' ? 'Bulunamadı' : 'Not found'}</div>
           ) : filtered.map(opt => (
-            <div
+            <button
+              type="button"
               key={opt.id}
-              className="flex items-center justify-between px-3 py-2 text-sm cursor-pointer hover:bg-blue-50"
+              className="w-full text-left flex items-center justify-between px-3 py-2 text-sm cursor-pointer hover:bg-blue-50"
               style={{ borderBottom: '1px solid #f3f4f6' }}
               onMouseDown={e => { e.preventDefault(); onSelect(opt.id, opt.label); setOpen(false); }}
+              onClick={() => { onSelect(opt.id, opt.label); setOpen(false); inputRef.current?.focus(); }}
             >
               <span className={opt.id === value ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-800 dark:text-slate-100'}>
                 {opt.label}
               </span>
               {opt.sub && <span className="text-xs text-gray-500 ml-2 dark:text-slate-400">{opt.sub}</span>}
-            </div>
+            </button>
           ))}
         </div>
       )}
@@ -271,6 +278,7 @@ export default function JobBotTab() {
   const [busy,    setBusy]    = useState<string | null>(null);
   const [editId,  setEditId]  = useState<string | null>(null);
   const pollRef               = useRef<ReturnType<typeof setInterval> | null>(null);
+  const explanationId         = useId();
 
   // ── Position + Company options yükleme ───────────────────────────────────
   useEffect(() => {
@@ -605,7 +613,7 @@ export default function JobBotTab() {
 
       {/* ── Mesaj banner ───────────────────────────────────────────────────── */}
       {msg && (
-        <div className={`px-4 py-3 rounded-lg text-sm font-medium flex flex-col gap-1.5 ${msgOk ? 'bg-green-50 text-green-800 border border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800' : 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'}`}>
+        <div role={msgOk ? 'status' : 'alert'} className={`px-4 py-3 rounded-lg text-sm font-medium flex flex-col gap-1.5 ${msgOk ? 'bg-green-50 text-green-800 border border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800' : 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800'}`}>
           <span><Msg text={msg} /></span>
           {msgUrl && (
             <a
@@ -614,14 +622,14 @@ export default function JobBotTab() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 underline font-semibold text-sm dark:text-blue-400"
             >
-              🔗 {msgUrl}
+              <span aria-hidden="true">🔗</span> {msgUrl}
             </a>
           )}
         </div>
       )}
 
       {/* ── Sub-tab navigation ─────────────────────────────────────────────── */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 dark:bg-slate-700">
+      <div role="tablist" aria-label={t('İlan botu bölümleri', 'Job bot sections')} onKeyDown={onTabKeys} className="flex gap-1 bg-gray-100 rounded-xl p-1 dark:bg-slate-700">
         {([
           ['create',  t('✏️ İlan Oluştur', '✏️ Create job posting')],
           ['queue',   `${t('📥 Kuyruk', '📥 Queue')}${stats.pending > 0 ? ` (${stats.pending})` : ''}`],
@@ -629,6 +637,10 @@ export default function JobBotTab() {
         ] as [typeof subTab, string][]).map(([key, label]) => (
           <button
             key={key}
+            type="button"
+            role="tab"
+            aria-selected={subTab === key}
+            tabIndex={subTab === key ? 0 : -1}
             onClick={() => { setSubTab(key); if (key !== 'create') setEditId(null); }}
             className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-all ${
               subTab === key ? 'bg-white shadow text-blue-600 dark:bg-slate-800 dark:text-blue-400' : 'text-gray-500 hover:text-gray-700 dark:text-slate-400'
@@ -656,7 +668,7 @@ export default function JobBotTab() {
           {/* ── AI Otomatik Doldur ──────────────────────────────────────── */}
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-950/40 dark:to-slate-800 border border-purple-200 rounded-xl p-4 space-y-3 dark:border-purple-800">
             <div className="flex items-center gap-2">
-              <span className="text-lg">🤖</span>
+              <span className="text-lg" aria-hidden="true">🤖</span>
               <span className="font-semibold text-gray-700 dark:text-slate-200">{t('AI ile Otomatik Doldur', 'Auto-fill with AI')}</span>
               <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full dark:bg-purple-900/30 dark:text-purple-300">Gemini</span>
             </div>
@@ -666,7 +678,7 @@ export default function JobBotTab() {
             <textarea
               ref={aiTextRef}
               rows={5}
-              className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-300 outline-none resize-none bg-white dark:border-purple-800 dark:bg-slate-800"
+              className="w-full border border-purple-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-600 outline-none resize-none bg-white dark:border-purple-800 dark:bg-slate-800"
               style={{ color: '#1e293b' }}
               placeholder={t('İlan metnini buraya yapıştır — VEYA boş bırak, AI senin için bir ilan üretsin…', 'Paste the job posting text here — or leave it empty and let AI generate one for you…')}
               defaultValue=""
@@ -793,13 +805,13 @@ export default function JobBotTab() {
                 <div className="flex gap-2">
                   <input
                     type="number" min="0" placeholder="Min" aria-label={t('Minimum maaş', 'Minimum salary')}
-                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
                     value={form.minPrice}
                     onChange={e => setForm(f => ({ ...f, minPrice: e.target.value }))}
                   />
                   <input
                     type="number" min="0" placeholder="Max" aria-label={t('Maksimum maaş', 'Maximum salary')}
-                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+                    className="w-1/2 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
                     value={form.maxPrice}
                     onChange={e => setForm(f => ({ ...f, maxPrice: e.target.value }))}
                   />
@@ -829,7 +841,7 @@ export default function JobBotTab() {
                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('İletişim E-postası', 'Contact email')}</label>
                 <input
                   type="email" placeholder="jobs@company.com" aria-label={t('İletişim E-postası', 'Contact email')}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 />
@@ -841,7 +853,7 @@ export default function JobBotTab() {
                 <input
                   type="date"
                   aria-label={t('Başlangıç Tarihi', 'Start date')}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
                   value={form.startDate}
                   onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))}
                 />
@@ -851,7 +863,7 @@ export default function JobBotTab() {
                 <input
                   type="date"
                   aria-label={t('Son Başvuru Tarihi', 'Application deadline')}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
                   value={form.expirationDate}
                   onChange={e => setForm(f => ({ ...f, expirationDate: e.target.value }))}
                 />
@@ -861,10 +873,11 @@ export default function JobBotTab() {
 
             {/* Açıklama */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('İş Tanımı / Açıklama', 'Job description')}</label>
+              <label htmlFor={explanationId} className="text-xs font-semibold text-gray-500 uppercase tracking-wide dark:text-slate-400">{t('İş Tanımı / Açıklama', 'Job description')}</label>
               <textarea
+                id={explanationId}
                 rows={4}
-                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none resize-none dark:border-slate-700"
+                className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none resize-none dark:border-slate-700"
                 placeholder={t('İş gereksinimleri, sorumluluklar, avantajlar…', 'Requirements, responsibilities, benefits…')}
                 value={form.explanation}
                 onChange={e => setForm(f => ({ ...f, explanation: e.target.value }))}
@@ -980,7 +993,7 @@ export default function JobBotTab() {
         <div className="space-y-3">
           {pending.length === 0 ? (
             <div className="text-center py-16 text-gray-500 dark:text-slate-400">
-              <div className="text-5xl mb-3">📭</div>
+              <div className="text-5xl mb-3" aria-hidden="true">📭</div>
               <p className="text-lg font-medium">{t('Kuyruk boş', 'Queue is empty')}</p>
               <p className="text-sm mt-1">{t('İlan oluştur → Kuyruğa Ekle', 'Create a job posting → Add to queue')}</p>
             </div>
@@ -997,7 +1010,7 @@ export default function JobBotTab() {
         <div className="space-y-3">
           {posted.length === 0 ? (
             <div className="text-center py-16 text-gray-500 dark:text-slate-400">
-              <div className="text-5xl mb-3">📋</div>
+              <div className="text-5xl mb-3" aria-hidden="true">📋</div>
               <p className="text-lg font-medium">{t('Henüz yayınlanan ilan yok', 'No published job postings yet')}</p>
             </div>
           ) : posted.map(item => (
@@ -1026,18 +1039,20 @@ function LanguageRows({ rows, languages, onChange }: {
       {rows.map((row, i) => (
         <div key={i} className="flex gap-2 items-center">
           <select
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             value={row.langId ?? ''}
+            aria-label={lang === 'tr' ? `Dil ${i + 1}` : `Language ${i + 1}`}
             onChange={e => updateRow(i, { langId: e.target.value ? Number(e.target.value) : null })}
           >
             <option value="">{lang === 'tr' ? 'Dil seç…' : 'Select language…'}</option>
             {languages.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <select
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             value={row.levelId ?? ''}
+            aria-label={lang === 'tr' ? `Dil seviyesi ${i + 1}` : `Language level ${i + 1}`}
             onChange={e => updateRow(i, { levelId: e.target.value ? Number(e.target.value) : null })}
           >
             <option value="">{lang === 'tr' ? 'Seviye…' : 'Level…'}</option>
@@ -1079,9 +1094,10 @@ function MultiSelectRows({ rows, options, onChange, placeholder, addLabel }: {
       {rows.map((val, i) => (
         <div key={i} className="flex gap-2 items-center">
           <select
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             value={val ?? ''}
+            aria-label={placeholder || (lang === 'tr' ? 'Seç…' : 'Select…')}
             onChange={e => updateRow(i, e.target.value ? Number(e.target.value) : null)}
           >
             <option value="">{placeholder || (lang === 'tr' ? 'Seç…' : 'Select…')}</option>
@@ -1121,9 +1137,10 @@ function EndorsementRows({ rows, onChange }: {
         <div key={i} className="flex gap-2 items-center">
           <input
             type="text"
-            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 outline-none dark:border-slate-700"
+            className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none dark:border-slate-700"
             style={{ color: '#1e293b' }}
             placeholder={lang === 'tr' ? 'Endorsement (örn: STCW II/1, IGF…)' : 'Endorsement (e.g. STCW II/1, IGF…)'}
+            aria-label={`Endorsement ${i + 1}`}
             value={val}
             onChange={e => updateRow(i, e.target.value)}
           />
@@ -1173,7 +1190,7 @@ function QueueCard({
     <div className={`bg-white dark:bg-slate-800 border rounded-xl overflow-visible transition-shadow hover:shadow-md ${
       item.status === 'error' ? 'border-red-200 dark:border-red-800' : item.status === 'posted' ? 'border-green-200 dark:border-green-800' : 'border-gray-200 dark:border-slate-700'
     }`}>
-      <div className="flex items-center gap-3 px-4 py-3 cursor-pointer" onClick={() => setExpanded(e => !e)}>
+      <button type="button" className="w-full text-left flex items-center gap-3 px-4 py-3 cursor-pointer" aria-expanded={expanded} onClick={() => setExpanded(e => !e)}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-800 dark:text-slate-100">{pos}</span>
@@ -1189,13 +1206,13 @@ function QueueCard({
               : <span>{new Date(item.createdAt).toLocaleDateString(locale)}</span>}
           </div>
         </div>
-        <span className="text-gray-500 text-xs dark:text-slate-400">{expanded ? '▲' : '▼'}</span>
-      </div>
+        <span className="text-gray-500 text-xs dark:text-slate-400" aria-hidden="true">{expanded ? '▲' : '▼'}</span>
+      </button>
 
       {expanded && (
         <div className="border-t border-gray-100 px-4 py-3 space-y-2 text-sm dark:border-slate-700">
           {item.error && (
-            <div className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-xs dark:bg-red-900/30 dark:text-red-300">❌ <Msg text={item.error} /></div>
+            <div role="alert" className="bg-red-50 text-red-700 rounded-lg px-3 py-2 text-xs dark:bg-red-900/30 dark:text-red-300"><span aria-hidden="true">❌</span> <Msg text={item.error} /></div>
           )}
           <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs">
             {[

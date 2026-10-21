@@ -115,9 +115,9 @@ export default function EngagementPanel({ compact = false }: Props) {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              📊 {lang === 'tr' ? 'Etkileşim Takibi' : 'Engagement tracking'}
+              <span aria-hidden="true">📊</span> {lang === 'tr' ? 'Etkileşim Takibi' : 'Engagement tracking'}
             </h3>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
               {items.length} {lang === 'tr' ? 'paylaşım izleniyor' : 'posts tracked'}
             </p>
           </div>
@@ -145,9 +145,9 @@ export default function EngagementPanel({ compact = false }: Props) {
             { icon: '👁️', label: lang === 'tr' ? 'Görüntüleme' : 'Views', val: totals.views },
           ].map(s => (
             <div key={s.label} className="bg-slate-50 dark:bg-slate-700/60 rounded-xl p-3 flex flex-col items-center gap-0.5 border border-slate-100 dark:border-slate-600">
-              <span className="text-base">{s.icon}</span>
+              <span className="text-base" aria-hidden="true">{s.icon}</span>
               <span className="text-lg font-bold text-slate-700 dark:text-slate-200">{s.val.toLocaleString(localeTag(lang))}</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500">{s.label}</span>
+              <span className="text-[10px] text-slate-600 dark:text-slate-400">{s.label}</span>
             </div>
           ))}
         </div>
@@ -158,7 +158,7 @@ export default function EngagementPanel({ compact = false }: Props) {
         <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
           🔗 {lang === 'tr' ? 'Post URL\'si ile Takip Et' : 'Track by post URL'}
         </p>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500">
+        <p className="text-[10px] text-slate-600 dark:text-slate-400">
           {lang === 'tr'
             ? 'Twitter, LinkedIn, Facebook veya Instagram post URL\'sini yapıştır — beğeni, yorum ve görüntülemeler izlenir.'
             : 'Paste a Twitter, LinkedIn, Facebook or Instagram post URL — likes, comments and views will be tracked.'}
@@ -170,11 +170,13 @@ export default function EngagementPanel({ compact = false }: Props) {
             onChange={e => { setTrackUrl(e.target.value); setTrackError(''); setTrackErrorSource(''); }}
             onKeyDown={e => { if (e.key === 'Enter') handleTrack(); }}
             placeholder={lang === 'tr' ? 'https://twitter.com/... veya linkedin.com/...' : 'https://twitter.com/... or linkedin.com/...'}
-            className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 placeholder-slate-400"
+            aria-label={lang === 'tr' ? 'Gönderi URL\'si' : 'Post URL'}
+            className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 placeholder-slate-500"
           />
           <button
             onClick={handleTrack}
             disabled={tracking || !trackUrl.trim()}
+            aria-label={tracking ? (lang === 'tr' ? 'Ekleniyor…' : 'Adding…') : trackOk ? (lang === 'tr' ? 'Eklendi' : 'Added') : undefined}
             className="text-xs bg-ocean hover:bg-ocean-dark disabled:opacity-50 text-white px-3 py-2 rounded-lg font-medium transition-colors whitespace-nowrap flex items-center gap-1"
           >
             {tracking
@@ -182,13 +184,13 @@ export default function EngagementPanel({ compact = false }: Props) {
               : trackOk ? '✅' : (lang === 'tr' ? '+ Ekle' : '+ Add')}
           </button>
         </div>
-        {trackError && <p className="text-[10px] text-red-500">{trackErrorSource ? `${trackErrorSource}: ` : ''}<Msg text={trackError} /></p>}
+        {trackError && <p role="alert" className="text-[10px] text-red-500">{trackErrorSource ? `${trackErrorSource}: ` : ''}<Msg text={trackError} /></p>}
       </div>
 
       {/* ── Post listesi ── */}
       {items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-400 dark:text-slate-500">
-          <span className="text-4xl opacity-30">📭</span>
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-600 dark:text-slate-400">
+          <span className="text-4xl opacity-30" aria-hidden="true">📭</span>
           <p className="text-xs text-center">
             {lang === 'tr'
               ? <>Henüz izlenen paylaşım yok.<br />Paylaşım yaptıktan sonra URL&apos;yi buraya ekle veya API ile paylaş.</>
@@ -209,7 +211,7 @@ export default function EngagementPanel({ compact = false }: Props) {
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${meta.color}`}>
                       {meta.icon} {meta.label}
                     </span>
-                    <span className="text-[11px] text-slate-400 dark:text-slate-500">{formatRelative(item.publishedAt)}</span>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-400">{formatRelative(item.publishedAt)}</span>
                     {stale && <span className="text-[10px] text-orange-500">⚠️ {lang === 'tr' ? 'Güncelle' : 'Stale'}</span>}
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -238,7 +240,7 @@ export default function EngagementPanel({ compact = false }: Props) {
                       onClick={() => handleRemove(item.id)}
                       title={lang === 'tr' ? 'Kaydı kaldır' : 'Remove entry'}
                       aria-label={lang === 'tr' ? 'Kaydı kaldır' : 'Remove entry'}
-                      className="text-[11px] text-slate-400 hover:text-red-500 px-1 transition-colors"
+                      className="text-[11px] text-slate-600 hover:text-red-500 px-1 transition-colors"
                     >✕</button>
                   </div>
                 </div>
@@ -263,7 +265,7 @@ export default function EngagementPanel({ compact = false }: Props) {
                     { icon: '👁️', label: lang === 'tr' ? 'Görüntüleme' : 'Views', val: m?.views },
                   ].map(s => (
                     <div key={s.label} className="bg-white dark:bg-slate-800 py-2 flex flex-col items-center justify-center">
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wide">{s.icon} {s.label}</span>
+                      <span className="text-[9px] text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">{s.icon} {s.label}</span>
                       <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
                         {!m ? <span className="text-slate-300 dark:text-slate-600">—</span> : (s.val ?? 0).toLocaleString(localeTag(lang))}
                       </span>
@@ -273,7 +275,7 @@ export default function EngagementPanel({ compact = false }: Props) {
 
                 {/* Güncelleme zamanı */}
                 {m && (
-                  <p className={`text-[10px] text-center py-1 ${stale ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800'}`}>
+                  <p className={`text-[10px] text-center py-1 ${stale ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800'}`}>
                     {lang === 'tr' ? 'Son güncelleme:' : 'Updated:'} {formatRelative(m.fetchedAt)}
                     {stale && (lang === 'tr' ? ' — güncel olmayabilir' : ' — may be outdated')}
                   </p>

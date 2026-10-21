@@ -150,7 +150,7 @@ export default function ContentLibraryTab() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="font-bold text-slate-800 dark:text-slate-100 text-lg flex items-center gap-2">
-            <span>🗂️</span> {lang === 'tr' ? 'İçerik kütüphanesi' : 'Content library'}
+            <span aria-hidden="true">🗂️</span> {lang === 'tr' ? 'İçerik kütüphanesi' : 'Content library'}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
             {items.length} {lang === 'tr' ? 'içerik' : items.length === 1 ? 'item' : 'items'} · {withImage} {lang === 'tr' ? 'görselli' : 'with images'} · {lang === 'tr' ? 'Tekrar paylaşın veya kopyalayın' : 'Reshare or copy'}
@@ -177,7 +177,7 @@ export default function ContentLibraryTab() {
       {/* ── Filtreler + Arama ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         {/* Platform filtresi */}
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={lang === 'tr' ? 'Platform filtresi' : 'Platform filter'}>
           {platforms.map(p => {
             const meta = PLATFORM_META[p];
             const count = p === 'all' ? items.length : items.filter(i => i.platform === p).length;
@@ -185,6 +185,7 @@ export default function ContentLibraryTab() {
               <button
                 key={p}
                 onClick={() => setFilter(p)}
+                aria-pressed={filter === p}
                 className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full font-medium transition-all border ${
                   filter === p
                     ? 'bg-ocean text-white border-ocean shadow-sm'
@@ -207,37 +208,38 @@ export default function ContentLibraryTab() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder={lang === 'tr' ? 'İçerik veya prompt ara…' : 'Search content or prompt…'}
-            className="text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 pl-8 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean bg-white dark:bg-slate-700 dark:text-slate-100 w-56 placeholder:text-slate-400"
+            aria-label={lang === 'tr' ? 'İçerik veya prompt ara' : 'Search content or prompt'}
+            className="text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 pl-8 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean bg-white dark:bg-slate-700 dark:text-slate-100 w-56 placeholder:text-slate-500"
           />
-          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-600 text-xs" aria-hidden="true">🔍</span>
           {search && (
             <button
               onClick={() => setSearch('')}
               aria-label={lang === 'tr' ? 'Aramayı temizle' : 'Clear search'}
               title={lang === 'tr' ? 'Aramayı temizle' : 'Clear search'}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
-            >✕</button>
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-600 text-xs"
+            ><span aria-hidden="true">✕</span></button>
           )}
         </div>
       </div>
 
       {/* ── Hata bildirimi ── */}
       {genError && (
-        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-xl px-4 py-2.5 text-sm">
-          <span>❌</span><span><Msg text={genError} /></span>
+        <div role="alert" className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-xl px-4 py-2.5 text-sm">
+          <span aria-hidden="true">❌</span><span><Msg text={genError} /></span>
         </div>
       )}
 
       {/* ── İçerik Kartları ── */}
       {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-72 gap-3 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-          <span className="text-5xl opacity-20">🗂️</span>
+        <div className="flex flex-col items-center justify-center h-72 gap-3 text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <span className="text-5xl opacity-20" aria-hidden="true">🗂️</span>
           {items.length === 0 ? (
             <>
               <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
                 {lang === 'tr' ? 'Henüz içerik üretilmedi' : 'No content yet'}
               </p>
-              <p className="text-xs text-center text-slate-400 dark:text-slate-500">
+              <p className="text-xs text-center text-slate-600 dark:text-slate-400">
                 {lang === 'tr'
                   ? <>Sosyal Medya sekmesinden içerik üretin,<br />otomatik olarak buraya kaydedilir.</>
                   : <>Generate content in the Social media tab;<br />it&apos;s saved here automatically.</>
@@ -301,7 +303,7 @@ export default function ContentLibraryTab() {
                 {/* İçerik */}
                 <div className="p-3 flex-1 flex flex-col gap-2">
                   {/* Prompt özeti */}
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 italic line-clamp-1 leading-relaxed">
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400 italic line-clamp-1 leading-relaxed">
                     💬 {item.prompt.slice(0, 80)}{item.prompt.length > 80 ? '…' : ''}
                   </p>
                   {/* İçerik — düzenleme modu veya önizleme */}
@@ -311,6 +313,7 @@ export default function ContentLibraryTab() {
                         value={editValue}
                         onChange={e => setEditValue(e.target.value)}
                         rows={5}
+                        aria-label={lang === 'tr' ? 'İçeriği düzenle' : 'Edit content'}
                         className="w-full border border-ocean/50 rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-ocean/50 bg-white dark:bg-slate-700 dark:text-slate-100 leading-relaxed"
                         autoFocus
                       />
@@ -337,8 +340,8 @@ export default function ContentLibraryTab() {
                   {/* Meta */}
                   {editingId !== item.id && (
                     <div className="flex items-center justify-between mt-1">
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{timeAgo(item.timestamp, lang)}</span>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500">{item.content.length} {lang === 'tr' ? 'kar.' : 'chars'}</span>
+                      <span className="text-[10px] text-slate-600 dark:text-slate-400">{timeAgo(item.timestamp, lang)}</span>
+                      <span className="text-[10px] text-slate-600 dark:text-slate-400">{item.content.length} {lang === 'tr' ? 'kar.' : 'chars'}</span>
                     </div>
                   )}
                 </div>
@@ -349,10 +352,10 @@ export default function ContentLibraryTab() {
                   <button
                     onClick={() => handleCopy(item)}
                     title={lang === 'tr' ? 'Kopyala' : 'Copy'}
-                    aria-label={lang === 'tr' ? 'Kopyala' : 'Copy'}
+                    aria-label={copiedId === item.id ? (lang === 'tr' ? 'Kopyalandı' : 'Copied') : (lang === 'tr' ? 'Kopyala' : 'Copy')}
                     className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-medium"
                   >
-                    {copiedId === item.id ? '✅' : '📋'}
+                    <span aria-hidden="true">{copiedId === item.id ? '✅' : '📋'}</span>
                   </button>
                   <div className="w-px bg-slate-100 dark:bg-slate-700" />
                   <button
@@ -361,7 +364,7 @@ export default function ContentLibraryTab() {
                     aria-label={lang === 'tr' ? 'Düzenle' : 'Edit'}
                     className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors font-medium"
                   >
-                    ✏️
+                    <span aria-hidden="true">✏️</span>
                   </button>
                   <div className="w-px bg-slate-100 dark:bg-slate-700" />
                   {item.imageData && (
@@ -370,8 +373,9 @@ export default function ContentLibraryTab() {
                         onClick={() => downloadImage(item)}
                         className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 text-ocean dark:text-ocean hover:bg-ocean/5 transition-colors font-medium"
                         title={lang === 'tr' ? 'Görseli indir' : 'Download image'}
+                        aria-label={lang === 'tr' ? 'Görseli indir' : 'Download image'}
                       >
-                        ⬇️
+                        <span aria-hidden="true">⬇️</span>
                       </button>
                       <div className="w-px bg-slate-100 dark:bg-slate-700" />
                     </>
@@ -389,7 +393,7 @@ export default function ContentLibraryTab() {
                     aria-label={lang === 'tr' ? 'Sil' : 'Delete'}
                     className="px-3 py-2 text-xs text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
-                    🗑️
+                    <span aria-hidden="true">🗑️</span>
                   </button>
                 </div>
                 )}
@@ -409,7 +413,7 @@ export default function ContentLibraryTab() {
             { label: lang === 'tr' ? 'Platform'      : 'Platforms',      value: platforms.length - 1, icon: '📱' },
           ].map(stat => (
             <div key={stat.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 flex items-center gap-3">
-              <span className="text-xl">{stat.icon}</span>
+              <span className="text-xl" aria-hidden="true">{stat.icon}</span>
               <div>
                 <p className="font-bold text-slate-800 dark:text-slate-100 text-sm">{stat.value}</p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">{stat.label}</p>

@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useLang, type Lang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
+import { useDialog } from '@/components/a11y/useDialog';
+import { onTabKeys } from '@/components/platform/tab-keys';
 
 type HakTipi = 1 | 2 | 3;
 type KaynakTipi = 1 | 2 | 3 | 4 | 5 | 6;
@@ -243,7 +245,7 @@ async function uploadReceipt(file: File): Promise<number | null> {
 }
 
 function FieldError({ text }: { text?: string }) {
-  return text ? <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400"><Msg text={text} /></p> : null;
+  return text ? <p role="alert" className="mt-1 text-xs font-medium text-red-600 dark:text-red-400"><Msg text={text} /></p> : null;
 }
 
 function SkeletonRows({ columns, rows = 5 }: { columns: number; rows?: number }) {
@@ -264,7 +266,7 @@ function SkeletonRows({ columns, rows = 5 }: { columns: number; rows?: number })
 
 function RightsChips({ items }: { items?: HakSatiri[] }) {
   const { lang } = useLang();
-  if (!items?.length) return <span className="text-slate-400">-</span>;
+  if (!items?.length) return <span className="text-slate-600">-</span>;
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((item, idx) => (
@@ -288,12 +290,14 @@ function BalanceCard({ title, value, suffix, negative }: { title: string; value:
 
 function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   const { lang } = useLang();
+  // Sadece açıkken mount edilir; bu yüzden open = true
+  const { titleId, dialogProps } = useDialog(true, onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-6">
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-2xl dark:bg-slate-900">
+      <div {...dialogProps} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-2xl dark:bg-slate-900">
         <div className="sticky top-0 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-700 dark:bg-slate-900">
-          <h3 className="font-bold text-slate-900 dark:text-slate-100">{title}</h3>
-          <button onClick={onClose} className="rounded px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">{tt(lang, 'Kapat', 'Close')}</button>
+          <h3 id={titleId} className="font-bold text-slate-900 dark:text-slate-100">{title}</h3>
+          <button type="button" onClick={onClose} className="rounded px-2 py-1 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">{tt(lang, 'Kapat', 'Close')}</button>
         </div>
         <div className="p-5">{children}</div>
       </div>
@@ -306,10 +310,12 @@ const RECEIPT_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
 function ReceiptInput({ file, onChange }: { file: File | null; onChange: (file: File | null) => void }) {
   const { lang } = useLang();
   const [error, setError] = useState('');
+  const id = useId();
   return (
     <div>
-      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Dekont dosyası', 'Receipt file')}</label>
+      <label htmlFor={id} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Dekont dosyası', 'Receipt file')}</label>
       <input
+        id={id}
         type="file"
         accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
         onChange={e => {
@@ -330,7 +336,7 @@ function ReceiptInput({ file, onChange }: { file: File | null; onChange: (file: 
         }}
         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
       />
-      <p className="mt-1 text-xs text-slate-400">{file ? file.name : tt(lang, 'PDF, JPG veya PNG; max 10MB', 'PDF, JPG or PNG; max 10MB')}</p>
+      <p className="mt-1 text-xs text-slate-600">{file ? file.name : tt(lang, 'PDF, JPG veya PNG; max 10MB', 'PDF, JPG or PNG; max 10MB')}</p>
       <FieldError text={error} />
     </div>
   );
@@ -346,11 +352,13 @@ function ReasonModal({ title, label, loading, onClose, onSubmit }: {
   const { lang } = useLang();
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const reasonId = useId();
 
   return (
     <ModalShell title={title} onClose={onClose}>
-      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{label} *</label>
+      <label htmlFor={reasonId} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{label} *</label>
       <textarea
+        id={reasonId}
         value={reason}
         onChange={e => { setReason(e.target.value); setError(''); }}
         rows={4}
@@ -393,6 +401,7 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [fieldError, setFieldError] = useState('');
+  const uid = useId();
 
   const submit = async () => {
     if (!form.bankaReferansNo.trim()) { setFieldError(lang === 'tr' ? 'Banka referans no zorunlu.' : 'The bank reference number is required.'); return; }
@@ -421,8 +430,8 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka referans no', 'Bank reference no.')} *</label>
-          <input value={form.bankaReferansNo} onChange={e => { setForm(f => ({ ...f, bankaReferansNo: e.target.value })); setFieldError(''); }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-ref`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka referans no', 'Bank reference no.')} *</label>
+          <input id={`${uid}-ref`} value={form.bankaReferansNo} onChange={e => { setForm(f => ({ ...f, bankaReferansNo: e.target.value })); setFieldError(''); }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
           <FieldError text={fieldError} />
         </div>
         <DateInput label={`${tt(lang, 'Ödeme tarihi', 'Payment date')} *`} value={form.odemeTarihi} onChange={v => setForm(f => ({ ...f, odemeTarihi: v }))} />
@@ -431,8 +440,8 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
         <TextInput label={tt(lang, 'Fatura no', 'Invoice no.')} value={form.faturaNo} onChange={v => setForm(f => ({ ...f, faturaNo: v }))} />
         <div className="col-span-2"><ReceiptInput file={file} onChange={setFile} /></div>
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')}</label>
-          <textarea value={form.aciklama} onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-notes`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')}</label>
+          <textarea id={`${uid}-notes`} value={form.aciklama} onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
         </div>
       </div>
       <div className="mt-5 flex justify-end gap-2">
@@ -444,29 +453,32 @@ function ApproveOrderModal({ order, onDone, onClose }: { order: BekleyenSiparis;
 }
 
 function TextInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const id = useId();
   return (
     <div>
-      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{label}</label>
-      <input value={value} onChange={e => onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+      <label htmlFor={id} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{label}</label>
+      <input id={id} value={value} onChange={e => onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
     </div>
   );
 }
 
 function DateInput({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const id = useId();
   return (
     <div>
-      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{label}</label>
-      <input type="date" max={today()} value={value} onChange={e => onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+      <label htmlFor={id} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{label}</label>
+      <input id={id} type="date" max={today()} value={value} onChange={e => onChange(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
     </div>
   );
 }
 
 function MethodSelect({ value, onChange }: { value: OdemeYontemi; onChange: (value: OdemeYontemi) => void }) {
   const { lang } = useLang();
+  const id = useId();
   return (
     <div>
-      <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Ödeme yöntemi', 'Payment method')} *</label>
-      <select value={value} onChange={e => onChange(Number(e.target.value) as OdemeYontemi)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+      <label htmlFor={id} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Ödeme yöntemi', 'Payment method')} *</label>
+      <select id={id} value={value} onChange={e => onChange(Number(e.target.value) as OdemeYontemi)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
         {([1, 2, 3, 99] as OdemeYontemi[]).map(v => <option key={v} value={v}>{yontemLabel(v, lang)}</option>)}
       </select>
     </div>
@@ -490,6 +502,7 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
   const [loading, setLoading] = useState(false);
   const [bankError, setBankError] = useState('');
   const [formError, setFormError] = useState('');
+  const uid = useId();
 
   const addRight = () => setRights(r => [...r, { hakTipi: 1, miktar: 1, gecerlilikBitis: null }]);
   const updateRight = (idx: number, patch: Partial<HakSatiri>) => setRights(r => r.map((item, i) => i === idx ? { ...item, ...patch } : item));
@@ -536,29 +549,29 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
     <ModalShell title={`${tt(lang, 'Ödeme kaydet', 'Record payment')} - ${firma.unvan}`} onClose={onClose}>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Tutar', 'Amount')} *</label>
-          <input type="number" min="0" step="0.01" value={form.tutar} onChange={e => setForm(f => ({ ...f, tutar: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-amount`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Tutar', 'Amount')} *</label>
+          <input id={`${uid}-amount`} type="number" min="0" step="0.01" value={form.tutar} onChange={e => setForm(f => ({ ...f, tutar: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
           <FieldError text={formError} />
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Para birimi', 'Currency')} *</label>
-          <select value={form.paraBirimi} onChange={e => setForm(f => ({ ...f, paraBirimi: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+          <label htmlFor={`${uid}-currency`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Para birimi', 'Currency')} *</label>
+          <select id={`${uid}-currency`} value={form.paraBirimi} onChange={e => setForm(f => ({ ...f, paraBirimi: e.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
             {PARA_BIRIMLERI.map(p => <option key={p}>{p}</option>)}
           </select>
         </div>
         <DateInput label={`${tt(lang, 'Ödeme tarihi', 'Payment date')} *`} value={form.odemeTarihi} onChange={v => setForm(f => ({ ...f, odemeTarihi: v }))} />
         <MethodSelect value={form.odemeYontemi} onChange={v => setForm(f => ({ ...f, odemeYontemi: v }))} />
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka referans no', 'Bank reference no.')} *</label>
-          <input value={form.bankaReferansNo} onChange={e => { setForm(f => ({ ...f, bankaReferansNo: e.target.value })); setBankError(''); }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-ref`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Banka referans no', 'Bank reference no.')} *</label>
+          <input id={`${uid}-ref`} value={form.bankaReferansNo} onChange={e => { setForm(f => ({ ...f, bankaReferansNo: e.target.value })); setBankError(''); }} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
           <FieldError text={bankError} />
         </div>
         <TextInput label={tt(lang, 'Gönderen unvanı', 'Sender name')} value={form.gonderenUnvan} onChange={v => setForm(f => ({ ...f, gonderenUnvan: v }))} />
         <TextInput label={tt(lang, 'Fatura no', 'Invoice no.')} value={form.faturaNo} onChange={v => setForm(f => ({ ...f, faturaNo: v }))} />
         <div className="col-span-2"><ReceiptInput file={file} onChange={setFile} /></div>
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')}</label>
-          <textarea value={form.aciklama} onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-notes`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')}</label>
+          <textarea id={`${uid}-notes`} value={form.aciklama} onChange={e => setForm(f => ({ ...f, aciklama: e.target.value }))} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
         </div>
       </div>
 
@@ -567,15 +580,15 @@ function PaymentModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: (
           <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100">{tt(lang, 'Tanımlanacak haklar', 'Rights to grant')}</h4>
           <button onClick={addRight} className="rounded-lg border border-ocean/40 px-3 py-1.5 text-xs font-semibold text-ocean">{tt(lang, 'Hak ekle', 'Add right')}</button>
         </div>
-        {rights.length === 0 && <p className="text-xs text-slate-400">{tt(lang, 'Liste boş bırakılabilir.', 'The list can be left empty.')}</p>}
+        {rights.length === 0 && <p className="text-xs text-slate-600">{tt(lang, 'Liste boş bırakılabilir.', 'The list can be left empty.')}</p>}
         <div className="space-y-2">
           {rights.map((right, idx) => (
             <div key={idx} className="grid grid-cols-[1fr_100px_150px_48px] gap-2">
-              <select value={right.hakTipi} onChange={e => updateRight(idx, { hakTipi: Number(e.target.value) as HakTipi })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+              <select value={right.hakTipi} aria-label={`${tt(lang, 'Hak tipi', 'Right type')} ${idx + 1}`} onChange={e => updateRight(idx, { hakTipi: Number(e.target.value) as HakTipi })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
                 {([1, 2, 3] as HakTipi[]).map(v => <option key={v} value={v}>{hakLabel(v, lang)}</option>)}
               </select>
-              <input type="number" min="1" value={right.miktar || ''} onChange={e => updateRight(idx, { miktar: Number(e.target.value) || 0 })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
-              <input type="date" value={right.gecerlilikBitis ?? ''} onChange={e => updateRight(idx, { gecerlilikBitis: e.target.value || null })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+              <input type="number" min="1" value={right.miktar || ''} aria-label={`${tt(lang, 'Miktar', 'Quantity')} ${idx + 1}`} onChange={e => updateRight(idx, { miktar: Number(e.target.value) || 0 })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+              <input type="date" value={right.gecerlilikBitis ?? ''} aria-label={`${tt(lang, 'Son kullanma tarihi', 'Expiry date')} ${idx + 1}`} onChange={e => updateRight(idx, { gecerlilikBitis: e.target.value || null })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
               <button onClick={() => setRights(r => r.filter((_, i) => i !== idx))} className="rounded-lg text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20">{tt(lang, 'Sil', 'Remove')}</button>
             </div>
           ))}
@@ -598,6 +611,7 @@ function RightModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: () 
   const [aciklama, setAciklama] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const uid = useId();
 
   const submit = async () => {
     if (!Number(miktar) || Number(miktar) <= 0) { setError(lang === 'tr' ? 'Miktar 0’dan büyük olmalı.' : 'The quantity must be greater than 0.'); return; }
@@ -626,22 +640,22 @@ function RightModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: () 
     <ModalShell title={`${tt(lang, 'Hak tanımla', 'Grant rights')} - ${firma.unvan}`} onClose={onClose}>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Hak tipi', 'Right type')} *</label>
-          <select value={hakTipi} onChange={e => setHakTipi(Number(e.target.value) as HakTipi)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+          <label htmlFor={`${uid}-type`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Hak tipi', 'Right type')} *</label>
+          <select id={`${uid}-type`} value={hakTipi} onChange={e => setHakTipi(Number(e.target.value) as HakTipi)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
             {([1, 2, 3] as HakTipi[]).map(v => <option key={v} value={v}>{hakLabel(v, lang)}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Miktar', 'Quantity')} *</label>
-          <input type="number" min="1" value={miktar} onChange={e => setMiktar(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-qty`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Miktar', 'Quantity')} *</label>
+          <input id={`${uid}-qty`} type="number" min="1" value={miktar} onChange={e => setMiktar(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
         </div>
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Son kullanma tarihi', 'Expiry date')}</label>
-          <input type="date" value={gecerlilikBitis} onChange={e => setGecerlilikBitis(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-expiry`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Son kullanma tarihi', 'Expiry date')}</label>
+          <input id={`${uid}-expiry`} type="date" value={gecerlilikBitis} onChange={e => setGecerlilikBitis(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
         </div>
         <div className="col-span-2">
-          <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')} *</label>
-          <textarea value={aciklama} onChange={e => setAciklama(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
+          <label htmlFor={`${uid}-notes`} className="text-xs font-semibold text-slate-600 dark:text-slate-400">{tt(lang, 'Açıklama', 'Notes')} *</label>
+          <textarea id={`${uid}-notes`} value={aciklama} onChange={e => setAciklama(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100" />
           <FieldError text={error} />
         </div>
       </div>
@@ -660,6 +674,7 @@ export default function FirmaKrediTab() {
   const [toast, setToast] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const firmaSearchId = useId();
 
   const [pending, setPending] = useState<BekleyenSiparis[]>([]);
   const [pendingSearch, setPendingSearch] = useState('');
@@ -838,30 +853,30 @@ export default function FirmaKrediTab() {
           <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100">{tr ? 'Kredi yönetimi' : 'Credit management'}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">{tr ? 'Havale/EFT ödemeleri, firma hakları ve finans hareketleri' : 'Bank transfer payments, company rights and financial movements'}</p>
         </div>
-        {toast && <div className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"><Msg text={toast} /></div>}
+        {toast && <div role="status" className="rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300"><Msg text={toast} /></div>}
       </div>
 
-      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+      <div role="tablist" aria-label={tr ? 'Kredi yönetimi bölümleri' : 'Credit management sections'} onKeyDown={onTabKeys} className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
         {([
           ['bekleyen', tr ? 'Bekleyen siparişler' : 'Pending orders'],
           ['firma', tr ? 'Firma detayı' : 'Company details'],
           ['odemeler', tr ? 'Ödemeler' : 'Payments'],
         ] as [Page, string][]).map(([id, label]) => (
-          <button key={id} onClick={() => setPage(id)} className={`border-b-2 px-4 py-3 text-sm font-semibold ${page === id ? 'border-ocean text-ocean' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'}`}>
+          <button key={id} type="button" role="tab" aria-selected={page === id} tabIndex={page === id ? 0 : -1} onClick={() => setPage(id)} className={`border-b-2 px-4 py-3 text-sm font-semibold ${page === id ? 'border-ocean text-ocean' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'}`}>
             {label}
           </button>
         ))}
       </div>
 
-      {notice && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"><Msg text={friendlyError(notice, lang)} /></div>}
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"><Msg text={error} /></div>}
+      {notice && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"><Msg text={friendlyError(notice, lang)} /></div>}
+      {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300"><Msg text={error} /></div>}
 
       {page === 'bekleyen' && (
         <section className="rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
           <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
             <h3 className="font-bold text-slate-900 dark:text-slate-100">{tr ? 'Bekleyen siparişler' : 'Pending orders'}</h3>
             <div className="flex w-full sm:w-auto flex-wrap gap-2">
-              <input value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} placeholder={tr ? 'Firma adına göre ara' : 'Search by company name'} className="w-full sm:w-72 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+              <input value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} aria-label={tr ? 'Firma adına göre ara' : 'Search by company name'} placeholder={tr ? 'Firma adına göre ara' : 'Search by company name'} className="w-full sm:w-72 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
               <button onClick={loadPending} className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white">{tr ? 'Yenile' : 'Refresh'}</button>
             </div>
           </div>
@@ -894,7 +909,7 @@ export default function FirmaKrediTab() {
                     </tr>
                   );
                 })}
-                {!pendingLoading && pending.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{tr ? 'Bekleyen sipariş yok.' : 'No pending orders.'}</td></tr>}
+                {!pendingLoading && pending.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-600">{tr ? 'Bekleyen sipariş yok.' : 'No pending orders.'}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -904,17 +919,17 @@ export default function FirmaKrediTab() {
       {page === 'firma' && (
         <section className="space-y-4">
           <div className="relative rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-            <label className="text-xs font-bold text-slate-500 dark:text-slate-400">{tr ? 'Firma ara' : 'Search companies'}</label>
-            <input value={firmaQuery} onChange={e => setFirmaQuery(e.target.value)} placeholder={tr ? 'En az 2 karakter yazın' : 'Type at least 2 characters'} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+            <label htmlFor={firmaSearchId} className="text-xs font-bold text-slate-500 dark:text-slate-400">{tr ? 'Firma ara' : 'Search companies'}</label>
+            <input id={firmaSearchId} value={firmaQuery} onChange={e => setFirmaQuery(e.target.value)} placeholder={tr ? 'En az 2 karakter yazın' : 'Type at least 2 characters'} className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
             {firmaQuery.length >= 2 && (
               <div className="absolute left-4 right-4 top-[82px] z-20 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-900">
-                {firmaLoading ? <div className="p-4 text-sm text-slate-400">{tr ? 'Aranıyor…' : 'Searching…'}</div> : firmaResults.map(item => (
+                {firmaLoading ? <div className="p-4 text-sm text-slate-600">{tr ? 'Aranıyor…' : 'Searching…'}</div> : firmaResults.map(item => (
                   <button key={item.firmaId} onClick={() => void selectFirma(item)} className="block w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800">
                     <div className="font-semibold text-slate-900 dark:text-slate-100">{item.unvan}</div>
                     <div className="text-xs text-slate-500">{item.email || '-'} · {item.ulke || '-'}</div>
                   </button>
                 ))}
-                {!firmaLoading && firmaResults.length === 0 && <div className="p-4 text-sm text-slate-400">{tr ? 'Sonuç yok.' : 'No results.'}</div>}
+                {!firmaLoading && firmaResults.length === 0 && <div className="p-4 text-sm text-slate-600">{tr ? 'Sonuç yok.' : 'No results.'}</div>}
               </div>
             )}
           </div>
@@ -955,12 +970,12 @@ export default function FirmaKrediTab() {
                 <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-700">
                   <h4 className="font-bold text-slate-900 dark:text-slate-100">{tr ? 'Hareket geçmişi' : 'Movement history'}</h4>
                   <div className="flex gap-2">
-                    <select value={hareketHakTipi} onChange={e => setHareketHakTipi(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+                    <select value={hareketHakTipi} aria-label={tr ? 'Hak tipi' : 'Right type'} onChange={e => setHareketHakTipi(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
                       <option value="">{tr ? 'Tüm haklar' : 'All rights'}</option>
                       {([1, 2, 3] as HakTipi[]).map(v => <option key={v} value={v}>{hakLabel(v, lang)}</option>)}
                     </select>
-                    <input type="date" value={hareketBaslangic} onChange={e => setHareketBaslangic(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-                    <input type="date" value={hareketBitis} onChange={e => setHareketBitis(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+                    <input type="date" value={hareketBaslangic} aria-label={tr ? 'Başlangıç tarihi' : 'Start date'} onChange={e => setHareketBaslangic(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+                    <input type="date" value={hareketBitis} aria-label={tr ? 'Bitiş tarihi' : 'End date'} onChange={e => setHareketBitis(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
                   </div>
                 </div>
                 <div className="overflow-x-auto">
@@ -975,7 +990,7 @@ export default function FirmaKrediTab() {
                         const cancelled = !!h.iptalEdildiMi;
                         const id = h.hareketId ?? h.id;
                         return (
-                          <tr key={id} className={`border-t border-slate-100 dark:border-slate-700 ${cancelled ? 'text-slate-400 line-through' : ''}`}>
+                          <tr key={id} className={`border-t border-slate-100 dark:border-slate-700 ${cancelled ? 'text-slate-600 line-through' : ''}`}>
                             <td className="px-3 py-3">{hakLabel(h.hakTipi, lang)}</td>
                             <td className={`px-3 py-3 font-bold ${h.miktar >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{h.miktar > 0 ? '+' : ''}{h.miktar}</td>
                             <td className="px-3 py-3">{(tr ? h.kaynakTipAdi : undefined) || kaynakLabel(h.kaynakTipi, lang)}</td>
@@ -988,7 +1003,7 @@ export default function FirmaKrediTab() {
                           </tr>
                         );
                       })}
-                      {!firmaDataLoading && hareketler.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-400">{tr ? 'Hareket bulunamadı.' : 'No movements found.'}</td></tr>}
+                      {!firmaDataLoading && hareketler.length === 0 && <tr><td colSpan={9} className="px-3 py-8 text-center text-slate-600">{tr ? 'Hareket bulunamadı.' : 'No movements found.'}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1009,17 +1024,17 @@ export default function FirmaKrediTab() {
 
           <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
             <div className="grid grid-cols-[1.5fr_120px_140px_150px_150px_auto] gap-2">
-              <input value={paymentFilters.firmaArama} onChange={e => setPaymentFilters(f => ({ ...f, firmaArama: e.target.value }))} placeholder={tr ? 'Firma adı' : 'Company name'} className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-              <select value={paymentFilters.paraBirimi} onChange={e => setPaymentFilters(f => ({ ...f, paraBirimi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+              <input value={paymentFilters.firmaArama} aria-label={tr ? 'Firma adı' : 'Company name'} onChange={e => setPaymentFilters(f => ({ ...f, firmaArama: e.target.value }))} placeholder={tr ? 'Firma adı' : 'Company name'} className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+              <select value={paymentFilters.paraBirimi} aria-label={tr ? 'Para birimi' : 'Currency'} onChange={e => setPaymentFilters(f => ({ ...f, paraBirimi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
                 <option value="">{tr ? 'Para birimi' : 'Currency'}</option>
                 {PARA_BIRIMLERI.map(p => <option key={p}>{p}</option>)}
               </select>
-              <select value={paymentFilters.odemeYontemi} onChange={e => setPaymentFilters(f => ({ ...f, odemeYontemi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+              <select value={paymentFilters.odemeYontemi} aria-label={tr ? 'Ödeme yöntemi' : 'Payment method'} onChange={e => setPaymentFilters(f => ({ ...f, odemeYontemi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
                 <option value="">{tr ? 'Yöntem' : 'Method'}</option>
                 {([1, 2, 3, 99] as OdemeYontemi[]).map(v => <option key={v} value={v}>{yontemLabel(v, lang)}</option>)}
               </select>
-              <input type="date" value={paymentFilters.baslangicTarihi} onChange={e => setPaymentFilters(f => ({ ...f, baslangicTarihi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-              <input type="date" value={paymentFilters.bitisTarihi} onChange={e => setPaymentFilters(f => ({ ...f, bitisTarihi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+              <input type="date" value={paymentFilters.baslangicTarihi} aria-label={tr ? 'Başlangıç tarihi' : 'Start date'} onChange={e => setPaymentFilters(f => ({ ...f, baslangicTarihi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+              <input type="date" value={paymentFilters.bitisTarihi} aria-label={tr ? 'Bitiş tarihi' : 'End date'} onChange={e => setPaymentFilters(f => ({ ...f, bitisTarihi: e.target.value }))} className="rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
               <button onClick={loadPayments} className="rounded-lg bg-ocean px-4 py-2 text-sm font-semibold text-white">{tr ? 'Filtrele' : 'Filter'}</button>
             </div>
             <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700 dark:bg-slate-900 dark:text-slate-200">{totalPaymentText}</div>
@@ -1036,7 +1051,7 @@ export default function FirmaKrediTab() {
                 {paymentsLoading ? <SkeletonRows columns={12} /> : payments.map(p => {
                   const cancelled = !!p.iptalEdildiMi;
                   return (
-                    <tr key={p.odemeId ?? p.id} className={`border-t border-slate-100 dark:border-slate-700 ${cancelled ? 'bg-slate-50 text-slate-400 line-through dark:bg-slate-900' : ''}`}>
+                    <tr key={p.odemeId ?? p.id} className={`border-t border-slate-100 dark:border-slate-700 ${cancelled ? 'bg-slate-50 text-slate-600 line-through dark:bg-slate-900' : ''}`}>
                       <td className="px-3 py-3 font-medium text-slate-900 dark:text-slate-100">{p.firmaUnvan}</td>
                       <td className="px-3 py-3 font-bold">{para(p.tutar, undefined, lang)}</td>
                       <td className="px-3 py-3">{p.paraBirimi}</td>
@@ -1045,14 +1060,14 @@ export default function FirmaKrediTab() {
                       <td className="px-3 py-3 font-mono text-xs">{p.bankaReferansNo}</td>
                       <td className="px-3 py-3 text-slate-500">{p.gonderenUnvan || '-'}</td>
                       <td className="px-3 py-3 text-slate-500">{p.faturaNo || '-'}</td>
-                      <td className="px-3 py-3">{p.dekontDosyaId ? '📎' : '-'}</td>
+                      <td className="px-3 py-3">{p.dekontDosyaId ? <span role="img" aria-label={tr ? 'Dekont var' : 'Receipt attached'}>📎</span> : '-'}</td>
                       <td className="px-3 py-3">{cancelled ? (tr ? 'İptal' : 'Cancelled') : p.durum || (tr ? 'Aktif' : 'Active')}</td>
                       <td className="px-3 py-3 text-slate-500">{p.olusturanKullaniciAdi || '-'}</td>
                       <td className="px-3 py-3 text-slate-500">{tarih(p.olusturmaTarihi, lang)}</td>
                     </tr>
                   );
                 })}
-                {!paymentsLoading && payments.length === 0 && <tr><td colSpan={12} className="px-3 py-8 text-center text-slate-400">{tr ? 'Ödeme bulunamadı.' : 'No payments found.'}</td></tr>}
+                {!paymentsLoading && payments.length === 0 && <tr><td colSpan={12} className="px-3 py-8 text-center text-slate-600">{tr ? 'Ödeme bulunamadı.' : 'No payments found.'}</td></tr>}
               </tbody>
             </table>
           </div>

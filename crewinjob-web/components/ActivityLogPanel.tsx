@@ -8,6 +8,7 @@ import {
 } from '@/lib/activity-log';
 import { useLang } from '@/lib/lang';
 import { History } from 'lucide-react';
+import { useDialog } from '@/components/a11y/useDialog';
 
 function timeAgo(ts: number, lang: 'tr' | 'en'): string {
   const diff = Date.now() - ts;
@@ -24,6 +25,7 @@ export default function ActivityLogPanel() {
   const { lang } = useLang();
   const [open,    setOpen]    = useState(false);
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
+  const { titleId, dialogProps } = useDialog(open, () => setOpen(false));
 
   const reload = useCallback(() => {
     getActivityLog().then(setEntries).catch(() => {});
@@ -55,8 +57,10 @@ export default function ActivityLogPanel() {
         onClick={() => { setOpen(v => !v); reload(); }}
         className="relative flex items-center gap-1.5 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 px-3 py-1.5 rounded-lg transition-colors font-medium"
         title={lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity log'}
+        aria-label={lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity log'}
+        aria-expanded={open}
       >
-        <History size={16} />
+        <History size={16} aria-hidden="true" />
         <span className="hidden sm:inline">{lang === 'tr' ? 'Aktivite' : 'Activity'}</span>
         {unread > 0 && (
           <span className="absolute -top-1.5 -right-1.5 bg-ocean text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
@@ -75,12 +79,12 @@ export default function ActivityLogPanel() {
           />
 
           {/* panel */}
-          <div className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-slate-800 shadow-2xl flex flex-col border-l border-slate-200 dark:border-slate-700">
+          <div {...dialogProps} className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-slate-800 shadow-2xl flex flex-col border-l border-slate-200 dark:border-slate-700">
             {/* header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-700">
               <div className="flex items-center gap-2">
-                <span className="text-base">🕐</span>
-                <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
+                <span className="text-base" aria-hidden="true">🕐</span>
+                <h2 id={titleId} className="font-semibold text-slate-800 dark:text-slate-100 text-sm">
                   {lang === 'tr' ? 'Aktivite Günlüğü' : 'Activity log'}
                 </h2>
                 {entries.length > 0 && (
@@ -103,7 +107,7 @@ export default function ActivityLogPanel() {
                   onClick={() => setOpen(false)}
                   aria-label={lang === 'tr' ? 'Kapat' : 'Close'}
                   title={lang === 'tr' ? 'Kapat' : 'Close'}
-                  className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-lg leading-none"
+                  className="text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-lg leading-none"
                 >
                   ✕
                 </button>
@@ -113,8 +117,8 @@ export default function ActivityLogPanel() {
             {/* entries */}
             <div className="flex-1 overflow-y-auto py-2">
               {entries.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-500">
-                  <span className="text-4xl opacity-20">🕐</span>
+                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-600 dark:text-slate-400">
+                  <span className="text-4xl opacity-20" aria-hidden="true">🕐</span>
                   <p className="text-xs text-center">
                     {lang === 'tr' ? 'Henüz aktivite yok.' : 'No activity yet.'}<br />
                     {lang === 'tr' ? 'İçerik üret veya paylaş.' : 'Generate or share content.'}
@@ -129,18 +133,18 @@ export default function ActivityLogPanel() {
                         key={entry.id}
                         className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
                       >
-                        <span className="text-base mt-0.5 shrink-0">{meta.icon}</span>
+                        <span className="text-base mt-0.5 shrink-0" aria-hidden="true">{meta.icon}</span>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-medium text-slate-700 dark:text-slate-200 leading-snug">
                             {entry.label}
                           </p>
                           {entry.detail && (
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+                            <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 truncate">
                               {entry.detail}
                             </p>
                           )}
                         </div>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0 mt-0.5">
+                        <span className="text-[10px] text-slate-600 dark:text-slate-400 shrink-0 mt-0.5">
                           {timeAgo(entry.ts, lang)}
                         </span>
                       </div>
@@ -151,12 +155,12 @@ export default function ActivityLogPanel() {
             </div>
 
             {/* footer */}
-            <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-400 dark:text-slate-500 flex items-center justify-between">
+            <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 flex items-center justify-between">
               <span>
                 {lang === 'tr' ? `Son ${entries.length} / 50 kayıt` : `Last ${entries.length} / 50 records`}
               </span>
               <button onClick={reload} className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
-                ↻ {lang === 'tr' ? 'Yenile' : 'Refresh'}
+                <span aria-hidden="true">↻</span> {lang === 'tr' ? 'Yenile' : 'Refresh'}
               </button>
             </div>
           </div>

@@ -64,11 +64,11 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-lg">📊</span>
+            <span className="text-lg" aria-hidden="true">📊</span>
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
               {lang === 'tr' ? 'Profil Doluluk Dağılımı' : 'Profile completion distribution'}
             </h3>
-            <span className="text-xs text-slate-400 dark:text-slate-500">
+            <span className="text-xs text-slate-600 dark:text-slate-400">
               {num(total)} {lang === 'tr' ? 'gemi adamı' : 'seafarers'}
             </span>
           </div>
@@ -85,7 +85,7 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
         </div>
 
         {/* Stacked horizontal bar */}
-        <div className="flex h-7 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 shadow-sm">
+        <div aria-hidden="true" className="flex h-7 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 shadow-sm">
           {SEGMENTS.map(seg => {
             const w = pct(buckets[seg.key]);
             if (w === 0) return null;
@@ -119,17 +119,17 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
                 <div className="flex items-center gap-2 mb-1">
                   <span className={`w-2.5 h-2.5 rounded-full ${seg.color} shrink-0`} />
                   <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">{seg.label}</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto">{seg.icon}</span>
+                  <span className="text-[10px] text-slate-600 dark:text-slate-400 ml-auto" aria-hidden="true">{seg.icon}</span>
                 </div>
                 <div className="flex items-baseline gap-1.5">
                   <span className={`text-lg font-bold ${seg.text}`}>
                     {num(count)}
                   </span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                  <span className="text-[10px] text-slate-600 dark:text-slate-400">
                     {percent(w, 1)}
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{seg.range}</p>
+                <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">{seg.range}</p>
               </div>
             );
           })}
@@ -138,7 +138,7 @@ export default function ProfileFillRatePanel({ buckets, average, isExact = false
         {/* Aksiyon önerileri */}
         {(buckets.zero + buckets.low + buckets.mid) / total > 0.5 && (
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-            <span>💡</span>
+            <span aria-hidden="true">💡</span>
             <span>
               {lang === 'tr' ? (
                 <>Kullanıcıların <strong>{percent(((buckets.zero + buckets.low + buckets.mid) / total) * 100, 1)}</strong>&apos;i henüz %80 aktivasyon eşiğine ulaşmamış.

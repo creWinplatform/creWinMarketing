@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLang } from '@/lib/lang';
 import { localeTag, type Lang } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
+import { onTabKeys } from '@/components/platform/tab-keys';
 
 // ── Tipler ────────────────────────────────────────────────────────────────────
 interface TgGroup {
@@ -353,7 +354,7 @@ export default function PipelineTab() {
                   {schedBusy ? t('⏳ Başlatılıyor…', '⏳ Starting…') : t('▶ Başlat', '▶ Start')}
                 </button>
               )}
-              <button onClick={loadScheduler} aria-label={t('Scheduler durumunu yenile', 'Refresh scheduler status')} title={t('Yenile', 'Refresh')} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm">↻</button>
+              <button onClick={loadScheduler} aria-label={t('Scheduler durumunu yenile', 'Refresh scheduler status')} title={t('Yenile', 'Refresh')} className="p-2 text-slate-600 hover:text-slate-600 dark:hover:text-slate-200 text-sm">↻</button>
             </div>
           </div>
         );
@@ -387,7 +388,7 @@ export default function PipelineTab() {
 
       {/* ── Mesaj banner ───────────────────────────────────────────────── */}
       {msg && (
-        <div className={`px-4 py-3 rounded-lg text-sm font-medium ${
+        <div role={msgOk ? 'status' : 'alert'} className={`px-4 py-3 rounded-lg text-sm font-medium ${
           msgOk ? 'bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-700'
                 : 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-700'
         }`}><Msg text={msg} /></div>
@@ -407,20 +408,20 @@ export default function PipelineTab() {
             <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('💰 Gemini API Maliyeti', '💰 Gemini API cost')}</span>
-                <button onClick={loadUsageAndConfig} aria-label={t('Maliyeti yenile', 'Refresh cost')} title={t('Yenile', 'Refresh')} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">↻</button>
+                <button onClick={loadUsageAndConfig} aria-label={t('Maliyeti yenile', 'Refresh cost')} title={t('Yenile', 'Refresh')} className="text-xs text-slate-600 hover:text-slate-600 dark:hover:text-slate-200">↻</button>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="text-center">
                   <div className="text-lg font-bold text-slate-900 dark:text-slate-100">${(todayData?.costUsd ?? 0).toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</div>
-                  <div className="text-xs text-slate-400">{t('Bugün', 'Today')}</div>
+                  <div className="text-xs text-slate-600">{t('Bugün', 'Today')}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-bold text-slate-900 dark:text-slate-100">${last7.cost.toLocaleString(locale, { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</div>
-                  <div className="text-xs text-slate-400">{t('Son 7 gün', 'Last 7 days')}</div>
+                  <div className="text-xs text-slate-600">{t('Son 7 gün', 'Last 7 days')}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-bold text-green-600">{last7.filtered.toLocaleString(locale)}</div>
-                  <div className="text-xs text-slate-400">{t('Regex filtreli', 'Regex filtered')}</div>
+                  <div className="text-xs text-slate-600">{t('Regex filtreli', 'Regex filtered')}</div>
                 </div>
               </div>
               {todayData && (
@@ -440,13 +441,13 @@ export default function PipelineTab() {
           <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{t('⚙️ Pipeline Ayarları', '⚙️ Pipeline settings')}</span>
-              {configSaving && <span className="text-xs text-slate-400 animate-pulse">{t('Kaydediliyor…', 'Saving…')}</span>}
+              {configSaving && <span role="status" className="text-xs text-slate-600 animate-pulse">{t('Kaydediliyor…', 'Saving…')}</span>}
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-xs font-medium text-slate-700 dark:text-slate-300">{t('Tümünü İncele Modu', 'Review all mode')}</div>
-                  <div className="text-xs text-slate-400">{t('Her ilanı review kuyruğuna at', 'Send every job to the review queue')}</div>
+                  <div className="text-xs text-slate-600">{t('Her ilanı review kuyruğuna at', 'Send every job to the review queue')}</div>
                 </div>
                 <button onClick={() => saveConfig({ reviewAllItems: !agentConfig.reviewAllItems })}
                   role="switch" aria-checked={agentConfig.reviewAllItems} aria-label={t('Tümünü İncele Modu', 'Review all mode')}
@@ -464,7 +465,7 @@ export default function PipelineTab() {
                   onMouseUp={e => saveConfig({ autoApproveThreshold: +(e.target as HTMLInputElement).value })}
                   onTouchEnd={e => saveConfig({ autoApproveThreshold: +(e.target as HTMLInputElement).value })}
                   className="w-full h-1.5 accent-blue-500" />
-                <div className="flex justify-between text-xs text-slate-400 mt-0.5"><span>65</span><span>100</span></div>
+                <div className="flex justify-between text-xs text-slate-600 mt-0.5"><span>65</span><span>100</span></div>
               </div>
               <div>
                 <div className="flex justify-between mb-1">
@@ -536,14 +537,14 @@ export default function PipelineTab() {
       </div>
 
       {/* ── Panel seçici ────────────────────────────────────────────────── */}
-      <div className="flex gap-2 border-b border-gray-200 dark:border-slate-700 overflow-x-auto overscroll-x-contain">
+      <div role="tablist" aria-label={t('Pipeline panelleri', 'Pipeline panels')} onKeyDown={onTabKeys} className="flex gap-2 border-b border-gray-200 dark:border-slate-700 overflow-x-auto overscroll-x-contain">
         {([
           { key: 'review', label: t('🔍 İnceleme Kuyruğu', '🔍 Review queue'), badge: reviewQueue.length },
           { key: 'groups', label: t('🤝 Gruplar', '🤝 Groups'), badge: groups.length },
           { key: 'stats',  label: t('📊 Grup Kalite', '📊 Group quality'), badge: groupStats.length },
           { key: 'jobs',   label: t('✅ Yayınlananlar', '✅ Published'), badge: postedJobs.length },
         ] as { key: typeof activePanel; label: string; badge: number }[]).map(p => (
-          <button key={p.key} onClick={() => setActivePanel(p.key)}
+          <button key={p.key} type="button" role="tab" aria-selected={activePanel === p.key} tabIndex={activePanel === p.key ? 0 : -1} onClick={() => setActivePanel(p.key)}
             className={`shrink-0 px-4 py-2 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${
               activePanel === p.key
                 ? 'border-ocean text-ocean'
@@ -589,7 +590,7 @@ export default function PipelineTab() {
           )}
           {reviewQueue.length === 0 ? (
             <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl py-12 text-center text-gray-400 dark:text-gray-500">
-              <div className="text-3xl mb-2">✅</div>
+              <div className="text-3xl mb-2" aria-hidden="true">✅</div>
               <div className="text-sm">{t('İnceleme kuyruğu boş — tüm ilanlar kalite eşiğini geçti', 'Review queue is empty — all job postings passed the quality threshold')}</div>
             </div>
           ) : [...reviewQueue].sort((a, b) => new Date(b.queuedAt).getTime() - new Date(a.queuedAt).getTime()).map(item => {
@@ -655,12 +656,14 @@ export default function PipelineTab() {
                         <input
                           type="text"
                           placeholder={t('Pozisyon ara… (örn: Chief, Captain)', 'Search position… (e.g. Chief, Captain)')}
+                          aria-label={t('Pozisyon ara', 'Search position')}
                           value={search}
                           onChange={e => setPosSearches(prev => ({ ...prev, [item.id]: e.target.value }))}
                           className="w-full text-xs border border-gray-300 dark:border-slate-600 rounded px-2 py-1.5 mb-1 bg-white dark:bg-slate-700 text-gray-800 dark:text-gray-100 placeholder-gray-400"
                         />
                         <select
                           size={Math.min(5, filteredPos.length || 1)}
+                          aria-label={t('Pozisyon', 'Position')}
                           value={selPosId ?? ''}
                           onChange={e => setPosSelections(prev => ({ ...prev, [item.id]: Number(e.target.value) }))}
                           className="w-full text-xs border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-gray-800 dark:text-gray-100"
@@ -722,7 +725,7 @@ export default function PipelineTab() {
               ? <div className="py-8 text-center text-gray-400 dark:text-gray-500 text-sm">{t('Henüz grup yok — "Grup Keşfi" çalıştır', 'No groups yet — run "Group discovery"')}</div>
               : groups.map(g => (
                 <div key={g.id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className="text-lg">{g.type === 'channel' ? '📡' : '👥'}</span>
+                  <span className="text-lg" role="img" aria-label={g.type === 'channel' ? t('Kanal', 'Channel') : t('Grup', 'Group')}>{g.type === 'channel' ? '📡' : '👥'}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{g.title}</div>
                     <div className="text-xs text-gray-400 dark:text-gray-500">{g.username && <span className="mr-2">{g.username}</span>}{fmt(g.members, lang)} {t('üye', 'members')}</div>
@@ -803,7 +806,7 @@ export default function PipelineTab() {
                 const pos = String(d._positionName || `#${job.ilanId}`);
                 return (
                   <div key={i} className="flex items-start gap-3 px-4 py-2.5">
-                    <span className="text-lg mt-0.5">🚢</span>
+                    <span className="text-lg mt-0.5" aria-hidden="true">🚢</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{pos}</span>
@@ -850,12 +853,13 @@ function ActionCard({ icon, title, desc, color, loading, disabled, onClick }: {
   const btn    = { blue: 'bg-blue-600 hover:bg-blue-700', green: 'bg-green-600 hover:bg-green-700', purple: 'bg-purple-600 hover:bg-purple-700', orange: 'bg-orange-500 hover:bg-orange-600' };
   return (
     <div className={`border-2 rounded-xl p-4 flex flex-col gap-3 bg-white dark:bg-slate-800 transition-all ${border[color]} ${disabled ? 'opacity-60' : ''}`}>
-      <div className="text-2xl">{icon}</div>
+      <div className="text-2xl" aria-hidden="true">{icon}</div>
       <div>
         <div className="font-semibold text-sm text-gray-800 dark:text-gray-100">{title}</div>
         <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{desc}</div>
       </div>
-      <button onClick={onClick} disabled={disabled}
+      <button type="button" onClick={onClick} disabled={disabled}
+        aria-label={`${loading ? (lang === 'tr' ? 'Çalışıyor…' : 'Running…') : (lang === 'tr' ? 'Başlat' : 'Start')}: ${title}`}
         className={`mt-auto w-full py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors ${btn[color]}`}>
         {loading ? <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>{lang === 'tr' ? 'Çalışıyor…' : 'Running…'}</> : (lang === 'tr' ? 'Başlat' : 'Start')}
       </button>
@@ -869,7 +873,7 @@ function MiniCard({ icon, title, loading, disabled, onClick }: {
   return (
     <button onClick={onClick} disabled={disabled || loading}
       className="flex items-center gap-2 px-3 py-2.5 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-200 hover:border-gray-400 dark:hover:border-slate-500 disabled:opacity-50 transition-all">
-      {loading ? <svg className="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> : <span>{icon}</span>}
+      {loading ? <svg className="animate-spin h-4 w-4 flex-shrink-0" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg> : <span aria-hidden="true">{icon}</span>}
       <span className="truncate">{title}</span>
     </button>
   );

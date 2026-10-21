@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import { useLang } from '@/lib/lang';
 import { localeTag, type Lang } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
+import { onTabKeys } from '@/components/platform/tab-keys';
 import type {
   AdPlatform, AdPlatformStatus, AdCampaign, CampaignsResponse,
   BudgetAllocation, CreateCampaignRequest, CreateCampaignResponse,
@@ -17,7 +18,7 @@ const STATUS_BADGE: Record<string, string> = {
   ARCHIVED:  'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400',
   DRAFT:     'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300',
   COMPLETED: 'bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400',
-  UNKNOWN:   'bg-slate-100 text-slate-400 dark:bg-slate-700 dark:text-slate-500',
+  UNKNOWN:   'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400',
 };
 
 // Platform durum değerleri (API anahtarı) çevrilmez; yalnızca ekrandaki etiket
@@ -95,14 +96,14 @@ function CampaignCard({
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[campaign.status] || STATUS_BADGE.UNKNOWN}`}>
               {STATUS_LABEL[campaign.status]?.[lang] ?? campaign.status}
             </span>
-            <span className="text-[10px] text-slate-400 dark:text-slate-500">{campaign.objective}</span>
+            <span className="text-[10px] text-slate-600 dark:text-slate-400">{campaign.objective}</span>
             {campaign.budgetDaily && (
               <span className="text-[10px] text-slate-500 dark:text-slate-400">
                 {money(campaign.budgetDaily, lang, campaign.currency)}/{t('gün', 'day')}
               </span>
             )}
             {campaign.startDate && (
-              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+              <span className="text-[10px] text-slate-600 dark:text-slate-400">
                 {t('Başlangıç', 'Start')}: {day(campaign.startDate, lang)}
               </span>
             )}
@@ -141,7 +142,7 @@ function CampaignCard({
               aria-label={campaign.platform === 'google' ? t('Kaldır', 'Remove') : t('Arşivle', 'Archive')}
               className="text-[11px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 transition-colors"
             >
-              🗑️
+              <span aria-hidden="true">🗑️</span>
             </button>
           )}
         </div>}
@@ -158,13 +159,13 @@ function CampaignCard({
           ].map(m => (
             <div key={m.label} className="px-3 py-2.5 text-center">
               <p className="text-sm font-bold text-slate-800 dark:text-slate-100">{m.value}</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">{m.label}</p>
+              <p className="text-[10px] text-slate-600 dark:text-slate-400">{m.label}</p>
             </div>
           ))}
         </div>
       )}
       {!ins && (
-        <div className="px-4 py-2.5 text-[11px] text-slate-400 dark:text-slate-500">
+        <div className="px-4 py-2.5 text-[11px] text-slate-600 dark:text-slate-400">
           {t('Performans verisi yok (kampanya henüz yayınlanmadı)', 'No performance data (the campaign isn\'t live yet)')}
         </div>
       )}
@@ -184,6 +185,7 @@ function CreateCampaignForm({
   saving:   boolean;
 }) {
   const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
+  const fid = useId();
 
   const objectives =
     platform === 'meta'     ? META_OBJECTIVES :
@@ -204,68 +206,74 @@ function CreateCampaignForm({
   return (
     <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 p-4 flex flex-col gap-3">
       <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-        ➕ {t('Yeni kampanya', 'New campaign')} — {PLATFORM_META[platform].label}
+        <span aria-hidden="true">➕</span> {t('Yeni kampanya', 'New campaign')} — {PLATFORM_META[platform].label}
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="sm:col-span-2">
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Kampanya adı', 'Campaign name')} *</label>
+          <label htmlFor={`${fid}-name`} className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Kampanya adı', 'Campaign name')} *</label>
           <input
+            id={`${fid}-name`}
             type="text" value={name} onChange={e => setName(e.target.value)}
             placeholder={t('Örn: Seafarer Registration Q3 2026', 'e.g. Seafarer registration Q3 2026')}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
           />
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Hedef / Tür', 'Objective / Type')} *</label>
+          <label htmlFor={`${fid}-objective`} className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Hedef / Tür', 'Objective / Type')} *</label>
           <select
+            id={`${fid}-objective`}
             value={objective} onChange={e => setObjective(e.target.value)}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
           >
             {objectives.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t(`Günlük bütçe (${currency})`, `Daily budget (${currency})`)} *</label>
+          <label htmlFor={`${fid}-budget`} className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t(`Günlük bütçe (${currency})`, `Daily budget (${currency})`)} *</label>
           <div className="flex items-center gap-2">
             <input
+              id={`${fid}-budget`}
               type="range" min={1} max={500} step={1} value={budgetDaily}
               onChange={e => setBudgetDaily(Number(e.target.value))}
               className="flex-1 accent-ocean"
             />
             <span className="text-sm font-bold text-ocean w-20 text-right">{money(budgetDaily, lang, currency, 0)}</span>
           </div>
-          <p className="text-[10px] text-slate-400 mt-0.5">≈ {money(budgetDaily * 30, lang, currency, 0)}/{t('ay', 'mo')}</p>
+          <p className="text-[10px] text-slate-600 mt-0.5">≈ {money(budgetDaily * 30, lang, currency, 0)}/{t('ay', 'mo')}</p>
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Başlangıç tarihi', 'Start date')} *</label>
+          <label htmlFor={`${fid}-start`} className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Başlangıç tarihi', 'Start date')} *</label>
           <input
+            id={`${fid}-start`}
             type="date" value={startDate} min={today}
             onChange={e => setStartDate(e.target.value)}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
           />
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Bitiş tarihi (opsiyonel)', 'End date (optional)')}</label>
+          <label htmlFor={`${fid}-end`} className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Bitiş tarihi (opsiyonel)', 'End date (optional)')}</label>
           <input
+            id={`${fid}-end`}
             type="date" value={endDate} min={startDate || today}
             onChange={e => setEndDate(e.target.value)}
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
           />
         </div>
 
         <div>
-          <label className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Hedef ülkeler (virgülle)', 'Target countries (comma-separated)')}</label>
+          <label htmlFor={`${fid}-countries`} className="text-xs text-slate-500 dark:text-slate-400 block mb-1">{t('Hedef ülkeler (virgülle)', 'Target countries (comma-separated)')}</label>
           <input
+            id={`${fid}-countries`}
             type="text" value={countries} onChange={e => setCountries(e.target.value)}
             placeholder="TR, PH, IN, ID"
-            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50"
+            className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus-visible:ring-ocean"
           />
-          <p className="text-[10px] text-slate-400 mt-0.5">{t('ISO ülke kodları: TR, PH, IN…', 'ISO country codes: TR, PH, IN…')}</p>
+          <p className="text-[10px] text-slate-600 mt-0.5">{t('ISO ülke kodları: TR, PH, IN…', 'ISO country codes: TR, PH, IN…')}</p>
         </div>
       </div>
 
@@ -292,7 +300,7 @@ function CreateCampaignForm({
         </button>
       </div>
 
-      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+      <p className="text-[10px] text-slate-600 dark:text-slate-400">
         💡 {platform === 'linkedin' ? t(
           'LinkedIn kampanyası TASLAK olarak oluşturulur — teklif ve kreatifi LinkedIn Campaign Manager’da tamamlayıp yayına alın.',
           'LinkedIn campaigns are created as DRAFT — finish bidding and creatives in LinkedIn Campaign Manager, then launch.',
@@ -315,6 +323,7 @@ function BudgetAllocator({
   currency:   string;
 }) {
   const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
+  const fid = useId();
   const total = allocation.totalMonthlyUSD;
   const p     = allocation.platforms;
 
@@ -342,28 +351,29 @@ function BudgetAllocator({
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-        💰 {t('Aylık bütçe ve dağılım', 'Monthly budget & allocation')}
+        <span><span aria-hidden="true">💰</span> {t('Aylık bütçe ve dağılım', 'Monthly budget & allocation')}</span>
       </h3>
 
       <div className="flex flex-col gap-4">
         {/* Total */}
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t('Toplam aylık bütçe', 'Total monthly budget')}</label>
+            <label htmlFor={`${fid}-total`} className="text-xs text-slate-600 dark:text-slate-300 font-medium">{t('Toplam aylık bütçe', 'Total monthly budget')}</label>
             <span className="text-base font-bold text-ocean">{money(total, lang, currency, 0)}</span>
           </div>
           <input
+            id={`${fid}-total`}
             type="range" min={50} max={10000} step={50} value={total}
             onChange={e => setTotal(Number(e.target.value))}
             className="w-full accent-ocean"
           />
-          <div className="flex justify-between text-[10px] text-slate-400 mt-0.5">
+          <div className="flex justify-between text-[10px] text-slate-600 mt-0.5">
             <span>{money(50, lang, currency, 0)}</span><span>{money(10000, lang, currency, 0)}</span>
           </div>
         </div>
 
         {/* Stacked bar */}
-        <div className="h-6 flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
+        <div aria-hidden="true" className="h-6 flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600">
           {[
             { pct: p.meta,     color: 'bg-blue-500' },
             { pct: p.linkedin, color: 'bg-sky-600' },
@@ -377,9 +387,9 @@ function BudgetAllocator({
 
         {/* Platform sliders */}
         {[
-          { key: 'meta'     as const, label: '📘 Meta',     val: p.meta,     usd: metaUSD,     fn: setMeta },
-          { key: 'linkedin' as const, label: '💼 LinkedIn', val: p.linkedin, usd: linkedinUSD, fn: setLI },
-          { key: 'google'   as const, label: '🔍 Google',   val: p.google,   usd: googleUSD,   fn: setGoogle },
+          { key: 'meta'     as const, label: '📘 Meta',     name: 'Meta',     val: p.meta,     usd: metaUSD,     fn: setMeta },
+          { key: 'linkedin' as const, label: '💼 LinkedIn', name: 'LinkedIn', val: p.linkedin, usd: linkedinUSD, fn: setLI },
+          { key: 'google'   as const, label: '🔍 Google',   name: 'Google',   val: p.google,   usd: googleUSD,   fn: setGoogle },
         ].map(s => (
           <div key={s.key}>
             <div className="flex items-center justify-between mb-1">
@@ -390,6 +400,7 @@ function BudgetAllocator({
               </div>
             </div>
             <input
+              aria-label={t(`${s.name} bütçe payı`, `${s.name} budget share`)}
               type="range" min={0} max={100} step={5} value={s.val}
               onChange={e => s.fn(Number(e.target.value))}
               className="w-full accent-ocean"
@@ -397,7 +408,7 @@ function BudgetAllocator({
           </div>
         ))}
 
-        <p className="text-[11px] text-slate-400 dark:text-slate-500">
+        <p className="text-[11px] text-slate-600 dark:text-slate-400">
           ≈ {money(total / 30, lang, currency, 0)}/{t('gün toplam', 'day in total')} ·
           Meta {money(metaUSD / 30, lang, currency, 0)} · LI {money(linkedinUSD / 30, lang, currency, 0)} · Google {money(googleUSD / 30, lang, currency, 0)}
         </p>
@@ -567,7 +578,7 @@ export default function CampaignManagerTab() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            📣 {t('Kampanya yöneticisi', 'Campaign manager')}
+            <span><span aria-hidden="true">📣</span> {t('Kampanya yöneticisi', 'Campaign manager')}</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
             {t('Meta · LinkedIn · Google Ads — gerçek zamanlı kampanya takibi', 'Meta · LinkedIn · Google Ads — real-time campaign tracking')}
@@ -584,7 +595,7 @@ export default function CampaignManagerTab() {
           { icon: '🖱️', label: t('Tıklama',         'Clicks'),           value: fmt(totalClicks, lang),               color: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-700 text-purple-800 dark:text-purple-300' },
         ].map(s => (
           <div key={s.label} className={`rounded-xl border p-4 flex items-start gap-3 ${s.color}`}>
-            <span className="text-2xl">{s.icon}</span>
+            <span className="text-2xl" aria-hidden="true">{s.icon}</span>
             <div>
               <div className="text-xl font-bold leading-tight">{loading ? '…' : s.value}</div>
               <div className="text-xs font-medium opacity-80">{s.label}</div>
@@ -603,7 +614,7 @@ export default function CampaignManagerTab() {
           const meta = PLATFORM_META[p];
           return (
             <div key={p} className={`rounded-xl border p-3 flex items-center gap-3 ${meta.bg}`}>
-              <span className="text-xl">{meta.icon}</span>
+              <span className="text-xl" aria-hidden="true">{meta.icon}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">{meta.label}</p>
                 <p className={`text-[10px] font-medium ${st?.configured ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'}`}>
@@ -621,13 +632,17 @@ export default function CampaignManagerTab() {
       </div>
 
       {/* ── Platform tab selector ── */}
-      <div className="flex gap-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl p-1">
+      <div role="tablist" aria-label={t('Reklam platformları', 'Ad platforms')} onKeyDown={onTabKeys} className="flex gap-1 bg-slate-100 dark:bg-slate-700/50 rounded-xl p-1">
         {PLATFORMS.map(p => {
           const meta = PLATFORM_META[p];
           const cnt  = campaigns[p].length;
           return (
             <button
               key={p}
+              type="button"
+              role="tab"
+              aria-selected={activePlatform === p}
+              tabIndex={activePlatform === p ? 0 : -1}
               onClick={() => { setActivePlatform(p); setShowForm(false); }}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-medium transition-all ${
                 activePlatform === p
@@ -635,7 +650,7 @@ export default function CampaignManagerTab() {
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
-              {meta.icon} {meta.label}
+              <span><span aria-hidden="true">{meta.icon}</span> {meta.label}</span>
               {cnt > 0 && (
                 <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
                   activePlatform === p ? 'bg-ocean text-white' : 'bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300'
@@ -648,23 +663,23 @@ export default function CampaignManagerTab() {
 
       {/* ── Success toast ── */}
       {saveSuccess && (
-        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
-          ✅ <Msg text={saveSuccess} />
+        <div role="status" className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-4 py-3 text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
+          <span aria-hidden="true">✅</span> <Msg text={saveSuccess} />
         </div>
       )}
 
       {/* ── Action error (create / pause / delete) ── */}
       {actionError && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
-          <span className="flex-1">❌ <Msg text={actionError} /></span>
-          <button onClick={() => setActionError('')} className="text-xs opacity-70 hover:opacity-100" aria-label={t('Kapat', 'Dismiss')}>✕</button>
+        <div role="alert" className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300 flex items-start gap-2">
+          <span className="flex-1"><span aria-hidden="true">❌</span> <Msg text={actionError} /></span>
+          <button type="button" onClick={() => setActionError('')} className="text-xs opacity-70 hover:opacity-100" aria-label={t('Kapat', 'Dismiss')}><span aria-hidden="true">✕</span></button>
         </div>
       )}
 
       {/* ── Error banner ── */}
       {errors[activePlatform] && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300">
-          ❌ <Msg text={errors[activePlatform]} />
+        <div role="alert" className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl px-4 py-3 text-sm text-red-700 dark:text-red-300">
+          <span aria-hidden="true">❌</span> <Msg text={errors[activePlatform]} />
         </div>
       )}
 
@@ -672,7 +687,7 @@ export default function CampaignManagerTab() {
       {!activeLive && !errors[activePlatform] && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-xl px-4 py-3 text-xs text-amber-800 dark:text-amber-300 flex flex-col gap-1">
           <p className="font-semibold text-sm">
-            🧪 {t('DEMO MODU — platform yapılandırılmamış', 'DEMO MODE — platform not configured')}
+            <span aria-hidden="true">🧪</span> {t('DEMO MODU — platform yapılandırılmamış', 'DEMO MODE — platform not configured')}
           </p>
           <p>
             {t(
@@ -701,10 +716,12 @@ export default function CampaignManagerTab() {
         <>
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              {PLATFORM_META[activePlatform].icon} {PLATFORM_META[activePlatform].label} — {t('Kampanyalar', 'Campaigns')}
+              <span aria-hidden="true">{PLATFORM_META[activePlatform].icon}</span> {PLATFORM_META[activePlatform].label} — {t('Kampanyalar', 'Campaigns')}
             </h3>
             <button
+              type="button"
               onClick={() => setShowForm(v => !v)}
+              aria-expanded={showForm}
               disabled={!activeLive}
               title={activeLive ? undefined : t('Demo modunda kampanya oluşturulamaz', "Can't create campaigns in demo mode")}
               className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
@@ -729,8 +746,8 @@ export default function CampaignManagerTab() {
           )}
 
           {activeTab.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 gap-3 text-slate-400">
-              <span className="text-4xl opacity-20">📣</span>
+            <div className="flex flex-col items-center justify-center py-16 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 gap-3 text-slate-600">
+              <span className="text-4xl opacity-20" aria-hidden="true">📣</span>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {t('Bu platformda henüz kampanya yok.', 'No campaigns on this platform yet.')}
               </p>
@@ -765,19 +782,19 @@ export default function CampaignManagerTab() {
       {/* ── .env.local setup guide ── */}
       <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
         <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">
-          ⚙️ {t('API anahtarları (.env.local)', 'API keys (.env.local)')}
+          <span aria-hidden="true">⚙️</span> {t('API anahtarları (.env.local)', 'API keys (.env.local)')}
         </p>
         <div className="space-y-2 text-[11px] font-mono text-slate-500 dark:text-slate-400 leading-relaxed">
-          <p className="text-slate-400 dark:text-slate-500"># ── Meta Ads (Facebook + Instagram) ──────────────────</p>
+          <p className="text-slate-600 dark:text-slate-400"># ── Meta Ads (Facebook + Instagram) ──────────────────</p>
           <p>META_ADS_ACCESS_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;{t('System User Token veya User Token', 'System user token or user token')}&gt;</span></p>
           <p>META_ADS_ACCOUNT_ID=<span className="text-amber-600 dark:text-amber-400">act_&lt;Ad Account ID&gt;</span></p>
           <p>META_GRAPH_VERSION=<span className="text-amber-600 dark:text-amber-400">v25.0 ({t('opsiyonel', 'optional')})</span></p>
           <p>FACEBOOK_PAGE_ID=<span className="text-amber-600 dark:text-amber-400">&lt;{t('Lead Generation için sayfa ID', 'Page ID for lead generation')}&gt;</span></p>
-          <p className="text-slate-400 dark:text-slate-500 mt-1"># ── LinkedIn Ads ──────────────────────────────────────</p>
+          <p className="text-slate-600 dark:text-slate-400 mt-1"># ── LinkedIn Ads ──────────────────────────────────────</p>
           <p>LINKEDIN_ACCESS_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;{t('rw_ads yetkili token', 'Token with rw_ads scope')}&gt;</span></p>
           <p>LINKEDIN_API_VERSION=<span className="text-amber-600 dark:text-amber-400">202608 ({t('opsiyonel', 'optional')})</span></p>
           <p>LINKEDIN_ADS_ACCOUNT_ID=<span className="text-amber-600 dark:text-amber-400">&lt;Sponsored Account ID&gt;</span></p>
-          <p className="text-slate-400 dark:text-slate-500 mt-1"># ── Google Ads ────────────────────────────────────────</p>
+          <p className="text-slate-600 dark:text-slate-400 mt-1"># ── Google Ads ────────────────────────────────────────</p>
           <p>GOOGLE_ADS_DEVELOPER_TOKEN=<span className="text-amber-600 dark:text-amber-400">&lt;Developer Token&gt;</span></p>
           <p>GOOGLE_ADS_CLIENT_ID=<span className="text-amber-600 dark:text-amber-400">&lt;OAuth Client ID&gt;</span></p>
           <p>GOOGLE_ADS_CLIENT_SECRET=<span className="text-amber-600 dark:text-amber-400">&lt;OAuth Client Secret&gt;</span></p>
@@ -785,7 +802,7 @@ export default function CampaignManagerTab() {
           <p>GOOGLE_ADS_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;{t('Customer ID (tiresiz)', 'Customer ID (no dashes)')}&gt;</span></p>
           <p>GOOGLE_ADS_LOGIN_CUSTOMER_ID=<span className="text-amber-600 dark:text-amber-400">&lt;MCC ID ({t('varsa', 'if any')})&gt;</span></p>
           <p>GOOGLE_ADS_API_VERSION=<span className="text-amber-600 dark:text-amber-400">v25 ({t('opsiyonel', 'optional')})</span></p>
-          <p className="text-slate-400 dark:text-slate-500 mt-1"># ── {t('Ortak', 'Common')} ─────────────────────────────────────────────</p>
+          <p className="text-slate-600 dark:text-slate-400 mt-1"># ── {t('Ortak', 'Common')} ─────────────────────────────────────────────</p>
           <p>ADS_CURRENCY=<span className="text-amber-600 dark:text-amber-400">USD ({t('hesap para birimi okunamazsa', 'fallback if account currency is unavailable')})</span></p>
         </div>
       </div>

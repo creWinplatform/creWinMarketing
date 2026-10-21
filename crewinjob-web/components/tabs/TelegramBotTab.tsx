@@ -103,7 +103,7 @@ export default function TelegramBotTab() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-40 text-slate-400 text-sm">
+      <div className="flex items-center justify-center h-40 text-slate-600 text-sm">
         {t('Yükleniyor…', 'Loading…')}
       </div>
     );
@@ -130,8 +130,8 @@ export default function TelegramBotTab() {
           {/* Sol: durum */}
           <div className="flex items-center gap-3 flex-1">
             <div className="relative">
-              <span className="text-3xl">🤖</span>
-              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-slate-800 ${running ? 'bg-green-500' : 'bg-slate-400'}`} />
+              <span className="text-3xl" aria-hidden="true">🤖</span>
+              <span aria-hidden="true" className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white dark:border-slate-800 ${running ? 'bg-green-500' : 'bg-slate-400'}`} />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -159,19 +159,19 @@ export default function TelegramBotTab() {
               <button onClick={() => call({ action: 'start' })}
                 disabled={actionBusy || !hasSession}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-medium transition">
-                <span>▶</span>{actionBusy ? t('Başlatılıyor…', 'Starting…') : t('Başlat', 'Start')}
+                <span aria-hidden="true">▶</span>{actionBusy ? t('Başlatılıyor…', 'Starting…') : t('Başlat', 'Start')}
               </button>
             ) : (
               <>
                 <button onClick={() => call({ action: 'restart' })}
                   disabled={actionBusy}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium transition">
-                  🔄 {actionBusy ? '…' : t('Yeniden Başlat', 'Restart')}
+                  <span aria-hidden="true">🔄</span> {actionBusy ? '…' : t('Yeniden Başlat', 'Restart')}
                 </button>
                 <button onClick={() => call({ action: 'stop' })}
                   disabled={actionBusy}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-sm font-medium transition">
-                  ■ {t('Durdur', 'Stop')}
+                  <span aria-hidden="true">■</span> {t('Durdur', 'Stop')}
                 </button>
               </>
             )}
@@ -179,7 +179,7 @@ export default function TelegramBotTab() {
         </div>
 
         {msg && (
-          <div className={`mt-3 text-xs px-3 py-2 rounded-lg ${msgOk
+          <div role={msgOk ? 'status' : 'alert'} className={`mt-3 text-xs px-3 py-2 rounded-lg ${msgOk
             ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
             : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
             <Msg text={msg} />
@@ -196,7 +196,7 @@ export default function TelegramBotTab() {
           { icon: '📨', label: t('Gönderilen DM', 'DMs Sent'),       value: stats.dms.toLocaleString(localeTag(lang)),    color: 'text-green-600 dark:text-green-400',  bg: 'bg-green-50 dark:bg-green-900/20'  },
         ].map(s => (
           <div key={s.icon} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4">
-            <div className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center text-base mb-3`}>{s.icon}</div>
+            <div aria-hidden="true" className={`w-8 h-8 rounded-lg ${s.bg} flex items-center justify-center text-base mb-3`}>{s.icon}</div>
             <div className={`text-2xl font-bold ${s.color}`}>{s.value}</div>
             <div className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-tight">{s.label}</div>
           </div>
@@ -210,7 +210,7 @@ export default function TelegramBotTab() {
         <div className="lg:col-span-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
-              👥 {t('İzlenen Gruplar & Kanallar', 'Monitored groups & channels')}
+              <span aria-hidden="true">👥</span> {t('İzlenen Gruplar & Kanallar', 'Monitored groups & channels')}
             </h3>
             {groups.length > 0 && (
               <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-full">
@@ -221,7 +221,7 @@ export default function TelegramBotTab() {
 
           {groups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-center">
-              <span className="text-4xl mb-3">💬</span>
+              <span className="text-4xl mb-3" aria-hidden="true">💬</span>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 {running
                   ? t('Gruplar yükleniyor…', 'Loading groups…')
@@ -237,11 +237,14 @@ export default function TelegramBotTab() {
                   value={groupSearch}
                   onChange={e => setGroupSearch(e.target.value)}
                   placeholder={t('Grup ara…', 'Search groups…')}
+                  aria-label={t('Grup ara', 'Search groups')}
                   className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-1.5 bg-slate-50 dark:bg-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs">
+                <div role="group" aria-label={t('Tür filtresi', 'Type filter')} className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-slate-600 text-xs">
                   {(['all', 'group', 'channel'] as const).map(f => (
                     <button key={f}
+                      type="button"
+                      aria-pressed={groupFilter === f}
                       onClick={() => setGroupFilter(f)}
                       className={`px-2.5 py-1.5 transition ${groupFilter === f
                         ? 'bg-blue-600 text-white'
@@ -255,7 +258,7 @@ export default function TelegramBotTab() {
               {/* Liste */}
               <div className="max-h-72 overflow-y-auto space-y-1 pr-0.5">
                 {filteredGroups.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-4">{t('Sonuç bulunamadı', 'No results found')}</p>
+                  <p className="text-xs text-slate-600 text-center py-4">{t('Sonuç bulunamadı', 'No results found')}</p>
                 ) : (
                   filteredGroups.map(g => {
                     const target    = g.username || g.id;
@@ -263,18 +266,18 @@ export default function TelegramBotTab() {
                     return (
                     <div key={g.id}
                       className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/60 transition">
-                      <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-sm shrink-0">
+                      <div aria-hidden="true" className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-sm shrink-0">
                         {g.type === 'group' ? '👥' : '📢'}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{g.title}</div>
                         {g.username && (
-                          <div className="text-xs text-slate-400 truncate">{g.username}</div>
+                          <div className="text-xs text-slate-600 truncate">{g.username}</div>
                         )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         {g.members > 0 && (
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-slate-600">
                             {g.members >= 1000 ? `${(g.members / 1000).toLocaleString(localeTag(lang), { maximumFractionDigits: 1, minimumFractionDigits: 1 })}k` : g.members}
                             {' '}{t('üye', 'members')}
                           </span>
@@ -285,7 +288,9 @@ export default function TelegramBotTab() {
                           {g.type === 'group' ? t('Grup', 'Group') : t('Kanal', 'Channel')}
                         </span>
                         <button
+                          type="button"
                           title={inTargets ? t('Hedeflerde mevcut', 'Already in targets') : t('Katılım hedefine ekle', 'Add to join targets')}
+                          aria-label={inTargets ? t(`${g.title}: hedeflerde mevcut`, `${g.title}: already in targets`) : t(`${g.title} katılım hedefine ekle`, `Add ${g.title} to join targets`)}
                           disabled={actionBusy || inTargets}
                           onClick={() => {
                             const channels = [...(status?.channels ?? [])];
@@ -296,7 +301,7 @@ export default function TelegramBotTab() {
                             ${inTargets
                               ? 'bg-green-100 dark:bg-green-900/30 text-green-500 cursor-default'
                               : 'bg-slate-100 dark:bg-slate-600 text-slate-500 dark:text-slate-300 hover:bg-blue-100 dark:hover:bg-blue-900/40 hover:text-blue-600 dark:hover:text-blue-400'}`}>
-                          {inTargets ? '✓' : '+'}
+                          <span aria-hidden="true">{inTargets ? '✓' : '+'}</span>
                         </button>
                       </div>
                     </div>
@@ -314,7 +319,7 @@ export default function TelegramBotTab() {
           {/* Oturum */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">🔑 {t('Oturum', 'Session')}</h3>
+              <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm"><span aria-hidden="true">🔑</span> {t('Oturum', 'Session')}</h3>
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${hasSession
                 ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300'
                 : 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'}`}>
@@ -332,7 +337,7 @@ export default function TelegramBotTab() {
               </div>
             )}
 
-            <button onClick={() => setShowSession(v => !v)}
+            <button type="button" onClick={() => setShowSession(v => !v)} aria-expanded={showSession}
               className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
               {showSession ? t('↑ Gizle', '↑ Hide') : hasSession ? t('↻ Güncelle', '↻ Update') : t('+ Oturum ekle', '+ Add session')}
             </button>
@@ -348,6 +353,7 @@ export default function TelegramBotTab() {
                   value={session}
                   onChange={e => setSession(e.target.value)}
                   placeholder={t('1BAA… ile başlayan session değeri', 'Session value starting with 1BAA…')}
+                  aria-label={t('Oturum değeri', 'Session value')}
                   className="w-full text-xs border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-transparent dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   style={{ WebkitTextSecurity: 'disc' } as React.CSSProperties}
                 />
@@ -364,7 +370,7 @@ export default function TelegramBotTab() {
           {/* Hedef Kanallar */}
           <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 space-y-3">
             <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
-              📡 {t('Katılım Hedefleri', 'Join targets')}
+              <span aria-hidden="true">📡</span> {t('Katılım Hedefleri', 'Join targets')}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {t('Bot bunlara başlarken katılır.', 'Bot joins these on startup.')}
@@ -373,7 +379,7 @@ export default function TelegramBotTab() {
 
             <div className="flex flex-wrap gap-1.5">
               {(status?.channels ?? []).length === 0
-                ? <span className="text-xs text-slate-400">{t('Hedef eklenmedi', 'No targets added')}</span>
+                ? <span className="text-xs text-slate-600">{t('Hedef eklenmedi', 'No targets added')}</span>
                 : (status?.channels ?? []).map(ch => (
                   <span key={ch} className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs px-2 py-1 rounded-full border border-blue-200 dark:border-blue-800">
                     {ch}
@@ -390,6 +396,7 @@ export default function TelegramBotTab() {
                 onChange={e => setNewChannel(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addChannel()}
                 placeholder={t('@kanal veya t.me/…', '@channel or t.me/…')}
+                aria-label={t('Yeni katılım hedefi', 'New join target')}
                 className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-1.5 bg-slate-50 dark:bg-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button onClick={addChannel} aria-label={t('Hedef ekle', 'Add target')}
@@ -404,11 +411,14 @@ export default function TelegramBotTab() {
 
       {/* ── LOGLAR (açılır-kapanır) ── */}
       <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
-        <button
-          onClick={() => setShowLogs(v => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">📟</span>
+        {/* Tüm satır tıklanabilir kalır (after: katmanı); Temizle iç içe buton olmasın diye kardeş eleman */}
+        <div className="relative w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
+          <button
+            type="button"
+            onClick={() => setShowLogs(v => !v)}
+            aria-expanded={showLogs}
+            className="flex items-center gap-2 text-left after:absolute after:inset-0">
+            <span className="text-sm" aria-hidden="true">📟</span>
             <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
               {t('Canlı Loglar', 'Live logs')}
             </span>
@@ -417,24 +427,24 @@ export default function TelegramBotTab() {
                 {(status?.logs ?? []).length}
               </span>
             )}
-          </div>
+          </button>
           <div className="flex items-center gap-3">
             {showLogs && (
-              <button onClick={e => { e.stopPropagation(); call({ action: 'clear_logs' }); }}
-                className="text-xs text-slate-400 hover:text-red-500 transition">
+              <button type="button" onClick={e => { e.stopPropagation(); call({ action: 'clear_logs' }); }}
+                className="relative z-10 text-xs text-slate-600 hover:text-red-500 transition">
                 {t('Temizle', 'Clear')}
               </button>
             )}
-            <span className="text-slate-400 text-xs">{showLogs ? '▲' : '▼'}</span>
+            <span className="text-slate-600 text-xs" aria-hidden="true">{showLogs ? '▲' : '▼'}</span>
           </div>
-        </button>
+        </div>
 
         {showLogs && (
           <div
             ref={logsRef}
             className="h-72 overflow-y-auto bg-slate-950 p-4 font-mono text-xs space-y-0.5 border-t border-slate-200 dark:border-slate-700">
             {(status?.logs ?? []).length === 0 ? (
-              <span className="text-slate-600">{t('Henüz log yok. Botu başlat.', 'No logs yet. Start the bot.')}</span>
+              <span className="text-slate-400">{t('Henüz log yok. Botu başlat.', 'No logs yet. Start the bot.')}</span>
             ) : (
               (status?.logs ?? []).map((line, i) => (
                 <div key={i} className={

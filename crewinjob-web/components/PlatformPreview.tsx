@@ -43,7 +43,7 @@ export default function PlatformPreview({ platform, content, username }: Props) 
               <span className="flex items-center gap-1 hover:text-sky-400 cursor-pointer">💬 <span>0</span></span>
               <span className="flex items-center gap-1 hover:text-green-400 cursor-pointer">🔁 <span>0</span></span>
               <span className="flex items-center gap-1 hover:text-pink-400 cursor-pointer">❤️ <span>0</span></span>
-              <span className="flex items-center gap-1 hover:text-sky-400 cursor-pointer">📤</span>
+              <span className="flex items-center gap-1 hover:text-sky-400 cursor-pointer" aria-hidden="true">📤</span>
             </div>
           </div>
         </div>
@@ -61,7 +61,7 @@ export default function PlatformPreview({ platform, content, username }: Props) 
             <div>
               <p className="font-semibold text-sm text-slate-900">CrewinJob</p>
               <p className="text-xs text-slate-500">CrewinJob • {tr ? '1.' : '1st'}</p>
-              <p className="text-xs text-slate-400">Maritime Recruitment Platform</p>
+              <p className="text-xs text-slate-600">Maritime Recruitment Platform</p>
             </div>
           </div>
           <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
@@ -88,13 +88,13 @@ export default function PlatformPreview({ platform, content, username }: Props) 
         <div className="flex items-center gap-3 px-3 py-2 border-b border-slate-100">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white text-xs font-bold">C</div>
           <span className="font-semibold text-sm">{displayName}</span>
-          <span className="ml-auto text-slate-400 text-lg">···</span>
+          <span className="ml-auto text-slate-600 text-lg" aria-hidden="true">···</span>
         </div>
         <div className="bg-slate-100 aspect-square flex items-center justify-center">
-          <span className="text-4xl opacity-30">📸</span>
+          <span className="text-4xl opacity-30" aria-hidden="true">📸</span>
         </div>
         <div className="px-3 py-2">
-          <div className="flex items-center gap-4 mb-2 text-xl">
+          <div className="flex items-center gap-4 mb-2 text-xl" aria-hidden="true">
             <span className="cursor-pointer">🤍</span>
             <span className="cursor-pointer">💬</span>
             <span className="cursor-pointer">📤</span>
@@ -118,9 +118,9 @@ export default function PlatformPreview({ platform, content, username }: Props) 
           <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold shrink-0">C</div>
           <div>
             <p className="font-semibold text-sm text-slate-900">CrewinJob</p>
-            <p className="text-xs text-slate-400">{tr ? 'Az önce' : 'Just now'} · 🌐</p>
+            <p className="text-xs text-slate-600">{tr ? 'Az önce' : 'Just now'} · 🌐</p>
           </div>
-          <span className="ml-auto text-slate-400 text-lg cursor-pointer">···</span>
+          <span className="ml-auto text-slate-600 text-lg cursor-pointer" aria-hidden="true">···</span>
         </div>
         <div className="px-4 pb-3">
           <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-wrap">
@@ -148,25 +148,25 @@ export default function PlatformPreview({ platform, content, username }: Props) 
         </div>
         <div className="absolute right-3 top-1/2 -translate-y-1/2 flex flex-col items-center gap-4 text-white">
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl cursor-pointer">❤️</span>
+            <span className="text-2xl cursor-pointer" aria-hidden="true">❤️</span>
             <span className="text-[10px]">0</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl cursor-pointer">💬</span>
+            <span className="text-2xl cursor-pointer" aria-hidden="true">💬</span>
             <span className="text-[10px]">0</span>
           </div>
           <div className="flex flex-col items-center gap-1">
-            <span className="text-2xl cursor-pointer">↗️</span>
+            <span className="text-2xl cursor-pointer" aria-hidden="true">↗️</span>
             <span className="text-[10px]">{tr ? 'Paylaş' : 'Share'}</span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm">🎵</div>
+          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-sm" aria-hidden="true">🎵</div>
         </div>
         <div className="absolute bottom-6 left-3 right-12">
           <p className="text-xs text-slate-100 leading-relaxed whitespace-pre-wrap">
             {text}{truncated && <span className="text-slate-400">...</span>}
           </p>
           <div className="flex items-center gap-1.5 mt-2">
-            <span className="text-xs">🎵</span>
+            <span className="text-xs" aria-hidden="true">🎵</span>
             <span className="text-[10px] text-slate-300 truncate">{tr ? 'orijinal ses' : 'Original sound'} - crewinjob</span>
           </div>
         </div>

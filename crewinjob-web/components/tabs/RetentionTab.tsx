@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import type { IncompleteSegment } from '@/lib/types';
@@ -29,6 +29,7 @@ export default function RetentionTab({ segments }: Props) {
   const [output,        setOutput]        = useState('');
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState('');
+  const fieldId = useId();
 
   const segs = segments || [];
 
@@ -86,8 +87,8 @@ export default function RetentionTab({ segments }: Props) {
               : 'Crewin did not return a missing-field distribution. No estimated segment is shown.'}
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+          <div className="flex flex-col gap-2" role="group" aria-labelledby={`${fieldId}-segment`}>
+            <label id={`${fieldId}-segment`} className="text-sm font-medium text-slate-700 dark:text-slate-200">
               {lang === 'tr' ? 'Segment Seç' : 'Select segment'}
             </label>
             {segs.map((seg, i) => {
@@ -95,6 +96,7 @@ export default function RetentionTab({ segments }: Props) {
               return (
                 <button
                   key={i}
+                  aria-pressed={selectedIndex === i}
                   onClick={() => { setSelectedIndex(i); setOutput(''); setError(''); }}
                   className={`flex items-center justify-between p-3 rounded-lg border text-left transition-colors ${
                     selectedIndex === i
@@ -123,8 +125,8 @@ export default function RetentionTab({ segments }: Props) {
         )}
 
         {/* Content language */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+        <div className="flex flex-col gap-1.5" role="group" aria-labelledby={`${fieldId}-language`}>
+          <label id={`${fieldId}-language`} className="text-sm font-medium text-slate-700 dark:text-slate-200">
             {lang === 'tr' ? 'İçerik Dili' : 'Content language'}
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -135,13 +137,14 @@ export default function RetentionTab({ segments }: Props) {
               <button
                 key={l.value}
                 onClick={() => setLanguage(l.value)}
+                aria-pressed={language === l.value}
                 className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-colors border-2 ${
                   language === l.value
                     ? 'bg-ocean text-white border-ocean'
                     : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50 hover:bg-slate-50 dark:hover:bg-slate-600'
                 }`}
               >
-                <span className="text-base">{l.flag}</span>
+                <span className="text-base" aria-hidden="true">{l.flag}</span>
                 <span>{l.label}</span>
               </button>
             ))}
@@ -166,7 +169,7 @@ export default function RetentionTab({ segments }: Props) {
 
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
-          <span>📄</span> {lang === 'tr' ? 'Üretilen İçerik' : 'Generated content'}
+          <span aria-hidden="true">📄</span> {lang === 'tr' ? 'Üretilen İçerik' : 'Generated content'}
         </h3>
         <OutputPanel
           content={output}

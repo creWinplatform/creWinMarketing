@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getHistory, updateMetrics, removePost, clearHistory, fetchPostMetrics, refreshMetrics, type PostHistoryItem } from '@/lib/post-history';
 import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
+import { useDialog } from '@/components/a11y/useDialog';
 
 const PLATFORM_META: Record<string, { icon: string; label: string; color: string }> = {
   twitter:   { icon: '🐦', label: 'Twitter / X',   color: 'bg-slate-900 text-white'                },
@@ -17,6 +18,7 @@ interface Props {
 
 export default function PostHistory({ onClose }: Props) {
   const { lang } = useLang();
+  const { titleId, dialogProps } = useDialog(true, onClose);
   const [items,      setItems]      = useState<PostHistoryItem[]>([]);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshAll, setRefreshAll] = useState(false);
@@ -70,13 +72,13 @@ export default function PostHistory({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
+      <div {...dialogProps} className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800 z-10">
           <div className="flex items-center gap-3">
-            <span className="text-xl">📊</span>
+            <span className="text-xl" aria-hidden="true">📊</span>
             <div>
-              <h2 className="font-bold text-slate-800 dark:text-slate-100">
+              <h2 id={titleId} className="font-bold text-slate-800 dark:text-slate-100">
                 {lang === 'tr' ? 'Paylaşım Geçmişi & Metrikler' : 'Post history & metrics'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -104,15 +106,15 @@ export default function PostHistory({ onClose }: Props) {
                 </button>
               </>
             )}
-            <button onClick={onClose} aria-label={lang === 'tr' ? 'Kapat' : 'Close'} title={lang === 'tr' ? 'Kapat' : 'Close'} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none">✕</button>
+            <button onClick={onClose} aria-label={lang === 'tr' ? 'Kapat' : 'Close'} title={lang === 'tr' ? 'Kapat' : 'Close'} className="text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none">✕</button>
           </div>
         </div>
 
         {/* Body */}
         <div className="p-6">
           {items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-72 gap-3 text-slate-400 dark:text-slate-500">
-              <span className="text-5xl opacity-30">📭</span>
+            <div className="flex flex-col items-center justify-center h-72 gap-3 text-slate-600 dark:text-slate-400">
+              <span className="text-5xl opacity-30" aria-hidden="true">📭</span>
               <p className="text-sm text-center">
                 {lang === 'tr'
                   ? <>Henüz paylaşım yok.<br />İlk postunuzu paylaşın, metrikleri burada görün.</>
@@ -155,7 +157,7 @@ export default function PostHistory({ onClose }: Props) {
                         </button>
                         <button
                           onClick={() => handleRemove(item.id)}
-                          className="text-[11px] text-slate-400 hover:text-red-500 px-1"
+                          className="text-[11px] text-slate-600 hover:text-red-500 px-1"
                           title={lang === 'tr' ? 'Geçmişten kaldır' : 'Remove from history'}
                           aria-label={lang === 'tr' ? 'Geçmişten kaldır' : 'Remove from history'}
                         >✕</button>
@@ -180,7 +182,7 @@ export default function PostHistory({ onClose }: Props) {
                     </div>
 
                     {m && (
-                      <p className={`text-[10px] text-center py-1 ${stale ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-700'}`}>
+                      <p className={`text-[10px] text-center py-1 ${stale ? 'text-orange-500 bg-orange-50 dark:bg-orange-900/20' : 'text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-700'}`}>
                         {lang === 'tr' ? 'Son güncelleme:' : 'Last updated:'} {formatRelative(m.fetchedAt)}{stale ? (lang === 'tr' ? ' — güncel olmayabilir, yenileyin' : ' — may be outdated, refresh') : ''}
                       </p>
                     )}
@@ -198,7 +200,7 @@ export default function PostHistory({ onClose }: Props) {
 function Stat({ label, value, loading, lang }: { label: string; value?: number; loading: boolean; lang: 'tr' | 'en' }) {
   return (
     <div className="bg-white dark:bg-slate-800 px-3 py-2 flex flex-col items-center justify-center">
-      <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium uppercase tracking-wide">{label}</span>
+      <span className="text-[9px] text-slate-600 dark:text-slate-400 font-medium uppercase tracking-wide">{label}</span>
       <span className="text-base font-bold text-slate-700 dark:text-slate-200">
         {loading ? <span className="text-slate-300">—</span> : (value ?? 0).toLocaleString(localeTag(lang))}
       </span>

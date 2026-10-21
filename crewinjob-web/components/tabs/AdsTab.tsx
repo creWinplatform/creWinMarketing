@@ -1,6 +1,7 @@
 'use client';
-import { useState } from 'react';
+import { Children, cloneElement, isValidElement, useId, useState } from 'react';
 import OutputPanel from '../OutputPanel';
+import { onTabKeys } from '@/components/platform/tab-keys';
 import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
@@ -184,7 +185,7 @@ export default function AdsTab() {
 
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1 flex items-center gap-2">
-            <span>📣</span> {t('Reklam kampanyası', 'Ad campaign')}
+            <span aria-hidden="true">📣</span> {t('Reklam kampanyası', 'Ad campaign')}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
             {t(
@@ -194,10 +195,13 @@ export default function AdsTab() {
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2" role="tablist" aria-label={t('Reklam platformu', 'Ad platform')} onKeyDown={onTabKeys}>
           {PLATFORM_TABS.map(tab => (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={subTab === tab.id}
+              tabIndex={subTab === tab.id ? 0 : -1}
               onClick={() => { setSubTab(tab.id); setOutput(''); setError(''); }}
               className={`py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                 subTab === tab.id
@@ -249,7 +253,7 @@ export default function AdsTab() {
               <input type="text" value={gKeywords} onChange={e => setGKeywords(e.target.value)}
                 placeholder={t('Örn: chief officer jobs, bulk carrier', 'e.g. chief officer jobs, bulk carrier')}
                 className={selectClass} />
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">
+              <p className="text-[10px] text-slate-600 dark:text-slate-400">
                 {t('Boş bırakırsanız denizcilik sektörü için anahtar kelime önerilir.', 'Leave empty to get maritime keyword suggestions.')}
               </p>
             </Field>
@@ -271,6 +275,7 @@ export default function AdsTab() {
                   <button
                     key={f.value}
                     onClick={() => setIgFormat(f.value)}
+                    aria-pressed={igFormat === f.value}
                     className={`text-xs py-2 px-2.5 rounded-lg font-medium transition-colors text-left ${
                       igFormat === f.value
                         ? 'bg-pink-500 text-white'
@@ -315,6 +320,7 @@ export default function AdsTab() {
                   <button
                     key={lt.value}
                     onClick={() => setLiTargeting(lt.value)}
+                    aria-pressed={liTargeting === lt.value}
                     className={`text-xs py-2 px-3 rounded-lg font-medium transition-colors text-left ${
                       liTargeting === lt.value
                         ? 'bg-sky-700 text-white'
@@ -345,19 +351,20 @@ export default function AdsTab() {
               <button
                 key={l.value}
                 onClick={() => setLanguage(l.value)}
+                aria-pressed={language === l.value}
                 className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-colors border-2 ${
                   language === l.value
                     ? 'bg-ocean text-white border-ocean'
                     : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50 hover:bg-slate-50 dark:hover:bg-slate-600'
                 }`}
               >
-                <span className="text-base">{l.flag}</span>
+                <span className="text-base" aria-hidden="true">{l.flag}</span>
                 <span>{l.label}</span>
               </button>
             ))}
           </div>
           {subTab === 'linkedin' && (
-            <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            <p className="text-[10px] text-slate-600 dark:text-slate-400">
               💡 {t('LinkedIn B2B için İngilizce genellikle daha geniş erişim sağlar.', 'English generally reaches a wider audience for LinkedIn B2B.')}
             </p>
           )}
@@ -372,14 +379,14 @@ export default function AdsTab() {
           {generateLabel()}
         </button>
 
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+        <p className="text-[11px] text-slate-600 dark:text-slate-400 text-center">
           💡 {t('Reklam metinleri, hedef kitle, bütçe dağılımı ve A/B test stratejisi içerir.', 'Includes ad copy, target audience, budget breakdown and A/B test strategy.')}
         </p>
       </div>
 
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
-          <span>📋</span> {campaignPlanLabel[subTab]}
+          <span aria-hidden="true">📋</span> {campaignPlanLabel[subTab]}
         </h3>
         <OutputPanel
           content={output}
@@ -395,29 +402,47 @@ export default function AdsTab() {
 }
 
 function BudgetField({ budget, onChange, lang }: { budget: number; onChange: (v: number) => void; lang: 'tr' | 'en' }) {
+  const rangeId = useId();
   return (
-    <Field label={lang === 'tr' ? 'Aylık bütçe (USD)' : 'Monthly budget (USD)'}>
+    <Field label={lang === 'tr' ? 'Aylık bütçe (USD)' : 'Monthly budget (USD)'} htmlFor={rangeId}>
       <div className="flex gap-2 items-center">
         <input
+          id={rangeId}
           type="range" min={100} max={5000} step={100} value={budget}
           onChange={e => onChange(Number(e.target.value))}
           className="flex-1 accent-ocean"
         />
         <span className="text-sm font-bold text-ocean min-w-[70px] text-right">${budget.toLocaleString(localeTag(lang))}</span>
       </div>
-      <p className="text-[10px] text-slate-400 dark:text-slate-500">
+      <p className="text-[10px] text-slate-600 dark:text-slate-400">
         ≈ ${(budget / 30).toFixed(0)}/{lang === 'tr' ? 'gün' : 'day'}
       </p>
     </Field>
   );
 }
 
-const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean placeholder:text-slate-400 dark:placeholder:text-slate-500';
+const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// The label is tied to its control: a native input/select/textarea as the first child (or the control named by
+// `htmlFor`) gets the label's htmlFor; any other content (chip groups) becomes a group named by the label.
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
+  const baseId = useId();
+  const items = Children.toArray(children);
+  const first = items[0];
+  const control = !htmlFor && isValidElement<{ id?: string }>(first) && typeof first.type === 'string' && ['input', 'select', 'textarea'].includes(first.type) ? first : null;
+  const controlId = htmlFor ?? (control ? control.props.id ?? `${baseId}-control` : undefined);
+  const labelClass = 'text-sm font-medium text-slate-700 dark:text-slate-200';
+  if (controlId) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor={controlId} className={labelClass}>{label}</label>
+        {control ? <>{cloneElement(control, { id: controlId })}{items.slice(1)}</> : children}
+      </div>
+    );
+  }
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</label>
+    <div role="group" aria-labelledby={`${baseId}-label`} className="flex flex-col gap-1.5">
+      <label id={`${baseId}-label`} className={labelClass}>{label}</label>
       {children}
     </div>
   );

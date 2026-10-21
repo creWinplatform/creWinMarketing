@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { getImageModel } from './ModelPicker';
 import SharePanel from './SharePanel';
 import PostHistory from './PostHistory';
@@ -117,6 +117,7 @@ export default function OutputPanel({
   const persistedTextRef = useRef<string>('');  // İçerik Kütüphanesi'ne en son yazılan metin
 
   const { lang } = useLang();
+  const headlineLabelId = useId();
 
   /** Aşağıdaki her yerde kullanılan güncel metin — düzenlenmişse o, değilse orijinal. */
   const text = edited || content;
@@ -451,21 +452,21 @@ export default function OutputPanel({
 
   /* ── States ── */
   if (loading) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-4">
+    <div role="status" className="flex flex-col items-center justify-center h-64 gap-4">
       <div className="w-10 h-10 border-4 border-ocean border-t-transparent rounded-full animate-spin" />
       <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Gemini AI içerik üretiyor…' : 'Gemini AI is generating content…'}</p>
     </div>
   );
 
   if (error) return (
-    <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-red-700 dark:text-red-300 text-sm flex gap-2">
-      <span>❌</span><span><Msg text={error} /></span>
+    <div role="alert" className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl p-4 text-red-700 dark:text-red-300 text-sm flex gap-2">
+      <span aria-hidden="true">❌</span><span><Msg text={error} /></span>
     </div>
   );
 
   if (!content) return (
-    <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400 dark:text-slate-500">
-      <svg className="w-14 h-14 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-600 dark:text-slate-400">
+      <svg aria-hidden="true" className="w-14 h-14 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
           d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
       </svg>
@@ -555,6 +556,7 @@ export default function OutputPanel({
             onChange={e => setEdited(e.target.value)}
             onBlur={() => { if (text !== (undoStack[undoStack.length - 1] ?? content)) setUndoStack(s => [...s, content]); }}
             spellCheck={false}
+            aria-label={lang === 'tr' ? 'İçerik metni' : 'Content text'}
             className="bg-slate-900 text-slate-100 rounded-xl p-5 text-sm h-64 w-full whitespace-pre-wrap font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-sky-500/60 border border-sky-500/40"
           />
         ) : (
@@ -572,6 +574,7 @@ export default function OutputPanel({
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setManualEdit(v => !v)}
+                aria-pressed={manualEdit}
                 className={`text-[10px] px-2 py-1 rounded-lg font-medium transition-colors border ${
                   manualEdit
                     ? 'bg-sky-600 text-white border-sky-600'
@@ -609,6 +612,7 @@ export default function OutputPanel({
               onChange={e => setRefineInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void refine(refineInput); } }}
               disabled={refining}
+              aria-label={lang === 'tr' ? 'İçerikte ne değişsin?' : 'What should change in the content?'}
               placeholder={lang === 'tr'
                 ? 'Ne değişsin? Ör: "hashtag sayısını 5\'e düşür", "stand numarasını ekle"'
                 : 'What should change? e.g. "cut hashtags down to 5", "mention our booth number"'}
@@ -657,7 +661,7 @@ export default function OutputPanel({
           </div>
 
           {refineError && (
-            <p className="text-[11px] text-red-500 dark:text-red-400">⚠️ <Msg text={refineError} /></p>
+            <p role="alert" className="text-[11px] text-red-500 dark:text-red-400"><span aria-hidden="true">⚠️</span> <Msg text={refineError} /></p>
           )}
         </div>
 
@@ -667,7 +671,7 @@ export default function OutputPanel({
             {/* Başlık + skor */}
             <div className="flex items-center justify-between flex-wrap gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-lg">⭐</span>
+                <span className="text-lg" aria-hidden="true">⭐</span>
                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? 'İçerik Değerlendirmesi' : 'Content review'}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -693,7 +697,7 @@ export default function OutputPanel({
                 { label: 'Hashtag', score: reviewResult.hashtag_score, icon: '#️⃣' },
               ].map(({ label, score, icon }) => (
                 <div key={label} className="bg-slate-50 dark:bg-slate-700 rounded-lg p-2 text-center">
-                  <div className="text-base">{icon}</div>
+                  <div className="text-base" aria-hidden="true">{icon}</div>
                   <div className="text-xs text-slate-500 dark:text-slate-400">{label}</div>
                   <div className={`text-sm font-bold ${score >= 7 ? 'text-green-600' : score >= 5 ? 'text-amber-600' : 'text-red-600'}`}>{score}/10</div>
                 </div>
@@ -749,7 +753,7 @@ export default function OutputPanel({
 
             <button
               onClick={() => setReviewResult(null)}
-              className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-center"
+              className="text-xs text-slate-600 hover:text-slate-600 dark:hover:text-slate-300 text-center"
             >
               {lang === 'tr' ? 'Kapat ✕' : 'Close ✕'}
             </button>
@@ -765,9 +769,9 @@ export default function OutputPanel({
           {/* Üst satır: başlık + butonlar */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-base">🎨</span>
+              <span className="text-base" aria-hidden="true">🎨</span>
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? '🎨 Post Görseli' : '🎨 Post image'}</span>
-              <span className="text-xs text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 px-2 py-0.5 rounded-full">
+              <span className="text-xs text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-600 border border-slate-200 dark:border-slate-500 px-2 py-0.5 rounded-full">
                 {platform} · {contentType.replace(/_/g, ' ')}
               </span>
             </div>
@@ -775,11 +779,13 @@ export default function OutputPanel({
               {/* Logo */}
               <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
               {logoBase64 ? (
-                <div onClick={() => logoInputRef.current?.click()}
-                  className="flex items-center gap-1.5 bg-white dark:bg-slate-600 border border-green-200 dark:border-green-700 rounded-lg px-2 py-1 cursor-pointer hover:border-ocean" title={lang === 'tr' ? 'Logo değiştir' : 'Change logo'}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`data:image/png;base64,${logoBase64}`} alt="Logo" className="h-6 w-auto max-w-[90px] object-contain" />
-                  <span className="text-xs text-green-600">✓</span>
+                <div className="flex items-center gap-1.5 bg-white dark:bg-slate-600 border border-green-200 dark:border-green-700 rounded-lg px-2 py-1 hover:border-ocean">
+                  <button type="button" onClick={() => logoInputRef.current?.click()}
+                    className="flex items-center gap-1.5 cursor-pointer" title={lang === 'tr' ? 'Logo değiştir' : 'Change logo'} aria-label={lang === 'tr' ? 'Logo değiştir' : 'Change logo'}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`data:image/png;base64,${logoBase64}`} alt="Logo" className="h-6 w-auto max-w-[90px] object-contain" />
+                    <span className="text-xs text-green-600" aria-hidden="true">✓</span>
+                  </button>
                   <button onClick={e => { e.stopPropagation(); removeLogo(); }} aria-label={lang === 'tr' ? 'Logoyu kaldır' : 'Remove logo'} title={lang === 'tr' ? 'Logoyu kaldır' : 'Remove logo'} className="text-slate-300 hover:text-red-500 text-xs">✕</button>
                 </div>
               ) : (
@@ -792,14 +798,17 @@ export default function OutputPanel({
               {/* Etkinlik / işbirliği logosu — crewinjob logosunun soluna eklenir */}
               <input ref={partnerLogoInputRef} type="file" accept="image/*" className="hidden" onChange={handlePartnerLogoUpload} />
               {partnerLogoBase64 ? (
-                <div onClick={() => partnerLogoInputRef.current?.click()}
-                  className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-600 rounded-lg px-2 py-1 cursor-pointer hover:border-amber-500"
-                  title={lang === 'tr' ? 'Etkinlik logosunu değiştir' : 'Change event logo'}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`data:image/png;base64,${partnerLogoBase64}`} alt={lang === 'tr' ? 'Etkinlik logosu' : 'Event logo'} className="h-6 w-auto max-w-[90px] object-contain" />
-                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
-                    {lang === 'tr' ? 'Etkinlik' : 'Event'}
-                  </span>
+                <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-600 rounded-lg px-2 py-1 hover:border-amber-500">
+                  <button type="button" onClick={() => partnerLogoInputRef.current?.click()}
+                    className="flex items-center gap-1.5 cursor-pointer"
+                    title={lang === 'tr' ? 'Etkinlik logosunu değiştir' : 'Change event logo'}
+                    aria-label={lang === 'tr' ? 'Etkinlik logosunu değiştir' : 'Change event logo'}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`data:image/png;base64,${partnerLogoBase64}`} alt={lang === 'tr' ? 'Etkinlik logosu' : 'Event logo'} className="h-6 w-auto max-w-[90px] object-contain" />
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400 font-medium">
+                      {lang === 'tr' ? 'Etkinlik' : 'Event'}
+                    </span>
+                  </button>
                   <button onClick={e => { e.stopPropagation(); removePartnerLogo(); }} aria-label={lang === 'tr' ? 'Etkinlik logosunu kaldır' : 'Remove event logo'} title={lang === 'tr' ? 'Etkinlik logosunu kaldır' : 'Remove event logo'} className="text-slate-300 hover:text-red-500 text-xs">✕</button>
                 </div>
               ) : (
@@ -813,6 +822,7 @@ export default function OutputPanel({
               {/* Referans postlar butonu */}
               <button
                 onClick={() => setShowRefPanel(v => !v)}
+                aria-expanded={showRefPanel}
                 className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors font-medium ${
                   showRefPanel
                     ? 'bg-ocean/10 border-ocean text-ocean'
@@ -838,7 +848,7 @@ export default function OutputPanel({
           <p className="text-xs">
             {logoBase64
               ? <span className="text-green-600 dark:text-green-400">✅ {lang === 'tr' ? 'Logo yüklendi.' : 'Logo uploaded.'}</span>
-              : <span className="text-slate-400 dark:text-slate-500">💡 <strong>{lang === 'tr' ? 'Logo Yükle' : 'Upload logo'}</strong> {lang === 'tr' ? '→ markanız her görsele eklenir.' : '→ your brand is added to every image.'}</span>}
+              : <span className="text-slate-600 dark:text-slate-400">💡 <strong>{lang === 'tr' ? 'Logo Yükle' : 'Upload logo'}</strong> {lang === 'tr' ? '→ markanız her görsele eklenir.' : '→ your brand is added to every image.'}</span>}
             {refImages.length > 0 && (
               <span className="text-purple-600 dark:text-purple-400 ml-2">✅ {refImages.length} {lang === 'tr' ? 'referans post yüklendi — stil tutarlılığı için kullanılıyor.' : 'reference posts uploaded — used for style consistency.'}</span>
             )}
@@ -866,7 +876,7 @@ export default function OutputPanel({
                   })()}
                 </span>
               ) : (
-                <span className="text-slate-400 dark:text-slate-500">
+                <span className="text-slate-600 dark:text-slate-400">
                   {lang === 'tr' ? 'tarih girmezseniz siz kaldırana kadar kalır' : 'without a date it stays until you remove it'}
                 </span>
               )}
@@ -879,10 +889,11 @@ export default function OutputPanel({
               value={imagePrompt}
               onChange={e => setImagePrompt(e.target.value)}
               rows={2}
+              aria-label={lang === 'tr' ? 'Sahneyi düzenle' : 'Edit the scene'}
               placeholder={lang === 'tr'
                 ? 'Sahneyi düzenle… — ör: "gemiyi çıkar, fuar standı olsun", "gün batımı yerine sabah ışığı"'
                 : 'Edit the scene… — e.g. "drop the ship, make it a trade-show booth", "morning light instead of sunset"'}
-              className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-400 dark:placeholder-slate-500 leading-relaxed"
+              className="flex-1 text-xs border border-slate-200 dark:border-slate-600 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-500 dark:placeholder-slate-500 leading-relaxed"
             />
             <div className="flex flex-col gap-1 shrink-0">
               <button
@@ -899,12 +910,12 @@ export default function OutputPanel({
                 <button
                   onClick={() => setImagePrompt('')}
                   title={lang === 'tr' ? 'Talimatı temizle' : 'Clear instruction'}
-                  className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
+                  className="text-[10px] text-slate-600 hover:text-red-500 transition-colors"
                 >✕ {lang === 'tr' ? 'temizle' : 'clear'}</button>
               )}
             </div>
           </div>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 -mt-1">
             {lang === 'tr'
               ? 'Ne değişsin yaz — mevcut sahne korunur, sadece söylediğin uygulanır. Görsel yeniden üretilir.'
               : 'Say what to change — the current scene is kept, only your change is applied. The image is regenerated.'}
@@ -921,10 +932,11 @@ export default function OutputPanel({
                   if (rawBgData) void recomposite(); else void generateImage();
                 }
               }}
+              aria-label={lang === 'tr' ? 'Görselde yazacak detay' : 'Detail line on the image'}
               placeholder={lang === 'tr'
                 ? 'Görselde yazacak detay — ör: "3-5 Eylül · ITU Denizcilik Fakültesi · Stant B-42"'
                 : 'Detail line on the image — e.g. "3-5 September · ITU Maritime Faculty · Booth B-42"'}
-              className="flex-1 text-xs border border-sky-200 dark:border-sky-700 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/50 placeholder-slate-400 dark:placeholder-slate-500"
+              className="flex-1 text-xs border border-sky-200 dark:border-sky-700 rounded-lg px-2.5 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500/50 placeholder-slate-500 dark:placeholder-slate-500"
             />
             <button
               onClick={() => { if (rawBgData) void recomposite(); else void generateImage(); }}
@@ -940,11 +952,12 @@ export default function OutputPanel({
               <button
                 onClick={() => setSubline('')}
                 title={lang === 'tr' ? 'Detayı temizle' : 'Clear detail'}
-                className="text-slate-400 hover:text-red-500 text-xs mt-2 px-1 transition-colors"
+                aria-label={lang === 'tr' ? 'Detayı temizle' : 'Clear detail'}
+                className="text-slate-600 hover:text-red-500 text-xs mt-2 px-1 transition-colors"
               >✕</button>
             )}
           </div>
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-1">
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 -mt-1">
             {lang === 'tr'
               ? 'ℹ️ Tarih, yer, stant no başlığın altına net biçimde yazılır — AI görsele yazı çizemez. Görsel hazırsa anında işlenir.'
               : "ℹ️ Dates, venues and booth numbers are drawn crisply under the headline — the AI can't render text. Instant if an image already exists."}
@@ -956,7 +969,7 @@ export default function OutputPanel({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">📌 {lang === 'tr' ? 'Referans Postlar' : 'Reference posts'}</p>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-0.5">{lang === 'tr' ? 'Daha önce paylaştığın postları yükle — AI aynı tarzda görsel üretir (maks. 4)' : 'Upload your previously shared posts — AI generates images in the same style (max 4)'}</p>
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">{lang === 'tr' ? 'Daha önce paylaştığın postları yükle — AI aynı tarzda görsel üretir (maks. 4)' : 'Upload your previously shared posts — AI generates images in the same style (max 4)'}</p>
                 </div>
                 <input ref={refInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleRefUpload} />
                 {refImages.length < 4 && (
@@ -972,9 +985,9 @@ export default function OutputPanel({
               {refImages.length === 0 ? (
                 <button
                   onClick={() => refInputRef.current?.click()}
-                  className="border-2 border-dashed border-purple-200 dark:border-purple-700 hover:border-purple-400 dark:hover:border-purple-500 rounded-xl p-6 flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500 hover:text-purple-600 transition-colors"
+                  className="border-2 border-dashed border-purple-200 dark:border-purple-700 hover:border-purple-400 dark:hover:border-purple-500 rounded-xl p-6 flex flex-col items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-purple-600 transition-colors"
                 >
-                  <span className="text-3xl">📂</span>
+                  <span className="text-3xl" aria-hidden="true">📂</span>
                   <p className="text-xs text-center">{lang === 'tr' ? 'Tıkla veya sürükle-bırak' : 'Click or drag and drop'}<br /><span className="text-[10px]">{lang === 'tr' ? 'PNG, JPG, WEBP — maks. 4 görsel' : 'PNG, JPG, WEBP — max 4 images'}</span></p>
                 </button>
               ) : (
@@ -1017,15 +1030,15 @@ export default function OutputPanel({
         {/* Body */}
         <div className="p-4">
           {imageLoading && (
-            <div className="flex flex-col items-center justify-center h-52 gap-3">
+            <div role="status" className="flex flex-col items-center justify-center h-52 gap-3">
               <div className="w-10 h-10 border-4 border-ocean border-t-transparent rounded-full animate-spin" />
               <p className="text-slate-500 text-sm animate-pulse">{lang === 'tr' ? 'Görsel üretiliyor…' : 'Generating image…'}</p>
-              <p className="text-slate-400 text-xs">{lang === 'tr' ? 'Gemini arka planı oluşturuyor, marka katmanları ekleniyor' : 'Gemini is creating the background and adding brand layers'}</p>
+              <p className="text-slate-600 text-xs">{lang === 'tr' ? 'Gemini arka planı oluşturuyor, marka katmanları ekleniyor' : 'Gemini is creating the background and adding brand layers'}</p>
             </div>
           )}
           {imageError && !imageLoading && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm flex gap-2">
-              <span>❌</span><span><Msg text={imageError} /></span>
+            <div role="alert" className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm flex gap-2">
+              <span aria-hidden="true">❌</span><span><Msg text={imageError} /></span>
             </div>
           )}
           {imageData && !imageLoading && (
@@ -1038,21 +1051,22 @@ export default function OutputPanel({
               {/* Başlık düzenleme alanı */}
               {rawBgData && (
                 <div className="bg-slate-50 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 rounded-xl p-3 flex flex-col gap-2">
-                  <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
+                  <p id={headlineLabelId} className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                     {lang === 'tr' ? '✏️ Görseldeki Başlık' : '✏️ Image headline'}
                   </p>
                   <textarea
+                    aria-labelledby={headlineLabelId}
                     value={headline}
                     onChange={e => setHeadline(e.target.value)}
                     rows={2}
                     placeholder={lang === 'tr' ? 'Başlık metnini düzenle…' : 'Edit the headline text…'}
-                    className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-400 font-medium leading-snug"
+                    className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 resize-none placeholder-slate-500 font-medium leading-snug"
                   />
 
                   {/* Öneri chipleri */}
                   {suggestions.length > 0 && (
                     <div className="flex flex-col gap-1.5">
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                      <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
                         {lang === 'tr' ? '💡 Alternatif öneriler — tıkla, uygula:' : '💡 Alternative suggestions — click to pick:'}
                       </p>
                       <div className="flex flex-wrap gap-1.5">
@@ -1071,6 +1085,7 @@ export default function OutputPanel({
                                 setRecompositing(false);
                               }
                             }}
+                            aria-pressed={headline === s}
                             className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors text-left leading-snug whitespace-pre-wrap ${
                               headline === s
                                 ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
@@ -1084,7 +1099,7 @@ export default function OutputPanel({
                     </div>
                   )}
 
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400">
                     {lang === 'tr'
                       ? 'Satır arası için Enter kullan. Düzenlemeyi uygulamak için butona bas.'
                       : 'Use Enter for line breaks. Press the button to apply changes.'}
@@ -1110,7 +1125,7 @@ export default function OutputPanel({
 
                   {/* Sanat yönü */}
                   <div className="flex flex-col gap-1.5">
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                    <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
                       {lang === 'tr' ? 'Stil — tıkla, o stilde yeniden üret:' : 'Style — click to regenerate in that style:'}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -1119,6 +1134,7 @@ export default function OutputPanel({
                           key={d.id}
                           onClick={() => generateImage({ scene: activeScene || undefined, direction: d.id })}
                           disabled={imageLoading}
+                          aria-pressed={artDirection === d.id}
                           className={`text-[11px] px-2.5 py-1 rounded-lg border transition-colors disabled:opacity-50 ${
                             artDirection === d.id
                               ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300 font-medium'
@@ -1134,7 +1150,7 @@ export default function OutputPanel({
                   {/* Alternatif sahne konseptleri */}
                   {sceneSuggestions.length > 0 && (
                     <div className="flex flex-col gap-1.5">
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                      <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
                         {lang === 'tr'
                           ? 'Farklı konsept — aynı mesaj, başka bir görsel fikir:'
                           : 'Different concept — same message, another visual idea:'}
@@ -1155,7 +1171,7 @@ export default function OutputPanel({
                     </div>
                   )}
 
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  <p className="text-[10px] text-slate-600 dark:text-slate-400">
                     {lang === 'tr'
                       ? 'Stil seçmezsen "Yeniden Üret" her seferinde rastgele farklı bir stil dener.'
                       : 'Without picking a style, "Regenerate" tries a different random style each time.'}
@@ -1213,8 +1229,8 @@ export default function OutputPanel({
             </div>
           )}
           {!imageData && !imageLoading && !imageError && (
-            <div className="flex flex-col items-center justify-center h-32 gap-2 text-slate-400 dark:text-slate-500">
-              <span className="text-3xl opacity-30">🖼️</span>
+            <div className="flex flex-col items-center justify-center h-32 gap-2 text-slate-600 dark:text-slate-400">
+              <span className="text-3xl opacity-30" aria-hidden="true">🖼️</span>
               <p className="text-xs text-center">
                 {lang === 'tr'
                   ? <>{`İçerik üretildikten sonra`}<br /><strong className="text-slate-500 dark:text-slate-400">Görsel Oluştur</strong>{` butonuna tıklayın.`}</>

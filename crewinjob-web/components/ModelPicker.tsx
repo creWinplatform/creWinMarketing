@@ -37,6 +37,7 @@ export default function ModelPicker() {
   const [textModel,  setTextModel]  = useState(TEXT_MODELS[0].value);
   const [imageModel, setImageModel] = useState(IMAGE_MODELS[0].value);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setTextModel(getTextModel());
@@ -51,6 +52,16 @@ export default function ModelPicker() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // Esc ile kapat, odağı tetikleyiciye geri ver
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(false); triggerRef.current?.focus(); }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
 
   const saveText = (v: string) => {
     setTextModel(v);
@@ -68,13 +79,16 @@ export default function ModelPicker() {
   return (
     <div ref={ref} className="relative">
       <button
+        ref={triggerRef}
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-label={`${lang === 'tr' ? 'Model seçimi' : 'Model selection'}: ${textLabel}`}
         className="flex items-center gap-2 text-xs bg-white/10 hover:bg-white/20 text-white/90 px-3 py-1.5 rounded-lg transition-colors border border-white/10"
         title={lang === 'tr' ? 'Model seçimi' : 'Model selection'}
       >
-        <Sparkles size={16} />
+        <Sparkles size={16} aria-hidden="true" />
         <span className="hidden sm:inline">{textLabel}</span>
-        <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg aria-hidden="true" className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -97,6 +111,7 @@ export default function ModelPicker() {
                   <button
                     key={m.value}
                     onClick={() => saveText(m.value)}
+                    aria-pressed={textModel === m.value}
                     className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors text-left ${
                       textModel === m.value
                         ? 'bg-ocean text-white'
@@ -126,6 +141,7 @@ export default function ModelPicker() {
                   <button
                     key={m.value}
                     onClick={() => saveImage(m.value)}
+                    aria-pressed={imageModel === m.value}
                     className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors text-left ${
                       imageModel === m.value
                         ? 'bg-ocean text-white'
@@ -145,7 +161,7 @@ export default function ModelPicker() {
           </div>
 
           <div className="bg-slate-50 dark:bg-slate-700 px-4 py-2.5 border-t border-slate-200 dark:border-slate-600">
-            <p className="text-xs text-slate-400 dark:text-slate-500">
+            <p className="text-xs text-slate-600 dark:text-slate-400">
               {lang === 'tr' ? 'Aktif' : 'Active'}: <strong className="text-slate-600 dark:text-slate-300">{textLabel}</strong> · <strong className="text-slate-600 dark:text-slate-300">{imageLabel}</strong>
             </p>
           </div>

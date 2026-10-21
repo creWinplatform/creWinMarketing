@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useId } from 'react';
 import type { ScheduledPost } from '@/lib/scheduled-posts';
 import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
+import { useDialog } from '@/components/a11y/useDialog';
 
 const PLATFORM_ICONS: Record<string, string> = {
   twitter: '🐦', linkedin: '💼', facebook: '👥', instagram: '📸', tiktok: '🎵',
@@ -27,6 +28,8 @@ interface Props {
 
 export default function SchedulePanel({ prefillContent, prefillImageData, prefillImageMime, onClose }: Props) {
   const { lang } = useLang();
+  const { titleId, dialogProps } = useDialog(true, () => onClose?.());
+  const fieldId = useId();
 
   const STATUS_LABEL: Record<string, string> = {
     pending:    lang === 'tr' ? '⏰ Bekliyor'    : '⏰ Pending',
@@ -138,14 +141,14 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
+      <div {...dialogProps} className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-3">
-            <span className="text-xl">📅</span>
+            <span className="text-xl" aria-hidden="true">📅</span>
             <div>
-              <h2 className="font-bold text-slate-800 dark:text-slate-100">
+              <h2 id={titleId} className="font-bold text-slate-800 dark:text-slate-100">
                 {lang === 'tr' ? 'İçerik Takvimi' : 'Content calendar'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -166,6 +169,7 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
             </button>
             <button
               onClick={() => setShowForm(v => !v)}
+              aria-expanded={showForm}
               className="text-xs bg-ocean hover:bg-ocean-dark text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
             >
               {showForm
@@ -173,14 +177,14 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                 : `+ ${lang === 'tr' ? 'Yeni Post' : 'New post'}`}
             </button>
             {onClose && (
-              <button onClick={onClose} aria-label={lang === 'tr' ? 'Kapat' : 'Close'} title={lang === 'tr' ? 'Kapat' : 'Close'} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none ml-1">✕</button>
+              <button onClick={onClose} aria-label={lang === 'tr' ? 'Kapat' : 'Close'} title={lang === 'tr' ? 'Kapat' : 'Close'} className="text-slate-600 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-xl leading-none ml-1">✕</button>
             )}
           </div>
         </div>
 
         {/* Publish result toast */}
         {publishResult && (
-          <div className={`mx-6 mt-4 px-4 py-3 rounded-xl text-sm flex items-center gap-2 ${
+          <div role="status" className={`mx-6 mt-4 px-4 py-3 rounded-xl text-sm flex items-center gap-2 ${
             publishResult.published > 0 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300'
           }`}>
             {publishResult.published > 0 ? '✅' : '⚠️'}
@@ -206,21 +210,23 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
 
             {/* Platform seçimi */}
             <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+              <p id={`${fieldId}-platform`} className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
                 {lang === 'tr' ? 'Platform' : 'Platform'}
               </p>
-              <div className="flex gap-2 flex-wrap">
+              <div role="group" aria-labelledby={`${fieldId}-platform`} className="flex gap-2 flex-wrap">
                 {Object.entries(PLATFORM_ICONS).map(([p, icon]) => (
                   <button
                     key={p}
+                    type="button"
                     onClick={() => togglePlatform(p)}
+                    aria-pressed={formPlatforms.includes(p)}
                     className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${
                       formPlatforms.includes(p)
                         ? 'bg-ocean border-ocean text-white'
                         : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-ocean'
                     }`}
                   >
-                    {icon} {p.charAt(0).toUpperCase() + p.slice(1)}
+                    <span aria-hidden="true">{icon}</span> {p.charAt(0).toUpperCase() + p.slice(1)}
                   </button>
                 ))}
               </div>
@@ -228,43 +234,46 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
 
             {/* İçerik */}
             <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+              <p id={`${fieldId}-content`} className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
                 {lang === 'tr' ? 'İçerik' : 'Content'}
               </p>
               <textarea
+                aria-labelledby={`${fieldId}-content`}
                 value={formContent}
                 onChange={e => setFormContent(e.target.value)}
                 rows={4}
                 placeholder={lang === 'tr' ? 'Paylaşılacak içeriği buraya yazın…' : 'Write the content to share here…'}
-                className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-ocean resize-none"
+                className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-500 focus:outline-none focus:border-ocean focus-visible:ring-2 focus-visible:ring-ocean resize-none"
               />
-              <p className="text-[10px] text-slate-400 mt-0.5">{formContent.length} {lang === 'tr' ? 'karakter' : 'characters'}</p>
+              <p className="text-[10px] text-slate-600 mt-0.5">{formContent.length} {lang === 'tr' ? 'karakter' : 'characters'}</p>
             </div>
 
             {/* Tarih + Saat */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                <p id={`${fieldId}-schedule`} className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
                   {lang === 'tr' ? 'Zamanlama (Tarih & Saat)' : 'Schedule (date & time)'}
                 </p>
                 <input
+                  aria-labelledby={`${fieldId}-schedule`}
                   type="datetime-local"
                   min={minDateTime}
                   value={formSchedule}
                   onChange={e => setFormSchedule(e.target.value)}
-                  className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-ocean"
+                  className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-ocean focus-visible:ring-2 focus-visible:ring-ocean"
                 />
               </div>
               <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
+                <p id={`${fieldId}-note`} className="text-xs text-slate-500 dark:text-slate-400 mb-1.5">
                   {lang === 'tr' ? 'Not (isteğe bağlı)' : 'Note (optional)'}
                 </p>
                 <input
+                  aria-labelledby={`${fieldId}-note`}
                   type="text"
                   value={formNote}
                   onChange={e => setFormNote(e.target.value)}
                   placeholder={lang === 'tr' ? 'Kısa açıklama…' : 'Short description…'}
-                  className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-ocean"
+                  className="w-full text-sm border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 placeholder-slate-500 focus:outline-none focus:border-ocean focus-visible:ring-2 focus-visible:ring-ocean"
                 />
               </div>
             </div>
@@ -290,13 +299,13 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
         {/* Post listesi */}
         <div className="p-6 flex flex-col gap-3">
           {loading ? (
-            <div className="flex items-center justify-center py-12 text-slate-400 text-sm gap-2">
+            <div className="flex items-center justify-center py-12 text-slate-600 text-sm gap-2">
               <div className="w-5 h-5 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
               {lang === 'tr' ? 'Yükleniyor…' : 'Loading…'}
             </div>
           ) : posts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-3">
-              <span className="text-4xl">📅</span>
+            <div className="flex flex-col items-center justify-center py-12 text-slate-600 gap-3">
+              <span className="text-4xl" aria-hidden="true">📅</span>
               <p className="text-sm text-center">
                 {lang === 'tr'
                   ? <>Henüz zamanlanmış post yok.<br />Yukarıdaki <strong>+ Yeni Post</strong> butonunu kullanarak başlayın.</>
@@ -311,7 +320,7 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                   <div className="flex items-center gap-2 flex-wrap">
                     <div className="flex gap-1">
                       {post.platforms.map(p => (
-                        <span key={p} title={p} className="text-base">{PLATFORM_ICONS[p] || '📱'}</span>
+                        <span key={p} title={p} role="img" aria-label={p} className="text-base">{PLATFORM_ICONS[p] || '📱'}</span>
                       ))}
                     </div>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[post.status]}`}>
@@ -345,7 +354,7 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
                     {(post.status === 'cancelled' || post.status === 'failed' || post.status === 'partial') && (
                       <button
                         onClick={() => handleDelete(post.id)}
-                        className="text-[10px] text-slate-400 hover:text-red-500 font-medium px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        className="text-[10px] text-slate-600 hover:text-red-500 font-medium px-1.5 py-0.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                       >{lang === 'tr' ? 'Sil' : 'Delete'}</button>
                     )}
                   </div>
@@ -358,7 +367,7 @@ export default function SchedulePanel({ prefillContent, prefillImageData, prefil
 
                 {/* Not */}
                 {post.note && (
-                  <p className="text-[10px] text-slate-400 italic">📌 {post.note}</p>
+                  <p className="text-[10px] text-slate-600 italic">📌 {post.note}</p>
                 )}
 
                 {/* Sonuçlar (yayınlandıktan sonra) */}

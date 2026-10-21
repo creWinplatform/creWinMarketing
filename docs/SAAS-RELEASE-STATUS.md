@@ -67,7 +67,16 @@ See `SAAS-PHASE5-MODULES.md` section 12.
   - instant updates through one signed Meta webhook (`/api/platform/meta/hooks`, an exact-path middleware exception);
   - X replies and LinkedIn personal profile comments, each behind its own server switch.
 - **Fix:** LinkedIn comment times are now read, so company page comments are no longer skipped.
-- **Legacy Crewin screens:** a read-only accessibility scan found 2 blocker, 7 serious, 4 moderate and 5 minor items. Nothing was changed yet; fixes wait for the owner's choice.
+- **Legacy Crewin screens (accessibility, with the owner's go-ahead):**
+  - modals and the activity slide-over move focus in, keep Tab inside, close on Escape and return focus;
+  - the JobBot job row and the logo controls are real buttons;
+  - visible labels are linked to their controls;
+  - errors are announced and icon-only buttons have names;
+  - tab bars follow the ARIA tabs pattern and toggles report their state;
+  - weak focus rings are stronger;
+  - light-mode grey text moved from slate-400 to slate-600, and dark-mode text from slate-500 to slate-400; dark panels are unchanged;
+  - checked with `tsc`, the platform tests and a production build;
+  - not opened in a browser, because the legacy tabs call the real Crewin backend.
 - **Checks:** 633 platform tests pass.
 - **Schema:**
   - migration 53 was dry-run on a copy, then applied after a backup at schema 52;

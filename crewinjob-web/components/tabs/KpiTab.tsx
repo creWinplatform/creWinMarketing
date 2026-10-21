@@ -445,7 +445,7 @@ export default function KpiTab({ stats }: Props) {
 
           <div className="bg-slate-50 dark:bg-slate-700 rounded-lg p-3 text-xs text-slate-600 dark:text-slate-300 flex flex-col gap-1">
             <div className="flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-200">
-              <span>📋</span> {lang === 'tr' ? 'Rapor kapsamı:' : 'Report scope:'}
+              <span aria-hidden="true">📋</span> {lang === 'tr' ? 'Rapor kapsamı:' : 'Report scope:'}
             </div>
             <ul className="pl-4 flex flex-col gap-0.5 mt-1">
               <li>• {lang === 'tr' ? 'Seafarer büyüme analizi' : 'Seafarer growth analysis'}</li>
@@ -481,7 +481,7 @@ export default function KpiTab({ stats }: Props) {
               <div className="grid grid-cols-2 gap-2">
                 {kpis.slice(0, 6).map((kpi, i) => (
                   <div key={i} className={`rounded-lg border p-3 ${kpi.color}`}>
-                    <div className="text-lg mb-0.5">{kpi.icon}</div>
+                    <div className="text-lg mb-0.5" aria-hidden="true">{kpi.icon}</div>
                     <div className="text-lg font-bold leading-tight">{kpi.value}</div>
                     <div className="text-xs opacity-70 mt-0.5">{kpi.label}</div>
                     {kpi.hint && <div className="text-[10px] opacity-50 mt-0.5 leading-snug">{kpi.hint}</div>}
@@ -497,7 +497,7 @@ export default function KpiTab({ stats }: Props) {
               <div className="grid grid-cols-2 gap-2">
                 {kpis.slice(6).map((kpi, i) => (
                   <div key={i} className={`rounded-lg border p-3 ${kpi.color}`}>
-                    <div className="text-lg mb-0.5">{kpi.icon}</div>
+                    <div className="text-lg mb-0.5" aria-hidden="true">{kpi.icon}</div>
                     <div className="text-lg font-bold leading-tight">{kpi.value}</div>
                     <div className="text-xs opacity-70 mt-0.5">{kpi.label}</div>
                     {kpi.hint && <div className="text-[10px] opacity-50 mt-0.5 leading-snug">{kpi.hint}</div>}
@@ -599,11 +599,12 @@ export default function KpiTab({ stats }: Props) {
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm flex items-center gap-2">
-            <span>📊</span> {lang === 'tr' ? 'Haftalık KPI Analizi' : 'Weekly KPI analysis'}
+            <span aria-hidden="true">📊</span> {lang === 'tr' ? 'Haftalık KPI Analizi' : 'Weekly KPI analysis'}
           </h3>
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => showKpiHistory ? setShowKpiHistory(false) : loadKpiHistory()}
+              aria-expanded={showKpiHistory}
               className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors font-medium ${
                 showKpiHistory
                   ? 'bg-purple-700 text-white'
@@ -663,7 +664,7 @@ export default function KpiTab({ stats }: Props) {
             <div className="mt-5 border-t border-slate-200 dark:border-slate-700 pt-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                  <span>⚡</span>
+                  <span aria-hidden="true">⚡</span>
                   {lang === 'tr' ? 'KPI\'ya Göre Önerilen Aksiyonlar' : 'Recommended actions from KPIs'}
                 </h3>
                 {criticalCount > 0 && (
@@ -704,7 +705,7 @@ export default function KpiTab({ stats }: Props) {
                         </button>
                       </div>
                       {st?.error && (
-                        <p className="text-[11px] text-red-600 dark:text-red-400 mt-2 pl-0.5"><Msg text={st.error} /></p>
+                        <p role="alert" className="text-[11px] text-red-600 dark:text-red-400 mt-2 pl-0.5"><Msg text={st.error} /></p>
                       )}
                       {st?.output && (
                         <div className="mt-2 relative">
@@ -732,7 +733,7 @@ export default function KpiTab({ stats }: Props) {
           <div className="mt-5 border-t border-slate-200 dark:border-slate-700 pt-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
-                <span>📋</span>
+                <span aria-hidden="true">📋</span>
                 {lang === 'tr' ? 'Önceki KPI Raporları' : 'Previous KPI reports'}
               </h3>
               <div className="flex items-center gap-2">
@@ -742,7 +743,7 @@ export default function KpiTab({ stats }: Props) {
                   </span>
                 )}
                 {compareIds.length > 0 && (
-                  <button onClick={() => setCompareIds([])} className="text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300">
+                  <button onClick={() => setCompareIds([])} className="text-[10px] text-slate-600 hover:text-slate-600 dark:hover:text-slate-300">
                     {lang === 'tr' ? 'Seçimi temizle' : 'Clear selection'}
                   </button>
                 )}
@@ -756,12 +757,12 @@ export default function KpiTab({ stats }: Props) {
             </div>
 
             {historyLoading ? (
-              <div className="flex items-center gap-2 py-6 justify-center text-slate-400 text-sm">
+              <div className="flex items-center gap-2 py-6 justify-center text-slate-600 text-sm">
                 <div className="w-4 h-4 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
                 {lang === 'tr' ? 'Yükleniyor…' : 'Loading…'}
               </div>
             ) : kpiHistory.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6">
+              <p className="text-sm text-slate-600 dark:text-slate-400 text-center py-6">
                 {lang === 'tr' ? 'Henüz kaydedilmiş KPI raporu yok. İlk raporu üret!' : 'No saved KPI reports yet. Generate your first report!'}
               </p>
             ) : (
@@ -793,9 +794,9 @@ export default function KpiTab({ stats }: Props) {
 
                   const deltaCell = (key: string, def: MetricDef) => {
                     const va = ma[key], vb = mb[key];
-                    if (va == null || vb == null) return <span className="text-slate-400">–</span>;
+                    if (va == null || vb == null) return <span className="text-slate-600">–</span>;
                     const d = vb - va;
-                    if (d === 0) return <span className="text-slate-400">→ 0</span>;
+                    if (d === 0) return <span className="text-slate-600">→ 0</span>;
                     const good = def.higherIsBetter ? d > 0 : d < 0;
                     const arrow = d > 0 ? '▲' : '▼';
                     const cls = good
@@ -839,7 +840,7 @@ export default function KpiTab({ stats }: Props) {
                           </table>
                         </div>
                       ) : (
-                        <p className="text-[11px] text-slate-400 dark:text-slate-500 italic px-1">
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400 italic px-1">
                           {lang === 'tr'
                             ? 'Bu raporlarda metrik snapshot yok (eski raporlar). Yeni rapor üretince karşılaştırma tablosu görünür.'
                             : 'No metric snapshot in these reports (older records). Generate a new report to enable metric comparison.'}
@@ -943,7 +944,7 @@ export default function KpiTab({ stats }: Props) {
                               <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
                                 {fmtDate(item.timestamp, lang)}
                               </span>
-                              <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                              <span className="text-[10px] text-slate-600 dark:text-slate-400">
                                 {item.content.length.toLocaleString(localeTag(lang))} {lang === 'tr' ? 'karakter' : 'characters'}
                               </span>
                             </div>

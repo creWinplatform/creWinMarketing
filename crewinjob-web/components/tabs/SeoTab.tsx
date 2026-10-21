@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useId, isValidElement, cloneElement } from 'react';
 import OutputPanel from '../OutputPanel';
 import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
@@ -7,6 +7,7 @@ import { localeTag } from '@/lib/i18n/shared';
 import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
 import SiteAuditPanel from '@/components/seo/SiteAuditPanel';
+import { onTabKeys } from '@/components/platform/tab-keys';
 
 type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor' | 'ctr_report' | 'site_audit';
 
@@ -355,7 +356,7 @@ export default function SeoTab() {
       <div className="lg:col-span-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6 flex flex-col gap-5">
         <div>
           <h2 className="font-semibold text-slate-800 dark:text-slate-100 text-base mb-1 flex items-center gap-2">
-            <span>🔎</span> {lang === 'tr' ? 'SEO & İçerik Stratejisi' : 'SEO & content strategy'}
+            <span aria-hidden="true">🔎</span> {lang === 'tr' ? 'SEO & İçerik Stratejisi' : 'SEO & content strategy'}
           </h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
             {lang === 'tr'
@@ -365,10 +366,14 @@ export default function SeoTab() {
         </div>
 
         {/* Sub-tabs grid */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-2 gap-2" role="tablist" aria-label={lang === 'tr' ? 'SEO araçları' : 'SEO tools'} onKeyDown={onTabKeys}>
           {SUB_TABS.map(t => (
             <button
               key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={subTab === t.id}
+              tabIndex={subTab === t.id ? 0 : -1}
               onClick={() => { setSubTab(t.id); setOutput(''); setError(''); }}
               className={`flex items-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-colors ${
                 subTab === t.id
@@ -376,7 +381,7 @@ export default function SeoTab() {
                   : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
-              <span>{t.icon}</span>
+              <span aria-hidden="true">{t.icon}</span>
               <span>{t.label}</span>
             </button>
           ))}
@@ -385,10 +390,7 @@ export default function SeoTab() {
         {/* ── Blog form ── */}
         {subTab === 'blog' && (
           <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                {lang === 'tr' ? 'Blog Konusu' : 'Blog topic'}
-              </label>
+            <Field label={lang === 'tr' ? 'Blog Konusu' : 'Blog topic'}>
               <input
                 type="text"
                 value={blogTopic}
@@ -396,7 +398,7 @@ export default function SeoTab() {
                 placeholder={lang === 'tr' ? 'Konu yaz veya aşağıdan seç' : 'Type a topic or pick below'}
                 className={selectClass}
               />
-            </div>
+            </Field>
 
             {/* Öneri çipleri */}
             <div className="flex flex-col gap-2">
@@ -417,6 +419,7 @@ export default function SeoTab() {
                   <button
                     key={i}
                     onClick={() => setBlogTopic(chip)}
+                    aria-pressed={blogTopic === chip}
                     className={`text-left text-xs px-3 py-2 rounded-lg border transition-all ${
                       blogTopic === chip
                         ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
@@ -427,7 +430,7 @@ export default function SeoTab() {
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500">
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
                 {lang === 'tr'
                   ? 'Boş bırakırsanız AI en öncelikli konuyu seçer.'
                   : 'Leave empty to let AI pick the highest-priority topic.'}
@@ -460,6 +463,7 @@ export default function SeoTab() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setJobSourceMode('real')}
+                aria-pressed={jobSourceMode === 'real'}
                 className={`py-2 px-3 rounded-lg text-xs font-medium transition-colors border-2 ${
                   jobSourceMode === 'real'
                     ? 'bg-ocean text-white border-ocean'
@@ -470,6 +474,7 @@ export default function SeoTab() {
               </button>
               <button
                 onClick={() => setJobSourceMode('manual')}
+                aria-pressed={jobSourceMode === 'manual'}
                 className={`py-2 px-3 rounded-lg text-xs font-medium transition-colors border-2 ${
                   jobSourceMode === 'manual'
                     ? 'bg-ocean text-white border-ocean'
@@ -482,7 +487,7 @@ export default function SeoTab() {
 
             {jobSourceMode === 'real' ? (
               <div className="flex flex-col gap-2">
-                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                <p className="text-[11px] text-slate-600 dark:text-slate-400">
                   {lang === 'tr'
                     ? 'Platformda yayında olan gerçek bir ilan seçin — üretilen meta o ilanın çalışan URL\'ine bağlanır.'
                     : 'Pick a job posting that is live on the platform — the generated meta links to that posting\'s working URL.'}
@@ -492,21 +497,22 @@ export default function SeoTab() {
                   value={jobSearch}
                   onChange={e => setJobSearch(e.target.value)}
                   placeholder={lang === 'tr' ? 'Pozisyon, şirket, gemi tipi ara…' : 'Search position, company, vessel type…'}
+                  aria-label={lang === 'tr' ? 'İlan ara' : 'Search job postings'}
                   className={selectClass}
                 />
                 {realJobsLoading && (
-                  <p className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2 py-2">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 flex items-center gap-2 py-2">
                     <span className="w-3.5 h-3.5 border-2 border-ocean border-t-transparent rounded-full animate-spin" />
                     {lang === 'tr' ? 'İlanlar yükleniyor…' : 'Loading job postings…'}
                   </p>
                 )}
                 {realJobsError && (
-                  <p className="text-xs text-red-500">❌ <Msg text={realJobsError} /></p>
+                  <p role="alert" className="text-xs text-red-500">❌ <Msg text={realJobsError} /></p>
                 )}
                 {!realJobsLoading && !realJobsError && (
                   <div className="max-h-64 overflow-y-auto flex flex-col gap-1.5 border border-slate-200 dark:border-slate-600 rounded-lg p-2">
                     {filteredRealJobs.length === 0 && (
-                      <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">
+                      <p className="text-xs text-slate-600 dark:text-slate-400 text-center py-4">
                         {lang === 'tr' ? 'Sonuç bulunamadı.' : 'No results found.'}
                       </p>
                     )}
@@ -514,6 +520,7 @@ export default function SeoTab() {
                       <button
                         key={j.jobId ?? i}
                         onClick={() => setSelectedJob(j)}
+                        aria-pressed={selectedJob?.jobId === j.jobId}
                         className={`text-left text-xs px-3 py-2 rounded-lg border transition-all ${
                           selectedJob?.jobId === j.jobId
                             ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
@@ -555,6 +562,7 @@ export default function SeoTab() {
                       <button
                         key={i}
                         onClick={() => { setJobTitle(t.jobTitle); setVesselType(t.vesselType); }}
+                        aria-pressed={jobTitle === t.jobTitle && vesselType === t.vesselType}
                         className={`text-left text-[11px] px-2.5 py-1.5 rounded-lg border transition-all ${
                           jobTitle === t.jobTitle && vesselType === t.vesselType
                             ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
@@ -603,6 +611,7 @@ export default function SeoTab() {
                   <button
                     key={i}
                     onClick={() => setSeedKeyword(chip)}
+                    aria-pressed={seedKeyword === chip}
                     className={`text-[11px] px-2.5 py-1.5 rounded-full border transition-all ${
                       seedKeyword === chip
                         ? 'bg-ocean text-white border-ocean'
@@ -620,7 +629,7 @@ export default function SeoTab() {
                 {INTENT_TYPES.map(i => <option key={i.value} value={i.value}>{lang === 'tr' ? i.label : i.labelEn}</option>)}
               </select>
             </Field>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">
               {lang === 'tr'
                 ? 'Bu keyword\'den 30+ uzun kuyruk + topic cluster üretilir.'
                 : 'Generates 30+ long-tail keywords + topic clusters from this seed.'}
@@ -632,7 +641,7 @@ export default function SeoTab() {
         {subTab === 'competitor' && (
           <div className="flex flex-col gap-3">
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300 flex gap-2">
-              <span className="text-base">⚔️</span>
+              <span className="text-base" aria-hidden="true">⚔️</span>
               <div>
                 <p className="font-semibold mb-1">{lang === 'tr' ? 'Analiz edilecek rakipler:' : 'Competitors to analyze:'}</p>
                 <p className="text-[11px] leading-relaxed">
@@ -651,6 +660,7 @@ export default function SeoTab() {
                   <button
                     key={i}
                     onClick={() => setCompetitorFocus(t.focus)}
+                    aria-pressed={competitorFocus === t.focus}
                     className={`text-left text-xs px-3 py-2.5 rounded-lg border transition-all ${
                       competitorFocus === t.focus
                         ? 'bg-ocean/10 border-ocean text-ocean dark:text-sky-300'
@@ -658,7 +668,7 @@ export default function SeoTab() {
                     }`}
                   >
                     <p className="font-medium">{lang === 'tr' ? t.label : t.labelEn}</p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{lang === 'tr' ? t.focus : t.focusEn}</p>
+                    <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5">{lang === 'tr' ? t.focus : t.focusEn}</p>
                   </button>
                 ))}
               </div>
@@ -670,19 +680,20 @@ export default function SeoTab() {
         {subTab === 'ctr_report' && (
           <div className="flex flex-col gap-3">
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3 text-xs text-blue-800 dark:text-blue-300 flex gap-2">
-              <span className="text-base">📉</span>
+              <span className="text-base" aria-hidden="true">📉</span>
               <p className="leading-relaxed">
                 {lang === 'tr'
                   ? 'Google\'da iyi pozisyonda gösterilen ama beklenenin çok altında tıklanan sayfaları bulur ve AI ile yeni başlık/açıklama önerir.'
                   : 'Finds pages ranking well on Google but clicked far less than expected, and suggests AI-generated title/description fixes.'}
               </p>
             </div>
-            <Field label={lang === 'tr' ? 'Zaman Aralığı' : 'Date range'}>
+            <Field group label={lang === 'tr' ? 'Zaman Aralığı' : 'Date range'}>
               <div className="grid grid-cols-3 gap-2">
                 {(['7', '30', '90'] as const).map(r => (
                   <button
                     key={r}
                     onClick={() => setCtrRange(r)}
+                    aria-pressed={ctrRange === r}
                     className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors border-2 ${
                       ctrRange === r
                         ? 'bg-ocean text-white border-ocean'
@@ -699,7 +710,7 @@ export default function SeoTab() {
 
         {/* Dil */}
         {subTab !== 'ctr_report' && (
-        <Field label={lang === 'tr' ? 'İçerik Dili' : 'Content language'}>
+        <Field group label={lang === 'tr' ? 'İçerik Dili' : 'Content language'}>
           <div className="grid grid-cols-2 gap-2">
             {([
               { value: 'tr', flag: '🇹🇷', label: 'Türkçe' },
@@ -708,22 +719,23 @@ export default function SeoTab() {
               <button
                 key={l.value}
                 onClick={() => setLanguage(l.value)}
+                aria-pressed={language === l.value}
                 className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-colors border-2 ${
                   language === l.value
                     ? 'bg-ocean text-white border-ocean'
                     : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-ocean/50 hover:bg-slate-50 dark:hover:bg-slate-600'
                 }`}
               >
-                <span className="text-base">{l.flag}</span>
+                <span className="text-base" aria-hidden="true">{l.flag}</span>
                 <span>{l.label}</span>
               </button>
             ))}
           </div>
           {subTab === 'blog' && language === 'en' && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 {lang === 'tr' ? 'SEO blog için İngilizce önerilir (global kitle).' : 'English is recommended for SEO blogs (global audience).'}</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">💡 {lang === 'tr' ? 'SEO blog için İngilizce önerilir (global kitle).' : 'English is recommended for SEO blogs (global audience).'}</p>
           )}
           {subTab === 'keyword' && language === 'en' && (
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">💡 {lang === 'tr' ? 'Maritime sektörü çoğunlukla İngilizce arama yapar.' : 'The maritime industry mostly searches in English.'}</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400">💡 {lang === 'tr' ? 'Maritime sektörü çoğunlukla İngilizce arama yapar.' : 'The maritime industry mostly searches in English.'}</p>
           )}
         </Field>
         )}
@@ -770,7 +782,7 @@ export default function SeoTab() {
               </p>
             )}
             {publishing && (
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 text-center">
                 {blogImageData
                   ? (lang === 'tr' ? 'Görsel kaydediliyor ve blog yayınlanıyor…' : 'Saving the image and publishing the blog…')
                   : (lang === 'tr' ? 'Görsel üretiliyor ve blog yayınlanıyor…' : 'Generating the image and publishing the blog…')}
@@ -783,13 +795,13 @@ export default function SeoTab() {
                   : 'border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20'
               }`}>
                 {publishResult.success ? (
-                  <div className="flex flex-col gap-1.5">
+                  <div role="status" className="flex flex-col gap-1.5">
                     <p className="font-semibold text-green-700 dark:text-green-300">
                       ✅ {lang === 'tr' ? 'Blog yayınlandı!' : 'Blog published!'}
                     </p>
                     <p className="text-slate-600 dark:text-slate-300 line-clamp-2">📝 {publishResult.title}</p>
                     {publishResult.blogId ? (
-                      <p className="text-slate-400 dark:text-slate-500 text-[11px]">Blog ID: {publishResult.blogId}</p>
+                      <p className="text-slate-600 dark:text-slate-400 text-[11px]">Blog ID: {publishResult.blogId}</p>
                     ) : null}
                     {publishResult.localImageUrl && (
                       <a href={publishResult.localImageUrl} target="_blank" rel="noopener noreferrer"
@@ -804,7 +816,7 @@ export default function SeoTab() {
                     )}
                   </div>
                 ) : (
-                  <p className="text-red-600 dark:text-red-400">❌ <Msg text={publishResult.error || (lang === 'tr' ? 'Blog yayınlanamadı' : "Couldn't publish the blog")} /></p>
+                  <p role="alert" className="text-red-600 dark:text-red-400">❌ <Msg text={publishResult.error || (lang === 'tr' ? 'Blog yayınlanamadı' : "Couldn't publish the blog")} /></p>
                 )}
               </div>
             )}
@@ -815,7 +827,7 @@ export default function SeoTab() {
       {/* Sağ panel — output */}
       <div className="lg:col-span-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
         <h3 className="font-medium text-slate-700 dark:text-slate-200 text-sm mb-4 flex items-center gap-2">
-          <span>📄</span>{' '}
+          <span aria-hidden="true">📄</span>{' '}
           {subTab === 'blog'       && (lang === 'tr' ? 'Üretilen Blog Makalesi'   : 'Generated blog article')}
           {subTab === 'seo'        && (lang === 'tr' ? 'Üretilen SEO Meta'        : 'Generated SEO meta')}
           {subTab === 'keyword'    && (lang === 'tr' ? 'Keyword Araştırma Sonucu' : 'Keyword research result')}
@@ -874,7 +886,7 @@ function CtrReportPanel({
 }) {
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400 dark:text-slate-500">
+      <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-600 dark:text-slate-400">
         <div className="w-8 h-8 border-3 border-ocean border-t-transparent rounded-full animate-spin" />
         <p className="text-sm">{lang === 'tr' ? 'GSC verisi analiz ediliyor ve AI önerileri üretiliyor…' : 'Analyzing GSC data and generating AI suggestions…'}</p>
       </div>
@@ -882,7 +894,7 @@ function CtrReportPanel({
   }
   if (error) {
     return (
-      <div className="rounded-xl border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-600 dark:text-red-400">
+      <div role="alert" className="rounded-xl border border-red-200 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-600 dark:text-red-400">
         ❌ <Msg text={error} />
       </div>
     );
@@ -898,8 +910,8 @@ function CtrReportPanel({
   }
   if (!data) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 gap-2 text-slate-400 dark:text-slate-500 text-center">
-        <span className="text-3xl">📉</span>
+      <div className="flex flex-col items-center justify-center h-64 gap-2 text-slate-600 dark:text-slate-400 text-center">
+        <span className="text-3xl" aria-hidden="true">📉</span>
         <p className="text-sm">
           {lang === 'tr' ? 'Zaman aralığını seçin ve ' : 'Pick a date range and click '}
           <strong>{lang === 'tr' ? 'Raporu Getir' : 'Fetch report'}</strong>
@@ -938,7 +950,7 @@ function CtrReportPanel({
       </div>
 
       {data.aiError && (
-        <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-700 dark:text-amber-300">
+        <div role="status" className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-700 dark:text-amber-300">
           ⚠️ {lang === 'tr' ? 'AI önerisi üretilemedi, ham veri aşağıda:' : "Couldn't generate AI suggestions, raw data below:"} <Msg text={data.aiError} />
         </div>
       )}
@@ -951,7 +963,7 @@ function CtrReportPanel({
               <div className="bg-slate-50 dark:bg-slate-700/50 px-4 py-2.5 flex items-center justify-between gap-2">
                 <a href={r.page} target="_blank" rel="noopener noreferrer"
                    className="text-xs text-ocean hover:underline truncate font-medium">{r.page}</a>
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 whitespace-nowrap">
                   ~{Math.round(r.lostClicks).toLocaleString(locale)} {lang === 'tr' ? 'kayıp tık.' : 'lost clicks'}
                 </span>
               </div>
@@ -962,7 +974,7 @@ function CtrReportPanel({
                   <span title={lang === 'tr' ? 'Gösterim' : 'Impressions'}>👁️ {r.impressions.toLocaleString(locale)}</span>
                   <span title={lang === 'tr' ? 'Tıklama' : 'Clicks'}>🖱️ {r.clicks.toLocaleString(locale)}</span>
                   <span className="text-red-500 font-medium">
-                    CTR {pct(r.ctr)} <span className="text-slate-400">({lang === 'tr' ? 'beklenen' : 'expected'} {pct(r.expectedCtr)})</span>
+                    CTR {pct(r.ctr)} <span className="text-slate-600">({lang === 'tr' ? 'beklenen' : 'expected'} {pct(r.expectedCtr)})</span>
                   </span>
                 </div>
                 {sugg ? (
@@ -975,7 +987,7 @@ function CtrReportPanel({
                     <p className="text-xs text-slate-500 dark:text-slate-400 italic mt-1">💡 {sugg.reasoning}</p>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 italic">
                     {lang === 'tr' ? 'Bu satır için AI önerisi yok (ilk 15 içinde değil).' : 'No AI suggestion for this row (not in the top 15).'}
                   </p>
                 )}
@@ -997,13 +1009,25 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
   );
 }
 
-const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean placeholder:text-slate-400 dark:placeholder:text-slate-500';
+const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean/50 focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+// Tek kontrol: <label htmlFor> ile bağlanır. group: buton grubu, role="group" + aria-labelledby ile adlandırılır.
+function Field({ label, children, group }: { label: string; children: React.ReactNode; group?: boolean }) {
+  const autoId = useId();
+  if (group) {
+    return (
+      <div role="group" aria-labelledby={autoId} className="flex flex-col gap-1.5">
+        <span id={autoId} className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+        {children}
+      </div>
+    );
+  }
+  const child = isValidElement<{ id?: string }>(children) ? children : null;
+  const controlId = child?.props.id || autoId;
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</label>
-      {children}
+      <label htmlFor={controlId} className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</label>
+      {child ? cloneElement(child, { id: controlId }) : children}
     </div>
   );
 }
