@@ -176,6 +176,9 @@ Source post (inspiration only):
     return this.db.transaction(()=>{
       this.authorize('members.manage');
       if(!this.db.prepare('SELECT 1 FROM platform_memberships WHERE user_id=? AND organization_id=? AND project_id=? AND active=1').get(userId,...this.args()))throw new MarketingStoreError('Üye bulunamadı.',404);
+      // Nobody changes their own duties, and the publish duty is given only by a project owner.
+      if(userId===this.scope.subject)throw new MarketingStoreError('Kendi görevlerinizi değiştiremezsiniz; başka bir yönetici veya proje sahibi vermeli.',403);
+      if(duty==='publish'&&raw.granted===true&&!isProjectOwner(this.db,this.scope.subject,...this.args()))throw new MarketingStoreError('"Yayın" görevini yalnız proje sahibi verebilir.',403);
       if(raw.granted===true){if(!dutyEligible(this.repo,userId,...this.args(),duty))throw new MarketingStoreError('Bu görev için üyenin rolü yetmiyor: kaynak okuma için okuma, öneri için içerik yazma, yayın için bağlantı, onay ve gönderim yetkileri gerekir.',403);
         this.db.prepare('INSERT OR IGNORE INTO platform_messaging_duties VALUES(?,?,?,?,?,?)').run(...this.args(),userId,duty,this.scope.subject,new Date().toISOString());}
       else{this.db.prepare('DELETE FROM platform_messaging_duties WHERE organization_id=? AND project_id=? AND user_id=? AND duty=?').run(...this.args(),userId,duty);

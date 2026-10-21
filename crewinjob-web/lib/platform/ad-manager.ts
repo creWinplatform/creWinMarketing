@@ -45,8 +45,9 @@ export class ProjectAds{
     if(need==='manage'?!this.manager():need!=='read'&&!this.can(need))throw new MarketingStoreError(need==='manage'?'Reklam hesabı ve bütçe tavanı için bağlantı yönetimi ve onay yetkisi gerekli.':need==='campaign.approve'?'Reklam planlarını yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
   private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
-  private connection(){return this.db.prepare("SELECT id,integration_id,account_name,encrypted_credentials FROM platform_connections WHERE organization_id=? AND project_id=? AND provider=? AND active=1 ORDER BY updated_at DESC LIMIT 1").get(...this.args(),AD_CONNECTION[this.provider]) as {id:string;integration_id:string;account_name:string;encrypted_credentials:string}|undefined;}
-  private credentials(){const connection=this.connection();if(!connection)throw new MarketingStoreError('Önce reklam hesabını bağlayın.',409);const credentials=decryptCredentials<AdCredentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);
+  private connection(id?:string){return this.db.prepare(`SELECT id,integration_id,account_name,encrypted_credentials FROM platform_connections WHERE organization_id=? AND project_id=? AND provider=? AND active=1${id?' AND id=?':''} ORDER BY updated_at DESC LIMIT 1`).get(...this.args(),AD_CONNECTION[this.provider],...(id?[id]:[])) as {id:string;integration_id:string;account_name:string;encrypted_credentials:string}|undefined;}
+  // With an id, only that (still active) account: a plan is always started, paused and read on its own account.
+  private credentials(id?:string){const connection=this.connection(id);if(!connection)throw new MarketingStoreError(id?'Planın reklam hesabı artık bağlı değil. Kampanyayı sağlayıcının kendi ekranından kontrol edin.':'Önce reklam hesabını bağlayın.',409);const credentials=decryptCredentials<AdCredentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);
     if(this.provider==='google'&&!credentials.currency)throw new MarketingStoreError('Önce Google Ads hesabını doğrulayın.',409);return {connection,credentials};}
   // Google tokens expire within an hour; a refreshed token is stored encrypted again before use.
   private async token(connection:{id:string},credentials:AdCredentials){
@@ -159,7 +160,7 @@ export class ProjectAds{
   // Planned spend of plans that are delivering or about to: daily budget × remaining days, within the current month.
   private plannedActive(exclude?:string){
     const today=new Date().toISOString().slice(0,10),monthEnd=new Date(Date.UTC(new Date().getUTCFullYear(),new Date().getUTCMonth()+1,0)).toISOString().slice(0,10);
-    return (this.db.prepare("SELECT id,daily_budget_minor,start_date,end_date FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider=? AND state='active'").all(...this.args(),this.provider) as {id:string;daily_budget_minor:number;start_date:string;end_date:string}[])
+    return (this.db.prepare("SELECT id,daily_budget_minor,start_date,end_date FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider=? AND state IN ('active','starting')").all(...this.args(),this.provider) as {id:string;daily_budget_minor:number;start_date:string;end_date:string}[])
       .filter(item=>item.id!==exclude).reduce((sum,item)=>{const from=item.start_date>today?item.start_date:today,to=item.end_date<monthEnd?item.end_date:monthEnd;return sum+(to>=from?item.daily_budget_minor*days(from,to):0);},0);
   }
   // Creates the campaign and its ad set on Meta, both PAUSED. Creatives are added by the team in Ads Manager.
@@ -167,13 +168,17 @@ export class ProjectAds{
     this.authorize('manage');const row=this.row(raw.id);if(row.state!=='approved'||!this.approvedNow(row))throw new MarketingStoreError('Plan onaylı ve onaydan sonra değişmemiş olmalı.',409);
     const {connection,credentials}=this.credentials();if(connection.id!==row.connection_id)throw new MarketingStoreError('Plan başka bir reklam hesabına ait.',409);
     this.normalize({name:row.name,objective:row.objective,specialCategory:row.special_category,dailyBudgetMinor:row.daily_budget_minor,startDate:row.start_date,endDate:row.end_date,countries:JSON.parse(row.countries_json),linkUrl:row.link_url},connection.id,credentials.currency);
+    // Claim the plan before any provider call: a second click or tab cannot create a second campaign.
+    const claimed=this.db.transaction(()=>{this.authorize('manage');const current=this.row(row.id);if(current.state!=='approved'||!this.approvedNow(current)||current.digest!==row.digest)return 0;
+      return this.db.prepare("UPDATE platform_ad_plans SET state='creating',updated_at=? WHERE id=? AND state='approved'").run(new Date().toISOString(),row.id).changes;}).immediate();
+    if(!claimed)throw new MarketingStoreError('Plan şu anda oluşturuluyor veya onaydan sonra değişti. Sayfayı yenileyin.',409);
     if(this.provider!=='meta'){
       const token=await this.token(connection,credentials);let campaignId:string|null=null,groupId:string|null=null,error:string|null=null;
       try{const result=this.provider==='google'?await (this.client(credentials,token) as GoogleAdsClient).create(this.providerPlan(row),adMinorUnit(row.currency)):await (this.client(credentials,token) as LinkedInAdsClient).create(this.providerPlan(row),adMinorUnit(row.currency),this.repo.workspace(this.scope.subject,...this.args())?.project.language==='en'?'en':'tr');
         campaignId=result.campaignId;groupId=result.groupId;error=result.partial;}
       catch(reason){error=reason instanceof MarketingStoreError?reason.message:`${PROVIDER_NAME[this.provider]} üzerinde kampanya oluşturulamadı.`;}
       return this.db.transaction(()=>{const now=new Date().toISOString();
-        this.db.prepare('UPDATE platform_ad_plans SET state=?,provider_campaign_id=?,provider_adset_id=?,last_error=?,revision=revision+1,updated_at=? WHERE id=?').run(error?'failed':'created',campaignId,groupId,error,now,row.id);
+        this.db.prepare("UPDATE platform_ad_plans SET state=?,provider_campaign_id=?,provider_adset_id=?,last_error=?,revision=revision+1,updated_at=? WHERE id=? AND state='creating'").run(error?'failed':'created',campaignId,groupId,error,now,row.id);
         this.audit(error?'ads.plan.create_failed':'ads.plan.created');return this.read();}).immediate();
     }
     const countries=JSON.parse(row.countries_json) as string[],special=row.special_category==='NONE'?[]:[row.special_category];
@@ -186,7 +191,7 @@ export class ProjectAds{
       adsetId=typeof adset.id==='string'&&/^\d{1,25}$/.test(adset.id)?adset.id:'';if(!adsetId)throw new Error('no ad set');
     }catch{error=campaignId?'Kampanya oluşturuldu ancak reklam seti oluşturulamadı; kampanya Meta’da duraklatılmış duruyor.':'Meta’da kampanya oluşturulamadı.';}
     return this.db.transaction(()=>{const now=new Date().toISOString();
-      this.db.prepare('UPDATE platform_ad_plans SET state=?,provider_campaign_id=?,provider_adset_id=?,last_error=?,revision=revision+1,updated_at=? WHERE id=?').run(error?'failed':'created',campaignId||null,adsetId||null,error,now,row.id);
+      this.db.prepare("UPDATE platform_ad_plans SET state=?,provider_campaign_id=?,provider_adset_id=?,last_error=?,revision=revision+1,updated_at=? WHERE id=? AND state='creating'").run(error?'failed':'created',campaignId||null,adsetId||null,error,now,row.id);
       this.audit(error?'ads.plan.create_failed':'ads.plan.created');return this.read();}).immediate();
   }
   // Starting delivery: explicit acknowledgement, the server switch, an unchanged approval and the monthly cap.
@@ -195,26 +200,40 @@ export class ProjectAds{
     if(raw.acknowledged!==true)throw new MarketingStoreError('Harcamayı başlatmak için açık onay gerekli.');
     if(!adsLaunchEnabled())throw new MarketingStoreError('Reklam yayınını başlatma bu sunucuda kapalı.',409);
     if(!['created','paused'].includes(row.state)||!row.provider_campaign_id||!row.provider_adset_id||!this.approvedNow(row))throw new MarketingStoreError('Plan reklam sağlayıcısında duraklatılmış olarak oluşturulmuş ve onayı geçerli olmalı.',409);
-    const {credentials}=this.credentials(),policy=this.policy();
-    if(!policy||policy.currency!==row.currency||row.daily_budget_minor>policy.daily_cap_minor)throw new MarketingStoreError('Plan, güncel bütçe tavanının dışında.',409);
+    const {connection,credentials}=this.credentials(row.connection_id),policy=this.policy();
+    if(!policy||policy.connection_id!==row.connection_id||policy.currency!==row.currency||row.daily_budget_minor>policy.daily_cap_minor)throw new MarketingStoreError('Plan, güncel bütçe tavanının dışında.',409);
     const today=new Date().toISOString().slice(0,10);if(row.end_date<today)throw new MarketingStoreError('Planın bitiş tarihi geçti.',409);
     const monthEnd=new Date(Date.UTC(new Date().getUTCFullYear(),new Date().getUTCMonth()+1,0)).toISOString().slice(0,10),from=row.start_date>today?row.start_date:today,to=row.end_date<monthEnd?row.end_date:monthEnd,own=to>=from?row.daily_budget_minor*days(from,to):0;
-    if(this.plannedActive(row.id)+own>policy.monthly_cap_minor)throw new MarketingStoreError('Çalışan planlarla birlikte bu ayın planlanan harcaması aylık tavanı aşıyor.',409);
+    // The cap is checked again and the plan claimed in one transaction, so two starts can never pass the cap together.
+    const claimed=this.db.transaction(()=>{this.authorize('manage');const current=this.row(row.id);
+      if(!['created','paused'].includes(current.state)||!this.approvedNow(current))return 'state';
+      if(this.plannedActive(row.id)+own>policy.monthly_cap_minor)return 'cap';
+      return this.db.prepare("UPDATE platform_ad_plans SET state='starting',updated_at=? WHERE id=? AND state IN ('created','paused')").run(new Date().toISOString(),row.id).changes?'ok':'state';}).immediate();
+    if(claimed==='cap')throw new MarketingStoreError('Çalışan planlarla birlikte bu ayın planlanan harcaması aylık tavanı aşıyor.',409);
+    if(claimed!=='ok')throw new MarketingStoreError('Plan şu anda başlatılıyor veya durumu değişti. Sayfayı yenileyin.',409);
     let error:string|null=null;
     if(this.provider!=='meta'){
-      const {connection}=this.credentials(),token=await this.token(connection,credentials),client=this.client(credentials,token);
+      const token=await this.token(connection,credentials),client=this.client(credentials,token);
       try{await client.status(this.providerPlan(row),(this.provider==='google'?'ENABLED':'ACTIVE') as never);}catch{error=`${PROVIDER_NAME[this.provider]} yayını başlatmayı reddetti; plan duraklatılmış kabul edildi. Hesapta reklam içeriğini ve ödeme yöntemini kontrol edin.`;}
       if(error){try{await client.status(this.providerPlan(row),'PAUSED');}catch{/* the pause is retried by the team from the plan */}}
     }else{
     try{await this.graph('POST',row.provider_adset_id,credentials.accessToken,{status:'ACTIVE'});await this.graph('POST',row.provider_campaign_id,credentials.accessToken,{status:'ACTIVE'});}catch{error='Meta yayını başlatmayı reddetti; plan duraklatılmış kabul edildi. Reklam hesabında kreatif ve ödeme yöntemini kontrol edin.';}
     if(error){try{await this.graph('POST',row.provider_campaign_id,credentials.accessToken,{status:'PAUSED'});}catch{/* the pause is retried by the team from the plan */}}
     }
-    return this.db.transaction(()=>{const now=new Date().toISOString();this.db.prepare('UPDATE platform_ad_plans SET state=?,last_error=?,revision=revision+1,updated_at=? WHERE id=?').run(error?'paused':'active',error,now,row.id);this.audit(error?'ads.plan.start_failed':'ads.plan.start');return this.read();}).immediate();
+    return this.db.transaction(()=>{const now=new Date().toISOString();this.db.prepare("UPDATE platform_ad_plans SET state=?,last_error=?,revision=revision+1,updated_at=? WHERE id=? AND state='starting'").run(error?'paused':'active',error,now,row.id);this.audit(error?'ads.plan.start_failed':'ads.plan.start');return this.read();}).immediate();
+  }
+  // A claim left by an interrupted request is settled after 10 minutes. An interrupted start is treated as running, so
+  // the pause button is shown; an interrupted create may have left a paused campaign at the provider.
+  private settleStale(){
+    const before=new Date(Date.now()-600000).toISOString(),now=new Date().toISOString();
+    this.db.prepare("UPDATE platform_ad_plans SET state='failed',last_error=?,revision=revision+1,updated_at=? WHERE organization_id=? AND project_id=? AND provider=? AND state='creating' AND updated_at<?").run('Oluşturma yarıda kaldı; sağlayıcıda duraklatılmış bir kampanya oluşmuş olabilir. Hesabınızı kontrol edin.',now,...this.args(),this.provider,before);
+    this.db.prepare("UPDATE platform_ad_plans SET state='active',last_error=?,revision=revision+1,updated_at=? WHERE organization_id=? AND project_id=? AND provider=? AND state='starting' AND updated_at<?").run('Başlatma yarıda kaldı; kampanya yayında olabilir. Gerekirse duraklatın ve sağlayıcıda kontrol edin.',now,...this.args(),this.provider,before);
   }
   // Pausing never needs the switch or approval: stopping spend is always allowed to every writer.
   async pause(raw:Record<string,unknown>){
     this.authorize('content.write');const row=this.row(raw.id);if(!row.provider_campaign_id)throw new MarketingStoreError('Plan reklam sağlayıcısında oluşturulmamış.',409);
-    const {connection,credentials}=this.credentials();let error:string|null=null;
+    if(row.state==='starting')throw new MarketingStoreError('Plan şu anda başlatılıyor; birkaç saniye sonra tekrar duraklatın.',409);
+    const {connection,credentials}=this.credentials(row.connection_id);let error:string|null=null;
     if(this.provider!=='meta'){try{await this.client(credentials,await this.token(connection,credentials)).status(this.providerPlan(row),'PAUSED');}catch{error=`${PROVIDER_NAME[this.provider]} duraklatma isteğini doğrulamadı. Hesabınızdan kampanyanın durumunu kontrol edin.`;}}
     else try{await this.graph('POST',row.provider_campaign_id,credentials.accessToken,{status:'PAUSED'});}catch{error='Meta duraklatma isteğini doğrulamadı. Ads Manager’dan kampanyanın durumunu kontrol edin.';}
     return this.db.transaction(()=>{const now=new Date().toISOString();this.db.prepare('UPDATE platform_ad_plans SET state=CASE WHEN ? IS NULL THEN \'paused\' ELSE state END,last_error=?,revision=revision+1,updated_at=? WHERE id=?').run(error,error,now,row.id);this.audit(error?'ads.plan.pause_failed':'ads.plan.pause');return this.read();}).immediate();
@@ -222,7 +241,7 @@ export class ProjectAds{
   // Spend as Meta reports it for the campaign's lifetime; no estimate is made when Meta returns nothing.
   async refreshSpend(raw:Record<string,unknown>){
     this.authorize('read');const row=this.row(raw.id);if(!row.provider_campaign_id)throw new MarketingStoreError('Plan reklam sağlayıcısında oluşturulmamış.',409);
-    const {connection,credentials}=this.credentials();let spend:number|null=null,impressions:number|null=null,clicks:number|null=null;
+    const {connection,credentials}=this.credentials(row.connection_id);let spend:number|null=null,impressions:number|null=null,clicks:number|null=null;
     if(this.provider!=='meta'){
       try{const result=await this.client(credentials,await this.token(connection,credentials)).spend(this.providerPlan(row),adMinorUnit(row.currency));spend=result.spendMinor;impressions=result.impressions;clicks=result.clicks;}
       catch(reason){if(reason instanceof MarketingStoreError)throw reason;throw new MarketingStoreError(`${PROVIDER_NAME[this.provider]} harcama verisi şu anda alınamadı.`,502);}
@@ -235,7 +254,7 @@ export class ProjectAds{
     return this.db.transaction(()=>{this.db.prepare('UPDATE platform_ad_plans SET spend_minor=?,impressions=?,clicks=?,spend_checked_at=?,updated_at=? WHERE id=?').run(spend,impressions,clicks,new Date().toISOString(),new Date().toISOString(),row.id);return this.read();}).immediate();
   }
   read():AdsSnapshot{
-    this.authorize();const connection=this.connection(),policy=this.policy();let account:AdsSnapshot['account']=null;
+    this.authorize();this.settleStale();const connection=this.connection(),policy=this.policy();let account:AdsSnapshot['account']=null;
     let pendingVerification=false;
     if(connection){const credentials=decryptCredentials<AdCredentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);
       if(credentials.currency)account={connectionId:connection.id,adAccountId:credentials.adAccountId,name:credentials.name,currency:credentials.currency,status:typeof credentials.status==='number'?credentials.status:null,timezone:credentials.timezone,checkedAt:credentials.checkedAt};else pendingVerification=true;}

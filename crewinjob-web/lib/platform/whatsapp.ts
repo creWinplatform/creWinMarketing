@@ -205,7 +205,8 @@ export class ProjectWhatsApp{
         const batch=this.batch(id),next=this.db.prepare("SELECT contact_id FROM platform_whatsapp_messages WHERE batch_id=? AND state='pending' LIMIT 1").get(id) as {contact_id:string}|undefined;if(batch.state!=='queued'||!next)return null;const now=new Date().toISOString();
         const skip=(reason:string)=>{this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason=?,finished_at=? WHERE batch_id=? AND contact_id=?").run(reason,now,id,next.contact_id);return 'skipped' as const;};
         const actor=batch.queued_by||'';let allowed=true;try{this.authorize(batch.mode==='send'?'publish':'campaign.dispatch',actor);}catch{allowed=false;}
-        if(!allowed||batch.approved_digest!==batch.digest||batch.connection_id!==this.connection()?.id)return skip('changed');
+        const approver=this.db.prepare('SELECT approved_by FROM platform_whatsapp_batches WHERE id=?').get(id) as {approved_by:string|null};
+        if(!allowed||batch.approved_digest!==batch.digest||!approver.approved_by||!this.can('campaign.approve',approver.approved_by)||batch.connection_id!==this.connection()?.id)return skip('changed');
         const contact=this.sendable(next.contact_id);if(!contact)return skip('not_consented');
         if(batch.mode==='rehearsal'){this.db.prepare("UPDATE platform_whatsapp_messages SET state='rehearsed',finished_at=? WHERE batch_id=? AND contact_id=?").run(now,id,next.contact_id);return 'rehearsed' as const;}
         if(!whatsAppSendEnabled())return skip('switch_off');if(this.sentToday()>=WHATSAPP_LIMITS.sendsPerDay)return skip('daily_limit');

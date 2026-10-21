@@ -363,7 +363,7 @@ The ad manager now has a provider tab: Meta, Google Ads and LinkedIn. Each provi
 - **Tests (in `test:platform`):**
   - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads`, `platform-budget-planner`, `platform-messaging`, `platform-whatsapp`, `platform-ad-providers`, `platform-ai-usage`, `platform-social-images`, `platform-social-video` and `platform-social-inbox` `.test.cjs`;
   - recovery and schema fixtures updated.
-- **Recovery:** `MAX_RECOVERY_SCHEMA` is 51.
+- **Recovery:** `MAX_RECOVERY_SCHEMA` is 52 (schema 52 adds the `creating`/`starting` ad plan claim states).
 - **Browser QA** on isolated fixtures, TR/EN, 375–1440, light/dark:
   - a real public-HTML scan of example.com, a rescan without duplicates, one work item, opportunities, and viewer read-only;
   - an automation created, activated, evaluated (21 enrolled) and rehearsed (pilot limit 3; send disabled without SES);

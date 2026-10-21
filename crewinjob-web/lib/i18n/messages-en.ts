@@ -1183,4 +1183,13 @@ export const MESSAGES_EN: Record<string, string> = {
   "Yorum ve mesajları okumak için \"kaynak okuma\" görevi gerekir.": "Reading comments and messages needs the \"read sources\" duty.",
   "Yanıt yazmak için \"içerik önerisi\" görevi gerekir.": "Writing a reply needs the \"suggest content\" duty.",
   "Yanıt göndermek için \"yayın\" görevi gerekir.": "Sending a reply needs the \"publish\" duty.",
+  "\"Yayın\" görevini yalnız proje sahibi verebilir.": "Only a project owner can give the \"publish\" duty.",
+  "Google Ads hesabını yalnız bağlantı yönetimi ve onay yetkisi olanlar bağlayabilir.": "Only people with connection and approval rights can connect the Google Ads account.",
+  "Kendi görevlerinizi değiştiremezsiniz; başka bir yönetici veya proje sahibi vermeli.": "You cannot change your own duties; another admin or the project owner has to give them.",
+  "Plan şu anda başlatılıyor veya durumu değişti. Sayfayı yenileyin.": "The plan is starting right now or its state changed. Refresh the page.",
+  "Plan şu anda başlatılıyor; birkaç saniye sonra tekrar duraklatın.": "The plan is starting right now; pause it again in a few seconds.",
+  "Plan şu anda oluşturuluyor veya onaydan sonra değişti. Sayfayı yenileyin.": "The plan is being created right now or changed after approval. Refresh the page.",
+  "Planın reklam hesabı artık bağlı değil. Kampanyayı sağlayıcının kendi ekranından kontrol edin.": "The plan's ad account is no longer connected. Check the campaign in the provider's own screen.",
+  "Oluşturma yarıda kaldı; sağlayıcıda duraklatılmış bir kampanya oluşmuş olabilir. Hesabınızı kontrol edin.": "Creation was interrupted; a paused campaign may exist at the provider. Check your account.",
+  "Başlatma yarıda kaldı; kampanya yayında olabilir. Gerekirse duraklatın ve sağlayıcıda kontrol edin.": "Starting was interrupted; the campaign may be running. Pause it if needed and check at the provider.",
 };

@@ -1,4 +1,4 @@
-# Ryzevo release status - 20 October 2026
+# Ryzevo release status - 21 October 2026
 
 The core monolith is suitable for continued isolated testing. It is NOT yet an
 accepted public/paid production service. An implementation, a local fixture test
@@ -22,6 +22,40 @@ to the infrastructure list below.
 | Done | Local Claude settings | Permission rules that contained a provider password were removed from the git-ignored `.claude/settings.local.json`; the Crewin API password itself should still be rotated by the owner. |
 | OK | Dependencies / history | `npm audit --omit=dev`: 0 findings. No `.env`, database, key or local settings file was ever committed. `AUTH_SECRET` and `CRON_SECRET` have adequate length. |
 
+## Delivered on 21 October 2026
+
+See `SAAS-PHASE5-MODULES.md` sections 7–11 for scope and safety details.
+
+- **Messaging:**
+  - separate reading, suggesting and publishing duties;
+  - Telegram channel source reading;
+  - WhatsApp template sending with its own consent, signed delivery receipts and STOP opt-outs;
+  - an inbox for comments and Page/Instagram messages answered only after approval.
+- **Ads:** Google Ads (Search) and LinkedIn next to Meta, with per-provider caps and plans.
+- **Social formats:** single images on LinkedIn and X; Instagram Reels/Story and Facebook Page video from a team-hosted https file.
+- **AI and planning:** AI suggestions that land only in the team's text box; provider-reported AI token usage (not a price); published, sourced reference values in the budget planner.
+- **Accessibility:** keyboard support for all new tablists and one contrast fix.
+
+### Pre-launch hardening (same day)
+
+- **Production build:** `next build` passes with no warnings.
+- **Security review:** a read-only review of the new code found five issues, all fixed and covered by tests:
+  - ad *create* and *start* now claim the plan before any provider call (schema 52: `creating`/`starting` states), so double clicks cannot create duplicate campaigns and two starts cannot pass the monthly cap together;
+  - pause waits for a running start, and interrupted claims are settled after ten minutes;
+  - start, pause and spend use the plan's own ad account; connecting Google Ads needs the approval right, and only one Google Ads account stays active;
+  - a queued WhatsApp batch stops when its approver loses the approval right;
+  - nobody can change their own messaging duties, and only a project owner gives the publish duty.
+- **Checked as fine:**
+  - webhook signature and verify-token handling;
+  - send-once claims for WhatsApp and inbox replies;
+  - GAQL inputs;
+  - video and upload URL handling;
+  - no secrets in URLs, logs or audit rows.
+- **Schema:** the local `data/platform.sqlite` is at schema 51; migration 52 waits for the owner's go-ahead (dry-run first). `MAX_RECOVERY_SCHEMA` is 52.
+- **Not checked against real services:**
+  - Telegram, Meta, WhatsApp, Google Ads, LinkedIn ads and SES;
+  - every new provider path was tested only with disposable stubs and the isolated QA fixture.
+
 ## Delivered on 19 October 2026
 
 - **Growth coach** for standard projects (see `SAAS-GROWTH-COACH.md`):
@@ -35,7 +69,7 @@ to the infrastructure list below.
   - a Telegram channel target for social publishing;
   - Meta ad management: caps, exact approval, campaigns created paused, explicit start behind `PLATFORM_ADS_ENABLED`;
   - a budget and goal planner: assumption ranges, calibrated with this project's measured Meta, Search Console and GA4 values.
-- **Schema 45.** `MAX_RECOVERY_SCHEMA` is 45. Migrations 43–45 were dry-run on a copy of the local database (integrity and foreign keys valid). The local `data/platform.sqlite` is still at schema 42 and moves to 45 the next time the signed-in app opens it; a backup at schema 42 exists.
+- **Schema 45.** Migrations 43–45 were dry-run on a copy of the local database and later applied (see 21 October).
 - **Tests:** 582 platform tests pass; TypeScript and i18n checks pass.
 - **Checked against real services:**
   - Gemini output on the coach paths and prospect evidence;

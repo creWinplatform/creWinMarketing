@@ -1064,6 +1064,28 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_social_inbox_scope ON platform_social_inbox(organization_id,project_id,state,received_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(51,datetime('now'));
   `))();
+  // Ad plans gain two claim states, 'creating' and 'starting', so a plan is claimed before any provider call:
+  // two clicks or two tabs can never create duplicate campaigns or start plans past the monthly cap together.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=52').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ad_plans_v52 (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      name TEXT NOT NULL, objective TEXT NOT NULL CHECK(objective IN ('OUTCOME_AWARENESS','OUTCOME_TRAFFIC')),
+      special_category TEXT NOT NULL DEFAULT 'NONE', daily_budget_minor INTEGER NOT NULL CHECK(daily_budget_minor>0), currency TEXT NOT NULL,
+      start_date TEXT NOT NULL, end_date TEXT NOT NULL, countries_json TEXT NOT NULL, link_url TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('draft','approved','creating','created','starting','active','paused','failed')),
+      digest TEXT NOT NULL, approved_by TEXT, approved_digest TEXT, approved_at TEXT,
+      provider_campaign_id TEXT, provider_adset_id TEXT, last_error TEXT, spend_minor INTEGER, spend_checked_at TEXT,
+      revision INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      impressions INTEGER, clicks INTEGER, provider TEXT NOT NULL DEFAULT 'meta' CHECK(provider IN ('meta','google','linkedin')),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    INSERT INTO platform_ad_plans_v52(id,organization_id,project_id,connection_id,name,objective,special_category,daily_budget_minor,currency,start_date,end_date,countries_json,link_url,state,digest,approved_by,approved_digest,approved_at,provider_campaign_id,provider_adset_id,last_error,spend_minor,spend_checked_at,revision,created_by,created_at,updated_at,impressions,clicks,provider)
+      SELECT id,organization_id,project_id,connection_id,name,objective,special_category,daily_budget_minor,currency,start_date,end_date,countries_json,link_url,state,digest,approved_by,approved_digest,approved_at,provider_campaign_id,provider_adset_id,last_error,spend_minor,spend_checked_at,revision,created_by,created_at,updated_at,impressions,clicks,provider FROM platform_ad_plans;
+    DROP TABLE platform_ad_plans;
+    ALTER TABLE platform_ad_plans_v52 RENAME TO platform_ad_plans;
+    CREATE INDEX platform_ad_plan_scope ON platform_ad_plans(organization_id,project_id,state);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(52,datetime('now'));
+  `))();
   return db;
 }
 

@@ -89,5 +89,5 @@ test('AI suggestions are original, go only to the team’s text box and refund t
 test('schema46 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'messaging-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeMessagingSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,45);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_messaging_posts'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,52);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_messaging_posts'").get());db.close();
 }));

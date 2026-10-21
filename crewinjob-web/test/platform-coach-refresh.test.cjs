@@ -65,9 +65,9 @@ test('schema38-39 rebuild brief history without losing versions and is repeatabl
   await f.approve();const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-refresh-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeRefreshSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,37);
   assert.throws(()=>db.prepare("INSERT INTO platform_growth_coach_briefs(organization_id,project_id,coach_revision,kind,brief_json,approved_by,approved_at) VALUES('o','p',1,'refresh','{}','u','t')").run(),/CHECK/);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach_briefs').get().n,1,'existing versions are kept');
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,52);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach_briefs').get().n,1,'existing versions are kept');
   assert.ok(db.prepare("SELECT sql FROM sqlite_master WHERE name='platform_growth_coach_briefs'").get().sql.includes("'refresh'"));assert.equal(db.pragma('foreign_key_check').length,0);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,52);db.close();
 }));
 test('AI text past a field limit is shortened, while structure, links and content rules still hold',()=>{
   const {parseCoachDraft}=load('coach.ts'),{parseCoachRefresh}=load('coach-refresh.ts'),{normalizeSeoBrief,fitSeoBriefText}=load('coach-seo.ts');

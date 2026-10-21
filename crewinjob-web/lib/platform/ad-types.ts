@@ -3,7 +3,7 @@
 export const AD_LIMITS={plans:50,maxDays:31,countries:10} as const;
 export const AD_OBJECTIVES=['OUTCOME_AWARENESS','OUTCOME_TRAFFIC'] as const;
 export const AD_SPECIAL_CATEGORIES=['NONE','EMPLOYMENT','HOUSING','CREDIT','ISSUES_ELECTIONS_POLITICS'] as const;
-export type AdPlanState='draft'|'approved'|'created'|'active'|'paused'|'failed';
+export type AdPlanState='draft'|'approved'|'creating'|'created'|'starting'|'active'|'paused'|'failed';
 export type AdAccountView={connectionId:string;adAccountId:string;name:string;currency:string;status:number|null;timezone:string|null;checkedAt:string};
 export type AdPolicyView={currency:string;dailyCapMinor:number;monthlyCapMinor:number;revision:number;updatedAt:string};
 export type AdPlanView={

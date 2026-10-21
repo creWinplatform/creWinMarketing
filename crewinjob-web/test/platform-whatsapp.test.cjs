@@ -112,8 +112,16 @@ test('per-recipient values, signed delivery receipts and STOP replies; reply tex
   const after=wa.read().contacts.find(c=>c.optedOut);assert.equal(after.optOutSource,'reply');
   assert.doesNotMatch(JSON.stringify(f.db.prepare('SELECT * FROM platform_whatsapp_contacts').all())+JSON.stringify(f.db.prepare('SELECT * FROM platform_audit').all()),/Private Name|fiyat nedir|905321112233/,'reply text, names and numbers are not stored');
 }));
+test('a queued batch stops when its approver loses the approval right',run(async f=>{
+  const {graph,calls}=fakeGraph(),wa=await setup(f,graph);process.env.PLATFORM_WHATSAPP_SEND_ENABLED='1';
+  const approver=f.member('admin'),asApprover=new ProjectWhatsApp(f.db,approver,KEY,graph);
+  let batch=draft(wa).batches[0];batch=asApprover.approve({id:batch.id,expectedDigest:batch.digest}).batches[0];
+  wa.queue({id:batch.id,expectedDigest:batch.digest,mode:'send',acknowledged:true});
+  f.repo.updateMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,approver.subject,'editor',true);
+  const done=await wa.process(batch.id);assert.equal(done.counts.skipped,3);assert.equal(calls.filter(c=>c.path.endsWith('/messages')).length,0,'nothing is sent once the approval right is gone');
+}));
 test('schema47 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'whatsapp-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeWhatsAppSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,46);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,52);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
 }));

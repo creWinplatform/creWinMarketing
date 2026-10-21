@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import { CodeChallengeMethod } from 'google-auth-library';
 import { ProjectMarketingStore, MarketingStoreError, type MarketingScope } from './marketing-store';
 import { OAuthRequests } from './oauth-requests';
+import { PlatformRepository } from './repository';
 import { GOOGLE_SCOPES, googleClient } from './google-client';
 import { verifyGoogleConnection } from './connection-jobs';
 
@@ -17,6 +18,8 @@ export class ProjectGoogleOAuth {
     if (input.provider === 'ga4' && !/^\d{1,20}$/.test(input.resource)) throw new MarketingStoreError('GA4 Property ID sayısal olmalı.');
     if (input.provider === 'google_ads' && !/^\d{10}$/.test(input.resource.replace(/-/g, ''))) throw new MarketingStoreError('Google Ads müşteri kimliği 10 haneli olmalı.');
     if (input.provider === 'google_ads') input = { ...input, resource: input.resource.replace(/-/g, '') };
+    // Connecting a Google Ads account is an ad-management step: it also needs the approval right, as in Ads.
+    if (input.provider === 'google_ads' && !new PlatformRepository(this.db).can(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'campaign.approve')) throw new MarketingStoreError('Google Ads hesabını yalnız bağlantı yönetimi ve onay yetkisi olanlar bağlayabilir.', 403);
     if (input.provider === 'search_console' && !/^sc-domain:[a-z0-9.-]+$/i.test(input.resource)) {
       try { const url = new URL(input.resource); if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash || url.search) throw new Error(); }
       catch { throw new MarketingStoreError('Geçerli Search Console mülkü gerekli.'); }
@@ -39,7 +42,10 @@ export class ProjectGoogleOAuth {
       // Never use the current browser project as a fallback for an earlier OAuth request.
       return requests.finish(pending, () => {
         const store = new ProjectMarketingStore(this.db, this.scope);
-        return store.saveConnection({ provider: pending.provider, integrationId: pending.resource, accountName: pending.account_name, accessToken: tokens.access_token!, refreshToken: tokens.refresh_token || '', googleOAuth: true, expiresAt: tokens.expiry_date! }, this.key);
+        const saved = store.saveConnection({ provider: pending.provider, integrationId: pending.resource, accountName: pending.account_name, accessToken: tokens.access_token!, refreshToken: tokens.refresh_token || '', googleOAuth: true, expiresAt: tokens.expiry_date! }, this.key);
+        // Only one Google Ads account is active per project; plans keep their own account id.
+        if (pending.provider === 'google_ads' && saved) this.db.prepare("UPDATE platform_connections SET active=0,updated_at=? WHERE organization_id=? AND project_id=? AND provider='google_ads' AND id<>?").run(new Date().toISOString(), this.scope.organizationId, this.scope.projectId, saved.id);
+        return saved;
       });
     } catch (error) {
       requests.discard(pending);

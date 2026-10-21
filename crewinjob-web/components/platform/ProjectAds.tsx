@@ -16,7 +16,7 @@ const PROVIDERS:Record<Provider,{name:string;on:string;to:string;of:string;tool:
   google:{name:'Google Ads',on:'Google Ads’te',to:'Google Ads’e',of:'Google Ads’in',tool:'Google Ads',acc:'bütçeyi ve Arama kampanyasını',group:['bütçe ve Arama kampanyası','budget and Search campaign']},
   linkedin:{name:'LinkedIn',on:'LinkedIn’de',to:'LinkedIn’e',of:'LinkedIn’in',tool:'LinkedIn Campaign Manager',acc:'kampanya grubunu ve kampanyayı',group:['kampanya grubu ve kampanya','campaign group and campaign']},
 };
-const STATES:Record<string,[string,string]>={draft:['Taslak','Draft'],approved:['Onaylı','Approved'],created:['Sağlayıcıda duraklatılmış','Paused at the provider'],active:['Yayında','Running'],paused:['Duraklatıldı','Paused'],failed:['Oluşturulamadı','Failed']};
+const STATES:Record<string,[string,string]>={draft:['Taslak','Draft'],approved:['Onaylı','Approved'],creating:['Oluşturuluyor','Creating'],created:['Sağlayıcıda duraklatılmış','Paused at the provider'],starting:['Başlatılıyor','Starting'],active:['Yayında','Running'],paused:['Duraklatıldı','Paused'],failed:['Oluşturulamadı','Failed']};
 const OBJECTIVES:Record<string,[string,string]>={OUTCOME_AWARENESS:['Bilinirlik','Awareness'],OUTCOME_TRAFFIC:['Site trafiği','Traffic']};
 const CATEGORIES:Record<string,[string,string]>={NONE:['Yok','None'],EMPLOYMENT:['İstihdam','Employment'],HOUSING:['Konut','Housing'],CREDIT:['Kredi','Credit'],ISSUES_ELECTIONS_POLITICS:['Sosyal konu / siyaset','Social issues / politics']};
 
