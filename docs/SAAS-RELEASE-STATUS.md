@@ -51,7 +51,7 @@ See `SAAS-PHASE5-MODULES.md` sections 7–11 for scope and safety details.
   - GAQL inputs;
   - video and upload URL handling;
   - no secrets in URLs, logs or audit rows.
-- **Schema:** the local `data/platform.sqlite` is at schema 51; migration 52 waits for the owner's go-ahead (dry-run first). `MAX_RECOVERY_SCHEMA` is 52.
+- **Schema:** migration 52 was dry-run on a copy and then applied with the owner's go-ahead (backup at schema 51 first); the local `data/platform.sqlite` is at schema 52. `MAX_RECOVERY_SCHEMA` is 52.
 - **Not checked against real services:**
   - Telegram, Meta, WhatsApp, Google Ads, LinkedIn ads and SES;
   - every new provider path was tested only with disposable stubs and the isolated QA fixture.
