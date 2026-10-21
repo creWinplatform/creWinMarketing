@@ -222,11 +222,11 @@ test('orphaned project scopes and undeclared encrypted columns fail recovery che
 
 test('future and gapped migrations are rejected without running migrations', t => {
   const f = fixture(t);
-  f.db.prepare("INSERT INTO platform_migrations VALUES(46,datetime('now'))").run();
+  f.db.prepare("INSERT INTO platform_migrations VALUES(47,datetime('now'))").run();
   const future = f.backup();
   assert.equal(future.result.status, 1);
   assert.match(future.result.stderr, /unsupported_schema/);
-  f.db.prepare('DELETE FROM platform_migrations WHERE version IN (12,46)').run();
+  f.db.prepare('DELETE FROM platform_migrations WHERE version IN (12,47)').run();
   const gap = f.backup();
   assert.equal(gap.result.status, 1);
   assert.match(gap.result.stderr, /schema_mismatch/);

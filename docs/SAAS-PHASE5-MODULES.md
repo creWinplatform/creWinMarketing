@@ -8,7 +8,8 @@ Social publishing (LinkedIn, Facebook, Instagram, X) existed before this phase. 
 - B2B prospects;
 - a Telegram channel target for social publishing;
 - ad management;
-- a budget and goal planner.
+- a budget and goal planner;
+- messaging sources with separate duties.
 
 All of it lives in the modular monolith and reuses existing pieces: RBAC, encrypted connections, the job queue and worker, segments, consent and suppression, campaign review, the email pilot, the social pipeline and the Calendar.
 
@@ -197,23 +198,67 @@ Values measured for this project can replace an assumption with one click. Each 
 
 **Files:** `lib/platform/budget-math.ts` (pure, client-safe), `budget-planner.ts`; `app/api/platform/budget`; `components/platform/BudgetPlanner.tsx` (in Analytics, standard projects only).
 
+## 7. Messaging sources and duties (Campaigns → Messaging)
+
+Roadmap item 5: messaging sources per project, with reading, content suggestion and publishing as separate permissions.
+
+### Duties
+
+| Duty | Base permission it needs | What it allows |
+|---|---|---|
+| Read sources | read | See stored channel posts, read now, turn on automatic reading |
+| Suggest content | content write | Write a suggestion, create a Telegram content draft, hide posts, edit the sector dictionary |
+| Publish | connections, approval and dispatch | Queue a real Telegram channel post |
+
+- **Who holds them:** project owners hold every duty they are eligible for. Everyone else, admins included, is given each duty on purpose by someone who manages members.
+- **Publish duty:** checked when a real Telegram post is queued and again when the job runs. Taking it away while a post is queued stops the post. Rehearsals do not need it.
+- **Reading duty:** taking it away also turns off automatic reading that person enabled.
+- **Audit:** every grant and revoke is audited.
+
+### Telegram sources
+
+- **Which channels:** only channels the project's own bot was added to by that channel's administrator. Groups and private chats are refused, and private updates are skipped without being stored.
+- **How posts are read:** through the Bot API (`getUpdates`, `channel_post` only), with one offset per bot.
+- **What is stored:** the chat id, message id, date and text or caption. Before storing, emails, phone numbers and @handles are masked. Author signatures and sender fields are never read into storage.
+- **Automatic reading:** Telegram keeps waiting posts about 24 hours, so a source can be read every 30 minutes by the worker, as the person who turned it on.
+- **Limits:** 100 reads per project per day, 10 sources; posts are deleted after 90 days.
+- **Webhook:** a bot with a webhook cannot be read; the UI says so.
+- **Sector dictionary:** up to 20 topics with up to 30 terms each. Posts are tagged with every topic whose term they contain, and saving the dictionary re-tags stored posts.
+
+### Suggestions
+
+- **What a suggestion is:** the team's own text inspired by a post, never a copy.
+- **Draft:** "Create Telegram draft" saves that text as a Telegram content draft. The source link is kept in the draft's prompt field.
+- **Publishing:** goes through the existing social publishing flow, with approval and the publish duty.
+- **Not done:** AI-written suggestions.
+- **Never added:** reading through a user account, joining groups, or collecting contact details. The legacy Crewin userbot modules stay in the Crewin pack.
+
+### Storage
+
+- **Schema 46:**
+  - `platform_messaging_duties`, `platform_messaging_settings`, `platform_messaging_sources`, `platform_messaging_offsets` and `platform_messaging_posts`.
+
+**Files:** `lib/platform/messaging-sources.ts`, `messaging-duties.ts`, `messaging-types.ts`; readers in `telegram-publishing.ts`; `app/api/platform/messaging`; `components/platform/ProjectMessaging.tsx`; worker step in `app/api/platform/worker`.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**
-  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads` and `platform-budget-planner` `.test.cjs`;
+  - `platform-seo-operations`, `platform-automations`, `platform-prospects`, `platform-telegram-publications`, `platform-ads`, `platform-budget-planner` and `platform-messaging` `.test.cjs`;
   - recovery and schema fixtures updated.
-- **Recovery:** `MAX_RECOVERY_SCHEMA` is 45.
+- **Recovery:** `MAX_RECOVERY_SCHEMA` is 46.
 - **Browser QA** on isolated fixtures, TR/EN, 375–1440, light/dark:
   - a real public-HTML scan of example.com, a rescan without duplicates, one work item, opportunities, and viewer read-only;
   - an automation created, activated, evaluated (21 enrolled) and rehearsed (pilot limit 3; send disabled without SES);
   - a prospect checked against a real public page;
   - the Telegram connection form;
   - ad caps, approval and the paused-on-Meta state, with start disabled;
-  - the budget planner: measured values used, a scenario saved, updated, saved as new and deleted, and no overflow at 375 px.
+  - the budget planner: measured values used, a scenario saved, updated, saved as new and deleted, and no overflow at 375 px;
+  - messaging: a draft created from a suggestion, a post hidden, a reading duty given to an editor (publish not offered for that role), the dictionary edited, TR/EN and no overflow at 375 px.
 - **QA fixture flags:**
   - `--ads` (fake ad account, no Meta call);
   - `--budget` (with `--ads`: fake Meta totals and stub GA4 and Search Console readings);
-  - the `ryzevo-automation-qa`, `ryzevo-ads-qa` and `ryzevo-budget-qa` launch configurations.
+  - `--messaging` (fake bot, one source, stored posts, an editor without duties);
+  - the `ryzevo-automation-qa`, `ryzevo-ads-qa`, `ryzevo-budget-qa` and `ryzevo-messaging-qa` launch configurations.
 - **Not verified against real providers:**
   - a Telegram bot posting to a real channel;
   - a real Meta ad account (create, start, pause, insights);

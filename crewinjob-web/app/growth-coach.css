@@ -261,3 +261,18 @@
 .budget-save input{flex:1}
 .budget-save .studio-secondary{white-space:nowrap}
 @media (max-width:640px){.budget-grid{grid-template-columns:1fr}.budget-save{flex-direction:column;align-items:stretch}.budget-save .studio-secondary{justify-content:center}}
+/* Messaging sources */
+.messaging-center .ads-account .studio-section-title{margin-bottom:0}
+.messaging-center h3{display:flex;align-items:center;gap:6px}
+.messaging-text{font-size:13px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0}
+.messaging-suggest{display:grid;gap:8px;margin-top:8px}
+.messaging-suggest textarea{border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:8px 10px;font:inherit;font-size:13px;width:100%;min-width:0;resize:vertical}
+.messaging-dictionary{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:12px;overflow-wrap:anywhere}
+.messaging-topics{display:grid;gap:10px}
+.messaging-topics .ads-form-row{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}
+.messaging-center :is(.ads-form-row,.messaging-topics) label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
+.messaging-center :is(.ads-form-row,.messaging-topics) :is(input,select){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;font-weight:500;width:100%;min-width:0}
+.messaging-center .coach-state+.coach-state{margin-left:6px}
+.messaging-duties td{text-align:center}
+.messaging-duties input{width:18px;height:18px;accent-color:var(--studio-accent)}
+@media (max-width:640px){.messaging-topics .ads-form-row{grid-template-columns:1fr}}

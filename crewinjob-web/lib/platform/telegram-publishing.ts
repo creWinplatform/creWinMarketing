@@ -45,3 +45,38 @@ export const publishTelegramText:PublishTransport=async(token,accountId,text,res
     return {state:'accepted',postId:`${chat.id}:${result!.message_id}`,postUrl:username?`https://t.me/${username}/${result!.message_id}`:null};
   }catch{return {state:'uncertain',postId:null};}
 };
+
+// Sources: a channel the project's bot was added to by that channel's administrator. Groups and private chats are refused.
+export type TelegramSource={chatId:string;title:string;username:string|null};
+export async function readTelegramSource(token:string,channel:string):Promise<TelegramSource>{
+  if(!telegramToken(token)||!telegramChannel(channel))throw new Error('Invalid Telegram bot or channel.');
+  const {botId}=await verifyTelegramChannel(token,channel),chat=await call(token,'getChat',{chat_id:channel}),member=await call(token,'getChatMember',{chat_id:channel,user_id:botId});
+  if(!['administrator','member'].includes(String(member.status)))throw new Error('The bot is not in this channel.');
+  return {chatId:String(chat.id),title:typeof chat.title==='string'?chat.title.slice(0,120):channel,username:typeof chat.username==='string'&&/^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(chat.username)?chat.username:null};
+}
+// Channel posts waiting for the bot (Telegram keeps them about 24 hours). Only the chat id, message id, date and text
+// or caption are returned: never the author signature, sender or any other user field.
+export type TelegramPost={updateId:number;chatId:string;messageId:number;date:number;text:string};
+export class TelegramReadError extends Error{constructor(public code:'webhook'|'failed'){super(code);}}
+export async function readTelegramPosts(token:string,offset:number,pages=20):Promise<{posts:TelegramPost[];nextOffset:number}>{
+  if(!telegramToken(token)||!Number.isSafeInteger(offset)||offset<0)throw new TelegramReadError('failed');
+  const posts:TelegramPost[]=[];let next=offset;
+  for(let page=0;page<pages;page++){
+    const response=await fetch(api(token,'getUpdates'),{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({offset:next,limit:5,timeout:0,allowed_updates:['channel_post']}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)}).catch(()=>null);
+    if(!response)throw new TelegramReadError('failed');
+    if(response.status===409){await response.body?.cancel();throw new TelegramReadError('webhook');}
+    if(response.status!==200){await response.body?.cancel();throw new TelegramReadError('failed');}
+    const payload=await readSocialResponse(response).catch(()=>null);
+    if(!payload||payload.ok!==true||!Array.isArray(payload.result))throw new TelegramReadError('failed');
+    const updates=payload.result as Record<string,unknown>[];if(!updates.length)break;
+    for(const update of updates){
+      if(!Number.isSafeInteger(update.update_id))continue;next=Math.max(next,(update.update_id as number)+1);
+      const post=update.channel_post as Record<string,unknown>|undefined,chat=post?.chat as Record<string,unknown>|undefined;
+      const text=typeof post?.text==='string'?post.text:typeof post?.caption==='string'?post.caption:'';
+      if(!post||chat?.type!=='channel'||!Number.isSafeInteger(post.message_id)||!Number.isSafeInteger(post.date)||!text.trim())continue;
+      posts.push({updateId:update.update_id as number,chatId:String(chat.id),messageId:post.message_id as number,date:post.date as number,text:text.slice(0,4096)});
+    }
+    if(updates.length<5)break;
+  }
+  return {posts,nextOffset:next};
+}

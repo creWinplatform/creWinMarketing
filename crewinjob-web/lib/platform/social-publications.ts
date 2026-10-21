@@ -14,6 +14,7 @@ import { normalizePublicationImages, type PublicationImage } from './publication
 import { xConfiguration } from './x-client';
 import { checkXPublishing, publishXText, xPostId } from './x-publishing';
 import { xText } from './x-text';
+import { hasMessagingDuty } from './messaging-duties';
 import { TELEGRAM_TEXT_LIMIT, checkTelegramPublishing, publishTelegramText, telegramPostId, telegramPublishingConfiguration } from './telegram-publishing';
 import type { Publication, PublicationSource, PublicationWorkspace, PublicationEngagement, EngagementCounts } from './social-publication-types';
 import { cleanEngagementCounts, readPublicationEngagement, type EngagementReader } from './social-engagement';
@@ -187,6 +188,7 @@ export class SocialPublications {
       const existing=this.db.prepare(query+' AND j.idempotency_key=?').get(...this.args(),key) as Row|undefined;
       if(existing){if(existing.source_kind!==input.sourceKind||existing.source_id!==input.sourceId||existing.source_digest!==input.expectedDigest || existing.connection_id!==connection.id || existing.mode!==input.mode || requestedAt!==null&&Date.parse(existing.scheduled_at)!==requestedAt)throw new MarketingStoreError('İşlem anahtarı başka bir yayına ait.',409);return this.describe(existing);}
       if(!source.eligible || source.digest!==input.expectedDigest)throw new MarketingStoreError('İçerik değişti veya metin yayını için uygun değil. Taslağı yenileyin.',409);
+      if(input.mode==='publish'&&connection.platform==='telegram'&&!hasMessagingDuty(this.db,this.scope.subject,...this.args(),'publish'))throw new MarketingStoreError('Telegram kanalında yayın için ayrıca "yayın" mesajlaşma görevi gerekir.',403);
       if(input.mode==='publish'&&(!socialPublishingEnabled()||!config||input.acknowledged!==true||!this.proof(connection)))throw new MarketingStoreError('Gerçek yayın kapalı, yayın izni eksik veya açık onay verilmedi.',409);
       const at=requestedAt??Date.now();
       if(!Number.isFinite(at)||at<Date.now()-60000||at>Date.now()+30*86400000)throw new MarketingStoreError('Şimdi veya gelecek 30 gün içinde bir yayın saati seçin.');
@@ -219,6 +221,8 @@ export class SocialPublications {
     assertProjectWork(this.db,this.scope);if(row.mode==='publish')assertProjectDelivery(this.db,this.scope);
     if(!this.can(row.actor_id)||manualRunner&&!this.can(manualRunner))throw new Error();
     const connection=this.connection(row.connection_id),snapshot=this.snapshot(row),platform=snapshot.platform||'linkedin',source=this.source(row.source_kind,row.source_id,platform);
+    // A Telegram publication also needs the publish duty, checked again here in case it was taken away while queued.
+    if(row.mode==='publish'&&connection.platform==='telegram'&&(!hasMessagingDuty(this.db,row.actor_id,...this.args(),'publish')||manualRunner&&!hasMessagingDuty(this.db,manualRunner,...this.args(),'publish')))throw new Error();
     if(connection.platform!==platform||connection.accountType!==snapshot.accountType||hash(connection.encrypted_credentials)!==row.revision||!source.eligible||source.digest!==row.source_digest||row.mode==='publish'&&(!socialPublishingEnabled()||!this.config(platform)||this.config(platform)!==row.configuration_revision))throw new Error();
     return connection;
   }

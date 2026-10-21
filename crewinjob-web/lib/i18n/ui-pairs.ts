@@ -199,6 +199,7 @@ export const UI_PAIRS: Record<string, string> = {
   "Lead suppression listesine eklenemedi.": "Couldn't add the lead to the suppression list.",
   "LinkedIn şirket onayı tamamlanamadı.": "LinkedIn organization authorization failed.",
   "LinkedIn yetkilendirme adresi geçersiz.": "Invalid LinkedIn authorization URL.",
+  "Mesajlaşma kaynakları yükleniyor…": "Loading messaging sources…",
   "Meta onayı tamamlanamadı. Yeniden bağlanın.": "Meta authorization failed. Reconnect.",
   "Meta yetkilendirme adresi geçersiz.": "Invalid Meta authorization URL.",
   "Metni kopyala": "Copy the text",

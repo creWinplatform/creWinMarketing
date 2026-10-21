@@ -59,6 +59,17 @@ if(process.argv.includes('--budget')){
   const entry=(id,stage,value,source,bindingId)=>db.prepare("INSERT INTO platform_metric_entries(id,organization_id,project_id,goal_id,stage_index,value,observed_at,source,note,binding_id,binding_version,period_from,period_to) VALUES(?,?,?,'demo',?,?,?,?,'QA stub, not a provider reading',?,1,?,?)").run(id,organizationId,projectId,stage,value,now,source,bindingId,ago(28),ago(1));
   entry('qa-budget-e0',0,1240,'ga4','qa-budget-b0');entry('qa-budget-e1',1,31,'ga4','qa-budget-b1');entry('qa-budget-e2',2,420,'search_console','qa-budget-b2');
   console.log('Budget QA: fake Meta totals and stub GA4/Search Console readings; no provider call is made.');}
+if(process.argv.includes('--messaging')){
+  // Messaging QA: a fake Telegram bot, one source channel, stored posts and a dictionary. No Telegram call is made.
+  const {ProjectMarketingStore}=load('marketing-store.ts'),{ProjectMessaging}=load('messaging-sources.ts'),scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId},now=new Date().toISOString();
+  const bot=new ProjectMarketingStore(db,scope).saveConnection({provider:'social',integrationId:'telegram',accountName:'QA bot · gerçek değil',accessToken:'123456789:AAFixtureTelegramTokenOnly_not_real_01',social:{platform:'telegram',accountId:'@ryzevo_qa_out'}},encryptionKey);
+  db.prepare("INSERT INTO platform_messaging_sources(id,organization_id,project_id,connection_id,chat_id,title,username,auto_read,manager_id,last_read_at,attempted_at,created_at,updated_at) VALUES('qa-msg-source',?,?,?,'-1001111111111','Denizcilik Haberleri · QA','qa_denizcilik',0,?,?,?,?,?)").run(fixture.organizationId,fixture.projectId,bot.id,fixture.userId,now,now,now,now);
+  const messaging=new ProjectMessaging(db,scope,encryptionKey);messaging.saveDictionary({dictionary:[{id:'liman',label:'Liman ve lojistik',terms:['liman','konteyner','lojistik']},{id:'egitim',label:'Eğitim',terms:['kurs','sertifika','eğitim']}],expectedRevision:0});
+  const {matchTopics}=load('messaging-sources.ts'),dictionary=messaging.dictionary();
+  for(const [i,text] of ['Mersin limanında konteyner hacmi bu çeyrekte arttı. Ayrıntılar: […]','STCW sertifika yenileme kursları için yeni dönem başvuruları açıldı.','Hafta sonu hava durumu: kıyılarda kuvvetli rüzgâr bekleniyor.'].entries())
+    db.prepare("INSERT INTO platform_messaging_posts(id,organization_id,project_id,source_id,message_id,posted_at,text,topics_json,created_at) VALUES(?,?,?,'qa-msg-source',?,?,?,?,?)").run(`qa-msg-post-${i}`,fixture.organizationId,fixture.projectId,100+i,new Date(Date.now()-(i+1)*3600000).toISOString(),text,JSON.stringify(matchTopics(text,dictionary)),now);
+  repo.addMember(fixture.userId,fixture.organizationId,fixture.projectId,{username:'messaging-editor',password:'design-fixture-only-123',role:'editor'});
+  console.log('Messaging QA: fake bot, one source, three stored posts and an editor without duties; no Telegram call is made.');}
 if(compassQa){repo.addMember(fixture.userId,fixture.organizationId,fixture.projectId,{username:'compass-viewer',password:'design-fixture-only-123',role:'viewer'});console.log('Compass QA: first-run owner design-fixture and viewer compass-viewer. No provider grants or real sends.');}
 if(billingChecksQa){
   const {ProjectBilling}=load('billing.ts'),scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId};

@@ -16,6 +16,7 @@ import { MobileDelivery,settleUnauthorizedMobileJob } from '@/lib/platform/mobil
 import { deliverNextCoachDigest } from '@/lib/platform/coach-digest';
 import { advanceSeoScans } from '@/lib/platform/seo-operations';
 import { evaluateDueAutomations } from '@/lib/platform/automations';
+import { readDueMessagingSources } from '@/lib/platform/messaging-sources';
 export const dynamic = 'force-dynamic',
   maxDuration = 60;
 export async function POST(request: NextRequest) {
@@ -79,5 +80,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const seoPages=Date.now()-startedAt<20000?await advanceSeoScans(db).catch(()=>0):0;
   // Automation bookkeeping only (enrollments and exits); sending always waits for a person's approval.
   let automations=0;try{automations=evaluateDueAutomations(db,credentialEncryptionKey());}catch{automations=0;}
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, seoPages, automations };
+  // Channel posts wait about 24 hours on Telegram, so sources with automatic reading are read every 30 minutes.
+  const messagingReads=Date.now()-startedAt<20000?await readDueMessagingSources(db,credentialEncryptionKey()).catch(()=>0):0;
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, seoPages, automations, messagingReads };
 }

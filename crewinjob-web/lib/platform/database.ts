@@ -934,6 +934,42 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_budget_scenario_scope ON platform_budget_scenarios(organization_id,project_id,updated_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(45,datetime('now'));
   `))();
+  // Messaging sources: separate per-person duties (read sources, suggest content, publish), Telegram channels the project's
+  // own bot was added to, the posts read from them (personal contact details masked) and a sector dictionary.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=46').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_messaging_duties (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      duty TEXT NOT NULL CHECK(duty IN ('source.read','suggest','publish')), granted_by TEXT NOT NULL, granted_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,user_id,duty),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_messaging_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, dictionary_json TEXT NOT NULL DEFAULT '[]',
+      revision INTEGER NOT NULL DEFAULT 1, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_messaging_sources (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      chat_id TEXT NOT NULL, title TEXT NOT NULL, username TEXT, auto_read INTEGER NOT NULL DEFAULT 0, manager_id TEXT NOT NULL,
+      last_read_at TEXT, attempted_at TEXT, last_error TEXT, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,chat_id),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_messaging_offsets (
+      connection_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, next_offset INTEGER NOT NULL DEFAULT 0, read_at TEXT,
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_messaging_posts (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, source_id TEXT NOT NULL REFERENCES platform_messaging_sources(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL, posted_at TEXT NOT NULL, text TEXT NOT NULL, topics_json TEXT NOT NULL DEFAULT '[]',
+      state TEXT NOT NULL DEFAULT 'new' CHECK(state IN ('new','suggested','dismissed')), suggestion TEXT NOT NULL DEFAULT '', content_id TEXT,
+      decided_by TEXT, decided_at TEXT, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+      UNIQUE(source_id,message_id)
+    );
+    CREATE INDEX platform_messaging_post_scope ON platform_messaging_posts(organization_id,project_id,state,posted_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(46,datetime('now'));
+  `))();
   return db;
 }
 

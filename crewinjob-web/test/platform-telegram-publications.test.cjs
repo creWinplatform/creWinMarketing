@@ -53,6 +53,20 @@ test('publishing needs the switch, an admin bot with post rights and acknowledge
   }finally{api.restore();}
   const audit=JSON.stringify(f.db.prepare('SELECT * FROM platform_audit').all())+JSON.stringify(f.db.prepare('SELECT * FROM platform_social_publications').all());assert.doesNotMatch(audit,/AAFixtureTelegram/,'the token is stored only encrypted');
 }));
+test('a non-owner needs the publish messaging duty, checked again when the queued job runs',()=>run(async f=>{
+  const {ProjectMessaging}=load('messaging-sources.ts'),admin={...f.scope,subject:f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'telegram-admin',password:'fixture-password-123',role:'admin'}).userId};
+  const asAdmin=new SocialPublications(f.db,admin,KEY),owner=new ProjectMessaging(f.db,f.scope,KEY);process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
+  const api=botApi();
+  try{
+    await asAdmin.check(f.tg.id);
+    assert.throws(()=>asAdmin.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-duty-1'})),e=>e.status===403,'without the duty an admin cannot publish');
+    assert.ok(asAdmin.enqueue(f.input({idempotencyKey:'telegram-duty-rehearsal'})).id,'rehearsal stays open');
+    owner.setDuty({userId:admin.subject,duty:'publish',granted:true});
+    const job=asAdmin.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-duty-2'}));
+    owner.setDuty({userId:admin.subject,duty:'publish',granted:false});await asAdmin.process(job.id);
+    assert.notEqual(asAdmin.get(job.id).state,'accepted');assert.equal(api.calls.some(call=>call.method==='sendMessage'),false,'a duty taken away while queued stops the post');
+  }finally{api.restore();}
+}));
 test('Telegram refusals and network failures are recorded as rejected or uncertain, never as success',()=>run(async f=>{
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
   for(const [answer,state] of [[403,'rejected'],[new Error('network'),'uncertain']]){
@@ -67,6 +81,6 @@ test('schema43 keeps existing social accounts and is repeatable',async()=>{
     const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'telegram-')),'fixture.sqlite');
     await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeTelegramSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,42);
     assert.throws(()=>db.prepare("INSERT INTO platform_social_accounts(connection_id,platform,account_id) VALUES('x','telegram','@abcdef')").run(),/CHECK|FOREIGN/);db.close();
-    db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,45);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_social_accounts').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+    db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,46);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_social_accounts').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
   }finally{f.db.close();}
 });
