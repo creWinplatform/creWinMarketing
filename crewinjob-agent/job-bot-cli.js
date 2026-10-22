@@ -96,9 +96,20 @@ async function main() {
     return;
   }
   if (action === 'join_groups') {
-    const { joinDiscoveredGroups } = require('./modules/group-discovery');
-    const joined = await joinDiscoveredGroups();
-    process.stdout.write(JSON.stringify({ ok: true, joined }));
+    // Yalnız bir kişinin ekranda seçtiği önerilere katılır (en fazla 10).
+    const { joinSelectedGroups } = require('./modules/group-discovery');
+    const result = await joinSelectedGroups(input.ids);
+    process.stdout.write(JSON.stringify({ ok: true, ...result }));
+    return;
+  }
+  if (action === 'suggested_groups') {
+    const { listSuggestions } = require('./modules/group-discovery');
+    process.stdout.write(JSON.stringify({ ok: true, groups: listSuggestions() }));
+    return;
+  }
+  if (action === 'dismiss_groups') {
+    const { dismissSuggestions } = require('./modules/group-discovery');
+    process.stdout.write(JSON.stringify({ ok: true, dismissed: dismissSuggestions(input.ids) }));
     return;
   }
   if (action === 'joined_groups') {
@@ -274,13 +285,7 @@ async function main() {
     return;
   }
 
-  // ── Feature 8: Yeni üye onboarding ─────────────────────────────────────────
-  if (action === 'onboard_members') {
-    const { onboardNewMembers } = require('./modules/member-onboarding');
-    const result = await onboardNewMembers(input.maxDms || 20);
-    process.stdout.write(JSON.stringify({ ok: true, result }));
-    return;
-  }
+  // Yeni grup üyelerine kendiliğinden karşılama DM'si gönderme özelliği kaldırıldı (istenmeyen mesaj).
 
   process.stdout.write(JSON.stringify({ ok: false, error: 'Bilinmeyen action: ' + action }));
 }
@@ -288,7 +293,7 @@ async function main() {
 // Uzun süren işlemler — durum dosyasına yazılır ki web panel tab değişse de görsün
 const LONG_ACTIONS = new Set([
   'run_pipeline', 'discover_groups', 'join_groups', 'broadcast_jobs',
-  'onboard_members', 'track_applications', 'manage_expiry',
+  'track_applications', 'manage_expiry',
 ]);
 
 (async () => {

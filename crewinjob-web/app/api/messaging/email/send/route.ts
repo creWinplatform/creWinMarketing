@@ -8,6 +8,8 @@ import {
   runTrackingTasks,
   safeUnsubscribeUrl,
 } from '@/lib/tracking-signature';
+import { publicAppUrl } from '@/lib/internal-fetch';
+import { legacySuppressed, legacyUnsubscribeUrl } from '@/lib/legacy-unsubscribe';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -53,6 +55,13 @@ interface SendBody {
   allowMailtoUnsubscribe?: boolean;
 }
 
+// The panel's own one-click link needs a real public address; never a localhost default in production.
+function unsubscribeBase(): string {
+  if (!process.env.NEXT_PUBLIC_APP_URL) return '';
+  const base = publicAppUrl();
+  return /^https:\/\//.test(base) || process.env.NODE_ENV !== 'production' ? base : '';
+}
+
 function normalizeRecipient(r: string | RecipientRef): RecipientRef {
   return typeof r === 'string' ? { email: r, userId: null, unsubscribeUrl: null } : r;
 }
@@ -90,13 +99,18 @@ export async function POST(request: NextRequest) {
     const api  = agentModule('modules/api.js');
     const needsUnsubscribe = /\{\{UNSUBSCRIBE_URL\}\}/.test(`${html}${text || ''}`);
     const fallbackUnsubscribe = body.allowMailtoUnsubscribe === true ? mailtoUnsubscribeUrl() : null;
-    const unsubscribeFor = (r: RecipientRef) => safeUnsubscribeUrl(r.unsubscribeUrl) || fallbackUnsubscribe;
+    // Backend link first; prospects, companies and manual addresses get the panel's own one-click link.
+    const base = unsubscribeBase();
+    const unsubscribeFor = (r: RecipientRef) => safeUnsubscribeUrl(r.unsubscribeUrl) || (base ? legacyUnsubscribeUrl(r.email, base) : null) || fallbackUnsubscribe;
 
     if (mode === 'single') {
       if (!to) {
         return NextResponse.json({ error: '"to" zorunludur.' }, { status: 400 });
       }
       const ref: RecipientRef = { email: to };
+      if (legacySuppressed([to]).size) {
+        return NextResponse.json({ error: 'Bu adres abonelikten çıktı; pazarlama e-postası gönderilmez.' }, { status: 409 });
+      }
       const unsubscribeUrl = unsubscribeFor(ref);
       if (needsUnsubscribe && !unsubscribeUrl) {
         return NextResponse.json({ error: 'Unsubscribe bağlantısı olmayan alıcılar için marketing e-postası gönderilemez.' }, { status: 400 });
@@ -119,7 +133,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'İstek başına en fazla 500 alıcı.' }, { status: 400 });
       }
 
-      const refs = recipients.map(normalizeRecipient);
+      const all = recipients.map(normalizeRecipient);
+      // Addresses that unsubscribed through the panel's own link are skipped, whatever the list says.
+      const suppressed = legacySuppressed(all.map(r => r.email));
+      const refs = all.filter(r => !suppressed.has(r.email.trim().toLowerCase()));
+      if (!refs.length) return NextResponse.json({ sent: 0, failed: 0, errors: [], results: [], suppressed: suppressed.size });
       if (needsUnsubscribe && refs.some(recipient => !unsubscribeFor(recipient))) {
         return NextResponse.json({ error: 'Unsubscribe bağlantısı olmayan alıcılar için marketing e-postası gönderilemez.' }, { status: 400 });
       }
@@ -161,7 +179,7 @@ export async function POST(request: NextRequest) {
         void runTrackingTasks(tasks, EVENT_CONCURRENCY);
       }
 
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, suppressed: suppressed.size });
     }
 
     return NextResponse.json({ error: `Geçersiz mod: ${mode}` }, { status: 400 });

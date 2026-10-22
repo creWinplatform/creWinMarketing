@@ -24,12 +24,10 @@ const broadcastOnly = args.includes('--broadcast');
 
 async function main() {
   if (discover) {
-    const { discoverGroups, joinDiscoveredGroups } = require('./modules/group-discovery');
-    console.log('🔍 Grup keşfi başlıyor...');
+    const { discoverGroups } = require('./modules/group-discovery');
+    console.log('🔍 Grup keşfi başlıyor (yalnız öneri)...');
     const found = await discoverGroups();
-    console.log(`✅ ${found.length} yeni grup keşfedildi.`);
-    const joined = await joinDiscoveredGroups();
-    console.log(`✅ ${joined} gruba katılındı.`);
+    console.log(`✅ ${found.length} yeni grup öneri listesine eklendi. Katılmak için Pipeline → Gruplar ekranından seçin.`);
     process.exit(0);
   }
 

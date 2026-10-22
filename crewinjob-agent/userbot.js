@@ -13,12 +13,12 @@ const { NewMessage }     = require('telegram/events');
 const { Api }            = require('telegram');
 const cron               = require('node-cron');
 const poster             = require('./modules/telegram-poster');
+const { recordSuggestions } = require('./modules/group-discovery');
 
 // ── Ortam değişkenleri ────────────────────────────────────────────────────────
 const API_ID       = parseInt(process.env.TG_API_ID      || '0');
 const API_HASH     =           process.env.TG_API_HASH   || '';
 const SESSION      =           process.env.TG_SESSION    || '';
-const BOT_USERNAME =           process.env.TG_BOT_USERNAME || '@CrewinJobBot';
 
 // Virgülle ayrılmış kanal/grup kullanıcı adları veya ID'leri
 // Örn: @denizcilikgrubu,@maritime_turkey veya -1001234567890
@@ -45,12 +45,6 @@ const JOB_KEYWORDS = [
   'ilan','vacancy','job','hiring','arıyoruz','aranıyor',
 ];
 
-// ── Bant genişliği kontrolü ───────────────────────────────────────────────────
-const dmSentSet    = new Set(); // Aynı kişiye 1 DM
-const joinedSet    = new Set(); // Aynı gruba 1 katılım
-let   dmCountToday = 0;
-const DM_DAILY_LIMIT = 50;     // Günlük maksimum DM (Telegram ban'dan korunmak için)
-
 const sleep = (min, max = min) =>
   new Promise(r => setTimeout(r, min + Math.random() * (max - min)));
 
@@ -59,21 +53,6 @@ function isJobPost(text = '') {
   if (text.length < 40) return false;
   const lower = text.toLowerCase();
   return JOB_KEYWORDS.filter(kw => lower.includes(kw)).length >= 2;
-}
-
-function isSeekingJob(text = '') {
-  const lower = text.toLowerCase();
-  return lower.includes('iş arıyorum') ||
-         lower.includes('looking for job') ||
-         lower.includes('seeking position') ||
-         lower.includes('available for') ||
-         lower.includes('müsaitim');
-}
-
-function dmText(lang = 'tr') {
-  return lang === 'tr'
-    ? `👋 Merhaba!\n\nCrewinJob — Türkiye'nin denizcilik iş platformunu keşfettiniz mi?\n\n🚢 Binlerce gemi ilanı, doğrulanmış armatörler, kolay başvuru sistemi.\n\n📲 Telegram botumuzdan anında iş ara: ${BOT_USERNAME}\n🌐 https://crewinjob.com\n\nHerhangi bir sorunuz olursa yardımcı olmaktan memnuniyet duyarım!`
-    : `👋 Hello!\n\nHave you heard of CrewinJob — the leading maritime job platform?\n\n🚢 Thousands of ship jobs, verified employers, easy applications.\n\n📲 Search jobs via our Telegram bot: ${BOT_USERNAME}\n🌐 https://crewinjob.com\n\nFeel free to reach out if you have any questions!`;
 }
 
 // ── Mevcut diyalogları tara ve kaydet ────────────────────────────────────────
@@ -101,8 +80,6 @@ async function scanExistingDialogs(client) {
         type:     isGroup ? 'group' : 'channel',
       };
 
-      // Zaten takip edilen gruba kaydet
-      if (item.id) joinedSet.add(item.id);
       groups.push(item);
     }
 
@@ -136,49 +113,22 @@ async function joinTargetChannels(client) {
   }
 }
 
-// ── Özellik 2: Denizcilik gruplarını ara ve katıl ─────────────────────────────
-async function searchAndJoinGroups(client) {
-  console.log('[userbot] 🔍 Denizcilik grupları aranıyor...');
-  let joined = 0;
-
+// ── Özellik 2: Denizcilik gruplarını ara → yalnız öneri listesine ekle ──────
+// Kendiliğinden hiçbir gruba katılmaz. Bulunanlar data/discovered-groups.json'a "öneri" olarak yazılır;
+// katılma yalnız Pipeline → Gruplar ekranında bir kişinin seçip onaylamasıyla olur.
+async function searchGroupSuggestions(client) {
+  console.log('[userbot] 🔍 Denizcilik grupları aranıyor (yalnız öneri)...');
+  let added = 0;
   for (const query of SEARCH_QUERIES) {
     try {
       const res = await client.invoke(new Api.contacts.Search({ q: query, limit: 20 }));
-
-      for (const chat of res.chats || []) {
-        const idStr = chat.id?.toString();
-        if (!idStr || joinedSet.has(idStr)) continue;
-
-        // Sadece gruplar (megagroup/gigagroup/Chat), kanalları atla
-        const isGroup = chat.megagroup || chat.gigagroup || chat.className === 'Chat';
-        if (!isGroup) continue;
-
-        // Çok küçük (<50 üye) veya çok büyük (>50k) grupları atla
-        const count = chat.participantsCount || 0;
-        if (count < 50 || count > 50000) continue;
-
-        try {
-          const target = chat.username ? `@${chat.username}` : chat.id;
-          await client.invoke(new Api.channels.JoinChannel({ channel: target }));
-          joinedSet.add(idStr);
-          joined++;
-          console.log(`[userbot] ✅ Grup katıldı: "${chat.title}" (${count} üye)`);
-          await sleep(15000, 30000); // Grup katılımları arası uzun bekleme
-        } catch (e) {
-          if (!e.message?.includes('already')) {
-            console.warn(`[userbot] ⚠️ "${chat.title}": ${e.message}`);
-          } else {
-            joinedSet.add(idStr);
-          }
-        }
-      }
+      added += recordSuggestions(res.chats || [], query).length;
     } catch (e) {
       console.error(`[userbot] Arama hatası "${query}": ${e.message}`);
     }
     await sleep(5000, 10000);
   }
-
-  console.log(`[userbot] Grup tarama tamamlandı. Yeni: ${joined} grup.`);
+  console.log(`[userbot] Grup tarama tamamlandı. Öneri listesine eklenen: ${added} grup (katılınmadı).`);
 }
 
 // ── Özellik 3: Yeni mesajları dinle ──────────────────────────────────────────
@@ -202,22 +152,7 @@ function setupMessageListener(client) {
         } catch {}
       }
 
-      // İş arayan veya iş ilanı paylaşan kullanıcıya DM gönder
-      if ((isJobPost(text) || isSeekingJob(text)) && dmCountToday < DM_DAILY_LIMIT) {
-        const senderStr = sender.toString();
-        if (!dmSentSet.has(senderStr)) {
-          await sleep(3000, 8000); // İnsan gibi gecikme
-          try {
-            await client.sendMessage(sender, { message: dmText('tr') });
-            dmSentSet.add(senderStr);
-            dmCountToday++;
-            console.log(`[userbot] 📨 DM gönderildi: ${senderStr} (bugün: ${dmCountToday}/${DM_DAILY_LIMIT})`);
-            await sleep(5000, 12000);
-          } catch (e) {
-            // Kullanıcı DM kapatmış, bot engellemiş vb. — sessizce geç
-          }
-        }
-      }
+      // Kişilere kendiliğinden DM gönderilmez: bot yalnız dinler ve ilanları ayrıştırır.
     } catch (e) {
       // Event handler hataları sessizce geçilir
     }
@@ -258,14 +193,11 @@ async function main() {
   // 3) Mesaj dinleyicisini kur (tüm mevcut gruplar dahil)
   setupMessageListener(client);
 
-  // 4) Grup aramasını 3 dakika sonra başlat
-  setTimeout(() => searchAndJoinGroups(client), 3 * 60 * 1000);
+  // 4) Grup aramasını 3 dakika sonra başlat (yalnız öneri listesine yazar)
+  setTimeout(() => searchGroupSuggestions(client), 3 * 60 * 1000);
 
-  // 5) Her gün 08:00 TR'de yeni grupları ara + sayaç sıfırla
-  cron.schedule('0 5 * * *', () => {
-    dmCountToday = 0;
-    searchAndJoinGroups(client);
-  }, { timezone: 'UTC' });
+  // 5) Her gün 08:00 TR'de yeni grup önerilerini ara
+  cron.schedule('0 5 * * *', () => searchGroupSuggestions(client), { timezone: 'UTC' });
 
   console.log('[userbot] 🤖 Hazır! Ctrl+C ile durdurabilirsin.\n');
 

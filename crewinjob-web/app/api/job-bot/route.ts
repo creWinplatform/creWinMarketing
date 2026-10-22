@@ -32,12 +32,12 @@ function ensureConfig() {
 // Pipeline işlemleri uzun sürer — ayrı timeout
 const PIPELINE_ACTIONS = new Set([
   'run_pipeline', 'discover_groups', 'join_groups', 'broadcast_jobs',
-  'approve_review', 'manage_expiry', 'track_applications', 'onboard_members',
+  'approve_review', 'manage_expiry', 'track_applications',
 ]);
 // job-bot-cli.js LONG_ACTIONS ile aynı — bunlar pipeline-state.json'a "running" yazar
 const STATEFUL_ACTIONS = new Set([
   'run_pipeline', 'discover_groups', 'join_groups', 'broadcast_jobs',
-  'onboard_members', 'track_applications', 'manage_expiry',
+  'track_applications', 'manage_expiry',
 ]);
 
 type PipelineState = {
@@ -176,6 +176,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, cities: [], error: (e as Error).message });
+    }
+  }
+
+  // Keşfedilen ama katılınmamış gruplar: katılma yalnız buradan seçilip onaylanarak yapılır.
+  if (action === 'suggested_groups') {
+    try {
+      const result = await runCli('suggested_groups');
+      return NextResponse.json(result);
+    } catch (e: unknown) {
+      return NextResponse.json({ ok: false, groups: [], error: (e as Error).message });
     }
   }
 
@@ -387,9 +397,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Yalnız bir kişinin seçtiği öneri gruplarına katılır (en fazla 10); hiçbir şey seçilmezse reddedilir.
   if (action === 'join_groups') {
+    const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string' && /^\d{1,20}$/.test(id)) : [];
+    if (!ids.length || ids.length > 10) return NextResponse.json({ ok: false, message: 'Katılmak için 1–10 grup seçin.' }, { status: 400 });
     try {
-      const result = await runCli('join_groups');
+      const result = await runCli('join_groups', { ids });
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, message: (e as Error).message });
@@ -452,6 +465,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (action === 'dismiss_groups') {
+    const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === 'string' && /^\d{1,20}$/.test(id)) : [];
+    if (!ids.length) return NextResponse.json({ ok: false, message: 'Listeden çıkarmak için grup seçin.' }, { status: 400 });
+    try {
+      const result = await runCli('dismiss_groups', { ids });
+      return NextResponse.json(result);
+    } catch (e: unknown) {
+      return NextResponse.json({ ok: false, message: (e as Error).message });
+    }
+  }
+
   if (action === 'set_config') {
     try {
       const result = await runCli('set_config', body as Record<string, unknown>);
@@ -482,15 +506,6 @@ export async function POST(req: NextRequest) {
   if (action === 'track_applications') {
     try {
       const result = await runCli('track_applications', { maxCheck: (body.maxCheck as number) || 20 });
-      return NextResponse.json(result);
-    } catch (e: unknown) {
-      return NextResponse.json({ ok: false, message: (e as Error).message });
-    }
-  }
-
-  if (action === 'onboard_members') {
-    try {
-      const result = await runCli('onboard_members', { maxDms: (body.maxDms as number) || 20 });
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, message: (e as Error).message });

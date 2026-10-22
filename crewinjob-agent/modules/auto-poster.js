@@ -16,19 +16,26 @@ const FAILED_FILE     = path.join(DATA_DIR, 'failed-messages.jsonl');
 const CONFIG_FILE     = path.join(DATA_DIR, 'agent-config.json');
 const DAILY_LIMIT     = 50;
 
+// Telegram'dan toplanan ilanlar Crewinjob Manning (10339) adıyla yayınlandığı için HİÇBİRİ kendiliğinden yayınlanmaz:
+// reviewAllItems her zaman true. Her ilan inceleme kuyruğuna düşer ve ancak bir kişinin onayıyla (approveReview) yayınlanır.
 const DEFAULT_CONFIG = {
-  autoApproveThreshold: 85, // skor >= bu → otomatik yayınla
-  qualityThreshold:     65, // skor >= bu → inceleme kuyruğu, altı → düşür
-  reviewAllItems:      false, // true = her şeyi inceleme kuyruğuna at
+  autoApproveThreshold: 85, // yalnız skor gösterimi; otomatik yayın yok
+  qualityThreshold:     65, // skor < bu → kuyrukta "düşük skor" olarak işaretlenir
+  reviewAllItems:       true, // sabit: her ilan inceleme kuyruğuna
   alertQueueSize:       20, // bekleyen kuyruk bu sayıyı aşınca Telegram uyarısı
 };
 
+// Kayıtlı ayar ne derse desin inceleme zorunlu kalır.
+function withMandatoryReview(saved) {
+  return { ...DEFAULT_CONFIG, ...(saved && typeof saved === 'object' ? saved : {}), reviewAllItems: true };
+}
 function loadConfig() {
-  try { return { ...DEFAULT_CONFIG, ...JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')) }; }
-  catch { return { ...DEFAULT_CONFIG }; }
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { saved = {}; }
+  return withMandatoryReview(saved);
 }
 function saveConfig(cfg) {
-  writeJsonAtomic(CONFIG_FILE, cfg);
+  writeJsonAtomic(CONFIG_FILE, { ...cfg, reviewAllItems: true });
 }
 
 // ── Loglama ───────────────────────────────────────────────────────────────────
@@ -514,6 +521,7 @@ module.exports = {
   loadPosted, savePosted, updatePostedJob,
   loadReviewQueue, saveReviewQueue, pruneReviewQueue,
   addToReviewQueue,
+  withMandatoryReview,
   approveReview, rejectReview,
   loadGroupStats,
   scoreJobData,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { agentModule } from '@/lib/agent-bridge';
 import { platformDatabase } from '@/lib/platform/database';
 import { isRyzevoUnsubscribe,processRyzevoUnsubscribe } from '@/lib/platform/email-safety';
+import { isLegacyUnsubscribe, processLegacyUnsubscribe } from '@/lib/legacy-unsubscribe';
 import { readBoundedBodyBytes } from '@/lib/platform/request-json';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
 const privateHeaders={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
@@ -42,6 +43,12 @@ export async function POST(request: NextRequest) {
         if(form.get('List-Unsubscribe')!=='One-Click')return NextResponse.json({error:INVALID_LINK},{status:400,headers:privateHeaders});
       }
       return NextResponse.json(processRyzevoUnsubscribe(platformDatabase(),token,action==='inspect'),{headers:privateHeaders});
+    }
+
+    // The legacy panel's own links (prospects, companies, manual addresses) are handled here, not by the backend.
+    if (isLegacyUnsubscribe(token)) {
+      try { return NextResponse.json(await processLegacyUnsubscribe(token), { headers: privateHeaders }); }
+      catch { return NextResponse.json({ error: INVALID_LINK }, { status: 400, headers: privateHeaders }); }
     }
 
     const result = await agentModule<Api>('modules/api.js').growthAnalyticsPublicPost('ProcessUnsubscribe', {

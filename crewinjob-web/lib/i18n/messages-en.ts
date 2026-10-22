@@ -1211,4 +1211,9 @@ export const MESSAGES_EN: Record<string, string> = {
   "X hesapları otomatik okunmaz.": "X accounts are not read automatically.",
   "X yanıtı en fazla 280 karakter olabilir.": "An X reply can be at most 280 characters.",
   "Yorumlar veya mesajlar alınamadı. Hesabın yorum ve mesaj izinlerini (pages_read_user_content, pages_messaging, instagram_manage_comments, instagram_manage_messages, LinkedIn şirket sayfası sosyal izinleri, LinkedIn kişisel profil için r_member_social, X için ücretli arama erişimi) kontrol edin. X erişim anahtarı yaklaşık iki saatte dolar; gerekirse hesabı yeniden bağlayın.": "Comments or messages could not be fetched. Check the account's comment and message permissions (pages_read_user_content, pages_messaging, instagram_manage_comments, instagram_manage_messages, LinkedIn company page social permissions, r_member_social for a LinkedIn personal profile, paid search access for X). X access expires after about two hours; reconnect the account if needed.",
+  "Bir seferde en fazla {0} gruba katılın.": "Join at most {0} groups at a time.",
+  "Katılmak için 1–10 grup seçin.": "Select 1–10 groups to join.",
+  "Katılmak için en az bir grup seçin.": "Select at least one group to join.",
+  "Listeden çıkarmak için grup seçin.": "Select groups to remove from the list.",
+  "Bu adres abonelikten çıktı; pazarlama e-postası gönderilmez.": "This address has unsubscribed; no marketing email is sent.",
 };

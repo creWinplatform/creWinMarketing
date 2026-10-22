@@ -46,6 +46,8 @@ export default function PipelineTab() {
   const t = (tr: string, en: string) => (lang === 'tr' ? tr : en);
   const locale = localeTag(lang);
   const [groups,      setGroups]       = useState<TgGroup[]>([]);
+  const [suggestions, setSuggestions]  = useState<TgGroup[]>([]);
+  const [picked,      setPicked]       = useState<string[]>([]);
   const [postedJobs,   setPostedJobs]   = useState<PostedJob[]>([]);
   const [reviewQueue,  setReviewQueue]  = useState<ReviewItem[]>([]);
   const [groupStats,   setGroupStats]   = useState<GroupStat[]>([]);
@@ -166,6 +168,10 @@ export default function PipelineTab() {
   const loadGroups = useCallback(async () => {
     try { const d = await (await fetch('/api/job-bot?action=discovered_groups')).json(); if (d.ok) setGroups(d.groups || []); } catch {}
   }, []);
+  // Keşfedilen ama katılınmamış gruplar. Katılma yalnız buradan, seçilip onaylanarak yapılır.
+  const loadSuggestions = useCallback(async () => {
+    try { const d = await (await fetch('/api/job-bot?action=suggested_groups')).json(); if (d.ok) { setSuggestions(d.groups || []); setPicked(p => p.filter(id => (d.groups || []).some((g: TgGroup) => g.id === id))); } } catch {}
+  }, []);
   const loadPostedJobs = useCallback(async () => {
     try { const d = await (await fetch('/api/job-bot?action=posted_jobs')).json(); if (d.ok) setPostedJobs((d.jobs || []).slice().reverse()); } catch {}
   }, []);
@@ -202,7 +208,7 @@ export default function PipelineTab() {
   };
 
   const loadAll = useCallback(() => {
-    loadGroups(); loadPostedJobs(); loadReviewQueue(); loadGroupStats(); loadUsageAndConfig();
+    loadGroups(); loadSuggestions(); loadPostedJobs(); loadReviewQueue(); loadGroupStats(); loadUsageAndConfig();
   }, [loadGroups, loadPostedJobs, loadReviewQueue, loadGroupStats, loadUsageAndConfig]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
@@ -444,28 +450,9 @@ export default function PipelineTab() {
               {configSaving && <span role="status" className="text-xs text-slate-600 animate-pulse">{t('Kaydediliyor…', 'Saving…')}</span>}
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-medium text-slate-700 dark:text-slate-300">{t('Tümünü İncele Modu', 'Review all mode')}</div>
-                  <div className="text-xs text-slate-600">{t('Her ilanı review kuyruğuna at', 'Send every job to the review queue')}</div>
-                </div>
-                <button onClick={() => saveConfig({ reviewAllItems: !agentConfig.reviewAllItems })}
-                  role="switch" aria-checked={agentConfig.reviewAllItems} aria-label={t('Tümünü İncele Modu', 'Review all mode')}
-                  className={`relative inline-flex h-5 w-9 rounded-full transition-colors ${agentConfig.reviewAllItems ? 'bg-blue-500' : 'bg-slate-200 dark:bg-slate-600'}`}>
-                  <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform mt-0.5 ${agentConfig.reviewAllItems ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </button>
-              </div>
               <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-xs text-slate-600 dark:text-slate-400">{t('Oto-onay eşiği', 'Auto-approve threshold')}</span>
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{agentConfig.autoApproveThreshold}/100</span>
-                </div>
-                <input type="range" min={65} max={100} value={agentConfig.autoApproveThreshold} aria-label={t('Oto-onay eşiği', 'Auto-approve threshold')}
-                  onChange={e => setAgentConfig(c => c ? { ...c, autoApproveThreshold: +e.target.value } : c)}
-                  onMouseUp={e => saveConfig({ autoApproveThreshold: +(e.target as HTMLInputElement).value })}
-                  onTouchEnd={e => saveConfig({ autoApproveThreshold: +(e.target as HTMLInputElement).value })}
-                  className="w-full h-1.5 accent-blue-500" />
-                <div className="flex justify-between text-xs text-slate-600 mt-0.5"><span>65</span><span>100</span></div>
+                <div className="text-xs font-medium text-slate-700 dark:text-slate-300">{t('Her ilan incelemeden geçer', 'Every job posting is reviewed')}</div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{t("Telegram'dan toplanan ilanlar Crewinjob Manning (10339) adıyla yayınlandığı için hiçbiri kendiliğinden yayınlanmaz; her biri inceleme kuyruğuna düşer ve ancak onayla yayınlanır.", 'Jobs collected from Telegram are published as Crewinjob Manning (10339), so none is published on its own; each one goes to the review queue and is published only after approval.')}</p>
               </div>
               <div>
                 <div className="flex justify-between mb-1">
@@ -485,7 +472,7 @@ export default function PipelineTab() {
 
       {/* ── Aksiyon kartları ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <ActionCard icon="🔍" title={t('Grup Keşfi', 'Group discovery')}    desc={t('Grupları ara ve katıl', 'Search and join groups')}           color="blue"   loading={isRunning('discover_groups')}  disabled={!!busy} onClick={() => runAction('discover_groups', {}, t('Grup keşfi', 'Group discovery'))} />
+        <ActionCard icon="🔍" title={t('Grup Keşfi', 'Group discovery')}    desc={t('Grupları ara, öneri listesine ekle', 'Search groups and add them to the suggestions')}           color="blue"   loading={isRunning('discover_groups')}  disabled={!!busy} onClick={() => runAction('discover_groups', {}, t('Grup keşfi', 'Group discovery'))} />
         <ActionCard icon="📋" title={t('İlan Pipeline', 'Job posting pipeline')} desc={t('Çek → AI → crewinjob.com', 'Fetch → AI → crewinjob.com')}        color="green"  loading={isRunning('run_pipeline')}     disabled={!!busy} onClick={() => runAction('run_pipeline', { maxJobs: 15 }, 'Pipeline')} />
         <ActionCard icon="📢" title={t('Paylaş', 'Share')}        desc={t("Yeni ilanları Telegram'da duyur", 'Announce new jobs on Telegram')}  color="purple" loading={isRunning('broadcast_jobs')}   disabled={!!busy} onClick={() => runAction('broadcast_jobs', { maxJobs: 5 }, 'Broadcast')} />
         <ActionCard icon="🔄" title={t('Tam Döngü', 'Full cycle')}     desc={t('Keşif + Pipeline + Broadcast', 'Discovery + pipeline + broadcast')}    color="orange" loading={isRunning('full_cycle')}       disabled={!!busy}
@@ -507,11 +494,10 @@ export default function PipelineTab() {
       </div>
 
       {/* ── İkinci sıra: yardımcı aksiyonlar ───────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <MiniCard icon="⏳" title={t('Expiry Kontrolü', 'Expiry check')}   loading={isRunning('manage_expiry')}     disabled={!!busy} onClick={() => runAction('manage_expiry', {}, t('Expiry kontrolü', 'Expiry check'))} />
         <MiniCard icon="📊" title={t('Günlük Rapor', 'Daily report')}      loading={isRunning('send_daily_report')} disabled={!!busy} onClick={() => runAction('send_daily_report', {}, t('Rapor', 'Report'))} />
         <MiniCard icon="📥" title={t('Başvuru Takibi', 'Application tracking')}    loading={isRunning('track_applications')} disabled={!!busy} onClick={() => runAction('track_applications', {}, t('Başvuru takibi', 'Application tracking'))} />
-        <MiniCard icon="👋" title={t('Üye Onboarding', 'Member onboarding')}    loading={isRunning('onboard_members')}   disabled={!!busy} onClick={() => runAction('onboard_members', { maxDms: 20 }, 'Onboarding')} />
       </div>
 
       {/* ── Canlı Log ──────────────────────────────────────────────────── */}
@@ -637,6 +623,9 @@ export default function PipelineTab() {
                     {item.reason && (
                       <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-1">⚠️ <Msg text={item.reason} /></p>
                     )}
+                    <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                      {t('Onaylanırsa Crewinjob Manning (10339) adıyla yayınlanır. Asıl işveren ve iletişim bilgisi yalnız aşağıdaki özgün mesajdadır; kontrol edin.', 'If approved, it is published as Crewinjob Manning (10339). The original employer and contact details are only in the original message below; check them.')}
+                    </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-3 whitespace-pre-wrap">
                       {item.sourceText}
                     </p>
@@ -715,6 +704,36 @@ export default function PipelineTab() {
 
       {/* ── Panel: Gruplar ──────────────────────────────────────────────── */}
       {activePanel === 'groups' && (
+        <div className="space-y-4">
+        <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
+            <h3 id="suggested-groups-title" className="font-semibold text-gray-700 dark:text-gray-200">{t('Önerilen gruplar', 'Suggested groups')} <span className="text-xs font-normal text-gray-500">({suggestions.length})</span></h3>
+            <button type="button" onClick={loadSuggestions} className="text-xs text-blue-600 hover:underline">{t('Yenile', 'Refresh')}</button>
+          </div>
+          <p className="px-4 pt-3 text-xs text-gray-600 dark:text-gray-300">{t('Grup keşfi ve zamanlayıcı hiçbir gruba kendiliğinden katılmaz. Katılmak istediklerinizi seçin; bir seferde en fazla 10 grup. Her katılım arasında Telegram sınırları için 12–20 saniye beklenir.', 'Group discovery and the scheduler never join a group on their own. Pick the ones to join; at most 10 at a time. Each join waits 12–20 seconds for Telegram limits.')}</p>
+          {suggestions.length === 0
+            ? <div className="py-6 text-center text-gray-500 dark:text-gray-400 text-sm">{t('Öneri yok — "Grup Keşfi" çalıştırın.', 'No suggestions — run "Group discovery".')}</div>
+            : <fieldset aria-labelledby="suggested-groups-title" className="divide-y divide-gray-50 dark:divide-slate-700 max-h-80 overflow-y-auto mt-2">
+                {suggestions.map(g => (
+                  <label key={g.id} className="flex items-center gap-3 px-4 py-2.5 cursor-pointer">
+                    <input type="checkbox" checked={picked.includes(g.id)} disabled={!picked.includes(g.id) && picked.length >= 10}
+                      onChange={e => setPicked(p => e.target.checked ? [...p, g.id] : p.filter(id => id !== g.id))} />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{g.title}</span>
+                      <span className="block text-xs text-gray-500 dark:text-gray-400">{g.username && <span className="mr-2">{g.username}</span>}{fmt(g.members, lang)} {t('üye', 'members')} · {g.type === 'channel' ? t('kanal', 'channel') : t('grup', 'group')}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>}
+          {suggestions.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 py-3 border-t border-gray-100 dark:border-slate-700">
+              <button type="button" disabled={!picked.length || !!busy} onClick={async () => { await runAction('join_groups', { ids: picked }, t('Seçilen gruplara katılım', 'Joining the selected groups')); setPicked([]); loadSuggestions(); }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 text-white disabled:opacity-40">{t(`Seçilenlere katıl (${picked.length})`, `Join selected (${picked.length})`)}</button>
+              <button type="button" disabled={!picked.length || !!busy} onClick={async () => { await runAction('dismiss_groups', { ids: picked }, t('Listeden çıkarma', 'Removing from the list')); setPicked([]); loadSuggestions(); }}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 text-gray-700 dark:text-gray-200 disabled:opacity-40">{t('Listeden çıkar', 'Remove from list')}</button>
+            </div>
+          )}
+        </div>
         <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
             <h3 className="font-semibold text-gray-700 dark:text-gray-200"><span aria-hidden="true">🤝 </span>{t('Katılınan Gruplar', 'Joined groups')} <span className="text-xs font-normal text-gray-400">({groups.length})</span></h3>
@@ -735,6 +754,7 @@ export default function PipelineTab() {
             }
           </div>
         </div>
+      </div>
       )}
 
       {/* ── Panel: Grup Kalite İstatistikleri ───────────────────────────── */}

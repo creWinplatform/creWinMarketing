@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { agentModule } from '@/lib/agent-bridge';
 import { listUnsubscribeTarget, openPixelTag, runTrackingTasks, safeUnsubscribeUrl } from '@/lib/tracking-signature';
+import { legacySuppressed } from '@/lib/legacy-unsubscribe';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -56,7 +57,8 @@ async function fetchJobsInBatches(
 export async function POST(request: NextRequest) {
   try {
     const body: SendJobMatchBody = await request.json();
-    const { recipients, lang = 'tr', campaign = 'job-match' } = body;
+    const { lang = 'tr', campaign = 'job-match' } = body;
+    let { recipients } = body;
 
     if (!Array.isArray(recipients) || recipients.length === 0) {
       return NextResponse.json({ error: '"recipients" zorunludur.' }, { status: 400 });
@@ -66,6 +68,10 @@ export async function POST(request: NextRequest) {
     }
     // email/send ile aynı kural: backend'in opak unsubscribe linki olmayan alıcıya marketing e-postası gitmez
     // (önceden '#' ile ölü link gidiyordu).
+    // Addresses that unsubscribed through the panel's own link are skipped too.
+    const suppressed = legacySuppressed(recipients.map(r => r.email));
+    recipients = recipients.filter(r => !suppressed.has(String(r.email).trim().toLowerCase()));
+    if (!recipients.length) return NextResponse.json({ sent: 0, failed: 0, errors: [], results: [], suppressed: suppressed.size });
     const missingUnsubscribe = recipients.filter(r => !safeUnsubscribeUrl(r.unsubscribeUrl)).length;
     if (missingUnsubscribe > 0) {
       return NextResponse.json({ error: `Unsubscribe bağlantısı olmayan alıcılar için marketing e-postası gönderilemez (${missingUnsubscribe} alıcı).` }, { status: 400 });

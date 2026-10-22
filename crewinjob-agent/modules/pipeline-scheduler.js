@@ -1,7 +1,7 @@
 'use strict';
 // Pipeline cron scheduler — her 4 saatte bir tam döngü çalıştırır
 const cron = require('node-cron');
-const { discoverGroups, joinDiscoveredGroups } = require('./group-discovery');
+const { discoverGroups } = require('./group-discovery');
 const { runPipeline, loadConfig, loadReviewQueue } = require('./auto-poster');
 const { broadcastNewJobs } = require('./group-broadcaster');
 const { manageExpirations } = require('./expiry-manager');
@@ -50,17 +50,11 @@ async function fullCycle(options = {}) {
   log('════════════════════════════════════════');
 
   try {
-    // 1. Yeni grupları keşfet
-    log('[scheduler] 🔍 Grup keşfi...');
+    // 1. Yeni grupları keşfet — yalnız öneri listesine yazılır.
+    // 2. Katılma otomatik değil: Pipeline → Gruplar ekranında bir kişi seçip onaylar.
+    log('[scheduler] 🔍 Grup keşfi (yalnız öneri)...');
     const found = await discoverGroups();
-    log(`[scheduler] ${found.length} yeni grup keşfedildi.`);
-
-    // 2. Keşfedilen gruplara katıl
-    if (found.length > 0) {
-      log('[scheduler] 🤝 Gruplara katılınıyor...');
-      const joined = await joinDiscoveredGroups();
-      log(`[scheduler] ${joined} yeni gruba katılındı.`);
-    }
+    log(`[scheduler] ${found.length} yeni grup öneri listesine eklendi (katılınmadı).`);
 
     // 3. Mesajları çek → crewinjob.com'a ilan oluştur
     log('[scheduler] 📋 Pipeline çalışıyor...');
