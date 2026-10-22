@@ -43,6 +43,8 @@ export type CoachSnapshot={
   brief:CoachBrief|null;approvedAt:string|null;
   week:number|null;weekKey:string;actions:CoachAction[];resolved:CoachAction[];remaining:number;
   aiConfigured:boolean;canWrite:boolean;canApprove:boolean;previousBrief:CoachBrief|null;versions:number;
+  /** Starter drafts from the approval that the team has not saved yet. */
+  starterDrafts:number;
 };
 // Brief channel → content studio channel (blog for search/SEO work).
 export const coachDraftChannel=(channel:CoachChannel|null)=>channel==='seo'?'blog':channel||'linkedin';

@@ -727,6 +727,11 @@ export default function ProjectDrafts({
                         <span className="studio-badge">
                           {tr ? 'Taslak' : 'Draft'}
                         </span>
+                        {history?.starter && (
+                          <span className="studio-badge coach-starter-badge">
+                            {tr ? 'Başlangıç taslağı · okuyup düzenleyin' : 'Starter draft · read and edit'}
+                          </span>
+                        )}
                       </div>
                       <p>
                         {channel} ·{' '}

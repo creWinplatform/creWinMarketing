@@ -521,3 +521,23 @@ html:not(.dark) .workspace-shell .text-red-500{color:#dc2626}
 html:not(.dark) .workspace-shell .bg-red-100.text-red-600{color:#b91c1c}
 /* Koyu tema: -100 tonlu açık rozet zeminleri de (metinleri 400 tonuna geçtiği için) koyu, renkli bir tona */
 .dark .workspace-shell :is(.bg-green-100,.bg-blue-100,.bg-red-100,.bg-yellow-100,.bg-amber-100,.bg-emerald-100,.bg-sky-100,.bg-purple-100,.bg-orange-100,.bg-indigo-100,.bg-pink-100,.bg-teal-100,.bg-cyan-100):not([class*="dark:bg-"]){background-color:rgba(148,163,184,.14)}
+
+/* Operator console (deployment administrator only). */
+.operator-console{display:grid;gap:18px}
+.operator-summary{display:flex;flex-wrap:wrap;gap:8px;margin:0}
+.operator-state{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:650;padding:2px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
+.operator-state.ready{color:#3d5717}.operator-state.warning{color:#896018}.operator-state.missing{color:#b42318}.operator-state.off{color:var(--studio-muted)}
+.dark .operator-state.ready{color:#bdf153}.dark .operator-state.warning{color:#e4b65c}.dark .operator-state.missing{color:#fda29b}
+.operator-group{margin-top:18px}.operator-group h4{font-size:13px;font-weight:650;margin:0 0 8px}
+.operator-group>ul{display:grid;gap:10px;list-style:none;margin:0;padding:0}
+.operator-item{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:10px 12px}
+.operator-item>svg{flex-shrink:0;margin-top:2px}.operator-item.ready>svg{color:#3d5717}.operator-item.warning>svg{color:#896018}.operator-item.missing>svg{color:#b42318}.operator-item.off>svg{color:var(--studio-muted)}
+.dark .operator-item.ready>svg{color:#bdf153}.dark .operator-item.warning>svg{color:#e4b65c}.dark .operator-item.missing>svg{color:#fda29b}
+.operator-item>div{min-width:0;display:grid;gap:4px}.operator-item p{margin:0;font-size:13px;line-height:1.5}.operator-item p>strong{margin-right:6px}
+.operator-env{display:flex;flex-wrap:wrap;gap:6px}.operator-env code,.operator-webhooks code{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--studio-hover);overflow-wrap:anywhere}
+.operator-webhooks{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:13px}
+.operator-period{display:flex;align-items:center;gap:8px;font-size:12px}
+.operator-steps{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:12px}
+.operator-step-head{display:flex;justify-content:space-between;gap:12px;font-size:13px}
+.operator-bar{height:8px;border-radius:999px;background:var(--studio-hover);overflow:hidden;margin-top:6px}.operator-bar>span{display:block;height:100%;background:var(--studio-accent);border-radius:inherit}
+.operator-stalled{margin:4px 0 0;font-size:12px;color:#896018}.dark .operator-stalled{color:#e4b65c}

@@ -37,7 +37,7 @@ const fromEdit=(brief:EditBrief):CoachBrief=>({...brief,icp:{summary:brief.icp.s
 
 export default function GrowthCoach({workspace,lang,onChange}:{workspace:WorkspaceContext;lang:Locale;onChange?:()=>void}){
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
-  const [data,setData]=useState<CoachSnapshot|null>(null),[error,setError]=useState(''),[dialogError,setDialogError]=useState(''),[notice,setNotice]=useState(''),[calendarNotice,setCalendarNotice]=useState(false),[busy,setBusy]=useState('');
+  const [data,setData]=useState<CoachSnapshot|null>(null),[error,setError]=useState(''),[dialogError,setDialogError]=useState(''),[notice,setNotice]=useState(''),[calendarNotice,setCalendarNotice]=useState(false),[libraryNotice,setLibraryNotice]=useState(false),[busy,setBusy]=useState('');
   const [opened,setOpened]=useState(false),[view,setView]=useState<'questions'|'review'|'brief'>('questions'),[answers,setAnswers]=useState<CoachAnswers>(emptyAnswers),[language,setLanguage]=useState<'tr'|'en'>(workspace.project.language||lang),[edit,setEdit]=useState<EditBrief|null>(null);
   const dialog=useRef<HTMLDialogElement>(null),previousFocus=useRef<HTMLElement|null>(null),request=useRef<AbortController|null>(null),refreshCompass=useCompassRefresh(),firstStart=useRef(false);
   const show=(value:string|LocalizedText)=>typeof value==='string'?value:value[lang];
@@ -73,8 +73,8 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   const saveBrief=async(action:'save'|'approve')=>{
     if(!data||!edit||busy)return;setBusy(action);setDialogError('');
     try{const value=await post<CoachSnapshot>({action,brief:fromEdit(edit),expectedRevision:data.revision});setData(value);
-      setCalendarNotice(false);onChange?.();if(action==='approve'){firstStart.current=false;refreshCompass();setOpened(false);window.dispatchEvent(new Event('ryzevo:compass-show-path'));setNotice(tr?'Strateji briefi onaylandı. Bu haftanın eylemleri aşağıda.':'Strategy brief approved. This week’s actions are below.');}
-      else setNotice(tr?'Taslak kaydedildi. Onaylanana kadar haftalık plan değişmez.':'Draft saved. The weekly plan doesn’t change until it is approved.');}
+      setCalendarNotice(false);onChange?.();if(action==='approve'){firstStart.current=false;refreshCompass();setOpened(false);window.dispatchEvent(new Event('ryzevo:compass-show-path'));setNotice(value.starterDrafts>0?(tr?`Strateji briefi onaylandı. İlk hafta için ${value.starterDrafts} başlangıç taslağı İçerik kütüphanesinde hazır; her birini okuyup kendi bilginizle düzenleyin. Hiçbiri kendiliğinden yayınlanmaz.`:`Strategy brief approved. ${value.starterDrafts} starter drafts for the first week are ready in the content library; read and edit each with your own facts. None is published on its own.`):(tr?'Strateji briefi onaylandı. Bu haftanın eylemleri aşağıda.':'Strategy brief approved. This week’s actions are below.'));setLibraryNotice(value.starterDrafts>0);}
+      else{setLibraryNotice(false);setNotice(tr?'Taslak kaydedildi. Onaylanana kadar haftalık plan değişmez.':'Draft saved. The weekly plan doesn’t change until it is approved.');}}
     catch(reason){setDialogError(fail(reason));}finally{setBusy('');}
   };
   const act=async(action:CoachAction,state:'open'|'done'|'skipped')=>{
@@ -83,7 +83,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   };
   const schedule=async(action:CoachAction)=>{
     if(busy)return;setBusy(action.id);setError('');setNotice('');setCalendarNotice(false);
-    try{const value=await post<{created:boolean;snapshot:CoachSnapshot}>({action:'schedule',actionId:action.id});setData(value.snapshot);onChange?.();setCalendarNotice(true);setNotice(value.created?(tr?'Eylem Takvim’e planlanmış iş olarak eklendi. Kimseye bildirim gönderilmedi.':'Added to the Calendar as a planned task. No one was notified.'):(tr?'Bu eylemin açık bir işi zaten Takvim’de.':'This action already has an open task in the Calendar.'));}
+    try{const value=await post<{created:boolean;snapshot:CoachSnapshot}>({action:'schedule',actionId:action.id});setData(value.snapshot);onChange?.();setLibraryNotice(false);setCalendarNotice(true);setNotice(value.created?(tr?'Eylem Takvim’e planlanmış iş olarak eklendi. Kimseye bildirim gönderilmedi.':'Added to the Calendar as a planned task. No one was notified.'):(tr?'Bu eylemin açık bir işi zaten Takvim’de.':'This action already has an open task in the Calendar.'));}
     catch(reason){setError(fail(reason));}finally{setBusy('');}
   };
   const handoff=(action:CoachAction)=>{
@@ -122,7 +122,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
       {brief&&<div className="coach-panel-tools">{data?.week&&<span className="studio-badge">{data.week<=4?(tr?`Hafta ${data.week} / 4`:`Week ${data.week} of 4`):(tr?'30 günlük dönem bitti':'30-day period ended')}</span>}<a className="studio-text-button" href="/?tab=calendar&planning=content">{tr?'İçerik planı':'Content plan'}<ArrowRight size={14}/></a><a className="studio-text-button" href="/?tab=project&settings=brand">{tr?'Marka & rakipler':'Brand & competitors'}<ArrowRight size={14}/></a><button type="button" className="studio-text-button" onClick={openBrief}>{tr?'Strateji briefi':'Strategy brief'}<ArrowRight size={14}/></button></div>}
     </div>
     {error&&<div className="studio-error" role="alert"><Msg text={error}/><button type="button" className="icon-button" title={tr?'Yeniden dene':'Retry'} aria-label={tr?'Yeniden dene':'Retry'} onClick={()=>void load()}><RefreshCw size={16}/></button></div>}
-    {notice&&<p className="studio-success" role="status"><Msg text={notice}/>{calendarNotice&&<> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}</a></>}</p>}
+    {notice&&<p className="studio-success" role="status"><Msg text={notice}/>{calendarNotice&&<> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}</a></>}{libraryNotice&&<> <a href="/?tab=library">{tr?'Taslakları aç':'Open the drafts'}</a></>}</p>}
     {!data&&!error&&<p className="studio-skeleton" role="status">{tr?'Büyüme koçu yükleniyor…':'Loading growth coach…'}</p>}
     {data&&!brief&&!pending&&<div className="coach-intro">
       <div><h3>{tr?'Nereden başlayacağınızdan emin değil misiniz?':'Not sure where to start?'}</h3><p>{tr?'Ana hedefinizi seçin ve ürününüz ile ekibiniz hakkında 10 kısa soruyu yanıtlayın. Ryzevo; ideal müşteri, konumlandırma, 2–3 öncelikli kanal ve 30 günlük bir plan içeren bir strateji briefi taslağı hazırlar. Siz inceleyip düzenler ve onaylarsınız.':'Pick your main goal and answer 10 short questions about your product and team. Ryzevo drafts a strategy brief — ideal customer, positioning, 2–3 priority channels and a 30-day plan — for you to review, edit and approve.'}</p></div>

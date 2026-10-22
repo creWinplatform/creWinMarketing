@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette } from 'lucide-react';
+import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { localeTag } from '@/lib/i18n/shared';
 import TeamAdministration from './TeamAdministration';
@@ -12,6 +12,7 @@ import CoachBrandStudio from './CoachBrandStudio';
 const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
 const ProjectPlan=dynamic(()=>import('./ProjectPlan'));
 const ProjectBilling=dynamic(()=>import('./ProjectBilling'));
+const OperatorConsole=dynamic(()=>import('./OperatorConsole'));
 export default function ProjectSettings({
   workspace,
   lang,
@@ -27,7 +28,9 @@ export default function ProjectSettings({
   const canConnections =
       workspace.accessMode === 'platform_account' &&
       workspace.permissions?.includes('connections.manage'),
-    canTeam = workspace.permissions?.includes('members.manage');
+    canTeam = workspace.permissions?.includes('members.manage'),
+    // The deployment administrator (the team running Ryzevo) also gets the operator console.
+    canOperate = workspace.accessMode === 'legacy_single_account' && canTeam;
   useEffect(() => {
     const url = new URL(window.location.href),
       requested = url.searchParams.get('settings');
@@ -42,12 +45,13 @@ export default function ProjectSettings({
     else if (canConnections && project.productPack==='standard' && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='brand')setSection('brand');
+    else if (canOperate && requested === 'operations') setSection('operations');
     else if (
       requested === 'team' &&
       (canTeam || workspace.accessMode === 'platform_account')
     )
       setSection('team');
-  }, [canConnections, canTeam, workspace.accessMode, project.productPack]);
+  }, [canConnections, canTeam, canOperate, workspace.accessMode, project.productPack]);
   return (
     <section className="min-w-0">
       <header className="studio-page-heading">
@@ -100,6 +104,12 @@ export default function ProjectSettings({
           {
             id:'plan',Icon:Gauge,label:tr?'Plan & kullanım':'Plan & usage',
             visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
+          },
+          {
+            id: 'operations',
+            Icon: Activity,
+            label: tr ? 'Operasyon' : 'Operations',
+            visible: Boolean(canOperate),
           },
           {
             id: 'team',
@@ -221,6 +231,7 @@ export default function ProjectSettings({
           <ProjectConnections lang={lang} />
         </div>
       )}
+      {section === 'operations' && canOperate && <div className="mt-6"><OperatorConsole lang={lang} /></div>}
       {section === 'team' && (
         <div className="mt-6">
           {canTeam && (

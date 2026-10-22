@@ -128,6 +128,13 @@ export class CoachContentPlan{
       this.audit('coach.content.schedule');return {task,created:true,snapshot:this.read(row.month)};
     }).immediate();
   }
+  // First week after approval: the rule-based plan for this month, only when the month has no items yet.
+  // Returns the month's open items, earliest first; regenerating later still keeps team-made items.
+  seedStarter():Pick<CoachContentItem,'id'|'channel'|'title'|'angle'|'plannedFor'>[]{
+    this.coach.authorize('content.write');const month=this.month(undefined),{brief,answers}=this.brief(),goalId=this.project().goals[0]?.id||null;
+    this.db.transaction(()=>{if(!this.rows(month).length)this.replaceSuggestions(month,coachStarterContent(brief,answers,month,goalId,new Date(),this.coach.timeZone()),'template');}).immediate();
+    return this.rows(month).filter(row=>row.state!=='dismissed').map(row=>({id:row.id,channel:row.channel,title:row.title,angle:row.angle,plannedFor:row.planned_for}));
+  }
   read(rawMonth?:unknown):CoachContentSnapshot{
     this.coach.authorize();const month=this.month(rawMonth),{brief}=this.coach.approved(),project=this.project(),tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task]));
     const assignments=coachAssignmentRows(this.db,...this.args(),'content',zonedDateKey(new Date(),this.coach.timeZone()),this.scope.subject);

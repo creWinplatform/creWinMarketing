@@ -35,6 +35,8 @@ export interface HistoryItem {
   video?: { url: string; format: 'reel' | 'story' | 'feed' };
   /** Instagram only: publish the single image as a Story instead of a feed post (Stories carry no caption). */
   story?: boolean;
+  /** Starter draft prepared by the growth coach after approval; dropped when the team saves the item. */
+  starter?: boolean;
 }
 
 /** Görselle birlikte saklanan yeniden düzenleme verisi. */

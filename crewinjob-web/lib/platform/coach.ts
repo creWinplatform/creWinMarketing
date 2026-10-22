@@ -272,7 +272,7 @@ export class GrowthCoach{
     this.authorize();const {row,brief,week,weekKey,all}=this.derive(),states=this.actionRows(),open=all.filter(item=>item.state==='open'),versions=this.versions(2);
     return {revision:row?.revision||0,answers:row?JSON.parse(row.answers_json):null,draft:row?.draft_json?JSON.parse(row.draft_json):null,draftSource:row?.draft_source||null,draftAt:row?.draft_at||null,brief,approvedAt:row?.approved_at||null,week,weekKey,
       actions:open.slice(0,3),resolved:all.filter(item=>item.state!=='open'&&states.get(item.id)?.week===weekKey),remaining:open.length,
-      aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.can('content.write'),canApprove:this.can('campaign.approve'),previousBrief:versions[1]?.brief||null,versions:versions.length};
+      aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.can('content.write'),canApprove:this.can('campaign.approve'),previousBrief:versions[1]?.brief||null,versions:versions.length,starterDrafts:(this.db.prepare("SELECT COUNT(*) n FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.starter')=1").get(...this.args()) as {n:number}).n};
   }
   // Every current action (setup and plan), for assignment and renewal; read access only.
   actions(){this.authorize();return this.derive().all;}
