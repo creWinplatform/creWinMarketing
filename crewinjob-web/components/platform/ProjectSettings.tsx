@@ -12,6 +12,7 @@ import CoachBrandStudio from './CoachBrandStudio';
 const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
 const ProjectPlan=dynamic(()=>import('./ProjectPlan'));
 const ProjectBilling=dynamic(()=>import('./ProjectBilling'));
+const LiveBilling=dynamic(()=>import('./LiveBilling'));
 const OperatorConsole=dynamic(()=>import('./OperatorConsole'));
 export default function ProjectSettings({
   workspace,
@@ -247,6 +248,7 @@ export default function ProjectSettings({
       {section === 'data' && canConnections && project.productPack==='standard' && <ProductDataSources key={project.id} lang={lang} />}
       {section==='brand'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}
+      {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<LiveBilling key={'live-billing-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<ProjectBilling key={'billing-'+project.id} lang={lang}/>}
     </section>
   );

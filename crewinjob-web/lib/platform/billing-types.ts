@@ -16,3 +16,13 @@ export type BillingReadiness = {
 export type ProjectBillingView = {
   projectId:string;readiness:BillingReadiness;emailVerified:boolean;plans:BillingPlan[];orders:BillingOrder[];statusCheckEnabled:boolean;
 };
+// Live billing (prepaid periods, behind PLATFORM_PAYTR_LIVE_ENABLED).
+export type LivePlanId='launch'|'growth';
+export type LiveBillingPlan={id:LivePlanId;name:string;cadence:'monthly'|'yearly';amountMinor:number;seats:number;socialAccounts:number;ai:number;audits:number};
+export type LiveBillingOrderState='preparing'|'pending'|'paid'|'failed'|'rejected'|'uncertain'|'review';
+export type LiveBillingOrder={id:string;planId:LivePlanId;cadence:'monthly'|'yearly';amountMinor:number;currency:'USD';state:LiveBillingOrderState;createdAt:string;expiresAt:string;paidAt:string|null;checkoutUrl:string|null};
+export type LiveBillingView={
+  enabled:boolean;termsUrl:string|null;plans:LiveBillingPlan[];
+  current:{planId:LivePlanId;cadence:'monthly'|'yearly';startsAt:string;endsAt:string;graceEndsAt:string;inGrace:boolean}|null;
+  nextStartsAt:string|null;canPurchase:boolean;pilotManaged:boolean;purchaseOpensAt:string|null;openOrder:boolean;emailVerified:boolean;orders:LiveBillingOrder[];
+};

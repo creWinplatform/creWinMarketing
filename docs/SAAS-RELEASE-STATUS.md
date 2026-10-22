@@ -1,8 +1,20 @@
-# Ryzevo release status - 21 October 2026
+# Ryzevo release status - 22 October 2026
 
 The core monolith is suitable for continued isolated testing. It is NOT yet an
 accepted public/paid production service. An implementation, a local fixture test
 and an operator-approved live acceptance are different milestones.
+
+## Delivered on 22 October 2026
+
+- **Operator console** (`SAAS-OPERATOR-CONSOLE.md`): it shows go-live readiness without printing any values, plus a customer setup funnel that holds counts only. Only the operator session can open it.
+- **Ready first week:** once the plan is approved, starter drafts appear with a placeholder first line. Publication refuses a draft until the team has rewritten it.
+- **Live prepaid plans (schema 54)** (`SAAS-PAYTR.md`, "Live prepaid plans"):
+  - Launch and Growth, paid monthly or yearly in USD, with a 7-day grace after a period ends;
+  - no stored card and no automatic renewal;
+  - rights open only from PayTR's signed, amount-matching notification;
+  - pilot projects cannot buy a period.
+
+  The code is off by default, and no live PayTR request was made. Migration 54 was dry-run on a copy of the local database (integrity ok, no foreign-key problems, repeatable). It is not yet applied to the real local database.
 
 ## Pre-launch configuration check - 21 October 2026
 
@@ -145,7 +157,7 @@ See `SAAS-PHASE5-MODULES.md` section 12.
 | HSS Digital | Proposed journeys and isolated QA exist. Owner identity/invitation, business review, real property/account grants and successful source events plus user acceptance remain. No HSS source project was supplied for its event producers. |
 | Email/onboarding | Existing SES/consent/allowlist/identity code is default OFF. Separate Ryzevo domain/account setup and authorized successful/failure/opt-out pilots remain. |
 | Google/social | Facebook photo, Instagram ordered 2-5 image carousel and receipt-bound Facebook/Instagram/X/LinkedIn-organization engagement adapters now extend the existing center. Real project-specific grants, permissions and controlled provider-backed acceptance remain. Video/Reels/Stories, LinkedIn/X image uploads and comment/DM workflows are not implemented. See the social format record. |
-| Paid subscriptions | Sandbox checkout/callback/inquiry and catalog/quotas exist. Live paid activation, renewal, cancellation, reconciliation and fiscal invoicing are NOT implemented or enabled. Merchant account and approved USD/recurring/tokenization contract plus pricing/entitlement/fiscal decisions are prerequisites to finish those adapters safely. This is not merely a missing API key. |
+| Paid subscriptions | Live prepaid periods are implemented (schema 54, behind `PLATFORM_PAYTR_LIVE_ENABLED` and `PLATFORM_BILLING_TERMS_URL`). The renewal window, grace and fallback are covered too. The switch stays off until a few things exist: the PayTR merchant contract with USD approval, a published distance-sales contract page, and one operator-run real purchase with a manual refund. Not implemented: automatic recurring charges, stored cards, in-app cancellation or refund, and fiscal invoicing (invoices stay manual). |
 | Phase 5 provider acceptance | Telegram bot, Meta ad account (create, start, pause, insights) and automation email sends are implemented with approval and server switches. Each needs the operator's own account and an approved live test. Google Ads, LinkedIn ads and WhatsApp targets are not implemented. |
 | Accessibility/capacity | Sampled Chrome keyboard/mobile/tablet/desktop flows passed. Screen-reader/real-device and full legacy-module/contrast acceptance remain. Bounded local load is not production capacity, long-duration stability or internet-facing abuse certification. |
 
@@ -193,8 +205,9 @@ Supply access privately, not secrets in chat:
 3. HSS owner identity and permission to complete the existing invitation flow;
    approved business journey and customer-owned Google/social/sender grants.
 4. Separate Ryzevo SES identity/DNS and explicitly authorized pilot recipients.
-5. PayTR merchant/USD/recurring contract and fiscal-invoice approach before live
-   billing implementation/acceptance. No live charge, mandate, refund or paid access
+5. PayTR merchant/USD contract, a published distance-sales contract page
+   (`PLATFORM_BILLING_TERMS_URL`) and the fiscal-invoice approach before the live
+   billing switch is turned on. No live charge, mandate, refund or paid access
    may be inferred from sandbox success or a browser return page.
 6. Access to real-device/screen-reader and supervised production failure testing.
 

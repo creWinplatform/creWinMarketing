@@ -74,7 +74,7 @@ export class PlatformRepository {
       language: row.language || 'tr', brandVoice: row.brand_voice || '' };
     const rights=row.product_pack==='standard'?projectEntitlement(this.db,{organizationId:row.organization_id,projectId:row.id}):null;
     return { organization: { id: row.organization_id, name: row.organization_name }, project,
-      ...(rights?{plan:{id:rights.id,active:rights.active,endsAt:rights.endsAt}}:{}),
+      ...(rights?{plan:{id:rights.id,active:rights.active,endsAt:rights.endsAt,...('inGrace' in rights?{inGrace:rights.inGrace}:{})}}:{}),
       modules: modulesForProject(project.productPack, enabledModules), accessMode: 'platform_account' };
   }
 

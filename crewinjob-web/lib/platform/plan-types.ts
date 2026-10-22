@@ -7,8 +7,9 @@ export type ReservationState='reserved'|'committed'|'released';
 export type PlanResource=keyof typeof PILOT_LIMITS;
 export type PlanUsage={
   projectId:string;
-  plan:{id:'pilot'|'trial';active:boolean;price:null;currency:null;provider:null;checkoutEnabled:false};
-  commercial:{catalogVersion:string;catalog:readonly PlanCatalogEntry[];preference:{planId:'launch'|'growth';catalogVersion:string;updatedAt:string}|null;canManage:boolean};
+  /** paidPlan/endsAt/inGrace only for a paid period; the price and provider stay on the billing page. */
+  plan:{id:'pilot'|'trial'|'paid';active:boolean;price:null;currency:null;provider:null;checkoutEnabled:false;paidPlan?:'launch'|'growth'|'team';endsAt?:string|null;inGrace?:boolean};
+  commercial:{catalogVersion:string;catalog:readonly PlanCatalogEntry[];preference:{planId:'launch'|'growth';catalogVersion:string;updatedAt:string}|null;canManage:boolean;livePurchase:boolean};
   deliveryAllowed:boolean;
   capacities:{seats:{used:number;limit:number|null};socialAccounts:{used:number;limit:number|null}};
   period:{key:string;startsAt:string;endsAt:string;timezone:'UTC'};

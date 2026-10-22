@@ -6,6 +6,7 @@ import {MarketingStoreError,type MarketingScope} from './marketing-store';
 import {PILOT_LIMITS} from './limits';
 import {projectEntitlement,assertProjectWork} from './entitlements';
 import {PLAN_CATALOG,PLAN_CATALOG_VERSION} from './plan-catalog';
+import {paytrLiveReadiness} from './paytr';
 import type {MonthlyResource,UsageReservation,ReservationState,PlanUsage,PlanResource} from './plan-types';
 
 type ReservationRow={id:string;organization_id:string;project_id:string;actor_id:string;resource:MonthlyResource;period:string;status:ReservationState};
@@ -78,8 +79,8 @@ export class ProjectUsage {
     });
     const recent=(this.db.prepare('SELECT id,resource,status,created_at AS createdAt,settled_at AS settledAt FROM platform_usage_reservations WHERE organization_id=? AND project_id=? AND period=? ORDER BY created_at DESC,id DESC LIMIT 10').all(...this.args(),period.key) as Omit<PlanUsage['recent'][number],'needsReview'>[]).map(row=>({...row,needsReview:row.status==='reserved'&&Date.now()-Date.parse(row.createdAt)>10*60000}));
     const providerUsage=(this.db.prepare('SELECT provider,model,COUNT(*) calls,SUM(prompt_tokens) prompt,SUM(output_tokens) output,SUM(thinking_tokens) thinking,SUM(total_tokens) total FROM platform_ai_provider_usage WHERE organization_id=? AND project_id=? AND period=? GROUP BY provider,model ORDER BY total DESC').all(...this.args(),period.key) as PlanUsage['providerUsage']);
-    return {projectId:this.scope.projectId,providerUsage,plan:{id:rights.id,active:rights.active,price:null,currency:null,provider:null,checkoutEnabled:false},period,
-      commercial:{catalogVersion:PLAN_CATALOG_VERSION,catalog:PLAN_CATALOG,preference:preference||null,canManage},
+    return {projectId:this.scope.projectId,providerUsage,plan:{id:rights.id,active:rights.active,price:null,currency:null,provider:null,checkoutEnabled:false,...(rights.id==='paid'?{paidPlan:rights.plan,endsAt:rights.endsAt,inGrace:rights.inGrace}:{})},period,
+      commercial:{catalogVersion:PLAN_CATALOG_VERSION,catalog:PLAN_CATALOG,preference:preference||null,canManage,livePurchase:rights.id!=='pilot'&&paytrLiveReadiness().ready},
       deliveryAllowed:rights.liveDeliveryAllowed&&rights.active,
       capacities:{seats:{limit:rights.seats,used:(this.db.prepare('SELECT COUNT(*) AS n FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE m.organization_id=? AND m.project_id=? AND m.active=1 AND u.active=1').get(...this.args()) as {n:number}).n},socialAccounts:{limit:rights.socialAccounts,used:(this.db.prepare("SELECT COUNT(*) AS n FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1 AND c.provider='social'").get(...this.args()) as {n:number}).n}},
       resources:(Object.keys(PILOT_LIMITS) as PlanResource[]).map(resource=>({resource,used:usage[resource],limit:rights.limits[resource],remaining:Math.max(0,rights.limits[resource]-usage[resource]),kind:monthlyResources.includes(resource as MonthlyResource)?'monthly' as const:'stored' as const,state:usage[resource]>rights.limits[resource]?'over_limit' as const:usage[resource]===rights.limits[resource]?'at_limit' as const:usage[resource]>=rights.limits[resource]*.8?'near_limit' as const:'available' as const})),monthly,recent};

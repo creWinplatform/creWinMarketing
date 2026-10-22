@@ -2,6 +2,15 @@
 
 18 October 2026. Implemented in the existing modular monolith, schema 25.
 
+> 22 October 2026 (schema 54): a live prepaid Launch or Growth period can now replace
+> trial rights. This applies while the period or its 7-day grace runs, and only for
+> self-service standard projects; pilot projects keep pilot rights. Paid limits
+> come from this catalog: AI drafts, audits, seats and social accounts.
+>
+> While live payment is enabled, the plan screen replaces the preference cards with
+> a pointer to "Plan and payment". Annual payment is available there (10× the
+> monthly price). See `SAAS-PAYTR.md`, "Live prepaid plans".
+
 ## Approved commercial direction, not live sales
 
 Catalog `2026-10-v1`: Launch USD 29/month (2 seats, 3 social accounts, 50 AI text

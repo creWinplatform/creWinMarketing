@@ -1114,6 +1114,31 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     ALTER TABLE platform_whatsapp_batches ADD COLUMN extras_json TEXT NOT NULL DEFAULT '{}';
     INSERT INTO platform_migrations(version,applied_at) VALUES(53,datetime('now'));
   `))();
+  // Live PayTR billing (behind PLATFORM_PAYTR_LIVE_ENABLED): prepaid monthly or yearly periods, no stored cards.
+  // A period exists only after a signed, amount-matching success notification; grace is 7 days after the period.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=54').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_billing_live_orders (
+      id TEXT PRIMARY KEY CHECK(id GLOB 'RZLIVE*'), organization_id TEXT NOT NULL, project_id TEXT NOT NULL, actor_id TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL, request_digest TEXT NOT NULL, merchant_revision TEXT NOT NULL, catalog_version TEXT NOT NULL,
+      plan_id TEXT NOT NULL CHECK(plan_id IN ('launch','growth')), cadence TEXT NOT NULL CHECK(cadence IN ('monthly','yearly')),
+      amount_minor INTEGER NOT NULL CHECK(amount_minor>0), currency TEXT NOT NULL DEFAULT 'USD' CHECK(currency='USD'),
+      state TEXT NOT NULL CHECK(state IN ('preparing','pending','paid','failed','rejected','uncertain','review')),
+      encrypted_token TEXT NOT NULL DEFAULT '', notification_digest TEXT, terms_url TEXT NOT NULL,
+      created_at TEXT NOT NULL, expires_at TEXT NOT NULL, updated_at TEXT NOT NULL, paid_at TEXT, revision INTEGER NOT NULL DEFAULT 1,
+      UNIQUE(organization_id,project_id,idempotency_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_billing_live_orders_scope ON platform_billing_live_orders(organization_id,project_id,created_at);
+    CREATE TABLE platform_project_subscriptions (
+      order_id TEXT PRIMARY KEY REFERENCES platform_billing_live_orders(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      plan_id TEXT NOT NULL CHECK(plan_id IN ('launch','growth')), cadence TEXT NOT NULL CHECK(cadence IN ('monthly','yearly')),
+      starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, grace_ends_at TEXT NOT NULL, created_at TEXT NOT NULL,
+      CHECK(starts_at<ends_at AND ends_at<grace_ends_at),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_project_subscriptions_scope ON platform_project_subscriptions(organization_id,project_id,ends_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(54,datetime('now'));
+  `))();
   return db;
 }
 

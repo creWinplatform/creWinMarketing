@@ -1,5 +1,9 @@
 # PayTR sandbox integration
 
+> 22 October 2026: live prepaid plans were added later (schema 54) behind their own
+> switch. See "Live prepaid plans (schema 54)" below; the sandbox boundary that
+> follows is unchanged.
+
 ## Delivered boundary
 
 This is a TEST-ONLY payment preparation and notification layer in the existing
@@ -135,6 +139,63 @@ persisted. An additive FK binds every inquiry to its original project order.
 
 The merchant is NOT ready yet, as confirmed by the user on 18 October 2026.
 No real provider status request, payment or financial account change was performed.
+
+## Live prepaid plans (schema 54)
+
+Live payment buys one prepaid period of a Launch or Growth plan for one
+self-service (trial or paid) standard project. Decisions recorded 22 October 2026:
+USD only, monthly or yearly periods, and a 7-day grace after a period ends.
+
+| Plan | Monthly | Yearly (2 months free) | Seats | Social | AI / month | Audits / month |
+| --- | --- | --- | --- | --- | --- | --- |
+| Launch | $29 | $290 | 2 | 3 | 50 | 10 |
+| Growth | $79 | $790 | 5 | 5 | 200 | 25 |
+
+Boundary:
+
+- No stored card, no automatic renewal, no recurring charge. Renewal is a new
+  prepaid purchase that opens 14 days before the latest period ends (or during
+  grace). A renewed period starts at the latest end, so periods are contiguous.
+- Periods are calendar based in UTC (31 January + 1 month = end of February).
+  Rights hold until `grace_ends_at`; the plan screen and the workspace show the
+  grace notice. After grace the project falls back to its base row (an expired
+  trial), new work stops and records are kept.
+- Operator-provisioned pilot projects cannot buy a period: a paid period never
+  replaces pilot rights, so the purchase form is hidden and the API refuses.
+- Rights are created only from PayTR's signed notification for an `RZLIVE` order
+  whose amount, currency (USD), `test_mode=0` and payment type match the frozen
+  order. A second differing notice, a notice for a settled order or any metadata
+  mismatch sends the order to `review` and opens nothing. A repeated identical
+  notice is ignored. Returning browsers never change state.
+- The live form needs a verified account email, the project owner
+  (`billing.manage`), contact details sent only to PayTR, and an explicit tick for
+  the terms at `PLATFORM_BILLING_TERMS_URL`. One open order at a time, 10
+  attempts a day, idempotent by request key. Tokens are AES-GCM encrypted with
+  the order id as additional data.
+- Sandbox (`RZTEST`) and live (`RZLIVE`) orders live in separate tables and are
+  routed separately by the shared notification URL; neither can settle the other.
+- Invoices, refunds and tax documents remain manual (accounting). The page says so.
+
+Switches (all off by default in `.env.local.example`):
+
+1. `PLATFORM_PAYTR_LIVE_ENABLED=1` only after the PayTR merchant contract, USD
+   approval and a live acceptance plan are confirmed.
+2. The shared merchant values (`_MERCHANT_ID`, `_KEY`, `_SALT`), `_USD_ENABLED=1`
+   and an HTTPS `PLATFORM_PAYTR_ORIGIN`.
+3. `PLATFORM_BILLING_TERMS_URL`: an HTTPS page with the distance sales contract
+   and pre-contract information. Without it live stays closed.
+
+The operator console's PayTR item lists exactly which of these checks is missing
+without printing any value. Before the first real customer, the operator makes one
+small real purchase on a dedicated project, confirms the period, then handles the
+refund manually. Development made no live PayTR request.
+
+Verification: `test/platform-billing-live.test.cjs` (default off, gates, prices,
+terms/email/owner, `test_mode=0`, idempotency, paid limits, review cases, no
+sandbox/live mixing, renewal window, grace and fallback, calendar periods, pilot
+refusal, operator item, repeatable migration). `scripts/preview-design.cjs --dev
+--live-billing` shows the screen with disposable merchant values (add
+`--live-billing-pilot` for the pilot view); never press Pay there.
 
 ## Primary references (18 October 2026)
 

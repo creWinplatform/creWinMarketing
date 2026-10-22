@@ -2,6 +2,7 @@ import 'server-only';
 import type Database from 'better-sqlite3';
 import { PILOT_LIMITS } from './limits';
 import { MarketingStoreError } from './errors';
+import { PLAN_CATALOG } from './plan-catalog';
 
 type Scope = { organizationId: string; projectId: string };
 export const TRIAL_LIMITS = Object.freeze({ ai: 10, audits: 3, campaigns: 10, content: 25, tasks: 25, members: 10 });
@@ -9,11 +10,23 @@ export const TRIAL_DAYS = 14;
 type EntitlementRow = { mode: 'pilot' | 'trial'; started_at: string; ends_at: string | null };
 
 // Only baseline rights are persisted. A package preference or sandbox payment cannot grant paid rights.
+type PaidRow = { plan_id: string; starts_at: string; ends_at: string; grace_ends_at: string };
+function paidPeriod(db: Database.Database, scope: Scope): PaidRow | undefined {
+  const at = new Date().toISOString();
+  try { return db.prepare('SELECT plan_id,starts_at,ends_at,grace_ends_at FROM platform_project_subscriptions WHERE organization_id=? AND project_id=? AND starts_at<=? AND grace_ends_at>? ORDER BY ends_at DESC LIMIT 1').get(scope.organizationId, scope.projectId, at, at) as PaidRow | undefined; }
+  catch { return undefined; }
+}
 export function projectEntitlement(db: Database.Database, scope: Scope) {
   const project = db.prepare('SELECT product_pack FROM platform_projects WHERE id=? AND organization_id=?').get(scope.projectId, scope.organizationId) as {product_pack: string} | undefined;
   if (!project) throw new MarketingStoreError('Proje bulunamadı.', 404);
   const row = project.product_pack === 'crewin' ? {mode: 'pilot' as const, started_at: '', ends_at: null} : db.prepare('SELECT mode,started_at,ends_at FROM platform_project_entitlements WHERE organization_id=? AND project_id=?').get(scope.organizationId, scope.projectId) as EntitlementRow | undefined;
   if (!row || !['pilot', 'trial'].includes(row.mode)) throw new MarketingStoreError('Proje planı doğrulanamadı.', 409);
+  // A paid period (created only from a signed, amount-matching PayTR notification) replaces trial rights while it or
+  // its 7-day grace runs. Pilot projects keep their pilot rights. After the grace the project falls back to its base row.
+  const paid = project.product_pack === 'standard' && row.mode !== 'pilot' ? paidPeriod(db, scope) : undefined;
+  const plan = paid && PLAN_CATALOG.find(item => item.id === paid.plan_id);
+  if (paid && plan) return { id: 'paid' as const, plan: plan.id, active: true, startsAt: paid.starts_at, endsAt: paid.ends_at, graceEndsAt: paid.grace_ends_at, inGrace: paid.ends_at <= new Date().toISOString(),
+    limits: { ...PILOT_LIMITS, ai: plan.ai, audits: plan.audits, members: plan.seats }, seats: plan.seats, socialAccounts: plan.socialAccounts, liveDeliveryAllowed: true, periodKey: null };
   const trial = row.mode === 'trial';
   if (trial && (!Number.isFinite(Date.parse(row.started_at)) || !row.ends_at || !Number.isFinite(Date.parse(row.ends_at)) || Date.parse(row.ends_at) - Date.parse(row.started_at) !== TRIAL_DAYS * 86400000)) throw new MarketingStoreError('Deneme dönemi doğrulanamadı.', 409);
   const active = !trial || Date.now() >= Date.parse(row.started_at) && Date.now() < Date.parse(row.ends_at!);

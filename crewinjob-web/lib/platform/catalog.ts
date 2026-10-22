@@ -63,7 +63,7 @@ export type WorkspaceContext = {
   modules: ModuleDefinition[];
   accessMode: 'legacy_single_account' | 'platform_account';
   permissions?: WorkspacePermission[];
-  plan?: {id:'pilot'|'trial';active:boolean;endsAt:string|null};
+  plan?: {id:'pilot'|'trial'|'paid';active:boolean;endsAt:string|null;inGrace?:boolean};
 };
 
 export const CREWIN_PROJECT: ProjectProfile = {

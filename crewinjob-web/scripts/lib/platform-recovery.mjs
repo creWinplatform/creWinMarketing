@@ -5,7 +5,7 @@ import { lstat, open, readFile, realpath } from 'node:fs/promises';
 import { join, parse, relative, resolve, sep } from 'node:path';
 
 // Bump alongside schema changes and add any new encrypted-column AAD contracts.
-export const MAX_RECOVERY_SCHEMA = 53;
+export const MAX_RECOVERY_SCHEMA = 54;
 const MAX_DATABASE_BYTES = 4 * 1024 ** 3;
 const identifier = value => `"${value.replaceAll('"', '""')}"`;
 export class RecoveryError extends Error {
@@ -99,6 +99,7 @@ const ENCRYPTED_COLUMNS = [
   { since: 24, table: 'platform_billing_orders', column: 'encrypted_token', resource: row => row.id },
   { since: 29, table: 'platform_mobile_contacts', column: 'encrypted_destination', resource: row => `mobile-contact:${row.id}` },
   { since: 29, table: 'platform_mobile_messages', column: 'encrypted_snapshot', resource: row => `mobile-message:${row.job_id}` },
+  { since: 54, table: 'platform_billing_live_orders', column: 'encrypted_token', resource: row => row.id },
 ];
 
 export function inspectSnapshot(file, key, expectedSchema) {

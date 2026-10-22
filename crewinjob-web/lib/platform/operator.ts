@@ -9,7 +9,7 @@ import { identityEmailConfiguration } from './identity-email';
 import { linkedinConfiguration } from './linkedin-client';
 import { linkedinOrganizationConfiguration } from './linkedin-organization-publishing';
 import { metaConfiguration } from './meta-client';
-import { paytrConfiguration } from './paytr';
+import { paytrConfiguration, paytrLiveReadiness } from './paytr';
 import { publicEmailOrigin } from './email-safety';
 import { metaInboxHookConfigured } from './social-inbox';
 import { xConfiguration } from './x-client';
@@ -26,6 +26,17 @@ const item = (id: string, group: ReadinessGroup, state: ReadinessState, label: L
 const toggle = (id: string, group: ReadinessGroup, name: string, label: LocalizedText, onText: LocalizedText, offText: LocalizedText) =>
   item(id, group, on(name) ? 'ready' : 'off', label, on(name) ? onText : offText, [name]);
 
+// Live payments need the switch, merchant details, USD approval, an https origin and a public terms page.
+function paytrItem(): ReadinessItem {
+  const env = ['PLATFORM_PAYTR_LIVE_ENABLED', 'PLATFORM_PAYTR_MERCHANT_ID', 'PLATFORM_PAYTR_MERCHANT_KEY', 'PLATFORM_PAYTR_MERCHANT_SALT', 'PLATFORM_PAYTR_USD_ENABLED', 'PLATFORM_PAYTR_ORIGIN', 'PLATFORM_BILLING_TERMS_URL'];
+  const label = l('Ödeme (PayTR)', 'Payments (PayTR)');
+  let config: ReturnType<typeof paytrConfiguration> | null = null; try { config = paytrConfiguration(); } catch { config = null; }
+  const live = config ? paytrLiveReadiness(config) : null;
+  if (live?.ready) return item('paytr', 'billing', 'ready', label, l('Canlı ödeme açık: peşin aylık veya yıllık dönem, kart saklanmaz. Plan yalnız imzalı ve tutarı tutan bildirimle açılır.', 'Live payments on: prepaid monthly or yearly periods, no stored cards. A plan opens only on a signed, amount-matching notice.'), env);
+  if (live?.checks.gate) { const missing = (Object.entries(live.checks) as [string, boolean][]).filter(([, ok]) => !ok).map(([name]) => name).join(', ');
+    return item('paytr', 'billing', 'missing', label, l(`Canlı ödeme anahtarı açık ama eksik: ${missing}.`, `The live switch is on but these are missing: ${missing}.`), env); }
+  return item('paytr', 'billing', config?.readiness.ready ? 'warning' : 'off', label, config?.readiness.ready ? l('Yalnız sandbox: gerçek ödeme alınmaz.', 'Sandbox only: no real payment is taken.') : l('Kapalı.', 'Off.'), env);
+}
 export function operatorReadiness(db: Database.Database): ReadinessSnapshot {
   const encryption = process.env.PLATFORM_ENCRYPTION_KEY || '';
   const keyFile = join(dirname(process.env.PLATFORM_DATABASE_PATH || join(process.cwd(), 'data', 'platform.sqlite')), 'platform-credentials.key');
@@ -68,7 +79,7 @@ export function operatorReadiness(db: Database.Database): ReadinessSnapshot {
     // AI
     item('gemini', 'ai', gemini ? 'ready' : 'missing', l('AI sağlayıcısı (Gemini)', 'AI provider (Gemini)'), gemini ? l('Tanımlı. "Dene" ile anahtarın ve modelin çalıştığını doğrulayabilirsiniz; içerik üretilmez.', 'Set. "Check" confirms the key and model work; no content is generated.') : l('Tanımlı değil; teşhis ve öneriler kural tabanlı çalışır.', 'Not set; diagnosis and suggestions use the rule-based path.'), ['PLATFORM_GEMINI_API_KEY', 'PLATFORM_GEMINI_MODEL'], gemini ? 'gemini' : undefined),
     // Billing
-    item('paytr', 'billing', works(paytrConfiguration) ? 'warning' : 'off', l('Ödeme (PayTR)', 'Payments (PayTR)'), works(paytrConfiguration) ? l('Yalnız sandbox: gerçek ödeme alınmaz.', 'Sandbox only: no real payment is taken.') : l('Kapalı.', 'Off.'), ['PLATFORM_PAYTR_SANDBOX_ENABLED', 'PLATFORM_PAYTR_MERCHANT_ID', 'PLATFORM_PAYTR_MERCHANT_KEY', 'PLATFORM_PAYTR_MERCHANT_SALT', 'PLATFORM_PAYTR_ORIGIN']),
+    paytrItem(),
   ];
   // Customer connections in standard projects: how many are active and how many passed a publish check this week.
   const week = new Date(Date.now() - 7 * 86400000).toISOString();
