@@ -20,6 +20,10 @@
   .auth-page .auth-password .icon-button { min-width:44px; min-height:44px; }
   .workspace-shell .icon-button { min-width:44px; min-height:44px; }
   .workspace-shell :is(.studio-primary,.studio-secondary,.studio-text-button) { min-height:44px; }
+  /* The Compass and coach dialogs render outside the shell; give them the same touch sizes and 16px fields (no iOS zoom). */
+  .growth-compass :is(input:not([type=checkbox]):not([type=radio]),select,textarea) { font-size:16px !important; }
+  .growth-compass :is(.studio-primary,.studio-secondary,.studio-text-button) { min-height:44px; }
+  .growth-compass .icon-button { min-width:44px; min-height:44px; }
   .workspace-shell .studio-channel-choices label { min-height:44px; }
   .workspace-shell .workspace-topbar { height:auto; min-height:64px; flex-wrap:wrap; row-gap:8px; }
   .workspace-shell .workspace-header-actions { flex-wrap:wrap; max-width:100%; margin-left:auto; }
