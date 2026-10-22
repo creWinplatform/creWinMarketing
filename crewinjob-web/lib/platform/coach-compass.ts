@@ -7,7 +7,8 @@ const CHANNEL:Partial<Record<CoachChannel,CompassChannel>>={linkedin:'linkedin_c
 export type CompassSuggestion={intent:CompassIntent;channels:CompassChannel[];goalId:string};
 export function compassFromBrief(brief:CoachBrief,answers:CoachAnswers|null,goals:{id:string}[]):CompassSuggestion{
   const first=brief.channels[0]?.id,channels=brief.channels.map(item=>CHANNEL[item.id]).filter((item):item is CompassChannel=>Boolean(item)).slice(0,3);
-  const intent:CompassIntent=first==='seo'?'seo':answers?.market==='b2c'&&['instagram','facebook','twitter'].includes(first||'')?'social':'leads';
+  // The goal the team chose in the diagnosis sets the path; older answers without a goal fall back to the first channel.
+  const intent:CompassIntent=answers?.goal?answers.goal:first==='seo'?'seo':answers?.market==='b2c'&&['instagram','facebook','twitter'].includes(first||'')?'social':'leads';
   return {intent,channels,goalId:goals.length===1?goals[0].id:''};
 }
 export function coachState(db:Database.Database,organizationId:string,projectId:string){

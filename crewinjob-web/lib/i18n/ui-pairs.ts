@@ -240,6 +240,7 @@ export const UI_PAIRS: Record<string, string> = {
   "Reklam (Meta)": "Ads (Meta)",
   "Reklam Kampanyası": "Ad Campaign",
   "Reklam verileri yüklenemedi.": "Couldn't load ads data.",
+  "Rotanız teşhiste seçtiğiniz hedeften kuruldu. Uygunsa bu adımlarla ilerleyin; değilse “Rotayı değiştir” ile başka bir hedef seçin.": "Your path was built from the goal you chose in the diagnosis. If it fits, follow these steps; if not, use “Change path” to pick another goal.",
   "Sağlayıcı hazır": "Provider ready",
   "sayfa tamamlanamadı": "pages failed",
   "Search Console bağlı değil. Proje ayarları → Bağlantılar’dan sitenizin mülkünü bağlayın.": "Search Console is not connected. Connect your site property in Project settings → Connections.",

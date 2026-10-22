@@ -23,7 +23,8 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
   const tr=lang==='tr',idx=tr?0:1;
   const [data,setData]=useState<CompassSnapshot|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
   const [opened,setOpened]=useState(false),[view,setView]=useState<'setup'|'plan'|'guide'>('plan'),[guideId,setGuideId]=useState<GuideId>('linkedin_company'),[draft,setDraft]=useState<Draft>(empty);
-  const dialog=useRef<HTMLDialogElement>(null),previousFocus=useRef<HTMLElement|null>(null),request=useRef<AbortController|null>(null),firstConsidered=useRef(false),draftRevision=useRef(0);
+  const dialog=useRef<HTMLDialogElement>(null),previousFocus=useRef<HTMLElement|null>(null),request=useRef<AbortController|null>(null),firstConsidered=useRef(false),draftRevision=useRef(0),pendingShow=useRef(false);
+  const [routeNote,setRouteNote]=useState('');
   const callbackVisit=useRef(typeof window!=='undefined'&&['googleConnection','socialConnection','metaConnection','linkedinOrganizationConnection','xConnection'].some(key=>new URLSearchParams(window.location.search).has(key)));
   const refresh=useCallback(()=>{
     if(!enabled)return;request.current?.abort();const controller=new AbortController();request.current=controller;setLoading(true);setError('');
@@ -50,7 +51,14 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
     if(!opened)return;dialog.current?.querySelector<HTMLElement>('#compass-title')?.focus();
     dialog.current?.querySelector<HTMLElement>('.compass-scroll')?.scrollTo(0,0);
   },[opened,view,guideId]);
-  const open=()=>{setNotice('');setView(data?.preferences?'plan':'setup');draftRevision.current=data?.preferences?.revision||0;setDraft(data?.preferences||initial(data));setOpened(true);refresh();};
+  // After a brief is approved the coach asks the Compass to show the path built from the stated goal.
+  useEffect(()=>{const show=()=>{pendingShow.current=true;refresh();};window.addEventListener('ryzevo:compass-show-path',show);return()=>window.removeEventListener('ryzevo:compass-show-path',show);},[refresh]);
+  useEffect(()=>{
+    if(!pendingShow.current||!data?.preferences)return;pendingShow.current=false;
+    setNotice('');setRouteNote(tr?'Rotanız teşhiste seçtiğiniz hedeften kuruldu. Uygunsa bu adımlarla ilerleyin; değilse “Rotayı değiştir” ile başka bir hedef seçin.':'Your path was built from the goal you chose in the diagnosis. If it fits, follow these steps; if not, use “Change path” to pick another goal.');
+    setView('plan');draftRevision.current=data.preferences.revision;setDraft(data.preferences);setOpened(true);
+  },[data,tr]);
+  const open=()=>{setNotice('');setRouteNote('');setView(data?.preferences?'plan':'setup');draftRevision.current=data?.preferences?.revision||0;setDraft(data?.preferences||initial(data));setOpened(true);refresh();};
   const guide=(id:GuideId)=>{setGuideId(id);setNotice('');setView('guide');setOpened(true);refresh();};
   const post=async(body:object)=>projectRequest<CompassSnapshot>('/api/platform/compass',{method:'POST',body:JSON.stringify(body)});
   const save=async(input:Draft,revision=data?.preferences?.revision||0)=>{
@@ -70,7 +78,7 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}finally{setBusy(false);}
   };
   const currentGuide=connectionGuide(guideId)!,provider=data?.providers.find(item=>item.id===guideId),next=data?.steps.find(item=>item.id===data.nextStepId);
-  const edit=()=>{setDraft(data?.preferences||empty);draftRevision.current=data?.preferences?.revision||0;setView('setup');setNotice('');};
+  const edit=()=>{setRouteNote('');setDraft(data?.preferences||empty);draftRevision.current=data?.preferences?.revision||0;setView('setup');setNotice('');};
   const selectIntent=(intent:CompassIntent)=>setDraft(old=>({...old,intent,channels:[...COMPASS_PATHS[intent].channels],campaignId:'',appId:''}));
   const value:Context={data,error,loading,refresh,open,guide};
   if(!enabled)return <>{children}</>;
@@ -90,6 +98,7 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
           <footer className="compass-actions"><button type="button" className="studio-text-button" disabled={busy} onClick={()=>data.preferences?setView('plan'):void close()}>{data.preferences?(tr?'Vazgeç':'Cancel'):(tr?'Şimdilik keşfedeceğim':'Explore for now')}</button><button className="studio-primary" disabled={busy}>{busy?(tr?'Kaydediliyor…':'Saving…'):(tr?'Rotamı oluştur':'Build my path')}<ArrowRight size={16}/></button></footer>
         </form>}
         {data&&view==='plan'&&<>
+          {routeNote&&<p className="compass-notice" role="status">{routeNote}</p>}
           <div className="compass-plan-summary"><div><span>{data.preferences?COMPASS_PATHS[data.preferences.intent].label[lang]:''}</span><strong>{data.completed}<small> / {data.total} {tr?'adım doğrulandı':'steps verified'}</small></strong></div><button className="studio-text-button" onClick={edit}>{tr?'Rotayı değiştir':'Change path'}</button><progress max={data.total||1} value={data.completed} aria-label={tr?'Doğrulanmış adımlar':'Verified steps'}/></div>
           {(data.campaigns.length>0||data.apps.length>0)&&<div className="compass-bindings">{data.preferences?.intent!=='seo'&&data.campaigns.length>0&&<label>{tr?'Bu rotadaki kampanya':'Campaign for this path'}<select aria-label={tr?'Bu rotadaki kampanya':'Campaign for this path'} disabled={busy} value={data.boundCampaignId||''} onChange={event=>void save({...data.preferences!,campaignId:event.target.value})}><option value="">{tr?'Kampanya seç':'Select a campaign'}</option>{data.campaigns.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}{data.preferences?.intent==='mobile'&&data.apps.length>0&&<label>{tr?'Mobil uygulama':'Mobile app'}<select aria-label={tr?'Mobil uygulama':'Mobile app'} disabled={busy} value={data.boundAppId||''} onChange={event=>void save({...data.preferences!,appId:event.target.value})}><option value="">{tr?'Uygulama seç':'Select app'}</option>{data.apps.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</div>}
           <ol className={`compass-steps ${data.preferences?.experience==='experienced'?'compact':''}`}>

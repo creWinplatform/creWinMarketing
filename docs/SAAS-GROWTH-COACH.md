@@ -199,10 +199,16 @@ Same rules as Phases 1 and 2:
 
 **First visit, no brief yet.** The Compass knows the coach state (`coach.hasBrief`, `hasDraft`, `canDiagnose`). On the first visit of a member who can write, it opens the growth diagnosis instead of its own first-run dialog. Closing that start without a diagnosis defers the Compass first run, as closing the Compass does.
 
+**The goal comes first (22 October 2026).** The diagnosis opens with a required "What is your main goal?" question. Its five answers are the five Compass paths: qualified leads, social reach, retention, SEO and mobile.
+- **Why:** before this, the path was guessed from the brief's first channel and B2B/B2C. The form defaults (online sales, website, writing) pushed most new accounts to the SEO path, even a B2C team that wanted course sign-ups.
+- **Channels:** the rule-based starter weighs the goal most when ranking channels, and the AI prompt is told to serve that goal first.
+- **Older answers:** answers saved before the question existed have no goal and keep the old inference.
+
 **After approval.** The approved brief suggests a Compass path (`lib/platform/coach-compass.ts`):
+- Priority: the goal chosen in the diagnosis. Without one, search when the first channel is search, social when B2C starts on a social channel, otherwise leads.
 - Channels: LinkedIn → company page, Instagram, Facebook, X, email; search is left out.
-- Priority: search when the first channel is search; social when B2C starts on a social channel; otherwise leads.
-- Goal: the goal only if there is exactly one.
+- Project goal: linked only when the project has exactly one.
+- The Compass then opens on that path with a note that it was built from the chosen goal, and that "Change path" picks another one.
 
 On approval, only the approver's own Compass path is seeded, and only if they have none or only an empty deferral. Other members keep their choices; their Compass first run opens pre-filled from the brief, with a note saying so.
 

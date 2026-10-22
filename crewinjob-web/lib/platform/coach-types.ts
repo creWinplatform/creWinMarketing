@@ -1,6 +1,9 @@
 import type { LocalizedText } from './catalog';
 // Growth coach: diagnosis answers → reviewed/approved strategy brief → weekly next-best actions.
 // Client-safe constants and types only; the server store lives in coach.ts.
+// The team's main goal; the same five paths as the Growth Compass, so the approved brief can set the path directly.
+export const COACH_GOALS=['leads','social','retention','seo','mobile'] as const;
+export type CoachGoal=typeof COACH_GOALS[number];
 export const COACH_MARKETS=['b2b','b2c','both'] as const;
 export const COACH_PRICES=['free','low','mid','high'] as const;
 export const COACH_SALES=['online','sales','local'] as const;
@@ -13,6 +16,8 @@ export const COACH_TOOLS=['library','campaigns','seo','calendar','project','conn
 export type CoachChannel=typeof COACH_CHANNELS[number];
 export type CoachTool=typeof COACH_TOOLS[number];
 export type CoachAnswers={
+  /** Missing only in answers saved before the goal question existed. */
+  goal?:CoachGoal;
   offer:string;customer:string;market:typeof COACH_MARKETS[number];price:typeof COACH_PRICES[number];sales:typeof COACH_SALES[number];
   current:(typeof COACH_CURRENT[number])[];hours:typeof COACH_HOURS[number];skills:(typeof COACH_SKILLS[number])[];
   obstacle:typeof COACH_OBSTACLES[number];success:string;

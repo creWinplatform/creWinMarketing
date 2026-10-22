@@ -4,7 +4,7 @@ import { ArrowRight, CalendarPlus, Check, ChevronLeft, Clock3, Lightbulb, Plus, 
 import type { LocalizedText, Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import { COACH_CHANNELS, COACH_CURRENT, COACH_HOURS, COACH_MARKETS, COACH_OBSTACLES, COACH_PREFILL_KEY, COACH_PRICES, COACH_SALES, COACH_SKILLS, COACH_TOOLS, diffBriefs, type CoachAction, type CoachAnswers, type CoachBrief, type CoachChannel, type CoachSnapshot, type CoachTool } from '@/lib/platform/coach-types';
+import { COACH_CHANNELS, COACH_CURRENT, COACH_HOURS, COACH_GOALS, COACH_MARKETS, COACH_OBSTACLES, COACH_PREFILL_KEY, COACH_PRICES, COACH_SALES, COACH_SKILLS, COACH_TOOLS, diffBriefs, type CoachAction, type CoachAnswers, type CoachGoal, type CoachBrief, type CoachChannel, type CoachSnapshot, type CoachTool } from '@/lib/platform/coach-types';
 import Msg from '@/components/Msg';
 import { briefChangeLines } from './coach-changes';
 import { useCompassRefresh } from './GrowthCompass';
@@ -13,6 +13,13 @@ import CoachAssign from './CoachAssign';
 type Pair=[string,string];
 type EditBrief=Omit<CoachBrief,'icp'>&{icp:{summary:string;pains:string}};
 const emptyAnswers:CoachAnswers={offer:'',customer:'',market:'b2b',price:'mid',sales:'online',current:['website'],hours:'2to5',skills:['writing'],obstacle:'start',success:''};
+const goalChoices:Record<CoachGoal,[string,string,string,string]>={
+  leads:['Nitelikli talep ve müşteri','Qualified leads and customers','Kayıt, teklif isteği, satış görüşmesi','Sign-ups, quote requests, sales calls'],
+  social:['Sosyal medyada erişim','Social reach','Daha çok kişiye ulaşmak ve etkileşim','Reaching more people and engagement'],
+  retention:['Mevcut kullanıcıyı etkinleştirme','Activate existing users','Kayıtlı kullanıcıları geri getirmek','Bringing registered users back'],
+  seo:['Organik arama trafiği','Organic search traffic','Google’da bulunmak','Being found on Google'],
+  mobile:['Mobil uygulama büyümesi','Mobile app growth','Uygulama kullanımı ve dönüş','App use and return visits'],
+};
 const choices={
   market:{b2b:['İşletmeler (B2B)','Businesses (B2B)'],b2c:['Bireyler (B2C)','Individuals (B2C)'],both:['Her ikisi','Both']},
   price:{free:['Ücretsiz / freemium','Free or freemium'],low:['Düşük · hızlı karar','Low · quick decision'],mid:['Orta · karşılaştırarak alınır','Mid · compared before buying'],high:['Yüksek · görüşme veya teklif gerekir','High · needs a conversation or quote']},
@@ -66,7 +73,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   const saveBrief=async(action:'save'|'approve')=>{
     if(!data||!edit||busy)return;setBusy(action);setDialogError('');
     try{const value=await post<CoachSnapshot>({action,brief:fromEdit(edit),expectedRevision:data.revision});setData(value);
-      setCalendarNotice(false);onChange?.();if(action==='approve'){firstStart.current=false;refreshCompass();setOpened(false);setNotice(tr?'Strateji briefi onaylandı. Bu haftanın eylemleri aşağıda.':'Strategy brief approved. This week’s actions are below.');}
+      setCalendarNotice(false);onChange?.();if(action==='approve'){firstStart.current=false;refreshCompass();setOpened(false);window.dispatchEvent(new Event('ryzevo:compass-show-path'));setNotice(tr?'Strateji briefi onaylandı. Bu haftanın eylemleri aşağıda.':'Strategy brief approved. This week’s actions are below.');}
       else setNotice(tr?'Taslak kaydedildi. Onaylanana kadar haftalık plan değişmez.':'Draft saved. The weekly plan doesn’t change until it is approved.');}
     catch(reason){setDialogError(fail(reason));}finally{setBusy('');}
   };
@@ -118,7 +125,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
     {notice&&<p className="studio-success" role="status"><Msg text={notice}/>{calendarNotice&&<> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}</a></>}</p>}
     {!data&&!error&&<p className="studio-skeleton" role="status">{tr?'Büyüme koçu yükleniyor…':'Loading growth coach…'}</p>}
     {data&&!brief&&!pending&&<div className="coach-intro">
-      <div><h3>{tr?'Nereden başlayacağınızdan emin değil misiniz?':'Not sure where to start?'}</h3><p>{tr?'Ürününüz ve ekibiniz hakkında 10 kısa soruyu yanıtlayın. Ryzevo; ideal müşteri, konumlandırma, 2–3 öncelikli kanal ve 30 günlük bir plan içeren bir strateji briefi taslağı hazırlar. Siz inceleyip düzenler ve onaylarsınız.':'Answer 10 short questions about your product and team. Ryzevo drafts a strategy brief — ideal customer, positioning, 2–3 priority channels and a 30-day plan — for you to review, edit and approve.'}</p></div>
+      <div><h3>{tr?'Nereden başlayacağınızdan emin değil misiniz?':'Not sure where to start?'}</h3><p>{tr?'Ana hedefinizi seçin ve ürününüz ile ekibiniz hakkında 10 kısa soruyu yanıtlayın. Ryzevo; ideal müşteri, konumlandırma, 2–3 öncelikli kanal ve 30 günlük bir plan içeren bir strateji briefi taslağı hazırlar. Siz inceleyip düzenler ve onaylarsınız.':'Pick your main goal and answer 10 short questions about your product and team. Ryzevo drafts a strategy brief — ideal customer, positioning, 2–3 priority channels and a 30-day plan — for you to review, edit and approve.'}</p></div>
       {data.canWrite?<button type="button" className="studio-primary" onClick={openQuestions}>{tr?'Teşhise başla':'Start the diagnosis'}<ArrowRight size={16}/></button>:<p className="coach-muted">{tr?'Teşhisi içerik yetkisi olan bir ekip üyesi başlatabilir.':'A teammate with content permission can start the diagnosis.'}</p>}
     </div>}
     {data&&pending&&<div className="coach-pending" role="status"><div><strong>{brief?(tr?'Güncellenmiş bir brief taslağı onay bekliyor.':'A revised brief draft is waiting for approval.'):(tr?'Strateji briefi taslağınız inceleme bekliyor.':'Your strategy brief draft is waiting for review.')}</strong><span>{data.draftSource==='ai'?(tr?'AI önerisi':'AI suggestion'):(tr?'Yanıtlarınızdan kural tabanlı başlangıç':'Rule-based starter from your answers')}{data.draftAt?` · ${date(data.draftAt)}`:''}</span></div><button type="button" className="studio-secondary" onClick={()=>openReview(pending)}>{tr?'Taslağı incele':'Review draft'}<ArrowRight size={15}/></button></div>}
@@ -135,6 +142,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
         {data&&view==='questions'&&<form className="coach-questions" onSubmit={event=>void diagnose(data.aiConfigured?'ai':'template',event)}>
           <p className="compass-intro">{tr?'Kısa ve kendi kelimelerinizle yanıtlayın. Doğru ya da yanlış yanıt yok; her şeyi sonra düzenleyebilirsiniz.':'Answer briefly, in your own words. There are no wrong answers; you can edit everything later.'}</p>
           <fieldset disabled={Boolean(busy)}>
+            <fieldset className="coach-options coach-goal"><legend>{tr?'Ana hedefiniz ne?':'What is your main goal?'}</legend><small>{tr?'Büyüme rotanız bu seçime göre kurulur; sonra değiştirebilirsiniz.':'Your growth path is built from this choice; you can change it later.'}</small>{COACH_GOALS.map((value,index)=><label key={value} className={answers.goal===value?'selected':''}><input type="radio" name="coach-goal" required={index===0} checked={answers.goal===value} onChange={()=>setAnswers({...answers,goal:value})}/><span>{goalChoices[value][idx]}<small>{goalChoices[value][idx+2]}</small></span></label>)}</fieldset>
             <label className="coach-field"><span>1. {tr?'Ne satıyorsunuz?':'What do you sell?'}</span><small>{tr?'Bir müşteriye anlatır gibi, tek cümleyle.':'In one sentence, as you would tell a customer.'}</small><textarea aria-label={tr?'Ne satıyorsunuz?':'What do you sell?'} required maxLength={300} rows={2} value={answers.offer} onChange={event=>setAnswers({...answers,offer:event.target.value})}/></label>
             <label className="coach-field"><span>2. {tr?'Kim satın alıyor?':'Who buys it?'}</span><small>{tr?'Rol, işletme türü veya yaşam durumu.':'Role, type of business or life situation.'}</small><textarea aria-label={tr?'Kim satın alıyor?':'Who buys it?'} required maxLength={300} rows={2} value={answers.customer} onChange={event=>setAnswers({...answers,customer:event.target.value})}/></label>
             {([['market',tr?'3. Müşterileriniz kim?':'3. Who are your customers?',COACH_MARKETS],['price',tr?'4. Fiyat düzeyi nasıl?':'4. What is the price point?',COACH_PRICES],['sales',tr?'5. Satış nerede gerçekleşiyor?':'5. Where does the sale happen?',COACH_SALES]] as const).map(([key,legend,list])=><fieldset key={key} className="coach-options"><legend>{legend}</legend>{list.map(value=><label key={value} className={answers[key]===value?'selected':''}><input type="radio" name={`coach-${key}`} checked={answers[key]===value} onChange={()=>setAnswers({...answers,[key]:value})}/>{(choices[key] as Record<string,Pair>)[value][idx]}</label>)}</fieldset>)}
