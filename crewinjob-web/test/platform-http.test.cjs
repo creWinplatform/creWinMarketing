@@ -59,6 +59,22 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.match(welcomeHtml, /<title>[^<]*Ryzevo<\/title>/);
     assert.match(welcomeHtml, /\/brand\/ryzevo-brand-board.png/);
     assert.ok(!welcomeHtml.includes('Crewin Marketing'));
+    // Public guide and legal pages need no session; the legal drafts stay out of search engines and the footer.
+    assert.match(welcomeHtml, /href="\/guide"/);
+    assert.doesNotMatch(welcomeHtml, /href="\/legal\/(sales|privacy)"/, 'draft legal pages are not linked yet');
+    const guide = await request('/guide');
+    assert.equal(guide.status, 200);
+    assert.doesNotMatch(await guide.text(), /noindex/);
+    const contract = await request(`/api/platform/billing/live?contract=RZLIVE${'a'.repeat(32)}`);
+    assert.equal(contract.status, 401, 'a stored contract is never served without a session');
+    assert.doesNotMatch(contract.headers.get('content-type') || '', /text\/plain/);
+    for (const page of ['/legal/sales', '/legal/privacy']) {
+      const response = await request(page);
+      assert.equal(response.status, 200, page);
+      const html = await response.text();
+      assert.match(html, /<meta name="robots" content="noindex, nofollow"/, page);
+      assert.match(html, /class="rd-ph"/, `${page} shows its unfilled placeholders`);
+    }
     assert.equal((await request('/brand/ryzevo-brand-board.png')).status,200);
     assert.equal((await request('/join')).status,200);
     for(const route of ['/recover','/register','/account/verify']){const response=await request(route);assert.equal(response.status,200);assert.match(await response.text(),/noindex/);}
