@@ -6,6 +6,8 @@ and an operator-approved live acceptance are different milestones.
 
 ## Delivered on 23 October 2026
 
+- **Pilot account checklist** (`PILOT-HESAP-KONTROL-LISTESI.md`): what to prepare for SES, the live server, Google, Meta (Page, Instagram, WhatsApp, ads), LinkedIn and X, with the exact callbacks and permissions, and how each is tested.
+
 - **Terms page and user guide:**
   - `/legal/sales` is a draft template and is noindex until the seller details and the legal review are complete; live payment refuses it until then. See `SAAS-PAYTR.md`.
   - `/guide` is the pilot team's user guide.
@@ -50,7 +52,7 @@ to the infrastructure list below.
 | --- | --- | --- |
 | Critical | `ADMIN_PASSWORD` | A former hard-coded default remains in git history (`c48ac30`, `lib/auth.ts`; removed from code in `c3cb60d`). Set a new, long, unique admin password on every environment; it must not match any value that ever appeared in the repository. Rotating it is an owner action. |
 | Critical | Public origins | `NEXT_PUBLIC_APP_URL` still points to `http://localhost:3033`; `PLATFORM_PUBLIC_ORIGIN` and `PLATFORM_AUTH_ORIGIN` are unset. Set them to the production HTTPS origin, otherwise OAuth callbacks, email links and unsubscribe links point to the wrong host. |
-| Critical | Credential encryption key | `PLATFORM_ENCRYPTION_KEY` is unset, so the key file `data/platform-credentials.key` is used. Losing it makes every stored provider credential unreadable. In production supply the key from the environment or a secret store and back it up separately from the database. Do not replace an existing key without a credential migration. |
+| Done (local) | Credential encryption key | `PLATFORM_ENCRYPTION_KEY` is now set locally to the same value as `data/platform-credentials.key` (23 October 2026), so nothing stored changed. In production supply it from the protected runtime config and back it up apart from database backups; never replace it without a credential migration. |
 | High | Email feedback | `SES_SNS_TOPIC_ARN` and `SES_CONFIGURATION_SET` are unset: bounces and complaints are not received. Required before any real sending beyond the bounded pilot. |
 | High | Backups | `npm run backup:platform` works (snapshots exist under `data/backups`), but no scheduled task is registered locally and backups live on the same disk. Register tasks with `deployment/windows/Register-RyzevoTasks.ps1` and point `PLATFORM_BACKUP_PATH` to an off-host destination. |
 | High | HSS invitation | The local owner invitation expired on 20 October 2026, 22:44 Istanbul time; issue a new one when the owner is ready. |
