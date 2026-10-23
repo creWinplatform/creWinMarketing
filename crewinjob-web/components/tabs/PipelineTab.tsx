@@ -870,7 +870,7 @@ function ActionCard({ icon, title, desc, color, loading, disabled, onClick }: {
 }) {
   const { lang } = useLang();
   const border = { blue: 'border-blue-200 dark:border-blue-700', green: 'border-green-200 dark:border-green-700', purple: 'border-purple-200 dark:border-purple-700', orange: 'border-orange-200 dark:border-orange-700' };
-  const btn    = { blue: 'bg-blue-600 hover:bg-blue-700', green: 'bg-green-600 hover:bg-green-700', purple: 'bg-purple-600 hover:bg-purple-700', orange: 'bg-orange-500 hover:bg-orange-600' };
+  const btn    = { blue: 'bg-blue-600 hover:bg-blue-700', green: 'bg-green-600 hover:bg-green-700', purple: 'bg-purple-600 hover:bg-purple-700', orange: 'bg-orange-700 hover:bg-orange-800' };
   return (
     <div className={`border-2 rounded-xl p-4 flex flex-col gap-3 bg-white dark:bg-slate-800 transition-all ${border[color]} ${disabled ? 'opacity-60' : ''}`}>
       <div className="text-2xl" aria-hidden="true">{icon}</div>

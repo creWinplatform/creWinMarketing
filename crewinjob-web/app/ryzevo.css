@@ -480,8 +480,9 @@
 .dark .workspace-shell :is(.text-slate-500,.text-slate-600,.text-gray-500,.text-gray-600):not([class*="dark:text-"]){color:var(--rz-muted)}
 /* Koyu tema: karşılığı olmayan koyu başlık/gövde metni koyu zeminde kayboluyordu */
 .dark .workspace-shell :is(.text-slate-700,.text-slate-800,.text-slate-900,.text-gray-700,.text-gray-800,.text-gray-900):not([class*="dark:text-"]){color:var(--rz-ink)}
-/* Açık tema: gri-400 metin beyaz zeminde 2.6:1 */
-html:not(.dark) .workspace-shell :is(.text-gray-400,.text-slate-400){color:#64748b}
+/* Açık tema: sayfa içeriğinde gri-400/500 yardımcı metin açık zeminlerde 2.6–4.47:1 kalıyordu → slate-600 (≈7:1).
+   Kenar çubuğu (her temada koyu) ve koyu kod/log kutuları hariç. */
+html:not(.dark) .workspace-main :is(.text-gray-400,.text-slate-400,.text-gray-500,.text-slate-500):not(:is(.bg-slate-800,.bg-slate-900,.bg-slate-950,.bg-gray-800,.bg-gray-900)):not(:is(.bg-slate-800,.bg-slate-900,.bg-slate-950,.bg-gray-800,.bg-gray-900) *){color:#475569}
 /* Yeşil eylem düğmeleri: beyaz yazı yeşil-600 üzerinde 3.2:1 → bir ton koyu */
 .workspace-shell :is(.bg-green-600,.bg-emerald-600).text-white{background-color:#15803d}
 .workspace-shell :is(.bg-green-600,.bg-emerald-600).text-white:hover:not(:disabled){background-color:#166534}
