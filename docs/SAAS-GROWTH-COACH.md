@@ -398,3 +398,33 @@ Same rules as Phases 1–3:
   - Afterwards 12 of 12 readings were correct, landed in the right week and kept their source rows apart. A real 0 stays distinct from no data.
   - The coach SEO query snapshot also read real Search Console queries.
 - **Not verified:** a real SES pilot send with delivery feedback, the per-project Google OAuth flow and real social engagement data.
+
+# Phase 5: WhatsApp, paid ads and short video in the coach (23 October 2026)
+
+The diagnosis and the plan now reach the existing WhatsApp, ad and video tools. Same rules as before: suggestions only;
+nothing is sent, spent or published by the coach.
+
+**Diagnosis.** One new question (now 11): *Do you have a monthly ad budget?* (`none`, `small`, `mid`, `high`; no amount).
+"Channels you use today" also offers WhatsApp. Answers saved before the question have no budget and are treated as none.
+
+**Channels and tools.** `COACH_CHANNELS` adds `whatsapp` and `ads`; `COACH_TOOLS` adds `ads` and `whatsapp`.
+`COACH_CONTENT_CHANNELS` are the six channels the content studio drafts for.
+
+**Rule-based starter.**
+- **Paid ads** only with a budget (the bigger the budget, the higher it ranks; a leads or mobile goal adds weight). Without a budget the channel is never picked.
+- **WhatsApp** for individual and local buyers, a retention goal or existing WhatsApp use. Business-only audiences rank it down.
+- The first channel is always a studio channel, and at most one of WhatsApp / paid ads is picked.
+- Plan steps:
+  - WhatsApp: connect the number (week 2), a small consented list (week 3), and an approved-template pilot that needs its own approval (week 4).
+  - Paid ads: connect the account and set a cap (week 2), a small campaign tied to the goal that is created paused (week 3), and spend next to the goal measurement (week 4).
+- **Short video:** a team with the video skill and Instagram or Facebook among its channels gets one Reels draft. The team hosts the video and the studio stores only its https address.
+
+**AI drafts** (`coachDraftRules`, also applied to monthly renewals). Paid-ads items are dropped without a budget, and so are ads or WhatsApp tools on another channel. A studio channel is moved to the front. A draft with nothing usable is refused (502, usage refunded).
+
+**Routing.**
+- `ads` opens Campaign hub → Ads, and `whatsapp` opens Campaign hub → WhatsApp. Connecting either opens the same view.
+- A saved Meta, Google Ads or LinkedIn ad account resolves the ad connection step.
+- Studio pre-fills never target WhatsApp or ads.
+- The monthly content plan and renewal "one more draft" stay on studio channels.
+
+**Tests:** `test/platform-coach-channels.test.cjs`. No schema change.

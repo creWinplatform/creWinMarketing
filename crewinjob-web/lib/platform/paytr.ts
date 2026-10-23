@@ -3,6 +3,7 @@ import {createHash,createHmac,timingSafeEqual} from 'node:crypto';
 import {isIP} from 'node:net';
 import type {BillingPlan,BillingReadiness} from './billing-types';
 import {readBoundedBodyBytes} from './request-json';
+import {SALES_TERMS_PATH,salesTermsReady} from './sales-terms';
 
 export type PaytrConfiguration = {
   merchantId:string;merchantKey:string;merchantSalt:string;revision:string;merchantRevision:string;origin:string;
@@ -72,7 +73,8 @@ export function verifyPaytrNotification(config:PaytrConfiguration,body:string):P
 export type PaytrLiveReadiness={checks:{gate:boolean;credentials:boolean;usdAcknowledged:boolean;origin:boolean;terms:boolean};ready:boolean;termsUrl:string};
 export function paytrLiveReadiness(config:PaytrConfiguration=paytrConfiguration()):PaytrLiveReadiness{
   let termsUrl='';
-  try{const url=new URL(process.env.PLATFORM_BILLING_TERMS_URL||'');if(url.protocol==='https:'&&!url.username&&!url.password)termsUrl=url.href;}catch{termsUrl='';}
+  // Our own /legal/sales page counts only once its seller details and legal review are complete.
+  try{const url=new URL(process.env.PLATFORM_BILLING_TERMS_URL||'');if(url.protocol==='https:'&&!url.username&&!url.password&&!(url.pathname.replace(/\/$/,'')===SALES_TERMS_PATH&&!salesTermsReady()))termsUrl=url.href;}catch{termsUrl='';}
   const checks={gate:process.env.PLATFORM_PAYTR_LIVE_ENABLED==='1',credentials:config.readiness.checks.credentials,usdAcknowledged:config.readiness.checks.usdAcknowledged,origin:config.readiness.checks.origin,terms:Boolean(termsUrl)};
   return {checks,ready:Object.values(checks).every(Boolean),termsUrl};
 }

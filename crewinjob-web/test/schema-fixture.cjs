@@ -1,6 +1,8 @@
 // Disposable migration fixtures only; never loaded by application code.
 // Reverts schema 43: the schema-42 social accounts table (rows of the newer 'telegram' platform cannot exist there).
-exports.removeLiveBillingSchema=db=>db.exec("DROP TABLE IF EXISTS platform_project_subscriptions; DROP TABLE IF EXISTS platform_billing_live_orders; DELETE FROM platform_migrations WHERE version=54;");
+// Reverts schema 55: WhatsApp rows cannot exist in the schema-54 inbox (migration 55 rebuilds the table again when re-run).
+exports.removeWhatsAppInboxSchema=db=>db.exec("DELETE FROM platform_social_inbox WHERE platform='whatsapp'; DELETE FROM platform_migrations WHERE version=55;");
+exports.removeLiveBillingSchema=db=>{exports.removeWhatsAppInboxSchema(db);db.exec("DROP TABLE IF EXISTS platform_project_subscriptions; DROP TABLE IF EXISTS platform_billing_live_orders; DELETE FROM platform_migrations WHERE version=54;");};
 exports.removeSocialExtrasSchema=db=>{exports.removeLiveBillingSchema(db);db.exec("DROP TABLE IF EXISTS platform_social_inbox_accounts; DELETE FROM platform_social_inbox WHERE platform='twitter'; ALTER TABLE platform_whatsapp_templates DROP COLUMN header_format; ALTER TABLE platform_whatsapp_templates DROP COLUMN button_url; ALTER TABLE platform_whatsapp_templates DROP COLUMN button_index; ALTER TABLE platform_whatsapp_batches DROP COLUMN extras_json; DELETE FROM platform_migrations WHERE version=53;");};
 exports.removeAdClaimSchema=db=>{exports.removeSocialExtrasSchema(db);db.exec("UPDATE platform_ad_plans SET state='approved' WHERE state='creating'; UPDATE platform_ad_plans SET state='paused' WHERE state='starting'; DELETE FROM platform_migrations WHERE version=52;");};
 exports.removeInboxSchema=db=>{exports.removeAdClaimSchema(db);db.exec('DROP TABLE IF EXISTS platform_social_inbox; DELETE FROM platform_migrations WHERE version=51;');};

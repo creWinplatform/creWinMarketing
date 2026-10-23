@@ -5,6 +5,8 @@ import { PlatformRepository } from './repository';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { hasMessagingDuty } from './messaging-duties';
+import { INBOX_LIMITS } from './social-inbox-types';
+import { ingestWhatsAppInbound, whatsAppInboundFrom, type WhatsAppInbound } from './social-inbox';
 import { WHATSAPP_LIMITS, WHATSAPP_STOP_WORDS, type WhatsAppBatchExtras, type WhatsAppBatchView, type WhatsAppDelivery, type WhatsAppHeaderFormat, type WhatsAppMessageState, type WhatsAppSnapshot, type WhatsAppTemplateView } from './whatsapp-types';
 
 // WhatsApp Cloud API client: fixed host, token only in the Authorization header, a short path allowlist.
@@ -288,7 +290,8 @@ export async function deliverWhatsAppBatches(db:Database.Database,key:string,gra
 }
 
 // Signed Meta webhook for one number. GET answers the subscription check; POST records delivery states and opt-outs.
-// Inbound message text is never stored: it is only compared with stop words.
+// A stop word opts the contact out and is not stored; any other inbound message goes to the project inbox (masked text,
+// hashed sender, encrypted reply address, 90-day retention) so the team can answer it inside the 24-hour window.
 const STOP=new Set<string>(WHATSAPP_STOP_WORDS.map(word=>word.toLocaleLowerCase('tr')));
 const ORDER:Record<WhatsAppDelivery,number>={sent:1,delivered:2,read:3,failed:4};
 export function verifyWhatsAppHook(db:Database.Database,hookId:string,query:URLSearchParams){
@@ -299,15 +302,16 @@ export function verifyWhatsAppHook(db:Database.Database,hookId:string,query:URLS
   return given.length===expected.length&&timingSafeEqual(given,expected)?challenge:null;
 }
 export function receiveWhatsAppHook(db:Database.Database,key:string,hookId:string,body:Uint8Array,signature:string|null){
-  const row=/^[a-f0-9]{32}$/.test(hookId)?db.prepare('SELECT h.*,c.encrypted_credentials,c.active FROM platform_whatsapp_hooks h JOIN platform_connections c ON c.id=h.connection_id WHERE h.hook_id=?').get(hookId) as {hook_id:string;connection_id:string;organization_id:string;project_id:string;secret_encrypted:string;encrypted_credentials:string;active:number}|undefined:undefined;
+  const row=/^[a-f0-9]{32}$/.test(hookId)?db.prepare('SELECT h.*,c.encrypted_credentials,c.active,c.account_name,c.integration_id FROM platform_whatsapp_hooks h JOIN platform_connections c ON c.id=h.connection_id WHERE h.hook_id=?').get(hookId) as {hook_id:string;connection_id:string;organization_id:string;project_id:string;secret_encrypted:string;encrypted_credentials:string;active:number;account_name:string;integration_id:string}|undefined:undefined;
   if(!row||row.active!==1)throw new MarketingStoreError('Bilinmeyen WhatsApp bildirimi.',404);
   const {secret}=decryptCredentials<{secret:string}>(row.secret_encrypted,key,row.organization_id,row.project_id,`whatsapp-hook:${row.hook_id}`);
   const expected=Buffer.from(`sha256=${createHmac('sha256',secret).update(body).digest('hex')}`),given=Buffer.from(signature||'');
   if(given.length!==expected.length||!timingSafeEqual(given,expected))throw new MarketingStoreError('WhatsApp bildirim imzası doğrulanamadı.',401);
   const payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(body)) as Record<string,unknown>;
   const phoneNumberId=decryptCredentials<{phoneNumberId:string}>(row.encrypted_credentials,key,row.organization_id,row.project_id,row.connection_id).phoneNumberId;
-  let statuses=0,optOuts=0;
+  let statuses=0,optOuts=0,inbound=0;
   db.transaction(()=>{
+    const received:WhatsAppInbound[]=[];
     const now=new Date().toISOString();
     for(const entry of Array.isArray(payload.entry)?payload.entry as Record<string,unknown>[]:[])for(const change of Array.isArray(entry.changes)?entry.changes as Record<string,unknown>[]:[]){
       const value=change.value as Record<string,unknown>|undefined,metadata=value?.metadata as Record<string,unknown>|undefined;
@@ -322,7 +326,8 @@ export function receiveWhatsAppHook(db:Database.Database,key:string,hookId:strin
         const from=typeof message.from==='string'&&/^[1-9]\d{7,14}$/.test(message.from)?`+${message.from}`:null;
         const raw=(message.text as Record<string,unknown>|undefined)?.body??(message.button as Record<string,unknown>|undefined)?.text??'';
         const text=String(raw).trim().toLocaleLowerCase('tr').replace(/[.!]+$/,'');
-        if(!from||!STOP.has(text))continue;
+        if(!from)continue;
+        if(!STOP.has(text)){const item=whatsAppInboundFrom(message);if(item)received.push(item);continue;}
         const hash=createHmac('sha256',Buffer.from(key,'hex')).update(`whatsapp:${row.organization_id}:${row.project_id}:${from}`).digest('hex');
         const contact=db.prepare('SELECT id FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? AND phone_hash=? AND opted_out_at IS NULL').get(row.organization_id,row.project_id,hash) as {id:string}|undefined;
         if(!contact)continue;
@@ -330,8 +335,10 @@ export function receiveWhatsAppHook(db:Database.Database,key:string,hookId:strin
         db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='opted_out',finished_at=? WHERE contact_id=? AND state='pending'").run(now,contact.id);optOuts++;
       }
     }
+    inbound=ingestWhatsAppInbound(db,key,{id:row.connection_id,organization_id:row.organization_id,project_id:row.project_id,account_name:row.account_name,encrypted_credentials:row.encrypted_credentials,integration_id:row.integration_id},received.slice(0,INBOX_LIMITS.hookEntries));
     db.prepare('UPDATE platform_whatsapp_hooks SET last_event_at=? WHERE hook_id=?').run(now,row.hook_id);
     if(statuses||optOuts)db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run('whatsapp-webhook',row.organization_id,row.project_id,optOuts?'whatsapp.hook.opt_out':'whatsapp.hook.status',now);
+    if(inbound)db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run('whatsapp-webhook',row.organization_id,row.project_id,'whatsapp.hook.inbound',now);
   }).immediate();
-  return {statuses,optOuts};
+  return {statuses,optOuts,inbound};
 }

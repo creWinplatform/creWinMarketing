@@ -4,12 +4,12 @@ import { ArrowRight, CalendarPlus, Check, Pencil, Plus, RotateCcw, ShieldCheck, 
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import { COACH_CHANNELS, COACH_PREFILL_KEY, type CoachChannel, type CoachContentItem, type CoachContentSnapshot } from '@/lib/platform/coach-types';
+import { COACH_CONTENT_CHANNELS, COACH_PREFILL_KEY, type CoachChannel, type CoachContentItem, type CoachContentSnapshot } from '@/lib/platform/coach-types';
 import Msg from '@/components/Msg';
 import CoachAssign from './CoachAssign';
 
 type Form={id:string|null;revision:number;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string;plannedFor:string};
-const channelNames:Record<CoachChannel,[string,string]>={linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],seo:['Blog (SEO)','Blog (SEO)']};
+const channelNames:Record<CoachChannel,[string,string]>={linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],seo:['Blog (SEO)','Blog (SEO)'],whatsapp:['WhatsApp','WhatsApp'],ads:['Ücretli reklam','Paid ads']};
 const stateNames={suggested:['Öneri','Suggestion'],approved:['Onaylı','Approved'],dismissed:['Çıkarıldı','Dismissed']} as const;
 const sourceNames={ai:['AI önerisi','AI suggestion'],template:['Başlangıç şablonu','Starter template'],human:['Ekip ekledi','Added by the team']} as const;
 
@@ -46,7 +46,7 @@ export default function CoachContentPlan({workspace,lang}:{workspace:WorkspaceCo
   const channels=[...new Set<CoachChannel>([...(data?.briefChannels||[]),...open.map(item=>item.channel)])];
 
   const editor=form&&<form ref={formRef} className="coach-content-form studio-form-grid" onSubmit={event=>void save(event)}>
-    <label>{tr?'Kanal':'Channel'}<select value={form.channel} onChange={event=>setForm({...form,channel:event.target.value as CoachChannel})}>{COACH_CHANNELS.map(id=><option key={id} value={id}>{channelNames[id][idx]}</option>)}</select></label>
+    <label>{tr?'Kanal':'Channel'}<select value={form.channel} onChange={event=>setForm({...form,channel:event.target.value as CoachChannel})}>{COACH_CONTENT_CHANNELS.map(id=><option key={id} value={id}>{channelNames[id][idx]}</option>)}</select></label>
     <label>{tr?'Tarih':'Date'}<input type="date" required min={`${month}-01`} max={lastDay(month)} value={form.plannedFor} onChange={event=>setForm({...form,plannedFor:event.target.value})}/></label>
     <label>{tr?'Tema':'Theme'}<input required maxLength={60} value={form.theme} onChange={event=>setForm({...form,theme:event.target.value})}/></label>
     <label>{tr?'Hedef':'Goal'}<select value={form.goalId} onChange={event=>setForm({...form,goalId:event.target.value})}><option value="">{tr?'Hedefe bağlı değil':'Not linked to a goal'}</option>{data?.goals.map(goal=><option key={goal.id} value={goal.id}>{goal.label[lang]}</option>)}</select></label>

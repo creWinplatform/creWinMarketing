@@ -77,5 +77,5 @@ test('the Graph client keeps the token in the header, fixes the host and rejects
 test('schema44 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'ads-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAdSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,43);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,54);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,55);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

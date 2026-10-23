@@ -59,5 +59,5 @@ test('approval needs a checked page, a written reason and the approval right; ou
 test('schema42 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'prospects-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeProspectSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,41);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,54);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,55);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

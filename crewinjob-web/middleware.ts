@@ -5,7 +5,8 @@ import { loginLocation } from '@/lib/platform/login-location';
 // /api/track/* : e-posta alıcılarının tarayıcısı/mail istemcisi (açılma piksel'i + tıklama
 // yönlendirmesi) ve AWS SNS webhook'u (bounce bildirimi) tarafından oturumsuz çağrılır —
 // bunlar auth cookie'si taşıyamaz, /api/track/bounce ayrıca kendi SNS imza doğrulamasını yapar.
-const PUBLIC_PATHS = ['/login', '/unsubscribe', '/api/health', '/api/auth/login', '/api/auth/logout', '/api/track/open', '/api/track/click', '/api/track/bounce', '/api/unsubscribe', '/api/campaigns/run-due', '/api/schedule/publish', '/api/platform/google/callback', '/api/platform/social/callback', '/api/platform/meta/callback'];
+// /guide ve /legal/*: herkese açık kullanım rehberi ve satış sözleşmesi (ödeme öncesi okunabilmeli).
+const PUBLIC_PATHS = ['/login', '/unsubscribe', '/guide', '/legal', '/api/health', '/api/auth/login', '/api/auth/logout', '/api/track/open', '/api/track/click', '/api/track/bounce', '/api/unsubscribe', '/api/campaigns/run-due', '/api/schedule/publish', '/api/platform/google/callback', '/api/platform/social/callback', '/api/platform/meta/callback'];
 
 function isStaticAsset(pathname: string): boolean {
   if(pathname.startsWith('/api/')) return false;

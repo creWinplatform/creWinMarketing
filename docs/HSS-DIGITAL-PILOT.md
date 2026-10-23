@@ -97,6 +97,16 @@ approved measurement mapping. Never bypass missing provider grants with fixtures
 6. Verify actual request/meeting outcomes against the source, not a manually
    invented conversion count. Check opt-out and error recovery before expansion.
 
+## User guide for the pilot team
+
+`/guide` (public, TR/EN, `app/guide/page.tsx`) walks a team without a marketing
+specialist through day one (account, product profile, diagnosis, brief review and
+approval), the weekly rhythm (This week, actions, measuring, weekly review), the
+monthly renewal, the tools, roles, a short glossary and common sticking points.
+The coach's first screen links to it. Screen names match the app labels; keep
+them in sync when a label changes. Collect the team's notes (screen, intent,
+what happened) and update the guide from them.
+
 ## Proposed event mapping
 
 Use `SAAS-PRODUCT-WEBHOOKS.md` without adding a second event API. Example source:

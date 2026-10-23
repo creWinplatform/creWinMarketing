@@ -7,12 +7,17 @@ export type CoachGoal=typeof COACH_GOALS[number];
 export const COACH_MARKETS=['b2b','b2c','both'] as const;
 export const COACH_PRICES=['free','low','mid','high'] as const;
 export const COACH_SALES=['online','sales','local'] as const;
-export const COACH_CURRENT=['website','linkedin','instagram','facebook','twitter','email','seo','ads','none'] as const;
+export const COACH_CURRENT=['website','linkedin','instagram','facebook','twitter','email','seo','whatsapp','ads','none'] as const;
+// Monthly paid-ads budget the team can spend; paid ads are only proposed when there is one.
+export const COACH_BUDGETS=['none','small','mid','high'] as const;
 export const COACH_HOURS=['lt2','2to5','5to10','gt10'] as const;
 export const COACH_SKILLS=['writing','design','video','analytics','sales','none'] as const;
 export const COACH_OBSTACLES=['start','audience','time','ideas','conversion','measurement'] as const;
-export const COACH_CHANNELS=['linkedin','instagram','facebook','twitter','email','seo'] as const;
-export const COACH_TOOLS=['library','campaigns','seo','calendar','project','connections','analytics'] as const;
+// whatsapp = template messages to consenting contacts; ads = paid ads (Meta, Google Ads, LinkedIn) under the team's own caps.
+export const COACH_CHANNELS=['linkedin','instagram','facebook','twitter','email','seo','whatsapp','ads'] as const;
+// Channels the content studio drafts for (and the monthly content plan rotates over).
+export const COACH_CONTENT_CHANNELS=['linkedin','instagram','facebook','twitter','email','seo'] as const;
+export const COACH_TOOLS=['library','campaigns','seo','calendar','project','connections','analytics','ads','whatsapp'] as const;
 export type CoachChannel=typeof COACH_CHANNELS[number];
 export type CoachTool=typeof COACH_TOOLS[number];
 export type CoachAnswers={
@@ -21,6 +26,8 @@ export type CoachAnswers={
   offer:string;customer:string;market:typeof COACH_MARKETS[number];price:typeof COACH_PRICES[number];sales:typeof COACH_SALES[number];
   current:(typeof COACH_CURRENT[number])[];hours:typeof COACH_HOURS[number];skills:(typeof COACH_SKILLS[number])[];
   obstacle:typeof COACH_OBSTACLES[number];success:string;
+  /** Missing only in answers saved before the budget question existed (treated as no ad budget). */
+  budget?:typeof COACH_BUDGETS[number];
 };
 export type CoachPlanItem={week:number;title:string;why:string;how:string;minutes:number;tool:CoachTool;channel:CoachChannel|null};
 export type CoachBrief={
@@ -47,7 +54,9 @@ export type CoachSnapshot={
   starterDrafts:number;
 };
 // Brief channel → content studio channel (blog for search/SEO work).
-export const coachDraftChannel=(channel:CoachChannel|null)=>channel==='seo'?'blog':channel||'linkedin';
+// WhatsApp and paid ads have their own screens, so their drafts fall back to the default studio channel.
+export const isCoachContentChannel=(channel:CoachChannel|null):channel is typeof COACH_CONTENT_CHANNELS[number]=>COACH_CONTENT_CHANNELS.includes(channel as never);
+export const coachDraftChannel=(channel:CoachChannel|null)=>channel==='seo'?'blog':isCoachContentChannel(channel)?channel:'linkedin';
 export const COACH_PREFILL_KEY='ryzevo.coach.prefill';
 // Phase 2 · monthly content plan: AI or rule-based suggestions; each item is approved by a person before use.
 export type CoachContentItem={

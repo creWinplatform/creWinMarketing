@@ -197,6 +197,31 @@ refusal, operator item, repeatable migration). `scripts/preview-design.cjs --dev
 --live-billing` shows the screen with disposable merchant values (add
 `--live-billing-pilot` for the pilot view); never press Pay there.
 
+## Terms page `/legal/sales` (23 October 2026)
+
+A public, bilingual page (`app/legal/sales/page.tsx`) holds the pre-contract
+information form and the distance sales contract. Prices come from
+`PLAN_CATALOG`; the Turkish text prevails. **It is a draft template, not legal
+advice.** Until a lawyer approves it, it carries a draft notice and `noindex`,
+and the landing footer hides its link.
+
+Fill in `lib/platform/sales-terms.ts`: seller name, MERSIS, tax office/number,
+address, phone, email (KEP optional), whether prices include VAT, the invoice
+period, the competent court for business buyers and the privacy-notice URL.
+Then set `SALES_TERMS_LEGAL_REVIEWED = true`. While anything is missing,
+`paytrLiveReadiness` refuses `PLATFORM_BILLING_TERMS_URL=https://ryzevo.com/legal/sales`,
+so live payment stays closed even with the switch on (tested).
+
+Points for the legal review:
+
+- The no-withdrawal basis: Regulation Art. 15(1)(ğ), services performed
+  immediately in electronic form. The payment checkbox now also asks the buyer
+  to agree that the service starts at once and so has no right of withdrawal.
+- Business buyers (merchants) vs. consumers: the dispute clause splits them.
+- A durable-medium copy of the contract (for example by email after payment)
+  is **not** implemented; the order stores only the accepted page's address.
+- A KVKK privacy notice page does not exist yet; the contract links to it.
+
 ## Primary references (18 October 2026)
 
 - [PayTR iFrame request](https://dev.paytr.com/iframe-api/iframe-api-1-adim)

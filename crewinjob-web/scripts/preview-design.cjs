@@ -90,6 +90,12 @@ if(process.argv.includes('--inbox')){
   const row=(id,kind,text,hours,recipient)=>db.prepare("INSERT INTO platform_social_inbox(id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,publication_id,author_hash,recipient_encrypted,text,received_at,created_at) VALUES(?,?,?,?,'facebook',?,?,?,?,?,?,?,?,?)").run(id,fixture.organizationId,fixture.projectId,page.id,kind,kind==='comment'?'100_200':'t_'+id,'item_'+id,kind==='comment'?'qa-inbox-job':null,'h'+id,recipient?encryptCredentials({id:recipient},encryptionKey,fixture.organizationId,fixture.projectId,'inbox:'+id):null,text,ago(hours),now);
   row('qa-inbox-1','comment','Kurs ne zaman başlıyor? Bana […] adresinden dönün.',2);row('qa-inbox-2','message','Fiyat nedir?',3,'777');row('qa-inbox-3','message','Geçen hafta yazmıştım, hâlâ bekliyorum.',40,'888');
   console.log('Inbox QA: fake Facebook Page, one accepted post, one comment and two messages (one outside the 24-hour window); no Meta call is made.');}
+if(process.argv.includes('--whatsapp')&&process.argv.includes('--inbox')){
+  // WhatsApp inbox QA: two inbound messages stored as the signed webhook would store them (one outside the 24-hour window).
+  const {ingestWhatsAppInbound}=load('social-inbox.ts'),ago=hours=>new Date(Date.now()-hours*3600000).toISOString();
+  const connection=db.prepare("SELECT id,organization_id,project_id,account_name,encrypted_credentials,integration_id FROM platform_connections WHERE provider='whatsapp' AND organization_id=? AND project_id=? AND active=1").get(fixture.organizationId,fixture.projectId);
+  ingestWhatsAppInbound(db,encryptionKey,connection,[{from:'905550000009',id:'wamid.QA1',text:'Merhaba, kurs hafta sonu da var mı? (QA · gerçek değil)',at:ago(1)},{from:'905550000008',id:'wamid.QA2',text:'[image]',at:ago(30)}]);
+  console.log('WhatsApp inbox QA: two inbound fixture messages (one outside the 24-hour window); no Meta call is made.');}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.

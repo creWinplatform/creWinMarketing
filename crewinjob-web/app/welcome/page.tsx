@@ -9,6 +9,7 @@ import '../landing-coach.css';
 import { LangToggle } from '@/lib/lang';
 import { requestLang } from '@/lib/i18n/server';
 import type { Lang } from '@/lib/i18n/shared';
+import { salesTermsReady } from '@/lib/platform/sales-terms';
 
 // Landing: kontrollü pilot. Gerçek müşteri logosu, yorum, büyüme yüzdesi, fiyat veya kullanım sayısı yok;
 // ürün ekranları "Örnek proje verileri" etiketiyle gösterilir. CTA'lar mevcut akışlarla sınırlı: keşfet, davetle katıl, giriş yap.
@@ -134,7 +135,7 @@ export default async function WelcomePage({ searchParams }: Props) {
 
       <footer className="rm-footer">
         <div className="rm-wrap">
-          <div className="rm-foot"><div><BrandPair /><div className="rm-tag" lang="en">Grow with intent.</div></div><nav aria-label={t('Alt bağlantılar', 'Footer links')}><a href="/login">{t('Giriş yap', 'Sign in')}</a><a href="/join">{t('Davetle katıl', 'Join by invite')}</a><a href="/login">{t('Çalışma alanına dön', 'Back to your workspace')} <ArrowRight size={14} /></a></nav></div>
+          <div className="rm-foot"><div><BrandPair /><div className="rm-tag" lang="en">Grow with intent.</div></div><nav aria-label={t('Alt bağlantılar', 'Footer links')}><a href="/guide">{t('Kullanım rehberi', 'User guide')}</a>{salesTermsReady() && <a href="/legal/sales">{t('Satış sözleşmesi', 'Terms of sale')}</a>}<a href="/login">{t('Giriş yap', 'Sign in')}</a><a href="/join">{t('Davetle katıl', 'Join by invite')}</a><a href="/login">{t('Çalışma alanına dön', 'Back to your workspace')} <ArrowRight size={14} /></a></nav></div>
           <div className="rm-copy"><span>© {new Date().getFullYear()} Ryzevo · ryzevo.com</span><span>{t('Projene özel. Ekibinle birlikte.', 'Built for your project. Together with your team.')}</span></div>
         </div>
       </footer>

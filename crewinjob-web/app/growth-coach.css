@@ -9,6 +9,7 @@
 .coach-intro>div{flex:1 1 320px;min-width:0}
 .coach-intro h3{font-size:16px;font-weight:650;line-height:1.4}
 .coach-intro p{font-size:13px;line-height:1.75;color:var(--studio-muted);margin-top:6px;max-width:640px}
+.coach-intro .coach-guide-link{color:var(--studio-text,inherit);font-weight:650;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
 .coach-muted{font-size:12px;color:var(--studio-muted);line-height:1.6}
 .coach-pending{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border:1px dashed var(--studio-border);border-radius:var(--rz-r-control,8px);padding:12px 14px;background:var(--studio-bg)}
 .coach-pending>div{display:grid;gap:4px;min-width:0;flex:1 1 260px}
@@ -240,7 +241,7 @@
 .ads-plan-form{display:grid;gap:10px;max-width:760px}
 .ads-plan-form .ads-form-row{grid-template-columns:repeat(2,minmax(0,1fr))}
 :is(.ads-account,.ads-plan-form) label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
-:is(.ads-account,.ads-plan-form) :is(input,select){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;font-weight:500;width:100%;min-width:0}
+:is(.ads-account,.ads-plan-form) :is(input:not([type=checkbox]):not([type=radio]),select){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;font-weight:500;width:100%;min-width:0}
 @media (max-width:640px){.ads-form-row,.ads-plan-form .ads-form-row{grid-template-columns:1fr}.ads-center .studio-draft-top{flex-direction:column;align-items:stretch;gap:10px}}
 /* Budget and goal planner */
 .budget-planner>*+*{margin-top:12px}
@@ -289,7 +290,7 @@
 .whatsapp-connect{grid-template-columns:repeat(3,minmax(0,1fr)) auto}
 .whatsapp-contacts,.whatsapp-batch{display:grid;gap:10px;max-width:760px}
 .messaging-center :is(.whatsapp-contacts,.whatsapp-batch)>label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted)}
-.messaging-center :is(.whatsapp-contacts,.whatsapp-batch)>label :is(input,textarea){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:8px 10px;font:inherit;font-weight:500;width:100%;min-width:0}
+.messaging-center :is(.whatsapp-contacts,.whatsapp-batch)>label :is(input:not([type=checkbox]):not([type=radio]),textarea){min-height:42px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:8px 10px;font:inherit;font-weight:500;width:100%;min-width:0}
 .whatsapp-recipients{border:1px solid var(--studio-border);border-radius:var(--rz-r-card,8px);padding:10px 12px;display:grid;gap:6px;max-height:260px;overflow:auto;margin:0;min-width:0}
 .whatsapp-recipients legend{font-size:12px;font-weight:600;padding:0 4px}
 .whatsapp-recipients .automation-choice{flex-wrap:wrap;min-width:0;overflow-wrap:anywhere}

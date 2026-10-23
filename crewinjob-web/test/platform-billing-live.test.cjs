@@ -29,7 +29,8 @@ test('live billing is off by default and never contacts PayTR while off',()=>wit
 
 test('every live gate is required: switch, merchant, USD approval, https origin and an https terms page',()=>withConfig(()=>{
   assert.equal(paytrLiveReadiness(paytrConfiguration()).ready,true);
-  for(const patch of [{PLATFORM_PAYTR_LIVE_ENABLED:'0'},{PLATFORM_PAYTR_MERCHANT_KEY:''},{PLATFORM_PAYTR_USD_ENABLED:'0'},{PLATFORM_PAYTR_ORIGIN:'http://localhost:3033'},{PLATFORM_BILLING_TERMS_URL:''},{PLATFORM_BILLING_TERMS_URL:'http://ryzevo.example/terms'}]){
+  // Our own /legal/sales page is still a draft (seller details and legal review pending), so it cannot open live payment.
+  for(const patch of [{PLATFORM_PAYTR_LIVE_ENABLED:'0'},{PLATFORM_PAYTR_MERCHANT_KEY:''},{PLATFORM_PAYTR_USD_ENABLED:'0'},{PLATFORM_PAYTR_ORIGIN:'http://localhost:3033'},{PLATFORM_BILLING_TERMS_URL:''},{PLATFORM_BILLING_TERMS_URL:'http://ryzevo.example/terms'},{PLATFORM_BILLING_TERMS_URL:'https://ryzevo.example/legal/sales'},{PLATFORM_BILLING_TERMS_URL:'https://ryzevo.example/legal/sales/'}]){
     const saved={...process.env};Object.assign(process.env,patch);try{assert.equal(paytrLiveReadiness(paytrConfiguration()).ready,false,JSON.stringify(patch));}finally{Object.assign(process.env,saved);for(const k of Object.keys(patch))if(saved[k]===undefined)delete process.env[k];}}
 }));
 
@@ -117,6 +118,6 @@ test('the operator console reports live billing readiness without values',()=>wi
 test('migration 54 is additive and repeatable',async()=>{
   const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'live-billing-')),'fixture.sqlite');
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeLiveBillingSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_project_subscriptions'").get().n,0);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,54);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_project_subscriptions','platform_billing_live_orders')").get().n,2);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,55);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_project_subscriptions','platform_billing_live_orders')").get().n,2);db.close();
   db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=54').get().n,1);db.close();
 });

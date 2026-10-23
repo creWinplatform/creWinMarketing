@@ -1139,6 +1139,25 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_project_subscriptions_scope ON platform_project_subscriptions(organization_id,project_id,ends_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(54,datetime('now'));
   `))();
+  // Inbox: inbound WhatsApp messages (from the number's signed webhook), answered only inside the 24-hour window.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=55').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_social_inbox_v55 (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('facebook','instagram','linkedin','twitter','whatsapp')), kind TEXT NOT NULL CHECK(kind IN ('comment','message')),
+      thread_id TEXT NOT NULL, item_id TEXT NOT NULL, publication_id TEXT, author_hash TEXT NOT NULL, recipient_encrypted TEXT,
+      text TEXT NOT NULL, received_at TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'new' CHECK(state IN ('new','replied','dismissed')),
+      reply_text TEXT NOT NULL DEFAULT '', reply_state TEXT CHECK(reply_state IN ('draft','sending','sent','rejected','uncertain')),
+      reply_id TEXT, reply_by TEXT, replied_at TEXT, revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+      UNIQUE(connection_id,item_id),
+      FOREIGN KEY(connection_id,organization_id,project_id) REFERENCES platform_connections(id,organization_id,project_id)
+    );
+    INSERT INTO platform_social_inbox_v55 SELECT id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,publication_id,author_hash,recipient_encrypted,text,received_at,state,reply_text,reply_state,reply_id,reply_by,replied_at,revision,created_at FROM platform_social_inbox;
+    DROP TABLE platform_social_inbox;
+    ALTER TABLE platform_social_inbox_v55 RENAME TO platform_social_inbox;
+    CREATE INDEX platform_social_inbox_scope ON platform_social_inbox(organization_id,project_id,state,received_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(55,datetime('now'));
+  `))();
   return db;
 }
 

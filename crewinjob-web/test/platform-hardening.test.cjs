@@ -65,5 +65,5 @@ test('schema52 keeps every ad plan and is repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'ad-claims-')),'fixture.sqlite');
   const g=graph();await ready(f,g);approved(f,g);await f.db.backup(file);
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAdClaimSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,51);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,54);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_ad_plans').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,55);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_ad_plans').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

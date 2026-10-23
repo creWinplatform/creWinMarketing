@@ -1,8 +1,26 @@
-# Ryzevo release status - 22 October 2026
+# Ryzevo release status - 23 October 2026
 
 The core monolith is suitable for continued isolated testing. It is NOT yet an
 accepted public/paid production service. An implementation, a local fixture test
 and an operator-approved live acceptance are different milestones.
+
+## Delivered on 23 October 2026
+
+- **Terms page and user guide:**
+  - `/legal/sales` is a draft template and is noindex until the seller details and the legal review are complete; live payment refuses it until then. See `SAAS-PAYTR.md`.
+  - `/guide` is the pilot team's user guide.
+- **Coach reaches WhatsApp, paid ads and video** (`SAAS-GROWTH-COACH.md`, Phase 5):
+  - one new budget question;
+  - paid ads only with a budget, and WhatsApp for individual and local buyers;
+  - a Reels draft for teams with the video skill.
+
+  No schema change.
+- **WhatsApp messages in the inbox (schema 55)** (`SAAS-PHASE5-MODULES.md` section 13):
+  - messages arrive through the signed webhook;
+  - replies go only within 24 hours, behind `PLATFORM_WHATSAPP_SEND_ENABLED`.
+
+  Migration 55 was dry-run on a copy of the real local database. It is not applied yet.
+- **Checks:** 678 platform tests, i18n and TypeScript pass.
 
 ## Delivered on 22 October 2026
 

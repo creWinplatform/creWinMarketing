@@ -393,6 +393,25 @@ Everything here keeps the same rule: the team writes and approves, nothing is se
   - `MAX_RECOVERY_SCHEMA` is 53.
 - **A fix found on the way:** LinkedIn comment times arrive as milliseconds and were not read, so LinkedIn company page comments were skipped. They are read now.
 
+## 13. WhatsApp messages in the inbox (schema 55, 23 October 2026)
+
+- **Arrival.** Messages written to the project's WhatsApp number arrive through that number's signed webhook (`/api/platform/whatsapp/hooks/<id>`, the app-secret signature and the phone number id are checked). There is no polling: WhatsApp has no read API for messages, so the account shows "messages only", without manual or automatic refresh.
+- **Not stored.** A stop word still opts the contact out and is not stored. Reactions and system events are skipped.
+- **What is stored.**
+  - Text, button and list answers keep their words, other types (image, audio, document…) a short type label.
+  - Text is masked like the other inbox items.
+  - The sender is kept only hashed (author) and encrypted (reply address), never as the thread id.
+  - Items are kept for 90 days, like the rest of the inbox.
+- **Replies.**
+  - A reply needs the "suggest" duty to write and the "publish" duty plus `campaign.dispatch` to send.
+  - It also needs an explicit acknowledgement and its own server switch `PLATFORM_WHATSAPP_SEND_ENABLED`; the social switch does not open it.
+  - It goes once as a free-form text message to the sender and only within 24 hours of their message (the customer-service window). An unclear outcome is marked uncertain and never resent.
+- **Schema 55** rebuilds `platform_social_inbox` with `whatsapp` added to its platform check, copying every row.
+  - It was dry-run on a copy of the real local database: 54 → 55, repeatable, integrity ok, no foreign-key problems.
+  - It is not applied to the real database yet. `MAX_RECOVERY_SCHEMA` is 55.
+- **Tests:** `test/platform-whatsapp-inbox.test.cjs`.
+- **Not checked against Meta:** a real inbound webhook and a real reply. Both were tested only with disposable stubs.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**

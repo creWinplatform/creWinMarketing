@@ -88,7 +88,7 @@ test('real sends need the switch, the publish duty and consent at the moment of 
   const before=calls.length;assert.equal(await deliverWhatsAppBatches(f.db,KEY,graph),1);assert.equal(calls.length,before,'nothing was sent after the duty was taken away');
   assert.ok(f.db.prepare("SELECT COUNT(*) n FROM platform_audit WHERE operation LIKE 'whatsapp.%'").get().n>=10);
 }));
-test('per-recipient values, signed delivery receipts and STOP replies; reply text is never stored',run(async f=>{
+test('per-recipient values, signed delivery receipts and STOP replies; reply text is not kept with contacts or audit rows',run(async f=>{
   const {graph,calls}=fakeGraph(),wa=await setup(f,graph),{createHmac}=require('node:crypto'),SECRET='ab'.repeat(16);process.env.PLATFORM_WHATSAPP_SEND_ENABLED='1';
   const contacts=wa.read().contacts.slice().sort((a,b)=>a.hint.localeCompare(b.hint)),ids=contacts.map(c=>c.id);
   assert.throws(()=>draft(wa,{overrides:{[ids[0]]:['tek']}}),/2 değişken/);
@@ -127,7 +127,7 @@ test('a queued batch stops when its approver loses the approval right',run(async
 test('schema47 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'whatsapp-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeWhatsAppSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,46);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,54);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,55);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
 }));
 test('image-header and URL-button templates: the batch carries a public https link and the button ending, both approved and sent',run(async f=>{
   const {graph,calls}=fakeGraph(),wa=await setup(f,graph);process.env.PLATFORM_WHATSAPP_SEND_ENABLED='1';

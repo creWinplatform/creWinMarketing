@@ -34,6 +34,11 @@ type Account={id:string;account_name:string;encrypted_credentials:string;account
 type Row={id:string;connection_id:string;platform:InboxItemView['platform'];kind:'comment'|'message';thread_id:string;item_id:string;publication_id:string|null;author_hash:string;recipient_encrypted:string|null;text:string;received_at:string;state:'new'|'replied'|'dismissed';reply_text:string;reply_state:InboxItemView['replyState'];reply_id:string|null;replied_at:string|null;revision:number};
 type Found={kind:'comment'|'message';threadId:string;itemId:string;publicationId:string|null;author:string;recipient:string|null;text:string;receivedAt:string};
 const ID=/^[A-Za-z0-9_:.-]{1,120}$/;
+// WhatsApp message ids (wamid.…) are base64-like; sender ids are the phone number in digits.
+const WA_ID=/^[A-Za-z0-9_:.=+\/-]{1,200}$/,WA_FROM=/^[1-9]\d{7,14}$/;
+// Same server switch as WhatsApp template sends (whatsAppSendEnabled in whatsapp.ts, not imported to avoid a cycle).
+const whatsAppSendEnabled=()=>process.env.PLATFORM_WHATSAPP_SEND_ENABLED==='1';
+const waVersion=()=>{const value=process.env.PLATFORM_WHATSAPP_GRAPH_VERSION||'';return /^v\d{1,3}\.\d$/.test(value)?value:graphVersion();};
 // Webhooks send Unix seconds (or milliseconds for messages); the Graph API sends ISO text.
 const unix=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)&&value>0?new Date(value<1e12?value*1000:value).toISOString():null;
 const iso=(value:unknown)=>{const time=typeof value==='string'||typeof value==='number'?Date.parse(String(value).replace(/\+0000$/,'Z')):NaN;return Number.isFinite(time)?new Date(time).toISOString():null;};
@@ -54,10 +59,12 @@ export class ProjectSocialInbox{
   private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
   private authorHash(connectionId:string,id:string){return createHmac('sha256',Buffer.from(this.key,'hex')).update(`inbox:${this.scope.organizationId}:${this.scope.projectId}:${connectionId}:${id}`).digest('hex');}
   // Facebook Pages, Instagram accounts and LinkedIn company pages; X accounts and LinkedIn member profiles only behind their
-  // server switches. LinkedIn messages are not readable here.
+  // server switches; the project's WhatsApp number (its id is the connection's integration id). LinkedIn messages are not readable here.
   private accounts():Account[]{
-    return (this.db.prepare("SELECT c.id,c.account_name,c.encrypted_credentials,c.integration_id,s.account_id,s.platform,s.page_id FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1 AND c.provider='social' AND s.platform IN ('facebook','instagram','linkedin','twitter') ORDER BY c.account_name").all(...this.args()) as Omit<Account,'organization'>[])
-      .map(row=>({...row,organization:isLinkedInOrganization(row.platform,row.account_id,row.integration_id)})).filter(row=>row.platform==='twitter'?xInboxEnabled():row.platform!=='linkedin'||row.organization||linkedInMemberCommentsEnabled());
+    const whatsapp=(this.db.prepare("SELECT id,account_name,encrypted_credentials,integration_id FROM platform_connections WHERE organization_id=? AND project_id=? AND active=1 AND provider='whatsapp' ORDER BY account_name").all(...this.args()) as {id:string;account_name:string;encrypted_credentials:string;integration_id:string}[])
+      .map(row=>({...row,account_id:row.integration_id,platform:'whatsapp',page_id:null,organization:false}));
+    return [...(this.db.prepare("SELECT c.id,c.account_name,c.encrypted_credentials,c.integration_id,s.account_id,s.platform,s.page_id FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1 AND c.provider='social' AND s.platform IN ('facebook','instagram','linkedin','twitter') ORDER BY c.account_name").all(...this.args()) as Omit<Account,'organization'>[])
+      .map(row=>({...row,organization:isLinkedInOrganization(row.platform,row.account_id,row.integration_id)})).filter(row=>row.platform==='twitter'?xInboxEnabled():row.platform!=='linkedin'||row.organization||linkedInMemberCommentsEnabled()),...whatsapp];
   }
   private linkedInActor(account:Account){return account.organization?`urn:li:organization:${account.account_id}`:`urn:li:person:${account.account_id}`;}
   private account(id:unknown){const row=this.accounts().find(item=>item.id===id);if(!row)throw new MarketingStoreError('Hesap bulunamadı.',404);return row;}
@@ -73,9 +80,10 @@ export class ProjectSocialInbox{
     const counts={new:0,replied:0,dismissed:0};if(me.read)for(const row of this.db.prepare('SELECT state,COUNT(*) n FROM platform_social_inbox WHERE organization_id=? AND project_id=? GROUP BY state').all(...this.args()) as {state:keyof typeof counts;n:number}[])counts[row.state]=row.n;
     const last=new Map((this.db.prepare("SELECT connection_id,MAX(created_at) at FROM platform_social_inbox WHERE organization_id=? AND project_id=? GROUP BY connection_id").all(...this.args()) as {connection_id:string;at:string}[]).map(row=>[row.connection_id,row.at]));
     const settings=new Map((this.db.prepare('SELECT connection_id,auto_read,hook_event_at FROM platform_social_inbox_accounts WHERE organization_id=? AND project_id=?').all(...this.args()) as {connection_id:string;auto_read:number;hook_event_at:string|null}[]).map(row=>[row.connection_id,row]));
-    return {accounts:this.accounts().map(row=>({id:row.id,name:row.account_name,platform:row.platform,personal:row.platform==='linkedin'&&!row.organization,comments:true,messages:['facebook','instagram'].includes(row.platform),lastSyncAt:last.get(row.id)||null,
-      autoRead:settings.get(row.id)?.auto_read===1,autoReadAllowed:row.platform!=='twitter',live:['facebook','instagram'].includes(row.platform),liveEventAt:settings.get(row.id)?.hook_event_at||null})),
-      items,counts,syncsLeft:Math.max(0,INBOX_LIMITS.syncsPerDay-this.syncsToday()),sendEnabled:socialPublishingEnabled(),aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),liveConfigured:metaInboxHookConfigured(),me};
+    const waHooks=new Map((this.db.prepare('SELECT connection_id,last_event_at FROM platform_whatsapp_hooks WHERE organization_id=? AND project_id=?').all(...this.args()) as {connection_id:string;last_event_at:string|null}[]).map(row=>[row.connection_id,row.last_event_at]));
+    return {accounts:this.accounts().map(row=>({id:row.id,name:row.account_name,platform:row.platform,personal:row.platform==='linkedin'&&!row.organization,comments:row.platform!=='whatsapp',messages:['facebook','instagram','whatsapp'].includes(row.platform),lastSyncAt:last.get(row.id)||null,
+      autoRead:settings.get(row.id)?.auto_read===1,autoReadAllowed:!['twitter','whatsapp'].includes(row.platform),live:['facebook','instagram'].includes(row.platform),liveEventAt:row.platform==='whatsapp'?waHooks.get(row.id)||null:settings.get(row.id)?.hook_event_at||null})),
+      items,counts,syncsLeft:Math.max(0,INBOX_LIMITS.syncsPerDay-this.syncsToday()),sendEnabled:socialPublishingEnabled(),whatsappSendEnabled:whatsAppSendEnabled(),aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),liveConfigured:metaInboxHookConfigured(),me};
   }
   // Comments: under the project's own accepted publications of the last 30 days on this account.
   private async comments(account:Account,token:string):Promise<Found[]>{
@@ -127,6 +135,7 @@ export class ProjectSocialInbox{
   // A manual refresh counts against the daily limit; the automatic one (every 30 minutes, as the person who turned it on) does not.
   async sync(raw:Record<string,unknown>,auto=false){
     this.authorize('source.read');const account=this.account(raw.connectionId);
+    if(account.platform==='whatsapp')throw new MarketingStoreError('WhatsApp mesajları yalnız numaranın anlık bildirimiyle gelir; elle yenileme yok.',409);
     if(auto&&account.platform==='twitter')throw new MarketingStoreError('X hesapları otomatik okunmaz.',409);
     if(!auto){
       if(this.syncsToday()>=INBOX_LIMITS.syncsPerDay)throw new MarketingStoreError('Günlük gelen kutusu yenileme sınırına ulaşıldı.',429);
@@ -154,6 +163,7 @@ export class ProjectSocialInbox{
   setAutoRead(raw:Record<string,unknown>){
     this.authorize('source.read');if(!this.repo.can(this.scope.subject,...this.args(),'connections.manage'))throw new MarketingStoreError('Otomatik okumayı yalnız bağlantı yönetimi yetkisi olanlar açabilir.',403);
     const account=this.account(raw.connectionId),on=raw.autoRead===true;if(on&&account.platform==='twitter')throw new MarketingStoreError('X hesapları için otomatik okuma yok: her okuma X API kotanızdan düşer.',409);
+    if(on&&account.platform==='whatsapp')throw new MarketingStoreError('WhatsApp mesajları yalnız numaranın anlık bildirimiyle gelir; elle yenileme yok.',409);
     return this.db.transaction(()=>{const now=new Date().toISOString();
       this.db.prepare('INSERT INTO platform_social_inbox_accounts(connection_id,organization_id,project_id,auto_read,manager_id,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(connection_id) DO UPDATE SET auto_read=excluded.auto_read,manager_id=excluded.manager_id,attempted_at=NULL,updated_at=excluded.updated_at').run(account.id,...this.args(),on?1:0,this.scope.subject,now);
       this.audit(on?'inbox.auto_on':'inbox.auto_off');return this.read();}).immediate();
@@ -182,9 +192,10 @@ export class ProjectSocialInbox{
       this.db.prepare('UPDATE platform_social_inbox SET state=?,revision=revision+1 WHERE id=?').run(state,row.id);this.audit(`inbox.${state}`);return this.read();}).immediate();
   }
   // Sends the saved reply once. Comments are answered in their thread; messages only inside the 24-hour window.
+  // WhatsApp replies have their own server switch (PLATFORM_WHATSAPP_SEND_ENABLED), like WhatsApp template sends.
   async send(raw:Record<string,unknown>){
     this.authorize('publish');if(!this.repo.can(this.scope.subject,...this.args(),'campaign.dispatch'))throw new MarketingStoreError('Yanıt göndermek için gönderim yetkisi gerekir.',403);
-    if(!socialPublishingEnabled()||raw.acknowledged!==true)throw new MarketingStoreError('Gerçek yanıt gönderimi bu sunucuda kapalı veya açık onay verilmedi.',409);
+    if(!(this.row(raw.id).platform==='whatsapp'?whatsAppSendEnabled():socialPublishingEnabled())||raw.acknowledged!==true)throw new MarketingStoreError('Gerçek yanıt gönderimi bu sunucuda kapalı veya açık onay verilmedi.',409);
     const claimed=this.db.transaction(()=>{
       const row=this.row(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Kayıt başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
       if(row.reply_state!=='draft'||!row.reply_text)throw new MarketingStoreError('Önce yanıtı kaydedin.',409);
@@ -202,6 +213,12 @@ export class ProjectSocialInbox{
         if(!X_ID.test(claimed.item_id))throw new Error('reply');
         result=await this.http({method:'POST',url:'https://api.x.com/2/tweets',token,json:{text:claimed.reply_text,reply:{in_reply_to_tweet_id:claimed.item_id}}});
         const data=result.payload.data as Record<string,unknown>|undefined;replyId=typeof data?.id==='string'&&X_ID.test(data.id)?data.id:null;
+      }else if(claimed.platform==='whatsapp'){
+        // A free-form text reply is allowed only inside the customer-service window the person opened by writing to us.
+        const recipient=claimed.recipient_encrypted?decryptCredentials<{id:string}>(claimed.recipient_encrypted,this.key,...this.args(),`inbox:${claimed.id}`).id:'';
+        if(!WA_FROM.test(recipient)||!/^\d{1,30}$/.test(account.account_id))throw new Error('recipient');
+        result=await this.http({method:'POST',url:`https://graph.facebook.com/${waVersion()}/${account.account_id}/messages`,token,json:{messaging_product:'whatsapp',recipient_type:'individual',to:recipient,type:'text',text:{preview_url:false,body:claimed.reply_text}}});
+        const sent=Array.isArray(result.payload.messages)?result.payload.messages[0] as Record<string,unknown>|undefined:undefined;replyId=typeof sent?.id==='string'&&WA_ID.test(sent.id)?sent.id:null;
       }else if(claimed.kind==='comment'){
         result=await this.http({method:'POST',url:`https://graph.facebook.com/${graphVersion()}/${claimed.item_id}/${claimed.platform==='instagram'?'replies':'comments'}`,token,form:{message:claimed.reply_text}});
         replyId=typeof result.payload.id==='string'?result.payload.id:null;
@@ -288,4 +305,22 @@ export function receiveMetaInboxHook(db:Database.Database,key:string,body:Uint8A
     }
   }
   return {stored};
+}
+// Inbound WhatsApp messages from the number's signed webhook (whatsapp.ts verifies the signature and the number).
+// Text, button and list answers keep their words; other message types are stored as a short type label only.
+// The sender's number is kept only hashed (author) and encrypted (reply address), never as the thread id.
+export type WhatsAppInbound={from:string;id:string;text:string;at:string};
+export function whatsAppInboundFrom(message:Record<string,unknown>):WhatsAppInbound|null{
+  const from=typeof message.from==='string'?message.from:'',id=typeof message.id==='string'?message.id:'',type=typeof message.type==='string'?message.type:'';
+  if(!WA_FROM.test(from)||!WA_ID.test(id)||type==='reaction'||type==='system'||type==='unsupported')return null;
+  const part=(key:string)=>message[key]&&typeof message[key]==='object'?message[key] as Record<string,unknown>:{},interactive=part('interactive');
+  const words=type==='text'?part('text').body:type==='button'?part('button').text:type==='interactive'?(interactive.button_reply as Record<string,unknown>|undefined)?.title??(interactive.list_reply as Record<string,unknown>|undefined)?.title:undefined;
+  const text=clean(words,2000)||(/^[a-z_]{1,20}$/.test(type)?`[${type}]`:'');
+  const at=unix(Number(message.timestamp));
+  return text&&at?{from,id,text,at}:null;
+}
+export function ingestWhatsAppInbound(db:Database.Database,key:string,connection:{id:string;organization_id:string;project_id:string;account_name:string;encrypted_credentials:string;integration_id:string},items:WhatsAppInbound[]){
+  if(!items.length)return 0;
+  const account:Account={id:connection.id,account_name:connection.account_name,encrypted_credentials:connection.encrypted_credentials,integration_id:connection.integration_id,account_id:connection.integration_id,platform:'whatsapp',page_id:null,organization:false};
+  return new ProjectSocialInbox(db,{subject:'',organizationId:connection.organization_id,projectId:connection.project_id},key).ingest(account,items.map(item=>({kind:'message',threadId:'whatsapp',itemId:item.id,publicationId:null,author:item.from,recipient:item.from,text:item.text,receivedAt:item.at})));
 }

@@ -162,10 +162,11 @@ acceptance comes before the next switch is turned on.
    Cloud, LinkedIn, X and Meta (plus the Meta webhook
    `https://ryzevo.com/api/platform/meta/hooks`). Read-only scopes first;
    publishing switches stay OFF until a controlled pilot is approved.
-6. **Pilot.** Issue a fresh HSS Digital owner invitation, run the growth-coach
-   journey with that team, keep public sign-up and paid plans OFF.
-7. **Billing (later).** Publish the distance-sales terms page, set
-   `PLATFORM_BILLING_TERMS_URL`, complete the PayTR merchant/USD approval and a
+6. **Pilot.** Issue a fresh HSS Digital owner invitation, send the team the
+   user guide (`https://ryzevo.com/guide`), run the growth-coach journey with them, keep public sign-up and paid plans OFF.
+7. **Billing (later).** Complete and legally approve the terms page
+   (`/legal/sales`, filled in `lib/platform/sales-terms.ts`, see SAAS-PAYTR.md),
+   set `PLATFORM_BILLING_TERMS_URL=https://ryzevo.com/legal/sales`, complete the PayTR merchant/USD approval and a
    small real purchase plus manual refund before `PLATFORM_PAYTR_LIVE_ENABLED=1`.
 
 External HTTPS monitoring (uptime and certificate expiry) and an alert

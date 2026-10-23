@@ -1,5 +1,5 @@
 import type { CoachBriefChanges, CoachChannel } from '@/lib/platform/coach-types';
-const names:Record<CoachChannel,[string,string]>={linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],seo:['Arama (SEO/blog)','Search (SEO/blog)']};
+const names:Record<CoachChannel,[string,string]>={linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],seo:['Arama (SEO/blog)','Search (SEO/blog)'],whatsapp:['WhatsApp','WhatsApp'],ads:['Ücretli reklam','Paid ads']};
 // Plain-language summary of what changed between two strategy brief versions.
 export function briefChangeLines(changes:CoachBriefChanges,tr:boolean){
   const idx=tr?0:1,list=(ids:CoachChannel[])=>ids.map(id=>names[id][idx]).join(', '),lines:string[]=[];
