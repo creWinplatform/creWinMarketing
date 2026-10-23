@@ -3,11 +3,11 @@ import { ArrowUpRight } from 'lucide-react';
 import Brand from '@/components/platform/Brand';
 import { LangToggle } from '@/lib/lang';
 import type { Lang } from '@/lib/i18n/shared';
-import { salesTermsReady } from '@/lib/platform/sales-terms';
+import { privacyReady, salesTermsReady } from '@/lib/platform/sales-terms';
 import '@/app/doc-page.css';
 
 // Landing'in (.ryz-map) kabuğunda uzun metin sayfaları: kullanım rehberi ve satış sözleşmesi.
-// Satış sözleşmesi bağlantısı, metin taslakken alt bilgide gösterilmez.
+// Satış sözleşmesi ve aydınlatma metni bağlantıları, metinler taslakken alt bilgide gösterilmez.
 export type DocSection = { id: string; title: string };
 
 function BrandPair() {
@@ -49,6 +49,7 @@ export default function DocShell({ lang, kicker, title, lead, meta, toc, notice,
             <a href="/welcome">{t('Ürünü keşfet', 'Explore the product')}</a>
             <a href="/guide">{t('Kullanım rehberi', 'User guide')}</a>
             {salesTermsReady() && <a href="/legal/sales">{t('Satış sözleşmesi', 'Terms of sale')}</a>}
+            {privacyReady() && <a href="/legal/privacy">{t('Aydınlatma metni', 'Privacy notice')}</a>}
             <a href="/join">{t('Davetle katıl', 'Join by invite')} <ArrowUpRight size={14} /></a>
           </nav></div>
           <div className="rm-copy"><span>© {new Date().getFullYear()} Ryzevo · ryzevo.com</span></div>

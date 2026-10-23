@@ -207,7 +207,7 @@ and the landing footer hides its link.
 
 Fill in `lib/platform/sales-terms.ts`: seller name, MERSIS, tax office/number,
 address, phone, email (KEP optional), whether prices include VAT, the invoice
-period, the competent court for business buyers and the privacy-notice URL.
+period and the competent court for business buyers; the privacy notice must be complete as well.
 Then set `SALES_TERMS_LEGAL_REVIEWED = true`. While anything is missing,
 `paytrLiveReadiness` refuses `PLATFORM_BILLING_TERMS_URL=https://ryzevo.com/legal/sales`,
 so live payment stays closed even with the switch on (tested).
@@ -220,7 +220,13 @@ Points for the legal review:
 - Business buyers (merchants) vs. consumers: the dispute clause splits them.
 - A durable-medium copy of the contract (for example by email after payment)
   is **not** implemented; the order stores only the accepted page's address.
-- A KVKK privacy notice page does not exist yet; the contract links to it.
+- The KVKK privacy notice is `/legal/privacy` (`app/legal/privacy/page.tsx`), also a draft until its own fields in
+  `sales-terms.ts` are filled (hosting location, retention for account, audit and backups, optional VERBİS number)
+  and `PRIVACY_LEGAL_REVIEWED = true`. It lists only what the code processes: accounts, activity records, project
+  content, encrypted connection tokens, recipient/WhatsApp lists, the masked inbox (90 days), payment data passed to
+  PayTR, the AI provider, cookies (session, language, short-lived connection cookies). Customers' end-user data is
+  described with Ryzevo as processor. The transfer basis per provider (KVKK Art. 9) still needs the legal review.
+  The terms page counts as complete only when the privacy notice is complete too.
 
 ## Primary references (18 October 2026)
 

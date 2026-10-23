@@ -5,7 +5,7 @@ import { requestLang } from '@/lib/i18n/server';
 import type { Lang } from '@/lib/i18n/shared';
 import { PLAN_CATALOG } from '@/lib/platform/plan-catalog';
 import {
-  SALES_INVOICE_DAYS, SALES_MERCHANT_COURT, SALES_PRICES_INCLUDE_VAT, SALES_PRIVACY_URL, SALES_SELLER,
+  PRIVACY_PATH, SALES_INVOICE_DAYS, SALES_MERCHANT_COURT, SALES_PRICES_INCLUDE_VAT, SALES_SELLER,
   SALES_TERMS_VERSION, salesTermsReady,
 } from '@/lib/platform/sales-terms';
 
@@ -46,9 +46,7 @@ export default async function SalesTermsPage({ searchParams }: Props) {
     ? ph('KDV dahil mi, hariç mi — muhasebe teyidi', 'VAT included or excluded — to be confirmed by accounting')
     : SALES_PRICES_INCLUDE_VAT ? t('Fiyatlara KDV dahildir.', 'Prices include VAT.') : t('Fiyatlara KDV eklenir; ödeme sayfasında KDV dahil toplam gösterilir.', 'VAT is added to the prices; the payment page shows the total including VAT.');
   const invoice = SALES_INVOICE_DAYS ? t(`${SALES_INVOICE_DAYS} gün`, `${SALES_INVOICE_DAYS} days`) : ph('fatura süresi — muhasebe teyidi', 'invoice period — to be confirmed by accounting');
-  const privacy = /^https:\/\//.test(SALES_PRIVACY_URL)
-    ? <a href={SALES_PRIVACY_URL}>{t('kişisel verilerin işlenmesine ilişkin aydınlatma metni', 'privacy notice')}</a>
-    : <>{t('kişisel verilerin işlenmesine ilişkin aydınlatma metni', 'privacy notice')} {ph('bağlantı eklenecek', 'link to be added')}</>;
+  const privacy = <a href={PRIVACY_PATH}>{t('kişisel verilerin işlenmesine ilişkin aydınlatma metni', 'privacy notice')}</a>;
 
   const toc = [
     { id: 'pre', title: ts('A. Ön bilgilendirme formu', 'A. Pre-contract information') },
