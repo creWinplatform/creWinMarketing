@@ -128,6 +128,49 @@ Acceptance on EC2 must include a reboot, task recovery, volume persistence, disk
 pressure/backup-age alerts, external HTTPS outage notification and offline restore
 from an off-host copy. None is claimed complete by local helper tests.
 
+## ryzevo.com go-live checklist
+
+Production origin decided on 23 October 2026: **https://ryzevo.com** (landing,
+sign-in and app on one origin; `www.ryzevo.com` only redirects to it). The
+runtime template `deployment/windows/.env.example` is pre-filled for this origin;
+secrets stay `REPLACE_*` until set on the server. Order matters: each step's
+acceptance comes before the next switch is turned on.
+
+1. **DNS and TLS.** `A`/`AAAA` (or ALIAS) for `ryzevo.com` and `www.ryzevo.com`
+   to the instance's Elastic IP. Certificates for both names with automatic
+   renewal. IIS bindings for both hosts (`iis.web.config.example` redirects `www`
+   and plain HTTP to `https://ryzevo.com`, rejects any other host). Add `CAA` for
+   the chosen certificate authority.
+2. **Runtime config.** Copy the template to `RYZEVO_ENV_FILE`, set new
+   `AUTH_SECRET`, `CRON_SECRET`, `TRACKING_SECRET` and a long unique
+   `ADMIN_PASSWORD` (never a value that ever appeared in the repository). When
+   moving the local database, reuse its encryption key as
+   `PLATFORM_ENCRYPTION_KEY`; store that key apart from database backups.
+3. **First boot (everything OFF).** Run the Windows preflight, start app and
+   worker, take a backup, offline-verify it and run a restore drill. Register
+   scheduled tasks with `Register-RyzevoTasks.ps1`; point the off-host copy at the
+   private S3 destination.
+4. **Ryzevo email (SES).** Verify the `ryzevo.com` domain identity in the chosen
+   region: 3 DKIM `CNAME` records, SPF (`v=spf1 include:amazonses.com ~all`, merged
+   with any existing SPF), a custom MAIL FROM subdomain (e.g. `mail.ryzevo.com`:
+   `MX` + SPF `TXT`) and DMARC (`_dmarc.ryzevo.com`, start with `p=none` and a
+   reporting address). Leave the SES sandbox, create the SNS topic for bounces
+   and complaints (subscribed to `https://ryzevo.com/api/track/bounce`) and a
+   configuration set; set `PLATFORM_AUTH_SES_*`, `SES_SNS_TOPIC_ARN` and
+   `SES_CONFIGURATION_SET`. Only then `PLATFORM_AUTH_EMAIL_ENABLED=1`.
+5. **Provider apps.** Register the exact callbacks from the template in Google
+   Cloud, LinkedIn, X and Meta (plus the Meta webhook
+   `https://ryzevo.com/api/platform/meta/hooks`). Read-only scopes first;
+   publishing switches stay OFF until a controlled pilot is approved.
+6. **Pilot.** Issue a fresh HSS Digital owner invitation, run the growth-coach
+   journey with that team, keep public sign-up and paid plans OFF.
+7. **Billing (later).** Publish the distance-sales terms page, set
+   `PLATFORM_BILLING_TERMS_URL`, complete the PayTR merchant/USD approval and a
+   small real purchase plus manual refund before `PLATFORM_PAYTR_LIVE_ENABLED=1`.
+
+External HTTPS monitoring (uptime and certificate expiry) and an alert
+destination are part of step 3, not optional extras.
+
 ## References
 
 - [Microsoft IIS reverse proxy](https://learn.microsoft.com/en-us/iis/extensions/url-rewrite-module/reverse-proxy-with-url-rewrite-v2-and-application-request-routing)

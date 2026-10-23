@@ -12,6 +12,12 @@
     </security>
     <rewrite>
       <rules>
+        <!-- www.ryzevo.com needs its own binding/certificate; it only ever redirects to the apex. -->
+        <rule name="Ryzevo www to apex" stopProcessing="true">
+          <match url="(.*)" />
+          <conditions><add input="{HTTP_HOST}" pattern="^www\.ryzevo\.com$" /></conditions>
+          <action type="Redirect" url="https://ryzevo.com/{R:1}" appendQueryString="true" redirectType="Permanent" />
+        </rule>
         <rule name="Ryzevo reject unknown host" stopProcessing="true">
           <match url=".*" />
           <conditions><add input="{HTTP_HOST}" pattern="^ryzevo\.com$" negate="true" /></conditions>
