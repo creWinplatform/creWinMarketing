@@ -59,6 +59,13 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.match(welcomeHtml, /<title>[^<]*Ryzevo<\/title>/);
     assert.match(welcomeHtml, /\/brand\/ryzevo-brand-board.png/);
     assert.ok(!welcomeHtml.includes('Crewin Marketing'));
+    // Visitors get the landing at the bare address; workspace deep links still ask them to sign in.
+    const root = await request('/');
+    assert.equal(root.status, 200);
+    assert.match(await root.text(), /class="ryz-map"/);
+    const deep = await request('/?tab=campaigns');
+    assert.equal(deep.status, 307);
+    assert.match(deep.headers.get('location') || '', /\/login\?from=/);
     // Public guide and legal pages need no session; the legal drafts stay out of search engines and the footer.
     assert.match(welcomeHtml, /href="\/guide"/);
     assert.doesNotMatch(welcomeHtml, /href="\/legal\/(sales|privacy)"/, 'draft legal pages are not linked yet');

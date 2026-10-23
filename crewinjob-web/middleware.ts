@@ -46,6 +46,13 @@ export async function middleware(req: NextRequest) {
   const username = identity?.subject;
 
   if (!username) {
+    // The bare address is the public landing for visitors; signed-in members get their workspace at the same URL.
+    // Deep links into the workspace (/?tab=…) still go to sign-in.
+    if (pathname === '/' && [...req.nextUrl.searchParams.keys()].every(key => key === 'lang')) {
+      const landing = req.nextUrl.clone();
+      landing.pathname = '/welcome';
+      return NextResponse.rewrite(landing);
+    }
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Yetkisiz — lütfen giriş yapın' }, { status: 401 });
     }

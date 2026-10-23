@@ -26,7 +26,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     description: lang === 'en'
       ? 'Ryzevo brings your AI-assisted content, campaigns, SEO work and team together around one goal.'
       : 'Ryzevo: AI destekli içeriklerini, kampanyalarını, SEO çalışmalarını ve ekibini aynı hedef etrafında buluştur.',
-    alternates: { languages: { tr: '/welcome?lang=tr', en: '/welcome?lang=en' } },
+    alternates: { canonical: '/', languages: { tr: '/?lang=tr', en: '/?lang=en' } },
   };
 }
 
