@@ -85,3 +85,21 @@ test('events for another number are ignored and an unsigned call is refused',run
   assert.throws(()=>receiveWhatsAppHook(f.db,KEY,f.hookId,body,'sha256='+'0'.repeat(64)),error=>error.status===401);
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM platform_social_inbox WHERE platform='whatsapp'").get().n,0);
 }));
+
+test('offline recovery authenticates WhatsApp phone numbers, the webhook secret and inbox reply addresses',run(async f=>{
+  f.wa.addContacts({phones:'+905321112233',evidence:'QA form',consentAt:'2026-10-01',acknowledged:true});
+  f.hook([{from:'905321112234',id:'wamid.rec',type:'text',timestamp:seconds(),text:{body:'Merhaba'}}]);
+  const fs=require('node:fs'),path=require('node:path'),folder=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'wa-recovery-')),file=path.join(folder,'snapshot.sqlite');
+  try{
+    await f.db.backup(file);const {inspectSnapshot}=await import('../scripts/lib/platform-recovery.mjs');
+    const counts=['platform_whatsapp_contacts','platform_whatsapp_hooks','platform_social_inbox'].map(table=>f.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n);
+    assert.ok(counts.every(n=>n>0),JSON.stringify(counts));
+    const others=f.db.prepare("SELECT COUNT(*) n FROM platform_connections WHERE encrypted_credentials<>''").get().n;
+    const report=inspectSnapshot(file,KEY,56);assert.equal(report.credentialCheck,'authenticated');
+    assert.equal(report.encryptedRecords,others+counts.reduce((a,b)=>a+b,0),'every WhatsApp and inbox envelope is checked, not only the connection');
+    // A WhatsApp phone number sealed for another resource is refused even though every connection still opens.
+    const copy=new (require('better-sqlite3'))(file);const contact=copy.prepare('SELECT id FROM platform_whatsapp_contacts LIMIT 1').get();
+    copy.prepare('UPDATE platform_whatsapp_contacts SET phone_encrypted=(SELECT secret_encrypted FROM platform_whatsapp_hooks LIMIT 1) WHERE id=?').run(contact.id);copy.close();
+    assert.throws(()=>inspectSnapshot(file,KEY,56),/credential_authentication_failed/);
+  }finally{fs.rmSync(folder,{recursive:true,force:true});}
+}));

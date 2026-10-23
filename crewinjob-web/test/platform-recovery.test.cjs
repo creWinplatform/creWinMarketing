@@ -218,6 +218,10 @@ test('orphaned project scopes and undeclared encrypted columns fail recovery che
   const unknown = f.backup();
   assert.equal(unknown.result.status, 1);
   assert.match(unknown.result.stderr, /unsupported_encrypted_column/);
+  f.db.exec("ALTER TABLE platform_connections DROP COLUMN encrypted_unknown; ALTER TABLE platform_connections ADD COLUMN unknown_encrypted TEXT NOT NULL DEFAULT ''");
+  const suffix = f.backup();
+  assert.equal(suffix.result.status, 1);
+  assert.match(suffix.result.stderr, /unsupported_encrypted_column/, 'the <name>_encrypted spelling is recognised too');
 });
 
 test('future and gapped migrations are rejected without running migrations', t => {

@@ -99,8 +99,13 @@ const ENCRYPTED_COLUMNS = [
   { since: 24, table: 'platform_billing_orders', column: 'encrypted_token', resource: row => row.id },
   { since: 29, table: 'platform_mobile_contacts', column: 'encrypted_destination', resource: row => `mobile-contact:${row.id}` },
   { since: 29, table: 'platform_mobile_messages', column: 'encrypted_snapshot', resource: row => `mobile-message:${row.job_id}` },
+  { since: 47, table: 'platform_whatsapp_contacts', column: 'phone_encrypted', resource: row => `whatsapp-contact:${row.id}` },
+  { since: 48, table: 'platform_whatsapp_hooks', column: 'secret_encrypted', resource: row => `whatsapp-hook:${row.hook_id}` },
+  { since: 51, table: 'platform_social_inbox', column: 'recipient_encrypted', resource: row => `inbox:${row.id}` },
   { since: 54, table: 'platform_billing_live_orders', column: 'encrypted_token', resource: row => row.id },
 ];
+// Both spellings mark an encrypted field: encrypted_<name> (older tables) and <name>_encrypted (WhatsApp, inbox).
+const isEncryptedColumn = column => column.startsWith('encrypted_') || column.endsWith('_encrypted');
 
 export function inspectSnapshot(file, key, expectedSchema) {
   const db = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 });
@@ -147,7 +152,7 @@ export function inspectSnapshot(file, key, expectedSchema) {
     }
     // Fail closed when a future encrypted field has no tested recovery contract.
     for (const [table, columns] of tables) for (const column of columns) {
-      if (column.startsWith('encrypted_') && !ENCRYPTED_COLUMNS.some(item => item.table === table && item.column === column)) fail('unsupported_encrypted_column');
+      if (isEncryptedColumn(column) && !ENCRYPTED_COLUMNS.some(item => item.table === table && item.column === column)) fail('unsupported_encrypted_column');
     }
     let encryptedRecords = 0;
     for (const contract of ENCRYPTED_COLUMNS) {

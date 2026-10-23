@@ -148,3 +148,9 @@ test('image-header and URL-button templates: the batch carries a public https li
   f.db.prepare("UPDATE platform_whatsapp_templates SET body='Başka metin {{1}}' WHERE name='gorselli'").run();
   const before=calls.length;const result=await wa.process(again.id);assert.equal(result.counts.skipped,1);assert.equal(calls.length,before);
 }));
+test('batches saved in the same millisecond still list the newest first',run(async f=>{
+  const {graph}=fakeGraph(),wa=await setup(f,graph),first=draft(wa).batches[0],second=draft(wa,{name:'İkinci'}).batches[0];
+  // Force the tie that a fast machine produces: both rows share one updated_at.
+  f.db.prepare('UPDATE platform_whatsapp_batches SET updated_at=?').run('2026-10-23T10:00:00.000Z');
+  assert.deepEqual(plain(wa.read().batches.map(batch=>batch.id)),[second.id,first.id]);
+}));

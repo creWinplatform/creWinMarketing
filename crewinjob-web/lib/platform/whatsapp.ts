@@ -83,7 +83,7 @@ export class ProjectWhatsApp{
     return {
       account,templates:this.templates(),
       contacts:showContacts?(this.db.prepare('SELECT id,phone_hint,consent_evidence,consent_at,opted_out_at,opt_out_source,created_at FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? ORDER BY created_at DESC').all(...this.args()) as {id:string;phone_hint:string;consent_evidence:string;consent_at:string;opted_out_at:string|null;opt_out_source:'team'|'reply'|null;created_at:string}[]).map(row=>({id:row.id,hint:row.phone_hint,consentEvidence:row.consent_evidence,consentAt:row.consent_at,optedOut:Boolean(row.opted_out_at),optOutSource:row.opt_out_source,createdAt:row.created_at})):[],
-      batches:(this.db.prepare('SELECT * FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC LIMIT 50').all(...this.args()) as Batch[]).map(row=>this.describe(row)),
+      batches:(this.db.prepare('SELECT * FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 50').all(...this.args()) as Batch[]).map(row=>this.describe(row)),
       sendEnabled:whatsAppSendEnabled(),sentToday:this.sentToday(),hook:this.hook(connection?.id),
       can:{connect:this.can('connections.manage'),contacts:this.can('recipients.manage'),write:this.can('content.write'),approve:this.can('campaign.approve'),dispatch:this.can('campaign.dispatch'),publish:this.can('campaign.dispatch')&&hasMessagingDuty(this.db,this.scope.subject,...this.args(),'publish')},
     };
