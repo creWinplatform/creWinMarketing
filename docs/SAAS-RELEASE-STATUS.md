@@ -20,7 +20,13 @@ and an operator-approved live acceptance are different milestones.
   - replies go only within 24 hours, behind `PLATFORM_WHATSAPP_SEND_ENABLED`.
 
   Migration 55 was dry-run on a copy of the real local database. It is not applied yet.
-- **Checks:** 678 platform tests, i18n and TypeScript pass.
+- **Privacy notice** (`/legal/privacy`), a draft like the terms page.
+- **Contract email (schema 56):**
+  - the accepted terms text is frozen with each live order, and a copy is emailed once after the payment is confirmed;
+  - the owner can download it from the payment history.
+
+  Migration 56 was dry-run on a copy of the real local database. It is not applied yet.
+- **Checks:** 684 platform tests, i18n and TypeScript pass.
 
 ## Delivered on 22 October 2026
 

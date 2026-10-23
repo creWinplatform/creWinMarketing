@@ -14,6 +14,7 @@ import { observeWorkerTick } from '@/lib/platform/worker-health';
 import { MobileGrowth } from '@/lib/platform/mobile-store';
 import { MobileDelivery,settleUnauthorizedMobileJob } from '@/lib/platform/mobile-delivery';
 import { deliverNextCoachDigest } from '@/lib/platform/coach-digest';
+import { deliverNextContractEmail } from '@/lib/platform/billing-contract';
 import { advanceSeoScans } from '@/lib/platform/seo-operations';
 import { evaluateDueAutomations } from '@/lib/platform/automations';
 import { readDueMessagingSources } from '@/lib/platform/messaging-sources';
@@ -78,6 +79,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   }
   const identityEmail=Date.now()-startedAt<25000?await identity.deliverNext():false;
   const coachDigest=Date.now()-startedAt<25000?await deliverNextCoachDigest(db).catch(()=>false):false;
+  const contractEmail=Date.now()-startedAt<25000?await deliverNextContractEmail(db).catch(()=>false):false;
   // SEO scans whose tab was closed continue here, one page at a time.
   const seoPages=Date.now()-startedAt<20000?await advanceSeoScans(db).catch(()=>0):0;
   // Automation bookkeeping only (enrollments and exits); sending always waits for a person's approval.
@@ -88,5 +90,5 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const whatsappBatches=Date.now()-startedAt<20000?await deliverWhatsAppBatches(db,credentialEncryptionKey()).catch(()=>0):0;
   // Inbox accounts with automatic reading are read every 30 minutes, as the person who turned it on.
   const inboxReads=Date.now()-startedAt<20000?await readDueInboxAccounts(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, seoPages, automations, messagingReads, whatsappBatches, inboxReads };
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, automations, messagingReads, whatsappBatches, inboxReads };
 }

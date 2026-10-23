@@ -20,7 +20,9 @@ export type ProjectBillingView = {
 export type LivePlanId='launch'|'growth';
 export type LiveBillingPlan={id:LivePlanId;name:string;cadence:'monthly'|'yearly';amountMinor:number;seats:number;socialAccounts:number;ai:number;audits:number};
 export type LiveBillingOrderState='preparing'|'pending'|'paid'|'failed'|'rejected'|'uncertain'|'review';
-export type LiveBillingOrder={id:string;planId:LivePlanId;cadence:'monthly'|'yearly';amountMinor:number;currency:'USD';state:LiveBillingOrderState;createdAt:string;expiresAt:string;paidAt:string|null;checkoutUrl:string|null};
+export type LiveBillingOrder={id:string;planId:LivePlanId;cadence:'monthly'|'yearly';amountMinor:number;currency:'USD';state:LiveBillingOrderState;createdAt:string;expiresAt:string;paidAt:string|null;checkoutUrl:string|null;
+  /** The accepted terms are kept with the order; the copy is emailed once the payment is confirmed. */
+  contract:boolean;contractEmail:'queued'|'submitted'|'sent'|'uncertain'|'skipped'|null};
 export type LiveBillingView={
   enabled:boolean;termsUrl:string|null;plans:LiveBillingPlan[];
   current:{planId:LivePlanId;cadence:'monthly'|'yearly';startsAt:string;endsAt:string;graceEndsAt:string;inGrace:boolean}|null;

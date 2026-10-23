@@ -8,6 +8,7 @@ import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { PLAN_CATALOG, PLAN_CATALOG_VERSION } from './plan-catalog';
 import { LIVE_ORDER_ID, paytrConfiguration, paytrLiveCheckoutForm, paytrLiveReadiness, requestPaytrLiveToken, verifyPaytrLiveNotification, type PaytrConfiguration, type PaytrTransport } from './paytr';
 import type { LiveBillingOrder, LiveBillingOrderState, LiveBillingPlan, LiveBillingView, LivePlanId } from './billing-types';
+import { queueContractEmail, termsSnapshot, type ContractEmailState } from './billing-contract';
 
 // Live billing: prepaid monthly or yearly periods paid through PayTR, no stored cards and no automatic renewal.
 // Paid rights exist only after a signed success notification whose amount matches the order; anything contradictory
@@ -15,7 +16,7 @@ import type { LiveBillingOrder, LiveBillingOrderState, LiveBillingPlan, LiveBill
 // 7-day grace; the new period then starts where the current one ends, so nobody pays months ahead by accident.
 export const LIVE_CATALOG_VERSION = `${PLAN_CATALOG_VERSION}-live1`;
 export const RENEWAL_WINDOW_DAYS = 14, GRACE_DAYS = 7, DAY = 86400000;
-type OrderRow = { id: string; organization_id: string; project_id: string; actor_id: string; idempotency_key: string; request_digest: string; merchant_revision: string; catalog_version: string; plan_id: LivePlanId; cadence: 'monthly' | 'yearly'; amount_minor: number; state: LiveBillingOrderState; encrypted_token: string; notification_digest: string | null; terms_url: string; created_at: string; expires_at: string; updated_at: string; paid_at: string | null; revision: number };
+type OrderRow = { id: string; organization_id: string; project_id: string; actor_id: string; idempotency_key: string; request_digest: string; merchant_revision: string; catalog_version: string; plan_id: LivePlanId; cadence: 'monthly' | 'yearly'; amount_minor: number; state: LiveBillingOrderState; encrypted_token: string; notification_digest: string | null; terms_url: string; created_at: string; expires_at: string; updated_at: string; paid_at: string | null; revision: number; terms_version: string | null; terms_language: 'tr' | 'en' | null; terms_text: string | null; terms_digest: string | null };
 type Subscription = { order_id: string; plan_id: LivePlanId; cadence: 'monthly' | 'yearly'; starts_at: string; ends_at: string; grace_ends_at: string };
 const now = () => new Date().toISOString();
 
@@ -55,12 +56,12 @@ export class ProjectLiveBilling {
   private pilot() { return (this.db.prepare('SELECT mode FROM platform_project_entitlements WHERE organization_id=? AND project_id=?').get(...args(this.scope)) as { mode: string } | undefined)?.mode === 'pilot'; }
   private row(id: string) { return this.db.prepare('SELECT * FROM platform_billing_live_orders WHERE id=? AND organization_id=? AND project_id=?').get(id, ...args(this.scope)) as OrderRow | undefined; }
   private audit(operation: string) { this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), operation, now()); }
-  private view(row: OrderRow, ready: boolean): LiveBillingOrder {
+  private view(row: OrderRow, ready: boolean, emails = new Map<string, ContractEmailState>()): LiveBillingOrder {
     let checkoutUrl: string | null = null;
     if (row.state === 'pending' && row.expires_at > now() && ready) {
       try { const token = decryptCredentials<{ token: string }>(row.encrypted_token, this.key, row.organization_id, row.project_id, row.id).token; if (/^[a-zA-Z0-9]{20,256}$/.test(token)) checkoutUrl = 'https://www.paytr.com/odeme/guvenli/' + token; } catch { checkoutUrl = null; }
     }
-    return { id: row.id, planId: row.plan_id, cadence: row.cadence, amountMinor: row.amount_minor, currency: 'USD', state: row.state, createdAt: row.created_at, expiresAt: row.expires_at, paidAt: row.paid_at, checkoutUrl };
+    return { id: row.id, planId: row.plan_id, cadence: row.cadence, amountMinor: row.amount_minor, currency: 'USD', state: row.state, createdAt: row.created_at, expiresAt: row.expires_at, paidAt: row.paid_at, checkoutUrl, contract: Boolean(row.terms_text), contractEmail: emails.get(row.id) || null };
   }
   // When a new period may be bought: no period, or within 14 days of the latest end (grace included).
   private purchaseOpensAt() {
@@ -72,14 +73,21 @@ export class ProjectLiveBilling {
     this.authorize(); const readiness = paytrLiveReadiness(this.configuration()), current = currentSubscription(this.db, this.scope);
     const rows = this.db.prepare('SELECT * FROM platform_billing_live_orders WHERE organization_id=? AND project_id=? ORDER BY created_at DESC,id DESC LIMIT 20').all(...args(this.scope)) as OrderRow[];
     const pilot = this.pilot(), opensAt = this.purchaseOpensAt(), open = rows.some(row => ['preparing', 'pending', 'uncertain', 'review'].includes(row.state));
+    const emails = new Map((this.db.prepare('SELECT order_id,state FROM platform_billing_contract_emails WHERE organization_id=? AND project_id=?').all(...args(this.scope)) as { order_id: string; state: ContractEmailState }[]).map(item => [item.order_id, item.state]));
     return {
       enabled: readiness.ready, termsUrl: readiness.ready ? readiness.termsUrl : null, plans: livePlans(),
       current: current ? { planId: current.plan_id, cadence: current.cadence, startsAt: current.starts_at, endsAt: current.ends_at, graceEndsAt: current.grace_ends_at, inGrace: current.ends_at <= now() } : null,
       nextStartsAt: (() => { const end = latestEnd(this.db, this.scope); return end && end > now() ? end : null; })(),
       canPurchase: readiness.ready && !pilot && !opensAt && !open, pilotManaged: pilot, purchaseOpensAt: opensAt, openOrder: open,
       emailVerified: Boolean(this.db.prepare('SELECT user_id FROM platform_account_emails WHERE user_id=?').get(this.scope.subject)),
-      orders: rows.map(row => this.view(row, readiness.ready)),
+      orders: rows.map(row => this.view(row, readiness.ready, emails)),
     };
+  }
+  // The terms text this order was accepted with, for the owner to download (the same copy that is emailed).
+  contract(id: unknown) {
+    this.authorize(); const row = typeof id === 'string' && LIVE_ORDER_ID.test(id) ? this.row(id) : undefined;
+    if (!row?.terms_text) throw new MarketingStoreError('Bu sipariş için saklanmış sözleşme yok.', 404);
+    return { filename: `ryzevo-sozlesme-${row.id}.txt`, text: row.terms_text };
   }
   async start(input: unknown, ip: string, transport: PaytrTransport = requestPaytrLiveToken): Promise<LiveBillingOrder> {
     this.authorize(); const config = this.configuration(), readiness = paytrLiveReadiness(config);
@@ -95,7 +103,9 @@ export class ProjectLiveBilling {
     if (!contact || typeof contact !== 'object' || Array.isArray(contact) || Object.keys(contact).some(key => !['name', 'phone', 'address'].includes(key))) throw new MarketingStoreError('Fatura ve iletişim bilgileri geçersiz.');
     const name = text(contact.name, 2, 60), phone = text(contact.phone, 5, 20), address = text(contact.address, 5, 400), language = value.language === 'en' ? 'en' : 'tr';
     if (!/^[+\d ()-]+$/.test(phone)) throw new MarketingStoreError('Telefon numarası geçersiz.');
-    const digest = createHash('sha256').update(JSON.stringify([this.scope.subject, plan, config.merchantRevision, readiness.termsUrl, name, phone, address, email, language])).digest('hex'), idempotency = createHash('sha256').update(value.idempotencyKey).digest('hex');
+    // The exact terms the buyer accepts are frozen with the order (and emailed after payment).
+    const terms = termsSnapshot(language, new URL(readiness.termsUrl).origin);
+    const digest = createHash('sha256').update(JSON.stringify([this.scope.subject, plan, config.merchantRevision, readiness.termsUrl, terms.digest, name, phone, address, email, language])).digest('hex'), idempotency = createHash('sha256').update(value.idempotencyKey).digest('hex');
     const reservation = this.db.transaction(() => {
       this.authorize();
       const existing = this.db.prepare('SELECT * FROM platform_billing_live_orders WHERE organization_id=? AND project_id=? AND idempotency_key=?').get(...args(this.scope), idempotency) as OrderRow | undefined;
@@ -106,8 +116,8 @@ export class ProjectLiveBilling {
       if (opensAt) throw new MarketingStoreError('Yeni dönem, mevcut dönemin bitmesine 14 gün kala satın alınabilir.', 409);
       if ((this.db.prepare('SELECT COUNT(*) n FROM platform_billing_live_orders WHERE organization_id=? AND project_id=? AND created_at>=?').get(...args(this.scope), new Date(Date.now() - DAY).toISOString()) as { n: number }).n >= 10) throw new MarketingStoreError('Günlük ödeme denemesi sınırına ulaşıldı.', 429);
       const id = 'RZLIVE' + randomBytes(16).toString('hex'), at = now(), expiresAt = new Date(Date.now() + 10 * 60000).toISOString();
-      this.db.prepare("INSERT INTO platform_billing_live_orders(id,organization_id,project_id,actor_id,idempotency_key,request_digest,merchant_revision,catalog_version,plan_id,cadence,amount_minor,state,terms_url,created_at,expires_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'preparing',?,?,?,?)")
-        .run(id, ...args(this.scope), this.scope.subject, idempotency, digest, config.merchantRevision, LIVE_CATALOG_VERSION, plan.id, plan.cadence, plan.amountMinor, readiness.termsUrl, at, expiresAt, at);
+      this.db.prepare("INSERT INTO platform_billing_live_orders(id,organization_id,project_id,actor_id,idempotency_key,request_digest,merchant_revision,catalog_version,plan_id,cadence,amount_minor,state,terms_url,created_at,expires_at,updated_at,terms_version,terms_language,terms_text,terms_digest) VALUES(?,?,?,?,?,?,?,?,?,?,?,'preparing',?,?,?,?,?,?,?,?)")
+        .run(id, ...args(this.scope), this.scope.subject, idempotency, digest, config.merchantRevision, LIVE_CATALOG_VERSION, plan.id, plan.cadence, plan.amountMinor, readiness.termsUrl, at, expiresAt, at, terms.version, terms.language, terms.text, terms.digest);
       this.audit('billing.live.prepare'); return { row: this.row(id)!, created: true };
     }).immediate();
     if (!reservation.created) return this.view(reservation.row, readiness.ready);
@@ -144,6 +154,7 @@ export function receivePaytrLiveNotification(db: Database.Database, body: string
       const end = latestEnd(db, scope), startsAt = end && end > at ? end : at, endsAt = addPeriod(startsAt, row.cadence);
       db.prepare('INSERT INTO platform_project_subscriptions(order_id,organization_id,project_id,plan_id,cadence,starts_at,ends_at,grace_ends_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)')
         .run(row.id, row.organization_id, row.project_id, row.plan_id, row.cadence, startsAt, endsAt, new Date(Date.parse(endsAt) + GRACE_DAYS * DAY).toISOString(), at);
+      queueContractEmail(db, row, at);
     }
     db.prepare("UPDATE platform_billing_live_orders SET state=?,notification_digest=?,encrypted_token='',paid_at=CASE WHEN ?='paid' THEN ? ELSE paid_at END,updated_at=?,revision=revision+1 WHERE id=?").run(state, notice.digest, state, at, at, row.id);
     db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(row.actor_id, row.organization_id, row.project_id, `billing.live.${state}`, at);

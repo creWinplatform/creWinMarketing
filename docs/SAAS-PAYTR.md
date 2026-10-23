@@ -218,8 +218,14 @@ Points for the legal review:
   immediately in electronic form. The payment checkbox now also asks the buyer
   to agree that the service starts at once and so has no right of withdrawal.
 - Business buyers (merchants) vs. consumers: the dispute clause splits them.
-- A durable-medium copy of the contract (for example by email after payment)
-  is **not** implemented; the order stores only the accepted page's address.
+- **Durable copy (schema 56).**
+  - The terms live in one source, `lib/platform/sales-terms-document.ts`. The page renders it.
+  - When an order is prepared, its plain text is frozen on the order with a version, a language and a SHA-256 digest. An English order gets the Turkish text first, then the translation.
+  - When PayTR's signed notification marks the order paid, one copy is queued (`platform_billing_contract_emails`). The worker emails it with the order details (plan, amount, period, payment date) to the buyer's verified account address through the account-email SES configuration (`deliverNextContractEmail`).
+  - The copy is sent once: an unclear outcome is `uncertain` and never resent, and a buyer without a verified email is `skipped`.
+  - While account email is not configured, the copy waits in the queue.
+  - The owner can download the same text from the payment history (`GET /api/platform/billing/live?contract=<order>`).
+  - Tests: `test/platform-billing-contract.test.cjs`.
 - The KVKK privacy notice is `/legal/privacy` (`app/legal/privacy/page.tsx`), also a draft until its own fields in
   `sales-terms.ts` are filled (hosting location, retention for account, audit and backups, optional VERBİS number)
   and `PRIVACY_LEGAL_REVIEWED = true`. It lists only what the code processes: accounts, activity records, project

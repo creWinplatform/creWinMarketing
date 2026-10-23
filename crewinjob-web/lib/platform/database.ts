@@ -1158,6 +1158,22 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_social_inbox_scope ON platform_social_inbox(organization_id,project_id,state,received_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(55,datetime('now'));
   `))();
+  // Live billing: the accepted terms text is kept with each order, and a copy is emailed to the buyer once the payment
+  // is confirmed (durable medium). The email is sent once; an unclear outcome is recorded as uncertain, never resent.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=56').get())db.transaction(()=>db.exec(`
+    ALTER TABLE platform_billing_live_orders ADD COLUMN terms_version TEXT;
+    ALTER TABLE platform_billing_live_orders ADD COLUMN terms_language TEXT CHECK(terms_language IN ('tr','en'));
+    ALTER TABLE platform_billing_live_orders ADD COLUMN terms_text TEXT;
+    ALTER TABLE platform_billing_live_orders ADD COLUMN terms_digest TEXT;
+    CREATE TABLE platform_billing_contract_emails (
+      order_id TEXT PRIMARY KEY REFERENCES platform_billing_live_orders(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      user_id TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('queued','submitted','sent','uncertain','skipped')), reason TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_billing_contract_emails_state ON platform_billing_contract_emails(state,created_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(56,datetime('now'));
+  `))();
   return db;
 }
 
