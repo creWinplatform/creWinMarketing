@@ -1244,6 +1244,22 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_report_shares_report ON platform_report_shares(report_id,created_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(59,datetime('now'));
   `))();
+  // Invitations of existing accounts (an agency, a consultant) to a project, matched by the invitee's verified email.
+  // Only a hash and a masked form of the email are stored.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=60').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_member_invites (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      email_hash TEXT NOT NULL CHECK(length(email_hash)=64), masked_email TEXT NOT NULL CHECK(length(masked_email) BETWEEN 3 AND 200),
+      role TEXT NOT NULL CHECK(role IN ('admin','editor','analyst','viewer')),
+      state TEXT NOT NULL CHECK(state IN ('pending','accepted','declined','revoked')),
+      invited_by TEXT NOT NULL REFERENCES platform_users(id), created_at TEXT NOT NULL, expires_at TEXT NOT NULL,
+      decided_at TEXT, accepted_user_id TEXT REFERENCES platform_users(id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_member_invites_email ON platform_member_invites(email_hash,state);
+    CREATE UNIQUE INDEX platform_member_invites_open ON platform_member_invites(project_id,email_hash) WHERE state='pending';
+    INSERT INTO platform_migrations(version,applied_at) VALUES(60,datetime('now'));
+  `))();
   return db;
 }
 

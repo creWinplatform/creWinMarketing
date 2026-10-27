@@ -84,6 +84,6 @@ test('the English email names the deadline in the project time zone and how to t
 test('migration 58 is additive and repeatable',async()=>{
  const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'team-alerts-')),'fixture.sqlite');
  let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAlertSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name LIKE 'platform_alert_%'").get().n,0);db.close();
- db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,59);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name LIKE 'platform_alert_%'").get().n,3);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+ db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,60);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name LIKE 'platform_alert_%'").get().n,3);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=58').get().n,1);db.close();
 });

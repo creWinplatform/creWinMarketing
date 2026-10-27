@@ -13,6 +13,7 @@ const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
 const ProjectPlan=dynamic(()=>import('./ProjectPlan'));
 const ProjectBilling=dynamic(()=>import('./ProjectBilling'));
 const LiveBilling=dynamic(()=>import('./LiveBilling'));
+const ProjectAccountInvites=dynamic(()=>import('./ProjectAccountInvites'));
 const OperatorConsole=dynamic(()=>import('./OperatorConsole'));
 export default function ProjectSettings({
   workspace,
@@ -242,6 +243,7 @@ export default function ProjectSettings({
               inviteOnly
             />
           )}
+          {canTeam && workspace.project.productPack === 'standard' && <ProjectAccountInvites lang={lang} isOwner={workspace.permissions?.includes('billing.manage') || false} />}
           <AccountSettings workspace={workspace} lang={lang} />
         </div>
       )}

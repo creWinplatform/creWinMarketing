@@ -33,8 +33,9 @@ export default function TeamAlerts({lang}:{lang:Locale}){
       :alert.phase==='trial_ending'?(tr?`Deneme süresi ${time(alert.at)} tarihinde bitiyor.`:`The trial ends at ${time(alert.at)}.`)
       :(tr?`Ücretli dönem ${time(alert.at)} tarihinde bitiyor. Yenileme otomatik değildir.`:`The paid period ends at ${time(alert.at)}. Renewal is not automatic.`);
     case 'ad_error':return tr?`${n(alert.count)} reklam planında sağlayıcı hatası var. Harcamanın durumunu reklam hesabından kontrol edin.`:`${n(alert.count)} ad plan(s) have a provider error. Check the spend status in the ad account.`;
+    case 'invite_pending':return tr?`${n(alert.count)} projeye davet edildiniz. Kabul ederseniz proje, Tüm projeler sayfasında görünür (ilk davetin bitişi: ${time(alert.at)}).`:`You were invited to ${n(alert.count)} project(s). Once accepted, they appear on the All projects page (first invitation expires ${time(alert.at)}).`;
   }};
-  const open={inbox_window:tr?'Gelen kutusu':'Inbox',publication_failed:tr?'Yayın kuyruğu':'Publication queue',connection_expiring:tr?'Bağlantılar':'Connections',billing_period:tr?'Plan ve ödeme':'Plan and payment',ad_error:tr?'Reklamlar':'Ads'};
+  const open={inbox_window:tr?'Gelen kutusu':'Inbox',publication_failed:tr?'Yayın kuyruğu':'Publication queue',connection_expiring:tr?'Bağlantılar':'Connections',billing_period:tr?'Plan ve ödeme':'Plan and payment',ad_error:tr?'Reklamlar':'Ads',invite_pending:tr?'Tüm projeler':'All projects'};
   return <section className="studio-band team-alerts" aria-labelledby="team-alerts-title" aria-busy={busy}>
     <div className="studio-section-title"><h2 id="team-alerts-title"><BellRing size={16}/>{tr?'Dikkat gerekenler':'Needs attention'}</h2>{data.alerts.length>0&&<span className="studio-badge">{n(data.alerts.length)}</span>}</div>
     {error&&<p role="alert" className="studio-error"><Msg text={error}/></p>}

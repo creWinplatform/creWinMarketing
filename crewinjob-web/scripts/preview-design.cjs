@@ -146,6 +146,16 @@ if(process.argv.includes('--approvals')){
   for(const [id,title] of [['qa-plan-a','Müşteri sorusu: kurulum ne kadar sürer?'],['qa-plan-b','Kısa vaka: bir dükkânın ilk ayı']])db.prepare("INSERT INTO platform_coach_content_items(id,organization_id,project_id,month,channel,theme,title,angle,planned_for,state,source,updated_by,created_at,updated_at) VALUES(?,?,?,?,'linkedin','QA',?,'QA','"+"2030-01-01"+"','suggested','template',?,?,?)").run(id,fixture.organizationId,fixture.projectId,month,title,fixture.userId,new Date(Date.now()-2*86400000).toISOString(),now);
   db.prepare("UPDATE platform_social_inbox SET reply_state='draft',reply_text='Merhaba, fiyat listemizi DM ile iletiyoruz.' WHERE id='qa-inbox-2'").run();
   console.log('Approvals QA: a strategy draft, two content plan suggestions and a saved reply are waiting; nothing is approved or sent.');}
+if(process.argv.includes('--portfolio')){
+  // Agency QA: the fixture owner has a verified email, is already an editor in one client project and has a pending
+  // invitation to another. Both client projects are disposable; nothing is sent.
+  const {MemberInvites}=load('member-invites.ts'),now=new Date().toISOString();
+  db.prepare('INSERT OR REPLACE INTO platform_account_emails VALUES(?,?,?)').run(fixture.userId,'ajans@ryzevo.example',now);
+  const clientA=repo.provision('legacy-admin',{organizationName:'Deniz Mobilya',projectName:'Deniz Mobilya',website:'https://deniz-mobilya.example',username:'qa-client-a',password:'design-fixture-only-123'});
+  const clientB=repo.provision('legacy-admin',{organizationName:'Kuzey Kafe',projectName:'Kuzey Kafe',website:'https://kuzey-kafe.example',username:'qa-client-b',password:'design-fixture-only-123'});
+  db.prepare("INSERT INTO platform_memberships VALUES(?,?,?,'editor',1)").run(fixture.userId,clientA.organizationId,clientA.projectId);
+  new MemberInvites(db,{subject:clientB.userId,organizationId:clientB.organizationId,projectId:clientB.projectId}).invite({action:'invite',email:'ajans@ryzevo.example',role:'editor'});
+  console.log('Portfolio QA: one joined client project and one pending invitation for design-fixture; client owners qa-client-a / qa-client-b.');}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.

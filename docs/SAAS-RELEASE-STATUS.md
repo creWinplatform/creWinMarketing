@@ -6,6 +6,12 @@ and an operator-approved live acceptance are different milestones.
 
 ## Delivered on 27 October 2026
 
+- **Agency view, phase 1 (schema 60)** (`SAAS-AGENCY.md`):
+  - Existing accounts can be invited to a project by verified email; only a hash and a masked form are stored, and the answer never reveals whether the account exists.
+  - The new `/portfolio` page shows every project of a person, with alerts, decisions waiting, posts and report status, each read with that person's rights.
+  - Migration 60 was dry-run on a copy; it is not yet applied to the real database.
+  - The agency package is phase 2.
+
 - **Waiting for your decision** (`SAAS-TEAM-ALERTS.md`):
   - An overview list of everything the member may approve, with counts and links only, in one place: strategy draft, weekly and monthly coach proposals, content plan, saved inbox replies, ad plan drafts, WhatsApp sends, automation approvals and last month's report.
   - Decisions are still made on each screen. No schema change.

@@ -8,6 +8,7 @@ import { hasMessagingDuty } from './messaging-duties';
 import { identityEmailConfiguration } from './identity-email';
 import { deliverCoachDigest, type DigestDelivery, type DigestMail } from './coach-digest';
 import { INBOX_LIMITS } from './social-inbox-types';
+import { receivedInvites } from './member-invites';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
 
 type Lang = 'tr' | 'en';
@@ -62,6 +63,9 @@ export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()
       .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { id: string; revision: number; updated_at: string }[];
     if (rows.length) alerts.push({ kind: 'ad_error', severity: 'warning', count: rows.length, at: rows[0].updated_at, href: '/?tab=campaigns&campaignView=ads', keys: rows.map(row => `ad:${row.id}:${row.revision}`) });
   }
+  // Invitations to other projects belong to the person, not this project; they are accepted in the portfolio.
+  const invites = receivedInvites(db, scope.subject);
+  if (invites.length) alerts.push({ kind: 'invite_pending', severity: 'warning', count: invites.length, at: [...invites].sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))[0].expiresAt, href: '/portfolio', keys: invites.map(item => `invite:${item.id}`) });
   return alerts.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'urgent' ? -1 : 1));
 }
 
@@ -78,6 +82,7 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
         : alert.phase === 'trial_ending' ? (tr ? `Deneme süresi ${time(alert.at)} tarihinde bitiyor.` : `The trial ends at ${time(alert.at)}.`)
         : (tr ? `Ücretli dönem ${time(alert.at)} tarihinde bitiyor. Yenileme otomatik değildir.` : `The paid period ends at ${time(alert.at)}. Renewal is not automatic.`);
       case 'ad_error': return tr ? `${n(alert.count)} reklam planında sağlayıcı hatası var. Harcamanın durumunu reklam hesabından kontrol edin.` : `${n(alert.count)} ad plan(s) have a provider error. Check the spend status in the ad account.`;
+      case 'invite_pending': return tr ? `${n(alert.count)} proje daveti kabulünüzü bekliyor (ilk bitiş: ${time(alert.at)}).` : `${n(alert.count)} project invitation(s) are waiting for you (first expires ${time(alert.at)}).`;
     }
   };
   const lines = [tr ? `${project.name} · dikkat gerekenler` : `${project.name} · needs attention`, ''];

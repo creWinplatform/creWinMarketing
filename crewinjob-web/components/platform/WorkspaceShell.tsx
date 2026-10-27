@@ -203,8 +203,9 @@ export default function WorkspaceShell({
         <div className="workspace-switcher">
           {error ? (
             <p role="alert"><Msg text={error}/></p>
-          ) : (
-            spaces.map((space) => (
+          ) : (<>
+            {workspace.accessMode === 'platform_account' && <a className="workspace-switcher-all" href="/portfolio">{tr ? 'Tüm projeler' : 'All projects'}</a>}
+            {spaces.map((space) => (
               <button
                 key={space.project.id}
                 disabled={space.project.id === workspace.project.id}
@@ -232,8 +233,8 @@ export default function WorkspaceShell({
               >
                 {space.project.name}
               </button>
-            ))
-          )}
+            ))}
+          </>)}
         </div>
       )}
       <label className="workspace-search">
