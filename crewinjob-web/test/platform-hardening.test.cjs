@@ -28,8 +28,10 @@ test('two simultaneous creates make one campaign; the plan is claimed before the
 test('two simultaneous starts cannot pass the monthly cap together; pause waits for a start',coachRun(async f=>{
   process.env.PLATFORM_ADS_ENABLED='1';
   try{
-    const g=graph();await ready(f,g,40000);
-    const a=approved(f,g,{name:'A'}),b=approved(f,g,{name:'B'});await ads(f,g).create({id:a.id});await ads(f,g).create({id:b.id});
+    // The cap counts this month's days only, so both plans stay inside the current month and the cap fits one, not two.
+    const now=new Date(),monthEnd=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()+1,0)).toISOString().slice(0,10),end=day(9)<monthEnd?day(9):monthEnd;
+    const spend=3000*(Math.round((Date.parse(end)-Date.parse(day(0)))/86400000)+1),g=graph();await ready(f,g,Math.max(spend,5000));
+    const a=approved(f,g,{name:'A',startDate:day(0),endDate:end}),b=approved(f,g,{name:'B',startDate:day(0),endDate:end});await ads(f,g).create({id:a.id});await ads(f,g).create({id:b.id});
     const release=g.hold();const first=ads(f,g).start({id:a.id,acknowledged:true});await new Promise(r=>setTimeout(r,20));
     await assert.rejects(ads(f,g).start({id:b.id,acknowledged:true}),/aylık tavan/,'a starting plan counts against the cap');
     await assert.rejects(ads(f,g).pause({id:a.id}),error=>error.status===409,'pause waits until the start finished');
