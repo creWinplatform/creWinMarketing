@@ -47,5 +47,5 @@ test('the weekly email lists only the recipient’s own open assignments',()=>{
 test('schema39 is additive and repeatable',coachRun(async f=>{
   await f.approve();const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-assign-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAssignmentSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,38);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,58);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_assignments').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,59);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_assignments').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

@@ -85,6 +85,11 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.equal((await request('/brand/ryzevo-brand-board.png')).status,200);
     assert.equal((await request('/join')).status,200);
     for(const route of ['/recover','/register','/account/verify']){const response=await request(route);assert.equal(response.status,200);assert.match(await response.text(),/noindex/);}
+    // Shared monthly report: the page is public and noindex; the token goes only in a same-origin POST body.
+    const reportPage=await request('/report');assert.equal(reportPage.status,200);assert.match(await reportPage.text(),/noindex/);
+    const unknownReport=await request('/api/report','','POST',{token:'a'.repeat(43)});assert.equal(unknownReport.status,404);assert.equal(unknownReport.headers.get('x-robots-tag'),'noindex, nofollow');assert.ok(!unknownReport.headers.has('set-cookie'));
+    assert.equal((await fetch(`${base}/api/report`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:'a'.repeat(43)})})).status,403);
+    assert.equal((await request('/api/platform/monthly-report')).status,401);assert.equal((await request('/api/platform/alerts')).status,401);
     assert.deepEqual(await (await request('/api/auth/identity')).json(),{emailEnabled:true,signupEnabled:true});
     assert.equal((await fetch(`${base}/api/auth/identity`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'request-reset',email:'none@example.com'})})).status,403);
     assert.equal((await fetch(`${base}/api/auth/identity`,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://evil.example'},body:JSON.stringify({action:'request-reset',email:'none@example.com'})})).status,403);

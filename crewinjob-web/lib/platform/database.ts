@@ -1222,6 +1222,28 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_alert_deliveries_user ON platform_alert_deliveries(user_id,organization_id,project_id,created_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(58,datetime('now'));
   `))();
+  // Monthly results report: a draft note, the snapshot frozen at approval and read-only links stored as token hashes.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=59').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_monthly_reports (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      month TEXT NOT NULL CHECK(length(month)=7 AND month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]'),
+      state TEXT NOT NULL CHECK(state IN ('draft','approved')), note TEXT NOT NULL DEFAULT '' CHECK(length(note)<=1200),
+      facts_json TEXT, digest TEXT, approved_by TEXT REFERENCES platform_users(id), approved_at TEXT,
+      revision INTEGER NOT NULL DEFAULT 1, updated_by TEXT NOT NULL REFERENCES platform_users(id), updated_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,month),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id),
+      CHECK(state='draft' AND facts_json IS NULL AND digest IS NULL OR state='approved' AND facts_json IS NOT NULL AND digest IS NOT NULL AND approved_at IS NOT NULL)
+    );
+    CREATE TABLE platform_report_shares (
+      id TEXT PRIMARY KEY, report_id TEXT NOT NULL REFERENCES platform_monthly_reports(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash)=64), report_revision INTEGER NOT NULL,
+      created_by TEXT NOT NULL REFERENCES platform_users(id), created_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT,
+      views INTEGER NOT NULL DEFAULT 0 CHECK(views>=0), last_viewed_at TEXT,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_report_shares_report ON platform_report_shares(report_id,created_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(59,datetime('now'));
+  `))();
   return db;
 }
 

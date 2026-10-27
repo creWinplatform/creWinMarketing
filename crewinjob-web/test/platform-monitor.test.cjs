@@ -202,9 +202,9 @@ test('invalid clocks, future schema and missing backups fail closed without migr
   const f = fixture(t); f.success(60000);
   let report = await f.monitor();
   assert.ok(codes(report).includes('worker_observation_invalid')); assert.ok(codes(report).includes('backup_missing_or_incomplete'));
-  f.db.prepare("INSERT INTO platform_migrations VALUES(59,datetime('now'))").run();
+  f.db.prepare("INSERT INTO platform_migrations VALUES(60,datetime('now'))").run();
   report = await f.monitor(); assert.ok(codes(report).includes('database_schema_unsupported'));
-  assert.equal(f.db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 59);
+  assert.equal(f.db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 60);
 });
 
 test('monitor options are bounded and the CLI returns safe machine-readable nonzero results', async t => {
@@ -228,7 +228,7 @@ test('schema27 migration is additive and repeatable, observations survive a rest
   try { startWorkerObservation(db); } finally { db.close(); }
   db = openPlatformDatabase(legacy);
   try {
-    assert.equal(db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 58);
+    assert.equal(db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 59);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM platform_worker_observations').get().n, 1);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM platform_connections').get().n, 1);
     assert.match(db.prepare("SELECT value FROM platform_operation_metadata WHERE key='database_id'").get().value, /^[a-f0-9-]{36}$/);

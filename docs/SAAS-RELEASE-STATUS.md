@@ -6,6 +6,12 @@ and an operator-approved live acceptance are different milestones.
 
 ## Delivered on 27 October 2026
 
+- **Monthly results report (schema 59)** (`SAAS-MONTHLY-REPORT.md`):
+  - It is built from the month's records: posts with site visits and interactions, inbox counts, email, ads and measurements.
+  - Only a completed month can be approved, and only the exact figures that were reviewed.
+  - It is shared through an expiring, revocable read-only link; the token stays in the URL fragment and only its hash is stored.
+  - Migration 59 was dry-run on a copy; it is not yet applied to the real database.
+
 - **Team alerts (schema 58)** (`SAAS-TEAM-ALERTS.md`):
   - "Needs attention" on the overview lists, for each member's rights:
     - inbox messages whose reply window closes within 6 hours;

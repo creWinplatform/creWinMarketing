@@ -126,6 +126,17 @@ if(process.argv.includes('--alerts')){
     db.prepare("INSERT INTO platform_social_publications(job_id,organization_id,project_id,source_kind,source_id,source_digest,body_digest,encrypted_snapshot,mode,scheduled_at,timezone,configuration_revision,state,reason) VALUES('qa-alert-job',?,?,'content','qa','d','b',?,'publish',?,'UTC','cfg','rejected','unavailable')").run(fixture.organizationId,fixture.projectId,encryptCredentials({title:'Reddedilen gönderi · QA',text:'QA metni.',platform:'facebook',accountName:'QA sayfası · gerçek değil',accountId:'100'},encryptionKey,fixture.organizationId,fixture.projectId,'publication:qa-alert-job'),iso(now-3600000));
   }
   console.log('Alerts QA: a reply window closing in about 4 hours, a rejected live post and a grant ending tomorrow.');}
+if(process.argv.includes('--monthly-report')){
+  // Monthly report QA (with --link-tracking): the accepted posts move into last month, plus answered and open messages
+  // and one measurement there, so last month's report can be previewed, approved and shared. No provider is contacted.
+  const {zonedInstant}=load('coach.ts'),{coachMonthKey}=load('coach-content.ts'),zone=repo.workspace(fixture.userId,fixture.organizationId,fixture.projectId).project.timezone,month=coachMonthKey(new Date(),-1,zone),at=(day,minutes=0)=>new Date(Date.parse(zonedInstant(`${month}-${day}`,12,zone))+minutes*60000).toISOString();
+  const posts=db.prepare("SELECT job_id FROM platform_social_publications WHERE organization_id=? AND project_id=? AND mode='publish' AND state='accepted' ORDER BY job_id").all(fixture.organizationId,fixture.projectId);
+  posts.forEach((row,index)=>db.prepare('UPDATE platform_social_publications SET submitted_at=? WHERE job_id=?').run(at(String(8+index*6).padStart(2,'0')),row.job_id));
+  const account=db.prepare("SELECT c.id FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND s.platform='linkedin' LIMIT 1").get(fixture.organizationId,fixture.projectId);
+  if(account)[['comment','replied',2],['message','replied',3],['message','replied',30],['message','new',null],['comment','dismissed',null]].forEach(([kind,state,hours],index)=>{const received=at('12',index*7);
+    db.prepare("INSERT INTO platform_social_inbox(id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,author_hash,text,received_at,created_at,state,replied_at) VALUES(?,?,?,?,'linkedin',?,?,?,'qa','QA mesajı · gerçek değil',?,?,?,?)").run(`qa-report-${index}`,fixture.organizationId,fixture.projectId,account.id,kind,`t${index}`,`i${index}`,received,received,state,hours===null?null:new Date(Date.parse(received)+hours*3600000).toISOString());});
+  operations.saveMetric({goalId:'demo',stageIndex:0,value:18,observedAt:at('05'),note:'Yalnızca görsel QA örneği'});operations.saveMetric({goalId:'demo',stageIndex:0,value:27,observedAt:at('25'),note:'Yalnızca görsel QA örneği'});
+  console.log(`Monthly report QA: last month (${month}) has three accepted posts, five inbox records and two readings; no provider is contacted.`);}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.

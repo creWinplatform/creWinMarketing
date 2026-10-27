@@ -83,6 +83,6 @@ test('schema41 is additive and repeatable',async()=>{
  const f=fixture();try{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'automation-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAutomationSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,40);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,58);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_automations').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,59);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_automations').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
  }finally{f.db.close();}
 });

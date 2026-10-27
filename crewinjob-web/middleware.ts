@@ -37,6 +37,8 @@ export async function middleware(req: NextRequest) {
   // Exact PayTR notification route validates its provider HMAC and bound test order.
   if (pathname === '/api/platform/billing/paytr/notify') return NextResponse.next();
   if(['/recover','/register','/account/verify','/api/auth/identity'].includes(pathname))return NextResponse.next();
+  // Shared monthly report: the page reads its token from the URL fragment and the API checks it (hash, expiry, revocation).
+  if(pathname==='/report'||pathname==='/api/report')return NextResponse.next();
   if (['/welcome','/join','/api/auth/enroll','/api/platform/worker'].includes(pathname) || PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
     return NextResponse.next();
   }
