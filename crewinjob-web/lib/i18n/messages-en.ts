@@ -1318,4 +1318,6 @@ export const MESSAGES_EN: Record<string, string> = {
   "Spam şikâyeti backend’e iletilemedi": "Spam complaint could not be sent to the backend",
   "İlan #{0} bulunamadı; uzatılmadı.": "Job posting #{0} was not found; not extended.",
   "İlan #{0}: pozisyon veya gemi tipi tanımsız (0); uzatılmadı.": "Job posting #{0}: position or ship type is not set (0); not extended.",
+  "Geçersiz istek: en fazla 200 e-posta adresi gönderin.": "Invalid request: send at most 200 email addresses.",
+  "Geçersiz lead durumu.": "Invalid lead status.",
 };

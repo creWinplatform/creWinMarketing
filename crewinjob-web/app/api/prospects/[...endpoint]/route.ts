@@ -8,7 +8,9 @@ export const fetchCache = 'force-no-store';
 type ProspectApi = {
   marketingProspectPost: (endpoint: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
   marketingProspectGet: (endpoint: string, params: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  marketingProspectPut: (endpoint: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
 };
+const LEAD_STATUSES = new Set(['review', 'approved', 'contacted', 'registered', 'rejected']);
 
 // Servis token'ı ile backend'e geçirilen MarketingProspect metotları — yalnızca UI'ın gerçekten
 // çağırdıkları (ProspectFinderPanel + CampaignHubTab). Listede olmayan her şey 404.
@@ -92,6 +94,13 @@ export async function POST(req: NextRequest, context: { params: Promise<{ endpoi
   }
   try {
     const api = agentModule<ProspectApi>('modules/api.js');
+    // Backend sözleşmesi (Swagger): PUT UpdateStatus { id: int64, status, reason }.
+    if (name === 'UpdateStatus') {
+      const id = Number(body.id ?? body.prospectId), status = String(body.status || '');
+      if (!Number.isSafeInteger(id) || id <= 0 || !LEAD_STATUSES.has(status)) return NextResponse.json({ error: 'Geçersiz lead durumu.' }, { status: 400 });
+      const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim().slice(0, 500) : undefined;
+      return NextResponse.json(await api.marketingProspectPut('UpdateStatus', { id, status, ...(reason ? { reason } : {}) }) ?? { ok: true });
+    }
     return NextResponse.json(await api.marketingProspectPost(name, body));
   } catch (error) {
     return errorResponse(error);

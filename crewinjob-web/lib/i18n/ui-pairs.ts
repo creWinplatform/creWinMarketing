@@ -9,6 +9,7 @@ export const UI_PAIRS: Record<string, string> = {
   "{0} içeriği üretildi": "{0} content generated",
   "{0} projesine katıldınız.": "You joined {0}.",
   "{0} sosyal hesap bağlantısının izni bitti veya 7 gün içinde bitiyor ({1}: {2}). Planlı yayınların gitmesi için yeniden bağlanın.": "{0} social account grant(s) ended or end within 7 days ({1} {2}). Reconnect so scheduled posts can go out.",
+  "{0}: {1} adresinin alan adı e-posta almıyor; gönderilen e-posta geri döner. Doğru adresi bulup lead'i güncelleyin.": "{0}: the domain of {1} receives no email; a message would bounce. Find the right address and update the lead.",
   "⚠️ Twitter Free tier aylık 1.500 tweet kotası dolmuş (ay başında yenilenir).": "⚠️ The Twitter Free tier monthly quota of 1,500 tweets is used up (it resets at the start of the month).",
   "✅ Tam döngü tamamlandı.": "✅ Full cycle completed.",
   "✅ Ücretsiz düzeltme: App permissions \"Read and Write\" olduğundan emin olun, ardından Access Token'ı yeniden oluşturun.": "✅ Free fix: make sure App permissions is set to \"Read and Write\", then regenerate the Access Token.",

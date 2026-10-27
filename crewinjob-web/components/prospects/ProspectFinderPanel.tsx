@@ -124,10 +124,24 @@ function backendLead(item: Record<string, unknown>): ProspectLead | null {
     notes: item.notes ? String(item.notes) : undefined, lastCheckedAt: item.lastCheckedAt ? String(item.lastCheckedAt) : undefined,
     companyId: item.companyId ? String(item.companyId) : undefined, isRegisteredCompany: Boolean(item.isRegisteredCompany || item.matched),
     isSuppressed: Boolean(item.isSuppressed), suppressionReason: item.suppressionReason ? String(item.suppressionReason) : undefined,
-    emailValid: item.emailValid === undefined ? undefined : Boolean(item.emailValid), emailDeliverable: item.emailDeliverable === undefined ? undefined : Boolean(item.emailDeliverable),
+    ...emailCheck(item),
     emailVerificationReason: item.emailVerificationReason ? String(item.emailVerificationReason) : undefined, emailCheckedAt: item.emailCheckedAt ? String(item.emailCheckedAt) : undefined,
     createdAt: String(item.createdAt || item.creationTime || now), updatedAt: String(item.updatedAt || item.lastCheckedAt || now),
   };
+}
+
+// Backend e-posta doğrulaması (VerifyEmails → EmailVerificationResultDto; GetAll → deliverabilityStatus).
+// Alan adı geçersiz, tek kullanımlık veya sözdizimi bozuk adres "geçersiz"dir; status 'valid' teslim edilebilir sayılır.
+// Backend, rol adreslerinde (info@) alan adına bakmadan isDomainValid:false döndürüyor; bu alan güvenilmez. Alan adı
+// panel sunucusunda DNS ile ayrıca kontrol edilir (emailDomain).
+const DELIVERABLE = new Set(['valid', 'deliverable', 'verified', 'ok']), UNDELIVERABLE = new Set(['invalid', 'undeliverable', 'bounced', 'disposable', 'no_mx', 'domain_invalid']);
+function emailCheck(item: Record<string, unknown>): Pick<ProspectLead, 'emailValid' | 'emailDeliverable'> {
+  // Lead kaydında durum deliverabilityStatus'tadır; doğrulama sonucunda status alanındadır.
+  const status = String(('companyName' in item ? item.deliverabilityStatus : item.status) || '').toLowerCase();
+  const broken = item.isSyntaxValid === false || item.isDisposable === true;
+  const valid = broken ? false : item.emailValid === undefined ? (UNDELIVERABLE.has(status) ? false : DELIVERABLE.has(status) ? true : undefined) : Boolean(item.emailValid);
+  const deliverable = UNDELIVERABLE.has(status) || broken ? false : DELIVERABLE.has(status) ? true : item.emailDeliverable === undefined ? undefined : Boolean(item.emailDeliverable);
+  return { emailValid: valid, emailDeliverable: deliverable };
 }
 
 function backendUpsertPayload(item: ProspectLead): Record<string, unknown> {
@@ -306,12 +320,13 @@ function ProspectDecisionPanel({ item, lang }: { item: ProspectLead; lang: Lang 
   const checks = [
     { ok: Boolean(sourceUrl), text: t('Kamuya açık kaynak', 'Public source') },
     { ok: Boolean(website), text: t('Şirket web sitesi', 'Company website') },
+    { ok: item.emailDomain === 'mx', text: item.emailDomain === 'mx' ? t('Alan adı e-posta alıyor', 'Domain receives email') : item.emailDomain === 'no_mx' || item.emailDomain === 'not_found' ? t('Alan adı e-posta almıyor', 'Domain receives no email') : t('Alan adı kontrol edilemedi', 'Domain not checked') },
     { ok: item.emailDeliverable === true || item.emailValid === true, text: item.emailDeliverable === false || item.emailValid === false ? t('E-posta geçersiz', 'Email invalid') : t('E-posta doğrulaması', 'Email verification') },
     { ok: !item.isSuppressed && item.consentStatus !== 'restricted', text: t('Gönderim engeli yok', 'Not suppressed') },
     { ok: Boolean(item.contactName || item.contactRole), text: t('Muhatap doğrulandı', 'Contact verified') },
   ];
   const readyCount = checks.filter(check => check.ok).length;
-  const canDraft = !item.isSuppressed && item.consentStatus !== 'restricted' && item.emailValid !== false && item.emailDeliverable !== false;
+  const canDraft = !item.isSuppressed && item.consentStatus !== 'restricted' && item.emailValid !== false && item.emailDeliverable !== false && item.emailDomain !== 'no_mx' && item.emailDomain !== 'not_found';
   const subject = `Crewinjob partnership for ${item.companyName}`;
   const greeting = item.contactName ? `Hello ${item.contactName},` : 'Hello Crewing Team,';
   const body = `${greeting}\n\nCrewinjob helps maritime companies publish jobs for free, filter relevant seafarers, and pay only when they choose to unlock a CV. I would be glad to show you a short pilot tailored to ${item.companyName}.\n\nWould a 15-minute introduction next week be convenient?\n\nBest regards`;
@@ -464,6 +479,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       setSourceCount(responseItems(sources).length || Number(responseRoot(sources).totalCount || 0) || 0);
       const remoteLeads = responseItems(remote).map(backendLead).filter((item): item is ProspectLead => Boolean(item));
       if (remoteLeads.length) setLeads(current => { const merged = new Map(current.map(item => [item.email.toLowerCase(), item])); remoteLeads.forEach(item => merged.set(item.email.toLowerCase(), item)); return Array.from(merged.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); });
+      void checkDomains(remoteLeads);
     }).catch(() => setBackendReady(false));
   }, []);
 
@@ -492,10 +508,23 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
     });
   };
 
+  // Alan adının e-posta sunucusu (MX) var mı? Sonuç yalnız bu ekranda tutulur; hiçbir adrese bir şey gönderilmez.
+  const checkDomains = async (items: ProspectLead[]) => {
+    const emails = Array.from(new Set(items.map(item => item.email.toLowerCase()))).slice(0, 200);
+    if (!emails.length) return;
+    try {
+      const response = await fetch('/api/prospects/domain-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ emails }), cache: 'no-store' });
+      if (!response.ok) return;
+      const { results } = await response.json() as { results: Record<string, { status: ProspectLead['emailDomain'] }> };
+      setLeads(current => current.map(item => results[item.email.toLowerCase()] ? { ...item, emailDomain: results[item.email.toLowerCase()].status } : item));
+    } catch { /* kontrol yapılamazsa durum "kontrol edilemedi" kalır */ }
+  };
+
   const reloadRemoteLeads = async (): Promise<number> => {
     const remote = await prospectRequest('GetAll?page=1&pageSize=100', 'GET');
     const remoteLeads = responseItems(remote).map(backendLead).filter((item): item is ProspectLead => Boolean(item));
     if (remoteLeads.length) setLeads(current => { const merged = new Map(current.map(item => [item.email.toLowerCase(), item])); remoteLeads.forEach(item => merged.set(item.email.toLowerCase(), item)); return Array.from(merged.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)); });
+    void checkDomains(remoteLeads);
     return remoteLeads.length;
   };
 
@@ -667,9 +696,13 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
   const updateStatus = async (id: string, status: ProspectLeadStatus) => {
     const item = leads.find(lead => lead.id === id);
     if (!item) return;
+    if ((status === 'approved' || status === 'contacted') && (item.emailDomain === 'no_mx' || item.emailDomain === 'not_found')) {
+      setError(t(`${item.companyName}: ${item.email} adresinin alan adı e-posta almıyor; gönderilen e-posta geri döner. Doğru adresi bulup lead'i güncelleyin.`, `${item.companyName}: the domain of ${item.email} receives no email; a message would bounce. Find the right address and update the lead.`));
+      return;
+    }
     setBusy(true); setError('');
     try {
-      await prospectRequest('UpdateStatus', 'POST', { id, prospectId: id, email: item.email, status });
+      await prospectRequest('UpdateStatus', 'POST', { id, status });
       setLeads(current => current.map(lead => lead.id === id ? { ...lead, status, updatedAt: new Date().toISOString() } : lead));
     } catch (err) { setError(err instanceof Error ? err.message : t('Lead durumu güncellenemedi.', "Couldn't update the lead status.")); }
     finally { setBusy(false); }
@@ -679,9 +712,10 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
     if (!items.length) return;
     setBusy(true); setError('');
     try {
-      const result = await prospectRequest('VerifyEmails', 'POST', { prospectIds: items.map(item => item.id), emails: items.map(item => item.email), items: items.map(item => ({ id: item.id, email: item.email })) });
+      // Swagger: VerifyEmailsInput { emails, prospectIds: int64[], updateProspects } — sonuç lead kaydına da yazılır.
+      const result = await prospectRequest('VerifyEmails', 'POST', { prospectIds: items.map(item => Number(item.id)).filter(Number.isSafeInteger), emails: items.map(item => item.email), updateProspects: true });
       const verified = responseItems(result);
-      if (verified.length) setLeads(current => current.map(item => { const match = verified.find(row => String(row.id || row.prospectId || '').toLowerCase() === item.id.toLowerCase() || String(row.email || '').toLowerCase() === item.email.toLowerCase()); return match ? { ...item, emailValid: match.isValid === undefined ? item.emailValid : Boolean(match.isValid), emailDeliverable: match.isDeliverable === undefined ? item.emailDeliverable : Boolean(match.isDeliverable), emailVerificationReason: match.reason ? String(match.reason) : item.emailVerificationReason, emailCheckedAt: match.checkedAt ? String(match.checkedAt) : new Date().toISOString() } : item; }));
+      if (verified.length) setLeads(current => current.map(item => { const match = verified.find(row => String(row.id || row.prospectId || '').toLowerCase() === item.id.toLowerCase() || String(row.email || '').toLowerCase() === item.email.toLowerCase()); return match ? { ...item, ...emailCheck(match), emailVerificationReason: match.reason ? String(match.reason) : item.emailVerificationReason, emailCheckedAt: match.checkedAt ? String(match.checkedAt) : new Date().toISOString() } : item; }));
       setOperationMessage(t(`${items.length} e-posta doğrulaması tamamlandı.`, `${items.length} email(s) verified.`));
     } catch (err) { setError(err instanceof Error ? err.message : t('E-posta doğrulaması başlatılamadı.', "Couldn't start email verification.")); }
     finally { setBusy(false); }
@@ -753,7 +787,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
                 <td className="p-3 text-xs text-slate-500">{companyTypeLabel(item.companyType, lang)}{item.country ? ` · ${item.country}` : ''}</td>
                 <td className="p-3 text-xs text-slate-500">{label(item.source, lang)}{item.sourceUrl ? <span className="mt-1 block text-green-600 dark:text-green-400">{t('Kaynak mevcut', 'Source available')}</span> : <span className="mt-1 block text-amber-600 dark:text-amber-400">{t('Doğrulanmalı', 'Needs verification')}</span>}</td>
                 <td className="p-3 text-xs text-slate-500"><span className="block">{t('Uyum', 'Fit')}: {item.fitScore ?? '—'}</span><span className="block">{t('Niyet', 'Intent')}: {item.intentScore ?? '—'}</span></td>
-                <td className="p-3"><span className={`rounded-full px-2 py-1 text-[11px] ${badge(item.status)}`}>{label(item.status, lang)}</span><p className="mt-1 text-[11px] text-slate-600">{label(item.consentStatus, lang)}</p></td>
+                <td className="p-3"><span className={`rounded-full px-2 py-1 text-[11px] ${badge(item.status)}`}>{label(item.status, lang)}</span><p className="mt-1 text-[11px] text-slate-600">{label(item.consentStatus, lang)}</p>{(item.emailDomain === 'no_mx' || item.emailDomain === 'not_found') && <p className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">{t('E-posta alan adı yok', 'No email domain')}</p>}</td>
                 <td className="p-3"><div className="flex min-w-36 flex-col gap-2"><button type="button" aria-expanded={expandedLeadId === item.id} onClick={() => setExpandedLeadId(current => current === item.id ? null : item.id)} className="border border-ocean px-2 py-1.5 text-xs font-semibold text-ocean">{expandedLeadId === item.id ? t('Detayı kapat', 'Close details') : t('Değerlendir', 'Review')}</button><select value={item.status} onChange={event => updateStatus(item.id, event.target.value as ProspectLeadStatus)} aria-label={t(`${item.companyName} durumu`, `${item.companyName} status`)} className="border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-white">{STATUS_OPTIONS.map(option => <option key={option} value={option}>{label(option, lang)}</option>)}</select></div></td>
               </tr>
               {expandedLeadId === item.id && <tr className="border-t border-cyan-200 dark:border-cyan-900"><td colSpan={7} className="p-0"><ProspectDecisionPanel item={item} lang={lang} /></td></tr>}

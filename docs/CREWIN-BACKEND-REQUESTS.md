@@ -1,9 +1,10 @@
 # Crewin backend istekleri (22 Ekim 2026)
 
-> **27 Ekim 2026 durumu:** backend 1, 2 ve 4. maddeleri intern branch'ine ekledi; canlıya çıkınca haber verecek. Panel ve ajan
-> tarafı backend'in yanıtına göre güncellendi (aşağıda her maddenin "Yapıldı" notu). Canlıya çıkınca yapılacaklar:
-> `.env.local` içinde `CREWINJOB_ILAN_EDIT_GETTER=Ilan/GetIlanForEdit`; araştırma için `api.crewin.org`'da araştırma
-> ayarlarının tanımlanması (backend notu: bu ayarlar tanımlanana kadar araştırma orada çalışmaz).
+> **27 Ekim 2026 durumu:** backend 1, 2 ve 4. maddeleri `api.crewin.org`'da yayına aldı (GetIlanForEdit, `email_complained`,
+> SuppressContact, GetResearchStatus ve araştırma düzeltmeleri). Panel ve ajan tarafı buna göre güncellendi (aşağıda her maddenin
+> "Yapıldı" notu). Araştırma ayarları `api.crewin.org`'da baştan beri açık (ResearchEnabled: true, sağlayıcı gemini,
+> model gemini-2.5-flash, Google araması açık); 12 numaralı iş bu ayarlarla 25 şirket bulup 24'ünü kaydetti.
+> Kalan tek adım: ilan süresi uzatmayı açmak için `CREWINJOB_ILAN_EDIT_GETTER=Ilan/GetIlanForEdit`.
 
 Crewin ABP arka ucunun kaynak kodu bu repoda yok. Pazarlama paneli ve ajan, arka uca yalnız HTTP ile bağlanır (`CREWINJOB_API_URL`). Bu belgedeki işler arka uç ekibinindir.
 
@@ -56,4 +57,22 @@ Ayrıntı repo kökündeki `BACKEND-StartResearch-kaynak-fix.md` dosyasında. Ö
 
 **Bu repoda:** panel doğru isteği gönderiyor ve sonucu bekliyor. Arka uç düzelince değişiklik gerekmez.
 
-**Yapıldı (27 Ekim):** panel durumu yalnız `GET MarketingProspect/GetResearchStatus?jobId=` ile okuyor ve `queued`/`running` dışında bir değer gelince sorgulamayı bırakıyor. Sonucu `totalSaved` belirliyor: `totalFound > 0` ve `totalSaved = 0` ise "bulunanların hepsi zaten listede" diye bilgi verir, hata göstermez. 0 sonucun sebebi backend'in `errorMessage` alanından gösteriliyor. Panelin bağlandığı adres `api.crewin.org`; backend'e göre orada araştırma ayarları henüz tanımlı değil.
+**Yapıldı (27 Ekim):** panel durumu yalnız `GET MarketingProspect/GetResearchStatus?jobId=` ile okuyor ve `queued`/`running` dışında bir değer gelince sorgulamayı bırakıyor. Sonucu `totalSaved` belirliyor: `totalFound > 0` ve `totalSaved = 0` ise "bulunanların hepsi zaten listede" diye bilgi verir, hata göstermez. 0 sonucun sebebi backend'in `errorMessage` alanından gösteriliyor. Panelin bağlandığı `api.crewin.org`'da araştırma ayarları açık; 27 Ekim'deki iş 12 sorunsuz tamamlandı.
+
+## 5. Araştırma sonuçlarında var olmayan alan adları ve e-posta doğrulaması (27 Ekim 2026)
+
+27 Ekim'deki araştırmadan (işlem 12) sonra havuzdaki 58 lead'in alan adları DNS ile kontrol edildi:
+
+- **22 lead'in alan adı e-posta almıyor:** 18'inin alan adı hiç yok (ENOTFOUND), 4'ünün e-posta sunucusu (MX) yok. Bu adreslere giden her e-posta geri döner ve gönderici itibarını düşürür.
+- **3 alan adı başka bir şirkete ait:** `eps.com.sg` bir insan kaynakları firması, `molgroup.com` MOL Group (enerji), `eship.com` Executive Ship Management değil.
+- Tüm adresler `info@alanadı` kalıbında üretilmiş; `deliverabilityStatus` hepsinde `unknown`.
+
+**Arka uçtan beklenen:**
+- `StartResearch` bir lead'i kaydetmeden önce alan adının MX kaydını kontrol etsin; e-posta sunucusu olmayan sonuçları kaydetmesin ya da `deliverabilityStatus` alanına işaretlesin.
+- `VerifyEmails` rol adreslerinde (`info@`, `crew@` …) alan adına bakmadan `isDomainValid:false` döndürüyor; `altintasdenizcilik.com` gibi e-posta sunucusu olan bir alan adı da "geçersiz" görünüyor. Alan adı kontrolü rol adresi tespitinden bağımsız yapılmalı.
+
+**Bu repoda yapıldı:**
+- Panel, lead'leri yüklerken her adresin alan adını kendi sunucusunda DNS (MX) ile kontrol ediyor (`lib/email-domain-check.ts`, `POST /api/prospects/domain-check`). E-posta almayan alan adlarında "E-posta alan adı yok" notu görünüyor; böyle bir lead onaylanamıyor ve e-posta taslağı açılamıyor.
+- `UpdateStatus` artık Swagger'daki gibi `PUT { id, status, reason }` ile çağrılıyor (önceden POST gönderiliyordu ve HTTP 405 dönüyordu; panelden lead durumu değiştirilemiyordu).
+- `VerifyEmails` Swagger'daki `{ emails, prospectIds, updateProspects }` gövdesiyle çağrılıyor ve `EmailVerificationResultDto` alanları okunuyor.
+

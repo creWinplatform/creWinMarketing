@@ -30,6 +30,8 @@ export interface ProspectLead {
   emailDeliverable?: boolean;
   emailVerificationReason?: string;
   emailCheckedAt?: string;
+  /** DNS check of the address's domain (panel server): 'mx' can receive email; 'no_mx' / 'not_found' cannot. */
+  emailDomain?: 'mx' | 'no_mx' | 'not_found' | 'error';
   researchSourceCount?: number;
   lastCheckedAt?: string;
   createdAt: string;

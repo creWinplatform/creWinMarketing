@@ -968,6 +968,8 @@ function marketingProspectPost(endpoint, body) {
   return marketingServiceRequest('MarketingProspect', 'POST', endpoint, body, timeoutMs);
 }
 function marketingProspectGet(endpoint, params) { return marketingServiceRequest('MarketingProspect', 'GET', endpoint, params); }
+// Swagger: MarketingProspect/UpdateStatus yalnız PUT kabul eder (POST → HTTP 405).
+function marketingProspectPut(endpoint, body) { return marketingServiceRequest('MarketingProspect', 'PUT', endpoint, body); }
 function marketingCampaignV2Delete(endpoint, params) { return marketingServiceRequest('MarketingCampaignV2', 'DELETE', endpoint, params); }
 function marketingContentHistoryGet(endpoint, params) { return marketingServiceRequest('MarketingContentHistory', 'GET', endpoint, params); }
 function marketingContentHistoryPost(endpoint, body) { return marketingServiceRequest('MarketingContentHistory', 'POST', endpoint, body); }
@@ -1056,6 +1058,7 @@ module.exports = {
   marketingCampaignV2Post,
   marketingProspectPost,
   marketingProspectGet,
+  marketingProspectPut,
   marketingCampaignV2Delete,
   marketingContentHistoryGet,
   marketingContentHistoryPost,
