@@ -32,7 +32,7 @@ and an operator-approved live acceptance are different milestones.
   - It is built from the month's records: posts with site visits and interactions, inbox counts, email, ads and measurements.
   - Only a completed month can be approved, and only the exact figures that were reviewed.
   - It is shared through an expiring, revocable read-only link; the token stays in the URL fragment and only its hash is stored.
-  - Migration 59 was dry-run on a copy; it is not yet applied to the real database.
+  - Migration 59 was dry-run on a copy and applied to the real database after a backup.
 
 - **Team alerts (schema 58)** (`SAAS-TEAM-ALERTS.md`):
   - "Needs attention" on the overview lists, for each member's rights:
@@ -42,7 +42,7 @@ and an operator-approved live acceptance are different milestones.
     - the paid period, grace or trial running out;
     - ad plans with provider errors.
   - Opt-in email (off by default) at most every 3 hours, with counts and links only.
-  - Migration 58 was dry-run on a copy; it is not yet applied to the real database.
+  - Migration 58 was dry-run on a copy and applied to the real database after a backup.
 - **Ad test fix:** the concurrent-start cap test no longer depends on the day of the month.
 
 - **Visits from posts (schema 57)** (`SAAS-MEASUREMENTS.md`, "Visits from posts"):
@@ -50,7 +50,7 @@ and an operator-approved live acceptance are different milestones.
   - Google Analytics sessions and key events that arrived through each tag appear under the post and, per channel, in "what we learned". The rule-based monthly renewal can reorder channels by them.
   - Observed arrivals only, never credited causes.
   - Until a GA4 property is chosen, nothing is read.
-  - Migration 57 was dry-run on a copy of the local database; it is not yet applied to the real one.
+  - Migration 57 was dry-run on a copy of the local database and applied to the real one after a backup.
 
 ## Delivered on 23 October 2026
 
@@ -88,7 +88,7 @@ and an operator-approved live acceptance are different milestones.
   - rights open only from PayTR's signed, amount-matching notification;
   - pilot projects cannot buy a period.
 
-  The code is off by default, and no live PayTR request was made. Migration 54 was dry-run on a copy of the local database (integrity ok, no foreign-key problems, repeatable). It is not yet applied to the real local database.
+  The code is off by default, and no live PayTR request was made. Migration 54 was dry-run on a copy of the local database (integrity ok, no foreign-key problems, repeatable). It was then applied to the real local database after a backup.
 
 ## Pre-launch configuration check - 21 October 2026
 
