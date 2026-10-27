@@ -65,7 +65,7 @@ A suggestion that breaks any rule is rejected as a whole, and the AI use is refu
   - five errors in a row;
   - the person loses access to the project where they turned it on;
   - the person turns it off.
-- **iPhone:** notifications work only after Ryzevo is added to the Home Screen (iOS 16.4 or later).
+- **iPhone:** notifications work only after Ryzevo is added to the Home Screen (iOS 16.4 or later) and opened from there. The web app manifest (`app/manifest.ts`, served at `/manifest.webmanifest` without a session) makes it a standalone web app. Its icons are in `public/brand/ryzevo-app-*.png`, including a maskable one for Android.
 
 ### Switching it on
 

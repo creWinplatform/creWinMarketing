@@ -36,6 +36,8 @@ export async function middleware(req: NextRequest) {
   if (pathname === '/api/platform/x/callback') return NextResponse.next();
   // Exact PayTR notification route validates its provider HMAC and bound test order.
   if (pathname === '/api/platform/billing/paytr/notify') return NextResponse.next();
+  // The web app manifest is fetched without cookies; it holds only the name, colours and icon paths.
+  if(pathname==='/manifest.webmanifest')return NextResponse.next();
   if(['/recover','/register','/account/verify','/api/auth/identity'].includes(pathname))return NextResponse.next();
   // Shared monthly report: the page reads its token from the URL fragment and the API checks it (hash, expiry, revocation).
   if(pathname==='/report'||pathname==='/api/report')return NextResponse.next();

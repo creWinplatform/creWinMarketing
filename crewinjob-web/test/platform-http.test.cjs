@@ -86,6 +86,14 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.equal((await request('/join')).status,200);
     for(const route of ['/recover','/register','/account/verify']){const response=await request(route);assert.equal(response.status,200);assert.match(await response.text(),/noindex/);}
     // Shared monthly report: the page is public and noindex; the token goes only in a same-origin POST body.
+    // Installable web app (iPhone web push needs it): the manifest and its icons load without a session, as do the
+    // push service worker; the push and repurpose routes stay behind sign-in.
+    const manifest=await request('/manifest.webmanifest');assert.equal(manifest.status,200);assert.ok(!manifest.headers.has('set-cookie'));
+    const app=await manifest.json();assert.equal(app.display,'standalone');assert.equal(app.start_url,'/');
+    for(const icon of app.icons){const image=await request(icon.src);assert.equal(image.status,200,icon.src);assert.match(image.headers.get('content-type'),/image\/png/);}
+    assert.ok(app.icons.some(icon=>icon.purpose==='maskable'));assert.match(welcomeHtml,/rel="manifest" href="\/manifest.webmanifest"/);assert.match(welcomeHtml,/apple-mobile-web-app-capable|mobile-web-app-capable/);
+    const worker=await request('/push-sw.js');assert.equal(worker.status,200);assert.match(await worker.text(),/notificationclick/);
+    for(const route of ['/api/platform/push','/api/platform/repurpose'])assert.equal((await request(route,'',route.endsWith('push')?'GET':'POST',route.endsWith('push')?undefined:{})).status,401,route);
     const reportPage=await request('/report');assert.equal(reportPage.status,200);assert.match(await reportPage.text(),/noindex/);
     const unknownReport=await request('/api/report','','POST',{token:'a'.repeat(43)});assert.equal(unknownReport.status,404);assert.equal(unknownReport.headers.get('x-robots-tag'),'noindex, nofollow');assert.ok(!unknownReport.headers.has('set-cookie'));
     assert.equal((await fetch(`${base}/api/report`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:'a'.repeat(43)})})).status,403);

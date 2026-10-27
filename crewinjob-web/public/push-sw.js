@@ -3,7 +3,7 @@ self.addEventListener('push', event => {
   const tr = (self.navigator.language || 'tr').toLowerCase().startsWith('tr');
   event.waitUntil(self.registration.showNotification('Ryzevo', {
     body: tr ? 'Projelerinizden birinde size ait yeni bir konu var.' : 'Something new needs you in one of your projects.',
-    icon: '/icon.png', tag: 'ryzevo-attention', renotify: true,
+    icon: '/brand/ryzevo-app-192.png', tag: 'ryzevo-attention', renotify: true,
   }));
 });
 self.addEventListener('notificationclick', event => {
