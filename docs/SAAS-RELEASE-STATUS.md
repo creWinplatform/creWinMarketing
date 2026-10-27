@@ -6,6 +6,17 @@ and an operator-approved live acceptance are different milestones.
 
 ## Delivered on 27 October 2026
 
+- **Team alerts (schema 58)** (`SAAS-TEAM-ALERTS.md`):
+  - "Needs attention" on the overview lists, for each member's rights:
+    - inbox messages whose reply window closes within 6 hours;
+    - failed live posts;
+    - social grants that are ending;
+    - the paid period, grace or trial running out;
+    - ad plans with provider errors.
+  - Opt-in email (off by default) at most every 3 hours, with counts and links only.
+  - Migration 58 was dry-run on a copy; it is not yet applied to the real database.
+- **Ad test fix:** the concurrent-start cap test no longer depends on the day of the month.
+
 - **Visits from posts (schema 57)** (`SAAS-MEASUREMENTS.md`, "Visits from posts"):
   - Links to the project's own site in approved social posts carry a source tag that is visible in the preview.
   - Google Analytics sessions and key events that arrived through each tag appear under the post and, per channel, in "what we learned". The rule-based monthly renewal can reorder channels by them.

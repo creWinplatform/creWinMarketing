@@ -1237,4 +1237,8 @@ export const MESSAGES_EN: Record<string, string> = {
   "Önce bir Google Analytics mülkü seçin.": "Choose a Google Analytics property first.",
   "Sonuçlar 10 dakikada bir yenilenebilir.": "Results can be refreshed every 10 minutes.",
   "Sonuçlar şu anda yenilenemiyor. Biraz sonra tekrar deneyin.": "Results can’t be refreshed right now. Try again a little later.",
+  "Geçersiz uyarı ayarı.": "Invalid alert setting.",
+  "Uyarılar alınamadı.": "Could not load alerts.",
+  "Uyarılar için standart proje erişimi gerekli.": "Alerts need standard project access.",
+  "Uyarıları e-postayla almak için önce hesap e-postanızı doğrulayın.": "Verify your account email first to get alerts by email.",
 };

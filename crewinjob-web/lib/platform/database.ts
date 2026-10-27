@@ -1198,6 +1198,30 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(57,datetime('now'));
   `))();
+  // Team alerts by email: opt-in per member, the records each member was already told about and one row per email.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=58').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_alert_subscriptions (
+      user_id TEXT NOT NULL REFERENCES platform_users(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      language TEXT NOT NULL CHECK(language IN ('tr','en')), checked_at TEXT, created_at TEXT NOT NULL,
+      PRIMARY KEY(user_id,organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_alert_subscriptions_due ON platform_alert_subscriptions(checked_at);
+    CREATE TABLE platform_alert_notices (
+      user_id TEXT NOT NULL REFERENCES platform_users(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      alert_key TEXT NOT NULL CHECK(length(alert_key) BETWEEN 1 AND 200), notified_at TEXT NOT NULL,
+      PRIMARY KEY(user_id,organization_id,project_id,alert_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_alert_deliveries (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES platform_users(id),
+      state TEXT NOT NULL CHECK(state IN ('submitted','sent','uncertain')), alert_count INTEGER NOT NULL CHECK(alert_count>=0),
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_alert_deliveries_user ON platform_alert_deliveries(user_id,organization_id,project_id,created_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(58,datetime('now'));
+  `))();
   return db;
 }
 

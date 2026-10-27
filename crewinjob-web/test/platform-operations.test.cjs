@@ -72,6 +72,6 @@ test('online backup preserves the database and generated credential key',()=>{
  const db=openPlatformDatabase(source);const repo=new PlatformRepository(db);repo.bootstrapLegacy('backup-admin');db.close();fs.writeFileSync(path.join(directory,'platform-credentials.key'),'12'.repeat(32));
  const result=require('node:child_process').spawnSync(process.execPath,['scripts/platform-backup.mjs'],{cwd:path.join(__dirname,'..'),windowsHide:true,env:{...process.env,PLATFORM_DATABASE_PATH:source,PLATFORM_BACKUP_PATH:backups,PLATFORM_ENCRYPTION_KEY:''},encoding:'utf8',timeout:20000});
  assert.equal(result.status,0,result.stderr);
- const folder=path.join(backups,fs.readdirSync(backups)[0]),manifest=JSON.parse(fs.readFileSync(path.join(folder,'manifest.json'),'utf8'));assert.equal(manifest.keySource,'file');assert.equal(manifest.schemaVersion,57);assert.equal(fs.readFileSync(path.join(folder,'platform-credentials.key'),'utf8'),'12'.repeat(32));
+ const folder=path.join(backups,fs.readdirSync(backups)[0]),manifest=JSON.parse(fs.readFileSync(path.join(folder,'manifest.json'),'utf8'));assert.equal(manifest.keySource,'file');assert.equal(manifest.schemaVersion,58);assert.equal(fs.readFileSync(path.join(folder,'platform-credentials.key'),'utf8'),'12'.repeat(32));
  const restored=openPlatformDatabase(path.join(folder,'platform.sqlite'));try{assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM platform_users').get().n,1);assert.equal(restored.pragma('integrity_check',{simple:true}),'ok');}finally{restored.close();}
 });

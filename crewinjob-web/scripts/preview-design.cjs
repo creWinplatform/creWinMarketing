@@ -116,6 +116,16 @@ if(process.argv.includes('--link-tracking')){
   const {linkTag}=load('link-tracking.ts'),tag=id=>linkTag(scope,'content',id);
   await syncLinkResults(db,scope,encryptionKey,async()=>({status:'ready',rows:[{tag:tag('qa-link-1'),source:'linkedin',sessions:43,keyEvents:3},{tag:tag('qa-link-3'),source:'x',sessions:8,keyEvents:0}],timezone:'Europe/Istanbul',checkedAt:new Date().toISOString()}),async credentials=>credentials,fixture.userId);
   console.log('Link tracking QA: three accepted posts with tagged links and stub GA4 results; no provider is contacted.');}
+if(process.argv.includes('--alerts')){
+  // Needs-attention QA (with --inbox): one message whose reply window closes soon and one rejected live post on the fake
+  // Page, whose grant already ends tomorrow. Email alerts stay off here; nothing is sent.
+  const {encryptCredentials}=load('credential-envelope.ts'),page=db.prepare("SELECT c.id FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND s.platform='facebook'").get(fixture.organizationId,fixture.projectId),now=Date.now(),iso=value=>new Date(value).toISOString();
+  if(page){
+    db.prepare("INSERT INTO platform_social_inbox(id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,author_hash,text,received_at,created_at) VALUES('qa-alert-msg',?,?,?,'facebook','message','t_alert','item_alert','halert','Siparişim nerede?',?,?)").run(fixture.organizationId,fixture.projectId,page.id,iso(now-20*3600000),iso(now));
+    db.prepare("INSERT INTO platform_jobs(id,organization_id,project_id,actor_id,connection_id,revision,idempotency_key,status,created_at,updated_at,job_type) VALUES('qa-alert-job',?,?,?,?,'r','social:qa-alert','failed',?,?,'social.publish')").run(fixture.organizationId,fixture.projectId,fixture.userId,page.id,iso(now-3600000),iso(now-3600000));
+    db.prepare("INSERT INTO platform_social_publications(job_id,organization_id,project_id,source_kind,source_id,source_digest,body_digest,encrypted_snapshot,mode,scheduled_at,timezone,configuration_revision,state,reason) VALUES('qa-alert-job',?,?,'content','qa','d','b',?,'publish',?,'UTC','cfg','rejected','unavailable')").run(fixture.organizationId,fixture.projectId,encryptCredentials({title:'Reddedilen gönderi · QA',text:'QA metni.',platform:'facebook',accountName:'QA sayfası · gerçek değil',accountId:'100'},encryptionKey,fixture.organizationId,fixture.projectId,'publication:qa-alert-job'),iso(now-3600000));
+  }
+  console.log('Alerts QA: a reply window closing in about 4 hours, a rejected live post and a grant ending tomorrow.');}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.

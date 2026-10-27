@@ -21,6 +21,7 @@ import { readDueMessagingSources } from '@/lib/platform/messaging-sources';
 import { deliverWhatsAppBatches } from '@/lib/platform/whatsapp';
 import { readDueInboxAccounts } from '@/lib/platform/social-inbox';
 import { syncDueLinkResults } from '@/lib/platform/link-tracking';
+import { deliverNextAlertEmail } from '@/lib/platform/team-alerts';
 export const dynamic = 'force-dynamic',
   maxDuration = 60;
 export async function POST(request: NextRequest) {
@@ -93,5 +94,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const inboxReads=Date.now()-startedAt<20000?await readDueInboxAccounts(db,credentialEncryptionKey()).catch(()=>0):0;
   // Tagged-link results are read from GA4 once a day per project, as the person who chose the property.
   const linkResults=Date.now()-startedAt<20000?await syncDueLinkResults(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, automations, messagingReads, whatsappBatches, inboxReads, linkResults };
+  // Opted-in members hear about new deadline-sensitive records by email; one subscriber is looked at per tick.
+  const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail };
 }

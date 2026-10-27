@@ -544,6 +544,13 @@ html:not(.dark) .workspace-shell .bg-red-100.text-red-600{color:#b91c1c}
 .operator-stalled{margin:4px 0 0;font-size:12px;color:#896018}.dark .operator-stalled{color:#e4b65c}
 
 /* Live plan purchase. */
+.team-alert-list{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.team-alert{display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);font-size:13px}
+.team-alert>span{flex:1;min-width:0;overflow-wrap:anywhere}.team-alert>svg{flex:none;margin-top:2px}
+.team-alert-urgent{border-color:#d9a19a;background:#fbf0ee}.team-alert-urgent>svg{color:#a8372b}
+.team-alert-warning>svg{color:#80632a}
+.team-alert-email{display:grid;gap:8px;justify-items:start;margin-top:12px}
+.dark .team-alert-urgent{background:#3a2422;border-color:#7a3d36}.dark .team-alert-urgent>svg{color:#f0a196}.dark .team-alert-warning>svg{color:#e2c27d}
 .live-billing-plans{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;border:0;padding:0;margin:12px 0}
 .live-billing-plans>label{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:12px;cursor:pointer;font-size:13px}
 .live-billing-plans>label.selected{border-color:var(--studio-accent);background:var(--studio-hover)}
