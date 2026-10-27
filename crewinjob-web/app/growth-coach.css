@@ -175,6 +175,10 @@
 .coach-outcome-weeks li:first-child{border-top:0}
 @media (max-width:640px){.coach-outcome-weeks li{grid-template-columns:1fr;gap:3px}}
 .coach-learning-email{display:grid;gap:8px}
+.coach-learning-site{display:grid;gap:8px;margin-top:16px}
+.coach-site-top{list-style:none;margin:0;padding:0}
+.coach-site-top li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;padding:8px 0;border-top:1px solid var(--studio-border)}
+.coach-site-top li>span:nth-child(2){flex:1;min-width:0;overflow-wrap:anywhere}
 .coach-email-results{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
 .coach-email-results li{display:flex;justify-content:space-between;gap:8px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);padding:8px 10px;font-size:12px;background:var(--studio-surface)}
 .coach-outcome-weeks .coach-state{justify-self:start}

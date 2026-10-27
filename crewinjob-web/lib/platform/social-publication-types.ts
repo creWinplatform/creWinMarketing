@@ -1,4 +1,5 @@
-export type PublicationSource = { story?: boolean; kind: 'content' | 'campaign'; id: string; platform: string; title: string; text: string; digest: string; eligible: boolean; imagePreview?: string; imagePreviews?: string[]; format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number }; weightedLength?: number };
+import type { PublicationSiteResult } from './link-tracking-types';
+export type PublicationSource = { story?: boolean; kind: 'content' | 'campaign'; id: string; platform: string; title: string; text: string; digest: string; eligible: boolean; imagePreview?: string; imagePreviews?: string[]; format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number }; weightedLength?: number; trackedLinks?: number };
 export type PublicationTarget = { id: string; name: string; platform: string; accountId: string; accountType?:'person'|'organization'; revision: string; configured: boolean; ready: boolean; checkedAt: string | null; expiresAt?: string | null };
 export type Publication = {
   id: string; mode: 'rehearsal' | 'publish'; status: string; state: string;
@@ -9,7 +10,7 @@ export type Publication = {
   nextCheckAt: string | null; image?: {width:number;height:number;bytes:number;previewUrl:string};
   images?: {width:number;height:number;bytes:number;previewUrl:string}[];
   format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number };
-  engagement?: PublicationEngagement;
+  engagement?: PublicationEngagement; site?: PublicationSiteResult;
 };
 export type EngagementCounts = Partial<Record<'likes'|'comments'|'shares'|'impressions'|'clicks'|'reach'|'bookmarks'|'quotes',number>>;
 export type PublicationEngagement = { status:'not_requested'|'refreshing'|'ready'|'unavailable'|'unsupported'; counts:EngagementCounts; observedAt:string|null; attemptedAt:string|null };

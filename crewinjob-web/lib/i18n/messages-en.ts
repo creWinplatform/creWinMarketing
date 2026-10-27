@@ -1230,4 +1230,11 @@ export const MESSAGES_EN: Record<string, string> = {
   "Yeni dönem, mevcut dönemin bitmesine 14 gün kala satın alınabilir.": "A new period can be bought from 14 days before the current one ends.",
   "Pilot projelerin planı ekibimizle birlikte belirlenir; buradan ödeme alınmaz.": "Pilot project plans are agreed with our team; no payment is taken here.",
   "Ödeme işlemi tamamlanamadı.": "The payment action could not be completed.",
+  "Bağlantı sonuçları alınamadı.": "Could not load link results.",
+  "Bağlantı sonuçlarına erişim reddedildi.": "Access to link results was denied.",
+  "Etkin Google Analytics bağlantısı bulunamadı.": "No active Google Analytics connection was found.",
+  "Geçersiz ayar.": "Invalid setting.",
+  "Önce bir Google Analytics mülkü seçin.": "Choose a Google Analytics property first.",
+  "Sonuçlar 10 dakikada bir yenilenebilir.": "Results can be refreshed every 10 minutes.",
+  "Sonuçlar şu anda yenilenemiyor. Biraz sonra tekrar deneyin.": "Results can’t be refreshed right now. Try again a little later.",
 };

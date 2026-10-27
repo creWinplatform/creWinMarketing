@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),{test}=require('node:test');
 const {fixture,KEY}=require('./email-pilot-fixture.cjs'),{load}=require('./platform-loader.cjs');
 const {SocialPublications}=load('social-publications.ts'),provider=load('linkedin-publishing.ts');
+const {linkTag}=load('link-tracking.ts'),tagged=(scope,kind,id,url,source)=>`${url}?utm_source=${source}&utm_medium=social&utm_campaign=${linkTag(scope,kind,id)}`;
 process.env.PLATFORM_LINKEDIN_CLIENT_ID='fixture-client';process.env.PLATFORM_LINKEDIN_CLIENT_SECRET='private-fixture-secret';process.env.PLATFORM_LINKEDIN_REDIRECT_URI='http://localhost:3033/api/platform/social/callback';process.env.PLATFORM_LINKEDIN_API_VERSION='202609';
 const access=async()=>({expiresAt:Date.now()+3600000});
 function setup(){
@@ -45,7 +46,7 @@ test('only saved text is approved; media, unresolved variables and edited/delete
 test('LinkedIn-only campaign text and CTA are reused without starting email or other channels',()=>close(async f=>{
  const campaign={...f.campaign,id:'social-campaign',channels:{...f.campaign.channels,email:true,social:['linkedin','twitter']},content:{text:'Base',perPlatformContent:{linkedin:'Channel text'},ctaUrl:'https://example.com/start'}};f.store.saveCampaign(campaign,true);
  const source=f.social.workspace().sources.find(item=>item.kind==='campaign'),job=f.social.enqueue(f.input({sourceKind:'campaign',sourceId:source.id,expectedDigest:source.digest}));await f.social.process(job.id);
- assert.equal(f.social.get(job.id).text,'Channel text\n\nhttps://example.com/start');assert.equal(f.store.campaign(campaign.id).status,'draft');assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM platform_email_pilots').get().n,0);
+ assert.equal(f.social.get(job.id).text,'Channel text\n\n'+tagged(f.scope,'campaign',campaign.id,'https://example.com/start','linkedin'));assert.equal(f.store.campaign(campaign.id).status,'draft');assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM platform_email_pilots').get().n,0);
 }));
 
 test('publishing check uses official introspection and exact user account with no token in URL',async()=>{

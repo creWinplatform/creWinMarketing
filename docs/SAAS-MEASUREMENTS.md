@@ -149,3 +149,64 @@ Example-only visual evidence: [desktop](screenshots/measurements-desktop.jpg),
 
 References: [GA4 reports](https://developers.google.com/analytics/devguides/reporting/data/v1/rest/v1beta/properties/runReport),
 [Search Console queries](https://developers.google.com/webmaster-tools/v1/searchanalytics/query).
+
+## Visits from posts: tagged own-site links (schema 57, 27 October 2026)
+
+Approved social posts that link to the project's own site now say which post a visit came from.
+
+**Tagging (in the preview, before approval).**
+- Links to the project website (and its subdomains) get `utm_source=<channel>`, `utm_medium=social` and `utm_campaign=rz_<10 hex>`.
+  - The channel is `linkedin`, `facebook`, `x` or `telegram`.
+  - The campaign value is one project-scoped hash per saved content item or campaign, so it reveals no id.
+- Some links are never changed:
+  - links to other sites;
+  - links that already carry any `utm_` parameter;
+  - links with credentials;
+  - Instagram captions, whose links are not clickable.
+- The tagged text is what the preview shows, what is approved, what is stored in the encrypted snapshot and what is sent. The preview says how many links were tagged.
+- Tagging is on by default and can be switched off by an owner/admin (`connections.manage`).
+- Switching it changes the source digest. A post approved under the other setting must be reviewed again; a queued one is blocked as `changed`.
+
+**Results (Google Analytics).**
+- An owner/admin chooses one of the project's active GA4 connections in "Visits from your posts" on the publishing page.
+- It is then read once a day by the worker, as that person, with a manual refresh at most every 10 minutes and 24 reads a day.
+- One `runReport` request:
+  - dimensions `sessionCampaignName` and `sessionSource`, filtered to `BEGINS_WITH rz_`;
+  - metrics `sessions` and `keyEvents`;
+  - the last 90 complete days, ending yesterday.
+- How report rows are handled:
+  - rows that are not Ryzevo tags are dropped;
+  - thresholding, sampling, the `(other)` row or a truncated table mark the result partial;
+  - malformed metrics fail the read.
+- A failed read keeps the last good result. The read is blocked and the stored results are deleted if any of these change during it:
+  - the person loses access;
+  - the connection is deactivated;
+  - the property changes.
+- Choosing another property also deletes the results.
+
+**What people see.**
+- Each accepted, tagged post shows "Visits to your site (Google Analytics)": sessions and key events for its tag and channel, with the period.
+  - "No session seen" is shown when the read had no row for it.
+  - "Waiting" is shown for a post published after the measured period.
+  - A missing read is never shown as zero.
+- "Growth coach: what we learned" adds visits per channel and the five posts that brought the most sessions.
+- The monthly rule-based renewal moves a channel to the front by visits only when all of these hold:
+  - there is no engagement leader;
+  - at least two channels have tagged posts;
+  - the leading channel has two or more posts and more sessions than the next.
+- The reason names the figure and says it is an observation, not proof of cause.
+- The AI renewal gets the same per-channel facts.
+
+**Honesty rules.** Counts are sessions that arrived through a tagged link (GA4 session source), not results caused by a post. Visits from people who copied the link elsewhere are counted on that post; untagged arrivals are not counted. No personal data is stored, only counts per tag and source.
+
+**Storage.**
+- `platform_social_publications.link_tag` is set when the approved text contained a tagged link.
+- `platform_link_tracking` holds per-project settings, the read state, the lease and the stored period.
+- `platform_link_results` holds counts per tag and source, replaced on every successful read.
+
+**Files and tests.**
+- Server: `lib/platform/link-tracking.ts`, `link-tracking-types.ts` and `measurement-google.ts` (`readGoogleLinkResults`).
+- Route: `app/api/platform/link-tracking/route.ts`.
+- UI: `LinkTrackingPanel.tsx`, `PublicationSite.tsx` and `CoachLearning.tsx`.
+- Tests: `test/platform-link-tracking.test.cjs`. Publication tests now expect the tagged link.
+- QA fixture: `scripts/preview-design.cjs --dev --link-tracking` uses stub GA4 rows and makes no provider call; add `--coach --coach-brief` for the learning view.

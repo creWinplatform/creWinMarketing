@@ -2,6 +2,7 @@ import 'server-only';
 import type Database from 'better-sqlite3';
 import type { MarketingScope } from './marketing-store';
 import { GrowthCoach,coachPlanId,coachWeekKey,zonedInstant,zonedShiftDays } from './coach';
+import { LinkTracking } from './link-tracking';
 import { diffBriefs,type CoachBrief,type CoachEmailResults,type CoachEngagement,type CoachLearningGroup,type CoachLearningSnapshot,type CoachOutcomeCell,type CoachOutcomeRow,type CoachOutcomes,type CoachWeekActivity } from './coach-types';
 
 type Draft={id:string;payload:string};
@@ -17,7 +18,8 @@ const DAY=86400000,WEEKS=8;
 const mondayOf=(dateKey:string)=>{const day=new Date(`${dateKey.slice(0,10)}T00:00:00Z`);day.setUTCDate(day.getUTCDate()-(day.getUTCDay()+6)%7);return day.toISOString().slice(0,10);};
 // Learning loop: which coach suggestions became drafts or campaigns, which were accepted for publication or sent, what
 // providers actually reported, and the project's own measurements week by week. Read-only and observational: no
-// estimates, no attribution, no causal claims.
+// estimates, no causal claims. Site visits are GA4 sessions that arrived through a post's tagged link: observed arrivals,
+// never credited causes.
 export class CoachLearning{
   coach:GrowthCoach;
   constructor(public db:Database.Database,public scope:MarketingScope){this.coach=new GrowthCoach(db,scope);}
@@ -67,7 +69,7 @@ export class CoachLearning{
     return {drafts:rows.map(({pubs,goalId,campaign,...item})=>{void pubs;void goalId;void campaign;return item;}).slice(0,50),byChannel,byTheme,leader:best?{dimension:best.dimension,key:best.key,label:best.label,average:Math.round(best.average*10)/10,observed:best.observed}:null,measurements,
       versions:versions.map(item=>({revision:item.revision,kind:item.kind,approvedAt:item.approvedAt,channels:item.brief.channels.map(channel=>channel.id),planItems:item.brief.plan.length})),
       changes:versions.length>=2?diffBriefs(versions[1].brief as CoachBrief,versions[0].brief as CoachBrief):null,hasBrief:Boolean(brief),
-      outcomes:this.outcomes(rows,publications,pilots,timeZone),email};
+      outcomes:this.outcomes(rows,publications,pilots,timeZone),email,site:new LinkTracking(this.db,this.scope).summary()};
   }
   // Week-by-week view: each reading and each piece of work falls into exactly one project-time-zone week, so nothing is
   // counted twice and no outcome is credited to a piece of work.

@@ -96,6 +96,26 @@ if(process.argv.includes('--whatsapp')&&process.argv.includes('--inbox')){
   const connection=db.prepare("SELECT id,organization_id,project_id,account_name,encrypted_credentials,integration_id FROM platform_connections WHERE provider='whatsapp' AND organization_id=? AND project_id=? AND active=1").get(fixture.organizationId,fixture.projectId);
   ingestWhatsAppInbound(db,encryptionKey,connection,[{from:'905550000009',id:'wamid.QA1',text:'Merhaba, kurs hafta sonu da var mı? (QA · gerçek değil)',at:ago(1)},{from:'905550000008',id:'wamid.QA2',text:'[image]',at:ago(30)}]);
   console.log('WhatsApp inbox QA: two inbound fixture messages (one outside the 24-hour window); no Meta call is made.');}
+if(process.argv.includes('--link-tracking')){
+  // Tagged own-site links: fake LinkedIn/X/GA4 grants, accepted posts promoted from rehearsals and stub GA4 rows read
+  // through a stub reader. No provider is contacted.
+  const {ProjectMarketingStore}=load('marketing-store.ts'),{SocialPublications}=load('social-publications.ts'),{LinkTracking,syncLinkResults}=load('link-tracking.ts'),scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId};
+  const store=new ProjectMarketingStore(db,scope),social=new SocialPublications(db,scope,encryptionKey),links=new LinkTracking(db,scope,encryptionKey);
+  const account=(platform,name,id)=>store.saveConnection({provider:'social',integrationId:'qa-only',accountName:name,accessToken:'qa-only-not-real',expiresAt:Date.now()+30*86400000,social:{platform,accountId:id}},encryptionKey);
+  const linkedin=account('linkedin','QA LinkedIn · gerçek değil','qa_member'),x=account('twitter','QA X · gerçek değil','1234567890');
+  const ga=store.saveConnection({provider:'ga4',integrationId:'123456789',accountName:'QA GA4 · gerçek değil',accessToken:'qa-only-not-real'},encryptionKey);
+  const posts=[['qa-link-1','linkedin',linkedin,'Kayıt rehberi','Yeni kayıt rehberimiz yayında: https://example.com/rehber',9],['qa-link-2','linkedin',linkedin,'Müşteri hikâyesi','Bir müşterimiz süreci nasıl kısalttı? https://example.com/hikaye',6],['qa-link-3','twitter',x,'Kısa ipucu','Haftanın ipucu: https://example.com/ipucu',3]];
+  for(const [id,platform,connection,headline,content,days] of posts){
+    store.saveContent({id,platform,language:'tr',headline,content,prompt:'',timestamp:Date.now()-days*86400000},true);
+    const source=social.workspace().sources.find(item=>item.id===id),target=social.workspace().targets.find(item=>item.id===connection.id);
+    const job=social.enqueue({sourceKind:'content',sourceId:id,connectionId:connection.id,expectedDigest:source.digest,expectedTargetRevision:target.revision,mode:'rehearsal',idempotencyKey:`qa-link-${id}`});
+    db.prepare("UPDATE platform_social_publications SET mode='publish',state='accepted',submitted_at=?,provider_post_id=? WHERE job_id=?").run(new Date(Date.now()-days*86400000).toISOString(),platform==='twitter'?'1900000000000000001':'urn:li:share:7000000000000000001',job.id);
+    db.prepare("UPDATE platform_jobs SET status='completed' WHERE id=?").run(job.id);
+  }
+  links.configure({enabled:true,connectionId:ga.id});
+  const {linkTag}=load('link-tracking.ts'),tag=id=>linkTag(scope,'content',id);
+  await syncLinkResults(db,scope,encryptionKey,async()=>({status:'ready',rows:[{tag:tag('qa-link-1'),source:'linkedin',sessions:43,keyEvents:3},{tag:tag('qa-link-3'),source:'x',sessions:8,keyEvents:0}],timezone:'Europe/Istanbul',checkedAt:new Date().toISOString()}),async credentials=>credentials,fixture.userId);
+  console.log('Link tracking QA: three accepted posts with tagged links and stub GA4 results; no provider is contacted.');}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.

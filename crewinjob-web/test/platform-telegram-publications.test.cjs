@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),{test}=require('node:test');
 const {fixture,KEY}=require('./email-pilot-fixture.cjs'),{load}=require('./platform-loader.cjs');
 const {SocialPublications}=load('social-publications.ts'),{verifySocialConnection}=load('social-connection.ts'),{normalizeSocialConfiguration}=load('social-configuration.ts');
+const {linkTag}=load('link-tracking.ts'),tagged=(scope,kind,id,url,source)=>`${url}?utm_source=${source}&utm_medium=social&utm_campaign=${linkTag(scope,kind,id)}`;
 const TOKEN='123456789:AAFixtureTelegramTokenOnly_not_real_01';
 const social={platform:'telegram',accountId:'@ryzevo_qa'};
 // Disposable Bot API: answers by method name; every call is recorded so the test can check URLs and headers.
@@ -48,7 +49,7 @@ test('publishing needs the switch, an admin bot with post rights and acknowledge
   try{
     await f.service.check(f.tg.id);const job=f.service.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-publish-1'}));await f.service.process(job.id);
     const done=f.service.get(job.id);assert.equal(done.state,'accepted');assert.equal(done.providerPostId,'-1001234567890:42');assert.equal(done.providerUrl,'https://t.me/ryzevo_qa/42');assert.equal(done.engagement.status,'unsupported');
-    const send=api.calls.find(call=>call.method==='sendMessage');assert.deepEqual(send.body,{chat_id:'@ryzevo_qa',text:f.content.content});
+    const send=api.calls.find(call=>call.method==='sendMessage');assert.deepEqual(send.body,{chat_id:'@ryzevo_qa',text:'Yeni sürüm yayında. '+tagged(f.scope,'content',f.content.id,'https://example.com/notes','telegram')},'the channel gets the approved, tagged own-site link');
     assert.throws(()=>f.service.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-publish-2'})),e=>e.status===409,'the same text is not posted twice');
   }finally{api.restore();}
   const audit=JSON.stringify(f.db.prepare('SELECT * FROM platform_audit').all())+JSON.stringify(f.db.prepare('SELECT * FROM platform_social_publications').all());assert.doesNotMatch(audit,/AAFixtureTelegram/,'the token is stored only encrypted');
@@ -81,6 +82,6 @@ test('schema43 keeps existing social accounts and is repeatable',async()=>{
     const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'telegram-')),'fixture.sqlite');
     await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeTelegramSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,42);
     assert.throws(()=>db.prepare("INSERT INTO platform_social_accounts(connection_id,platform,account_id) VALUES('x','telegram','@abcdef')").run(),/CHECK|FOREIGN/);db.close();
-    db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,56);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_social_accounts').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+    db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,57);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_social_accounts').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
   }finally{f.db.close();}
 });

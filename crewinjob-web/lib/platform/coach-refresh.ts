@@ -6,6 +6,7 @@ import { MarketingStoreError } from './errors';
 import { ProjectOperations } from './operations';
 import { GrowthCoach,COACH_BANNED,coachDraftRules,fitCoachBriefText,coachChannelName,coachChoice,coachClip,coachObject,coachPlanId,coachStarterBrief,coachText,normalizeCoachBrief,type CoachGenerator } from './coach';
 import { CoachLearning } from './coach-learning';
+import { LinkTracking } from './link-tracking';
 import { coachMonthKey } from './coach-content';
 import { parseCoachJson,runCoachAi } from './coach-ai';
 import { COACH_CHANNELS,COACH_CONTENT_CHANNELS,isCoachContentChannel,diffBriefs,type CoachAnswers,type CoachBrief,type CoachChannel,type CoachPlanItem,type CoachRefresh,type CoachRefreshFacts,type CoachRefreshReason,type CoachRefreshSnapshot } from './coach-types';
@@ -27,7 +28,14 @@ export function coachStarterRefresh(brief:CoachBrief,facts:CoachRefreshFacts,ans
     channels=[channels.find(item=>item.id===leader)!,...channels.filter(item=>item.id!==leader)];
     reasons.push({title:t(`${name(leader)} öne alındı`,`${name(leader)} moved to the front`),why:t(`Gözlenen yayın başına en yüksek ortalama etkileşim bu kanalda: ${facts.leader!.average} (${facts.leader!.observed} yayın). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`,`This channel has the highest observed average engagement per publication: ${facts.leader!.average} (${facts.leader!.observed} publications). This is an observation, not proof of cause.`)});
   }
-  const idle=channels.length>1?channels.slice(0,-1).find(item=>refreshFactsActivity(facts,item.id)===0&&item.id!==leader):undefined;
+  // Without an engagement leader, the channel whose tagged links brought clearly the most site visits moves to the front:
+  // at least two channels with posts, two posts in the leading one and more sessions than the next.
+  const visits=(facts.site?.byChannel||[]).filter(item=>item.posts>0),first=visits[0];let promoted:CoachChannel|null=null;
+  if(!leader&&first&&visits.length>=2&&first.posts>=2&&first.sessions>visits[1].sessions&&channels.length>1&&channels[0].id!==first.channel&&channels.some(item=>item.id===first.channel)){
+    channels=[channels.find(item=>item.id===first.channel)!,...channels.filter(item=>item.id!==first.channel)];promoted=first.channel;
+    reasons.push({title:t(`${name(first.channel)} öne alındı`,`${name(first.channel)} moved to the front`),why:t(`Sitenize etiketli bağlantılardan en çok ziyaret bu kanaldaki paylaşımlardan geldi: ${first.sessions} oturum (${first.posts} paylaşım, Google Analytics). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`,`Tagged links in this channel’s posts brought the most visits to your site: ${first.sessions} sessions (${first.posts} posts, Google Analytics). This is an observation, not proof of cause.`)});
+  }
+  const idle=channels.length>1?channels.slice(0,-1).find(item=>refreshFactsActivity(facts,item.id)===0&&item.id!==leader&&item.id!==promoted):undefined;
   if(idle&&channels.some(item=>item.id!==idle.id&&refreshFactsActivity(facts,item.id)>0)){
     channels=[...channels.filter(item=>item.id!==idle.id),idle];
     reasons.push({title:t(`${name(idle.id)} sıranın sonuna alındı`,`${name(idle.id)} moved to the end`),why:t(`Bu dönemde ${name(idle.id)} için taslak veya tamamlanan eylem yok. Kanalı tamamen bırakmak isterseniz yeni bir teşhis yapın.`,`There were no drafts or completed actions for ${name(idle.id)} in this period. To drop the channel entirely, run a new diagnosis.`)});
@@ -92,11 +100,13 @@ export class CoachRenewal{
     const emails=this.count("SELECT COUNT(*) n FROM platform_campaigns WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.channels.email')=1 AND json_extract(payload,'$.createdAt')>=?",from);if(emails)drafts.email=(drafts.email||0)+emails;
     const entries=this.db.prepare('SELECT goal_id,stage_index,value,source FROM platform_metric_entries WHERE organization_id=? AND project_id=? AND observed_at>=? AND observed_at<=? ORDER BY observed_at,id').all(...this.args(),from,to) as {goal_id:string;stage_index:number;value:number;source:string}[];
     const measurements=project.goals.flatMap(goal=>goal.stages.flatMap((stage,index)=>[...new Set(entries.filter(item=>item.goal_id===goal.id&&item.stage_index===index).map(item=>item.source))].map(source=>{const list=entries.filter(item=>item.goal_id===goal.id&&item.stage_index===index&&item.source===source);return {goal:goal.label,stage,source,first:list[0].value,last:list.at(-1)!.value,entries:list.length};})));
-    const leader=new CoachLearning(this.db,this.scope).read().leader;
+    const leader=new CoachLearning(this.db,this.scope).read().leader,summary=new LinkTracking(this.db,this.scope).summary();
+    const channelOf:Record<string,CoachChannel>={linkedin:'linkedin',facebook:'facebook',x:'twitter'};
+    const site=summary?{from:summary.from,to:summary.to,partial:summary.resultState==='partial',byChannel:summary.byChannel.filter(item=>channelOf[item.source]).map(item=>({channel:channelOf[item.source],posts:item.posts,sessions:item.sessions,keyEvents:item.keyEvents}))}:null;
     return {from,to,planWeek:week||1,plan,drafts,
       publications:this.count("SELECT COUNT(*) n FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state='accepted' AND j.updated_at>=?",from),
       emailRecipients:this.count("SELECT COUNT(*) n FROM platform_email_pilot_recipients r JOIN platform_email_pilots p ON p.job_id=r.job_id JOIN platform_jobs j ON j.id=p.job_id WHERE r.organization_id=? AND r.project_id=? AND p.mode='send' AND r.state IN ('accepted','delivered','bounced','complained') AND j.created_at>=?",from),
-      measurements,leader:leader?{dimension:leader.dimension,key:leader.key,average:leader.average,observed:leader.observed}:null};
+      measurements,leader:leader?{dimension:leader.dimension,key:leader.key,average:leader.average,observed:leader.observed}:null,site};
   }
   // Due when the 30-day plan has reached its last week, or a new month started at least two weeks after approval.
   private due(){const {brief,approvedAt,week}=this.coach.approved();if(!brief||!approvedAt)return false;const month=this.month(),approvedMonth=coachMonthKey(new Date(approvedAt),0,this.coach.timeZone());

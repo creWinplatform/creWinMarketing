@@ -1,4 +1,5 @@
 import type { LocalizedText } from './catalog';
+import type { SiteSummary } from './link-tracking-types';
 // Growth coach: diagnosis answers → reviewed/approved strategy brief → weekly next-best actions.
 // Client-safe constants and types only; the server store lives in coach.ts.
 // The team's main goal; the same five paths as the Growth Compass, so the approved brief can set the path directly.
@@ -114,6 +115,8 @@ export type CoachLearningSnapshot={
   versions:{revision:number;kind:CoachBriefKind;approvedAt:string;channels:CoachChannel[];planItems:number}[];
   changes:CoachBriefChanges|null;hasBrief:boolean;
   outcomes:CoachOutcomes;email:CoachEmailResults;
+  // GA4 sessions and key events that arrived through tagged own-site links in accepted posts (null until a property is read).
+  site:SiteSummary|null;
 };
 // Phase 4 · outcomes next to coach work, week by week. A reading is shown only in the week it belongs to (manual: the day it
 // was recorded; automatic: the last day of the measured period). Manual and automatic sources stay on separate rows.
@@ -141,6 +144,8 @@ export type CoachRefreshFacts={
   drafts:Record<string,number>;publications:number;emailRecipients:number;
   measurements:{goal:LocalizedText;stage:LocalizedText;source:string;first:number;last:number;entries:number}[];
   leader:{dimension:'channel'|'theme';key:string;average:number;observed:number}|null;
+  // Visits to the site through tagged links, per channel (absent in renewals proposed before link results existed).
+  site?:{from:string;to:string;partial:boolean;byChannel:{channel:CoachChannel;posts:number;sessions:number;keyEvents:number}[]}|null;
 };
 export type CoachRefreshReason={title:string;why:string};
 export type CoachRefresh={id:string;month:string;source:'ai'|'template';state:'proposed'|'approved'|'dismissed';revision:number;baseRevision:number;createdAt:string;decidedAt:string|null;facts:CoachRefreshFacts;brief:CoachBrief;reasons:CoachRefreshReason[];changes:CoachBriefChanges|null;stale:boolean};

@@ -118,6 +118,6 @@ test('the operator console reports live billing readiness without values',()=>wi
 test('migration 54 is additive and repeatable',async()=>{
   const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'live-billing-')),'fixture.sqlite');
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeLiveBillingSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_project_subscriptions'").get().n,0);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,56);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_project_subscriptions','platform_billing_live_orders')").get().n,2);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,57);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_project_subscriptions','platform_billing_live_orders')").get().n,2);db.close();
   db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=54').get().n,1);db.close();
 });

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { CalendarRange, History, Lightbulb, Mail, ShieldCheck } from 'lucide-react';
+import { CalendarRange, History, Lightbulb, Link2, Mail, ShieldCheck } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
@@ -8,7 +8,7 @@ import type { CoachLearningGroup, CoachLearningSnapshot } from '@/lib/platform/c
 import { briefChangeLines } from './coach-changes';
 import Msg from '@/components/Msg';
 
-const channelNames:Record<string,[string,string]>={linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],blog:['Blog','Blog'],tiktok:['TikTok','TikTok'],seo:['Arama (SEO/blog)','Search (SEO/blog)']};
+const channelNames:Record<string,[string,string]>={x:['X','X'],telegram:['Telegram','Telegram'],linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],blog:['Blog','Blog'],tiktok:['TikTok','TikTok'],seo:['Arama (SEO/blog)','Search (SEO/blog)']};
 const kinds={approve:['Onaylandı','Approved'],adjust:['Plan ayarlandı','Plan adjusted'],positioning:['Konumlandırma güncellendi','Positioning updated'],refresh:['Aylık yenileme','Monthly renewal']} as const;
 const sources:Record<string,[string,string]>={manual:['Manuel kayıt','Manual record'],ga4:['Google Analytics','Google Analytics'],search_console:['Search Console','Search Console'],product_event:['Ürün olayları','Product events']};
 
@@ -26,7 +26,17 @@ export default function CoachLearning({workspace,lang}:{workspace:WorkspaceConte
   if(!data||!data.hasBrief&&!data.drafts.length&&!data.versions.length)return null;
   const table=(title:string,rows:CoachLearningGroup[],format:(key:string)=>string)=><div className="studio-table-scroll"><table className="coach-keywords coach-learning-table"><caption className="sr-only">{title}</caption><thead><tr><th>{title}</th><th>{tr?'Taslak':'Drafts'}</th><th>{tr?'Kabul edilen yayın':'Accepted publications'}</th><th>{tr?'Etkileşim verisi olan':'With engagement data'}</th><th>{tr?'Etkileşim':'Interactions'}</th></tr></thead>
     <tbody>{rows.map(row=><tr key={row.key}><td>{format(row.key)}</td><td data-label={tr?'Taslak':'Drafts'}>{n(row.drafts)}</td><td data-label={tr?'Kabul edilen yayın':'Accepted'}>{n(row.published)}</td><td data-label={tr?'Veri olan':'With data'}>{n(row.observed)}</td><td data-label={tr?'Etkileşim':'Interactions'}>{row.observed?n(row.interactions):(tr?'Veri yok':'No data')}</td></tr>)}</tbody></table></div>;
-  const outcomes=data.outcomes,row=outcomes.rows[Math.min(outcome,Math.max(0,outcomes.rows.length-1))];
+  const outcomes=data.outcomes,row=outcomes.rows[Math.min(outcome,Math.max(0,outcomes.rows.length-1))],site=data.site;
+  // Visits through tagged links, per channel and the posts that brought the most; arrivals, not credited causes.
+  const siteVisits=site&&<section className="coach-learning-site" aria-labelledby="coach-site-title">
+    <h3 id="coach-site-title"><Link2 size={14}/> {tr?'Paylaşımlardan sitenize gelenler':'Visits to your site from posts'}</h3>
+    <p className="coach-muted">{tr?`Google Analytics · ${day(site.from)}–${day(site.to)} · ${n(site.posts)} etiketli paylaşım`:`Google Analytics · ${day(site.from)}–${day(site.to)} · ${n(site.posts)} tagged post(s)`}{site.resultState==='partial'?(tr?' · veri eksik olabilir':' · data may be incomplete'):''}</p>
+    {site.byChannel.length?<div className="studio-table-scroll"><table className="coach-keywords coach-learning-table"><caption className="sr-only">{tr?'Kanala göre site ziyaretleri':'Site visits by channel'}</caption><thead><tr><th>{tr?'Kanal':'Channel'}</th><th>{tr?'Etiketli paylaşım':'Tagged posts'}</th><th>{tr?'Oturum':'Sessions'}</th><th>{tr?'Önemli olay':'Key events'}</th></tr></thead>
+      <tbody>{site.byChannel.map(item=><tr key={item.source}><td>{channel(item.source)}</td><td data-label={tr?'Paylaşım':'Posts'}>{n(item.posts)}</td><td data-label={tr?'Oturum':'Sessions'}>{n(item.sessions)}</td><td data-label={tr?'Önemli olay':'Key events'}>{n(item.keyEvents)}</td></tr>)}</tbody></table></div>
+      :<p className="coach-muted">{tr?'Bu dönemde sitenize bağlantı içeren yayınlanmış paylaşım yok.':'No published post with a link to your site in this period.'}</p>}
+    {site.top.length>0&&<><p className="coach-muted">{tr?'En çok ziyaret getiren paylaşımlar':'Posts that brought the most visits'}</p><ol className="coach-site-top">{site.top.map((item,index)=><li key={index}><span className="coach-state">{channel(item.source)}</span><span>{item.title}</span><span className="coach-muted">{tr?`${n(item.sessions)} oturum · ${n(item.keyEvents)} önemli olay`:`${n(item.sessions)} sessions · ${n(item.keyEvents)} key events`}</span></li>)}</ol></>}
+    <p className="coach-muted">{tr?'Sayılar, paylaşımdaki etiketli bağlantıdan gelen oturumlardır; paylaşımın sonucu yarattığının kanıtı değildir. Bağlantıyı kopyalayıp başka yerde paylaşanların ziyaretleri de bu paylaşıma yazılır; etiketsiz gelenler sayılmaz.':'Counts are sessions that arrived through the post’s tagged link; they don’t prove the post caused the result. Visits from people who copied the link elsewhere are also counted here; untagged arrivals are not.'}</p>
+  </section>;
   const work=(item:typeof outcomes.activity[number])=>[item.drafts&&(tr?`${n(item.drafts)} taslak`:`${n(item.drafts)} draft(s)`),item.campaigns&&(tr?`${n(item.campaigns)} kampanya`:`${n(item.campaigns)} campaign(s)`),item.publications&&(tr?`${n(item.publications)} yayın`:`${n(item.publications)} publication(s)`),item.emailRecipients&&(tr?`${n(item.emailRecipients)} e-posta alıcısı`:`${n(item.emailRecipients)} email recipient(s)`),item.actionsDone&&(tr?`${n(item.actionsDone)} eylem tamamlandı`:`${n(item.actionsDone)} action(s) done`),item.planApproved&&(tr?`${n(item.planApproved)} plan maddesi onaylandı`:`${n(item.planApproved)} plan item(s) approved`)].filter(Boolean).join(' · ');
   // Outcomes next to the work, one row per week; the reading and the work are only shown side by side.
   const outcomeWeeks=<section className="coach-outcomes" aria-labelledby="coach-outcomes-title">
@@ -52,6 +62,7 @@ export default function CoachLearning({workspace,lang}:{workspace:WorkspaceConte
       </div>
       <details className="coach-resolved"><summary>{tr?`Son taslaklar (${data.drafts.length})`:`Recent drafts (${data.drafts.length})`}</summary><ul>{data.drafts.slice(0,10).map(item=><li key={item.id}><span className="coach-state">{channel(item.channel)}</span><span>{item.title} · {theme(item.theme)}</span><span className="coach-muted">{date(item.createdAt)} · {item.published?(tr?`${n(item.published)} kabul edilen yayın`:`${n(item.published)} accepted`):item.rehearsed?(tr?'Prova edildi':'Rehearsed'):(tr?'Yayın yok':'Not published')} · {item.engagement.observed?(tr?`${n(item.engagement.interactions)} etkileşim`:`${n(item.engagement.interactions)} interactions`):(tr?'etkileşim verisi yok':'no engagement data')}</span></li>)}</ul></details>
     </>}
+    {siteVisits}
     {outcomeWeeks}
     {data.email.campaigns>0&&<section className="coach-learning-email"><h3><Mail size={14}/> {tr?'E-posta kampanyaları':'Email campaigns'}</h3>
       <p>{tr?`Koçtan açılan ${n(data.email.campaigns)} kampanya · ${n(data.email.rehearsals)} prova · ${n(data.email.sends)} pilot gönderim.`:`${n(data.email.campaigns)} campaign(s) opened from the coach · ${n(data.email.rehearsals)} rehearsal(s) · ${n(data.email.sends)} pilot send(s).`}</p>
@@ -62,6 +73,6 @@ export default function CoachLearning({workspace,lang}:{workspace:WorkspaceConte
       <section><h3><History size={14}/> {tr?'Brief sürümleri':'Brief versions'}</h3>{data.versions.length?<ul>{data.versions.map((item,index)=><li key={`${item.revision}-${index}`}>{date(item.approvedAt)} · {kinds[item.kind][idx]} · {item.channels.map(channel).join(', ')} · {tr?`${item.planItems} eylem`:`${item.planItems} actions`}</li>)}</ul>:<p>{tr?'Henüz onaylı brief yok.':'No approved brief yet.'}</p>}
         {data.changes&&<><p className="coach-muted">{tr?'Son sürümde değişenler:':'Changed in the latest version:'}</p><ul>{briefChangeLines(data.changes,tr).map((line,index)=><li key={index}>{line}</li>)}</ul></>}</section>
     </div>
-    <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Yalnız kayıtlı yayınlar ve sağlayıcı verisi kullanılır; tahmin, atıf veya ROI yoktur.':'Only recorded publications and provider data are used; no estimates, attribution or ROI.'}</p>
+    <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Yalnız kayıtlı yayınlar ve sağlayıcı verisi kullanılır; tahmin, neden-sonuç iddiası veya ROI yoktur.':'Only recorded publications and provider data are used; no estimates, causal claims or ROI.'}</p>
   </section>;
 }

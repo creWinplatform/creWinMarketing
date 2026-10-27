@@ -1,8 +1,17 @@
-# Ryzevo release status - 23 October 2026
+# Ryzevo release status - 27 October 2026
 
 The core monolith is suitable for continued isolated testing. It is NOT yet an
 accepted public/paid production service. An implementation, a local fixture test
 and an operator-approved live acceptance are different milestones.
+
+## Delivered on 27 October 2026
+
+- **Visits from posts (schema 57)** (`SAAS-MEASUREMENTS.md`, "Visits from posts"):
+  - Links to the project's own site in approved social posts carry a source tag that is visible in the preview.
+  - Google Analytics sessions and key events that arrived through each tag appear under the post and, per channel, in "what we learned". The rule-based monthly renewal can reorder channels by them.
+  - Observed arrivals only, never credited causes.
+  - Until a GA4 property is chosen, nothing is read.
+  - Migration 57 was dry-run on a copy of the local database; it is not yet applied to the real one.
 
 ## Delivered on 23 October 2026
 

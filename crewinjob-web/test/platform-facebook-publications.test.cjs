@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),{test}=require('node:test');
 const {fixture,KEY}=require('./email-pilot-fixture.cjs'),{load}=require('./platform-loader.cjs');
 const {SocialPublications}=load('social-publications.ts'),provider=load('facebook-publishing.ts'),{decryptCredentials,encryptCredentials}=load('credential-envelope.ts');
+const {linkTag}=load('link-tracking.ts'),tagged=(scope,kind,id,url,source)=>`${url}?utm_source=${source}&utm_medium=social&utm_campaign=${linkTag(scope,kind,id)}`;
 process.env.PLATFORM_META_APP_ID='12345';process.env.PLATFORM_META_APP_SECRET='fixture-meta-secret';process.env.PLATFORM_META_GRAPH_VERSION='v25.0';process.env.PLATFORM_META_REDIRECT_URI='http://localhost:3033/api/platform/meta/callback';
 const grant={userAccessToken:'private-user-token',appId:'12345'},social={platform:'facebook',accountId:'100',graphVersion:'v25.0'},access=async()=>({expiresAt:Date.now()+3600000});
 function setup(){
@@ -34,7 +35,7 @@ test('each saved campaign channel has a separate preview; a Facebook source cann
  const c={...f.campaign,id:'multichannel',channels:{...f.campaign.channels,social:['facebook','linkedin']},content:{text:'Base',perPlatformContent:{facebook:'Page text',linkedin:'Member text'},ctaUrl:'https://example.com/start'}};f.store.saveCampaign(c,true);
  const previews=f.service.workspace().sources.filter(s=>s.id===c.id);assert.equal(previews.length,2);assert.notEqual(previews[0].digest,previews[1].digest);
  const fb=previews.find(s=>s.platform==='facebook'),job=f.service.enqueue(f.input({sourceKind:'campaign',sourceId:c.id,expectedDigest:fb.digest}));await f.service.process(job.id);
- assert.equal(f.service.get(job.id).text,'Page text\n\nhttps://example.com/start');assert.equal(f.store.campaign(c.id).status,'draft');assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM platform_email_pilots').get().n,0);
+ assert.equal(f.service.get(job.id).text,'Page text\n\n'+tagged(f.scope,'campaign',c.id,'https://example.com/start','facebook'));assert.equal(f.store.campaign(c.id).status,'draft');assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM platform_email_pilots').get().n,0);
 }));
 
 test('Facebook permission proof checks current scopes, Page task, Page token and exact identity with no tokens in URLs',()=>withFixture(async f=>{

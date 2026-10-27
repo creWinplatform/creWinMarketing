@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),{test}=require('node:test');
 const {fixture,KEY}=require('./email-pilot-fixture.cjs'),{load}=require('./platform-loader.cjs');
 const {SocialPublications}=load('social-publications.ts'),provider=load('x-publishing.ts'),{xConfiguration,xClient}=load('x-client.ts'),{ProjectXOAuth}=load('x-oauth.ts'),{decryptCredentials}=load('credential-envelope.ts'),{xText}=load('x-text.ts');
+const {linkTag}=load('link-tracking.ts'),tagged=(scope,kind,id,url,source)=>`${url}?utm_source=${source}&utm_medium=social&utm_campaign=${linkTag(scope,kind,id)}`;
 process.env.PLATFORM_X_CLIENT_ID='fixture-x-client';process.env.PLATFORM_X_CLIENT_SECRET='private-x-secret';process.env.PLATFORM_X_REDIRECT_URI='http://localhost:3033/api/platform/x/callback';
 const social={platform:'twitter',accountId:'123'},access=async()=>({expiresAt:Date.now()+3600000});
 function setup(){
@@ -22,7 +23,7 @@ test('X weighted counter uses twitter-text for URLs, emoji, CJK, invalid charact
 });
 test('X rehearsal reuses saved content, reveals weighted counter, and never contacts a provider',()=>run(async f=>{
  const original=globalThis.fetch;globalThis.fetch=async()=>assert.fail('Rehearsal contacted provider');
- try{const source=f.service.workspace().sources[0];assert.equal(source.weightedLength,xText(f.content.content).length);const job=f.service.enqueue(f.input({text:'untrusted'}));await f.service.process(job.id);assert.equal(f.service.get(job.id).state,'rehearsed');assert.equal(f.service.get(job.id).text,f.content.content);assert.equal(f.service.get(job.id).providerPostId,null);assert.equal(f.service.enqueue(f.input()).id,job.id);}
+ try{const source=f.service.workspace().sources[0];assert.equal(source.weightedLength,xText(f.content.content).length);const job=f.service.enqueue(f.input({text:'untrusted'}));await f.service.process(job.id);assert.equal(f.service.get(job.id).state,'rehearsed');assert.equal(f.service.get(job.id).text,'New from Ryzevo. '+tagged(f.scope,'content',f.content.id,'https://example.com/long-link','x'));assert.equal(f.service.get(job.id).providerPostId,null);assert.equal(f.service.enqueue(f.input()).id,job.id);}
  finally{globalThis.fetch=original;}
  assert.doesNotMatch(JSON.stringify(f.service.workspace()),/private-x|xPublishing|scopes|configurationRevision/);
 }));
@@ -38,7 +39,7 @@ test('X sources reject overlength, media and variables, and cannot target anothe
 test('X campaign uses channel-specific text plus CTA without sending its other channels',()=>run(async f=>{
  const campaign={...f.campaign,id:'x-campaign',channels:{...f.campaign.channels,social:['twitter','linkedin']},content:{text:'Base',perPlatformContent:{twitter:'Specific X text',linkedin:'LinkedIn text'},ctaUrl:'https://example.com/start'}};f.store.saveCampaign(campaign,true);
  const source=f.service.workspace().sources.find(s=>s.kind==='campaign'&&s.platform==='twitter'),job=f.service.enqueue(f.input({sourceKind:'campaign',sourceId:source.id,expectedDigest:source.digest}));await f.service.process(job.id);
- assert.equal(f.service.get(job.id).text,'Specific X text\n\nhttps://example.com/start');assert.equal(f.store.campaign(campaign.id).status,'draft');assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM platform_email_pilots').get().n,0);
+ assert.equal(f.service.get(job.id).text,'Specific X text\n\n'+tagged(f.scope,'campaign',campaign.id,'https://example.com/start','x'));assert.equal(f.store.campaign(campaign.id).status,'draft');assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM platform_email_pilots').get().n,0);
 }));
 test('X proof requires OAuth scope provenance, current app, valid expiry and exact user identity',()=>run(async f=>{
  const original=globalThis.fetch;let calls=0;

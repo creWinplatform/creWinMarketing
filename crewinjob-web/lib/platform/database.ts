@@ -1174,6 +1174,30 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_billing_contract_emails_state ON platform_billing_contract_emails(state,created_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(56,datetime('now'));
   `))();
+  // Own-site link tags on approved social posts and the GA4 sessions/key events reported for each tag. A missing settings
+  // row means tagging is on and no GA4 property has been chosen yet.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=57').get())db.transaction(()=>db.exec(`
+    ALTER TABLE platform_social_publications ADD COLUMN link_tag TEXT CHECK(link_tag IS NULL OR (length(link_tag)=13 AND link_tag GLOB 'rz_[0-9a-f]*'));
+    CREATE TABLE platform_link_tracking (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+      connection_id TEXT, manager_id TEXT, state TEXT NOT NULL DEFAULT 'idle' CHECK(state IN ('idle','refreshing','ready','failed','blocked')),
+      reason TEXT, result_state TEXT CHECK(result_state IS NULL OR result_state IN ('ready','partial','no_data')),
+      period_from TEXT, period_to TEXT, timezone TEXT, checked_at TEXT, attempted_at TEXT, next_sync_at TEXT,
+      lease_token TEXT, lease_until TEXT, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id),
+      CHECK(connection_id IS NULL OR manager_id IS NOT NULL)
+    );
+    CREATE INDEX platform_link_tracking_due ON platform_link_tracking(next_sync_at);
+    CREATE TABLE platform_link_results (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      tag TEXT NOT NULL CHECK(length(tag)=13 AND tag GLOB 'rz_[0-9a-f]*'), source TEXT NOT NULL CHECK(length(source) BETWEEN 1 AND 40),
+      sessions INTEGER NOT NULL CHECK(sessions>=0), key_events REAL NOT NULL CHECK(key_events>=0),
+      PRIMARY KEY(organization_id,project_id,tag,source),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(57,datetime('now'));
+  `))();
   return db;
 }
 
