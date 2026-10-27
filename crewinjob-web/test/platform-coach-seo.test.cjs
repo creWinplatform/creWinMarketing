@@ -59,10 +59,11 @@ test('Search Console data is only for connection managers; others get brief-base
   await assert.rejects(editor.refresh({reader,refresh:noRefresh}),error=>error.status===403);
   // A manager reads real rows and builds topics from them…
   snapshot=await seo(f).generate({mode:'template'},{reader,refresh:noRefresh});assert.equal(calls,1);assert.equal(snapshot.searchConsole.state,'ready');assert.equal(snapshot.searchConsole.canRefresh,true);assert.equal(snapshot.topics[0].keywords[0].impressions,340);
-  // …which other members never see: no rows, no phrases, no period, no counts.
+  // …which other members never see: no rows, no phrases, no period, no counts (matched as a JSON number, since random
+  // topic ids can contain the same digits).
   for(const member of [editor,viewer]){const view=member.read(),text=JSON.stringify(view);
     assert.equal(view.searchConsole.state,'restricted');assert.equal(view.searchConsole.queries,0);assert.equal(view.searchConsole.from,null);assert.equal(view.searchConsole.checkedAt,null);
-    assert.ok(!text.includes('bookkeeping app for shops')&&!text.includes('340')&&!text.includes('search_console'),'no Search Console data leaks to non-managers');}
+    assert.ok(!text.includes('bookkeeping app for shops')&&!/[:,[]340[,\]}]/.test(text)&&!text.includes('search_console'),'no Search Console data leaks to non-managers');}
   // An editor's AI brief prompt never receives Search Console phrases either.
   const topic=seo(f).read().topics.find(item=>item.keywords.some(keyword=>keyword.source==='search_console'));let prompt='';
   await editor.draftBrief({topicId:topic.id,mode:'ai'},async value=>{prompt=value;return JSON.stringify({targetKeyword:'shop books',intent:'informational',title:'T',outline:['A','B','C'],questions:[],internalLinks:[],notes:''});});
