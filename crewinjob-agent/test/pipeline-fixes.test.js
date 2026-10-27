@@ -54,6 +54,56 @@ test('updateIlanExpiry refuses to send a partial DTO when no getter is configure
   }
 });
 
+// Backend sözleşmesi (27 Ekim 2026): GET Ilan/GetIlanForEdit → result.ilan; yalnız expirationDate değişir.
+// fetch tamamen taklit edilir; gerçek API'ye hiçbir istek gitmez.
+async function withIlanApi(handler, work) {
+  const prev = process.env.CREWINJOB_ILAN_EDIT_GETTER, originalFetch = global.fetch, calls = [];
+  process.env.CREWINJOB_ILAN_EDIT_GETTER = 'Ilan/GetIlanForEdit';
+  const reply = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
+  global.fetch = async (url, init = {}) => {
+    const text = String(url);
+    if (text.endsWith('/api/TokenAuth/Authenticate')) return reply(200, { result: { accessToken: 'test-only-token', expireInSeconds: 3600 } });
+    calls.push({ url: text, method: init.method || 'GET', body: init.body ? JSON.parse(init.body) : undefined });
+    return handler(text, init, reply);
+  };
+  try { await work(calls); } finally {
+    global.fetch = originalFetch;
+    if (prev === undefined) delete process.env.CREWINJOB_ILAN_EDIT_GETTER; else process.env.CREWINJOB_ILAN_EDIT_GETTER = prev;
+  }
+}
+
+test('updateIlanExpiry sends the full DTO back with only expirationDate changed', async () => {
+  const ilan = { id: 41, positionId: 3, shipTypeId: 7, companyId: 10339, description: 'Keep me', salary: 4200, expirationDate: '2026-10-30T00:00:00' };
+  await withIlanApi((url, init, reply) => url.includes('/Ilan/GetIlanForEdit') ? reply(200, { success: true, result: { ilan } }) : reply(200, { success: true, result: null }), async calls => {
+    await bot.updateIlanExpiry(41, '2026-11-29');
+    assert.match(calls[0].url, /\/api\/services\/app\/Ilan\/GetIlanForEdit\?Id=41$/);
+    assert.equal(calls[1].method, 'POST');assert.match(calls[1].url, /\/Ilan\/CreateOrEdit$/);
+    assert.deepEqual(calls[1].body, { ...ilan, expirationDate: '2026-11-29' });
+  });
+});
+
+test('updateIlanExpiry skips postings whose position or ship type is 0, and postings that are not found', async () => {
+  for (const field of ['positionId', 'shipTypeId']) {
+    const ilan = { id: 42, positionId: 3, shipTypeId: 7, [field]: 0 };
+    await withIlanApi((url, init, reply) => reply(200, { success: true, result: { ilan } }), async calls => {
+      await assert.rejects(bot.updateIlanExpiry(42, '2026-11-29'), err => err.code === 'ILAN_EXPIRY_SKIPPED' && err.reason === 'incomplete');
+      assert.equal(calls.filter(call => call.method === 'POST').length, 0, `${field}=0 is never saved`);
+    });
+  }
+  for (const status of [200, 500]) {
+    await withIlanApi((url, init, reply) => reply(status, { success: false, result: null, error: { message: 'İlan bulunamadı.' } }), async calls => {
+      await assert.rejects(bot.updateIlanExpiry(43, '2026-11-29'), err => err.code === 'ILAN_EXPIRY_SKIPPED' && err.reason === 'not_found');
+      assert.equal(calls.length, 1);
+    });
+  }
+  await withIlanApi((url, init, reply) => reply(200, { success: true, result: { ilan: { id: 44 } } }), async () => {
+    await assert.rejects(bot.updateIlanExpiry(44, '2026-11-29'), err => err.code === 'ILAN_EDIT_GETTER_MISSING', 'a DTO without positionId stops every extension');
+  });
+  await withIlanApi((url, init, reply) => reply(403, { success: false, error: { message: 'Pages.Ilan izni gerekli' } }), async () => {
+    await assert.rejects(bot.updateIlanExpiry(45, '2026-11-29'), err => !err.code && /HTTP 403 \| Pages\.Ilan/.test(err.message), 'other errors keep their message');
+  });
+});
+
 test('writeJsonAtomic writes complete JSON and leaves no temp files', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'crewin-json-'));
   try {

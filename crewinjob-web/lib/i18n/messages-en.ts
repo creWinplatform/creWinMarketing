@@ -1311,4 +1311,11 @@ export const MESSAGES_EN: Record<string, string> = {
   "Telefon bildirimleri bu sunucuda kapalı.": "Phone notifications are off on this server.",
   "En fazla {0} cihazda bildirim açılabilir. Önce kullanmadığınız bir cihazda kapatın.": "Notifications can be on for at most {0} devices. Turn them off on a device you no longer use first.",
   "Bildirim ayarı alınamadı.": "Could not load notification settings.",
+  "Spam şikâyeti: kişinin e-posta aboneliği sonlandırıldı": "Spam complaint: the person was unsubscribed from email",
+  "Spam şikâyeti: kişi e-posta listesinden çıkarıldı": "Spam complaint: the person was removed from the email list",
+  "Spam şikâyeti: adres hiçbir kullanıcıya veya adaya ait değil": "Spam complaint: the address belongs to no user or prospect",
+  "Spam şikâyeti işlenemedi: kullanıcı ve e-posta bilgisi yok": "Spam complaint not processed: no user or email given",
+  "Spam şikâyeti backend’e iletilemedi": "Spam complaint could not be sent to the backend",
+  "İlan #{0} bulunamadı; uzatılmadı.": "Job posting #{0} was not found; not extended.",
+  "İlan #{0}: pozisyon veya gemi tipi tanımsız (0); uzatılmadı.": "Job posting #{0}: position or ship type is not set (0); not extended.",
 };

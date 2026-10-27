@@ -13,6 +13,8 @@ type ResearchStage = 'idle' | 'starting' | 'queued' | 'running' | 'saving' | 'co
 interface ResearchProgress {
   stage: ResearchStage;
   totalFound: number;
+  /** Backend'in gerçekten yeni kaydettiği şirketler; bulunanların hepsi zaten listedeyse 0 olur. */
+  totalSaved?: number;
   jobId?: string;
   querySummary?: string;
   detail?: string;
@@ -91,22 +93,9 @@ function researchErrorMessage(value: unknown, lang: Lang): string {
     : "The backend didn't report why the research couldn't be completed.");
 }
 
-async function researchStatusRequest(jobId: string | number): Promise<ProspectApiResponse> {
-  try {
-    return await prospectRequest(`GetResearchStatus?jobId=${encodeURIComponent(String(jobId))}`, 'GET');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error || '');
-    if (!/HTTP\s+(404|405)/i.test(message)) throw error;
-  }
-
-  try {
-    return await prospectRequest('GetResearchStatus', 'POST', { id: jobId });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error || '');
-    if (!/HTTP\s+(404|405)/i.test(message)) throw error;
-  }
-
-  return prospectRequest(`GetResearchStatus?id=${encodeURIComponent(String(jobId))}`, 'GET');
+// Backend sözleşmesi (27 Ekim 2026): GET MarketingProspect/GetResearchStatus?jobId=
+function researchStatusRequest(jobId: string | number): Promise<ProspectApiResponse> {
+  return prospectRequest(`GetResearchStatus?jobId=${encodeURIComponent(String(jobId))}`, 'GET');
 }
 
 function backendLead(item: Record<string, unknown>): ProspectLead | null {
@@ -397,7 +386,8 @@ function ResearchProgressPanel({ progress, lang }: { progress: ResearchProgress;
         {progress.detail && <p className={`mt-1 text-xs ${unsuccessful ? 'text-red-700 dark:text-red-300' : 'text-slate-500 dark:text-slate-400'}`}><Msg text={progress.detail} /></p>}
         {progress.jobId && <p className="mt-1 text-[11px] text-slate-600">{t('İşlem kimliği', 'Job ID')}: {progress.jobId}</p>}
       </div>
-      <div className="shrink-0 text-right"><span className="block text-lg font-semibold text-slate-800 dark:text-slate-100">{progress.totalFound}</span><span className="text-[11px] text-slate-500 dark:text-slate-400">{t('lead bulundu', 'leads found')}</span></div>
+      <div className="shrink-0 text-right"><span className="block text-lg font-semibold text-slate-800 dark:text-slate-100">{progress.totalFound}</span><span className="text-[11px] text-slate-500 dark:text-slate-400">{t('şirket bulundu', 'companies found')}</span>
+        {progress.totalSaved != null && <span className="mt-1 block text-[11px] text-slate-600 dark:text-slate-300">{t(`${progress.totalSaved} yeni kaydedildi`, `${progress.totalSaved} new saved`)}</span>}</div>
     </div>
     <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-5">
       {stages.map((stage, index) => {
@@ -510,7 +500,6 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
   };
 
   const pollResearchJob = async (jobId: string | number): Promise<Record<string, unknown> | null> => {
-    const done = ['completed', 'partial', 'failed', 'cancelled'];
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
     let consecutiveFailures = 0;
     for (let attempt = 0; attempt < 40; attempt++) {
@@ -535,10 +524,11 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
         ...current,
         stage: (['queued', 'running', 'completed', 'partial', 'failed', 'cancelled'].includes(status) ? status : 'running') as ResearchStage,
         totalFound: Number(job.totalFound || 0),
+        totalSaved: job.totalSaved == null ? current.totalSaved : Number(job.totalSaved || 0),
         querySummary: job.querySummary ? String(job.querySummary) : current.querySummary,
         detail: undefined,
       }));
-      if (done.includes(status)) return job;
+      if (status !== 'queued' && status !== 'running') return job;
       setOperationMessage(t(`AI araştırması ${status === 'queued' ? 'kuyrukta' : 'sürüyor'}… (${job.totalFound ?? 0} bulundu)`, `AI research ${status === 'queued' ? 'is queued' : 'is running'}… (${job.totalFound ?? 0} found)`));
     }
     return null; // zaman aşımı
@@ -584,22 +574,30 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
           return;
         }
         const jobStatus = String(job.status || '').toLowerCase();
-        if (['failed', 'cancelled'].includes(jobStatus)) {
+        const reason = optionalString(job.errorMessage);
+        if (!['completed', 'partial'].includes(jobStatus)) {
           const detail = researchErrorMessage(job.errorMessage || job.errorDetails || job.message, lang);
-          setResearchProgress(current => ({ ...current, stage: jobStatus as 'failed' | 'cancelled', detail }));
+          const stage = jobStatus === 'cancelled' ? 'cancelled' : 'failed';
+          setResearchProgress(current => ({ ...current, stage, detail }));
           return;
         }
-        const totalFound = Number(job.totalFound || 0);
-        if (['completed', 'partial'].includes(jobStatus) && totalFound > 0) {
-          setResearchProgress(current => ({ ...current, stage: 'saving', totalFound, querySummary: job.querySummary ? String(job.querySummary) : current.querySummary }));
+        const totalFound = Number(job.totalFound || 0), totalSaved = Number(job.totalSaved || 0);
+        const summary = job.querySummary ? String(job.querySummary) : undefined;
+        if (totalSaved > 0) {
+          setResearchProgress(current => ({ ...current, stage: 'saving', totalFound, totalSaved, querySummary: summary || current.querySummary }));
           const count = await reloadRemoteLeads();
-          const summary = job.querySummary ? ` · ${String(job.querySummary)}` : '';
-          setOperationMessage(t(`Araştırma ${jobStatus === 'partial' ? 'kısmen ' : ''}tamamlandı. ${totalFound} lead bulundu, havuzda ${count} lead var.${summary}`, `Research ${jobStatus === 'partial' ? 'partially ' : ''}completed. ${totalFound} lead(s) found, ${count} in the pool.${summary}`));
-          setResearchProgress(current => ({ ...current, stage: jobStatus as 'completed' | 'partial', totalFound }));
+          setOperationMessage(t(`Araştırma ${jobStatus === 'partial' ? 'kısmen ' : ''}tamamlandı. ${totalFound} şirket bulundu, ${totalSaved} yeni şirket kaydedildi; havuzda ${count} lead var.${summary ? ` · ${summary}` : ''}`, `Research ${jobStatus === 'partial' ? 'partially ' : ''}completed. ${totalFound} compan${totalFound === 1 ? 'y' : 'ies'} found, ${totalSaved} new saved; ${count} lead(s) in the pool.${summary ? ` · ${summary}` : ''}`));
+          setResearchProgress(current => ({ ...current, stage: jobStatus as 'completed' | 'partial', totalFound, totalSaved, detail: reason }));
           setMode('pool');
           return;
         }
-        items = responseItems(job);
+        // Nothing new: either everything found is already listed (not an error) or nothing was found; the backend's
+        // errorMessage says why.
+        const detail = totalFound > 0
+          ? t(`Bulunan ${totalFound} şirketin hepsi zaten listenizde kayıtlı; yeni kayıt eklenmedi.`, `All ${totalFound} companies found are already in your list; nothing new was added.`)
+          : reason || t('Bu kriterlerle yeni şirket bulunamadı.', 'No new companies were found for these criteria.');
+        setResearchProgress(current => ({ ...current, stage: jobStatus as 'completed' | 'partial', totalFound, totalSaved: 0, querySummary: summary || current.querySummary, detail }));
+        return;
       }
 
       if (!items.length) {

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { agentModule } from '@/lib/agent-bridge';
 import { runTrackingTasks } from '@/lib/tracking-signature';
+import { COMPLAINT_LABELS, complaintTasks, maskEmail, type ComplaintApi } from '@/lib/ses-complaint';
+import { recordActivity } from '@/lib/activity-log-server';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -32,11 +34,6 @@ function allowedTopicArns(): string[] {
   return (process.env.SES_SNS_TOPIC_ARN || '').split(',').map(item => item.trim()).filter(Boolean);
 }
 
-function maskEmail(value: string): string {
-  const [local, domain] = String(value || '').split('@');
-  return domain ? `${local.slice(0, 2)}***@${domain}` : '***';
-}
-
 interface SesMailHeader { name: string; value: string }
 
 interface SesEvent {
@@ -56,6 +53,7 @@ interface SesEvent {
   complaint?: {
     complainedRecipients: { emailAddress: string }[];
     complaintFeedbackType?: string;
+    feedbackId?: string;
   };
 }
 
@@ -181,40 +179,23 @@ export async function POST(request: NextRequest) {
   }
 
   if (eventType === 'Complaint' && event.complaint) {
-    // Şikayet = bastırma (suppression) sinyali. TRACKED_EVENT_NAMES'te 'email_complained' YOK;
-    // backend'de userId ile bastırma uç noktası da yok. Mevcut tek yol: gönderimde eklenen
-    // List-Unsubscribe başlığındaki opak token ile ProcessUnsubscribe (anonim) çağrısı.
-    const recipients = (event.complaint.complainedRecipients || []).slice(0, MAX_RECIPIENTS_PER_NOTIFICATION);
-    const feedbackType = event.complaint.complaintFeedbackType;
+    // Şikâyet = bastırma (suppression) sinyali; backend sözleşmesi ve sonuç durumları lib/ses-complaint.ts içinde.
+    const recipients = (event.complaint.complainedRecipients || []).slice(0, MAX_RECIPIENTS_PER_NOTIFICATION).map(r => r.emailAddress).filter(Boolean);
     const token = unsubscribeTokenFromHeaders(event.mail?.headers);
     console.warn(
-      `[track/bounce] SES complaint alındı: ${recipients.map(r => maskEmail(r.emailAddress)).join(', ') || '-'}`
-      + ` · userId=${userId ?? '-'} · campaign=${campaignTag ?? '-'} · bastırma=${token ? 'unsubscribe token ile' : 'YAPILAMADI (token yok)'}`,
+      `[track/bounce] SES complaint alındı: ${recipients.map(maskEmail).join(', ') || '-'}`
+      + ` · userId=${userId ?? '-'} · campaign=${campaignTag ?? '-'} · bastırma=${token ? 'unsubscribe token ile' : 'SuppressContact ile'}`,
     );
     try {
-      const api = agentModule('modules/api.js');
-      const tasks: Array<() => Promise<unknown>> = [];
-      if (token) {
-        tasks.push(async () => {
-          try {
-            await api.growthAnalyticsPublicPost('ProcessUnsubscribe', { token, channel: 'email', reason: 'complaint' });
-          } catch (error) {
-            // Backend 'complaint' gerekçesini tanımıyorsa kullanıcı talebi olarak yeniden dene
-            if (Number((error as { status?: number }).status || 0) !== 400) throw error;
-            await api.growthAnalyticsPublicPost('ProcessUnsubscribe', { token, channel: 'email', reason: 'user_request' });
-          }
-        });
-      }
-      if (userId != null && campaignTag) {
-        tasks.push(() => api.growthAnalyticsPost('TrackCampaignDeliveryEvent', {
-          userId, campaignId: campaignTag, channel: 'email', eventType: 'complained',
-          providerMessageId: event.mail.messageId, occurredAt: new Date().toISOString(),
-          metadataJson: JSON.stringify({ feedbackType: feedbackType ?? null }),
-        }));
-      }
+      const api = agentModule<ComplaintApi>('modules/api.js');
+      const tasks = complaintTasks({
+        recipients, userId, campaignId: campaignTag ?? null, token,
+        feedbackType: event.complaint.complaintFeedbackType ?? null, providerMessageId: event.mail?.messageId ?? null,
+        eventId: String(event.complaint.feedbackId || validated.MessageId || event.mail?.messageId || 'ses-complaint'),
+      }, api, (outcome, detail) => recordActivity({ type: 'email_complaint', label: COMPLAINT_LABELS[outcome], detail, ...(campaignTag ? { campaignId: campaignTag } : {}), metadata: { outcome } }).catch(() => undefined));
       void runTrackingTasks(tasks, 2);
     } catch { /* ignore */ }
-    return NextResponse.json({ ok: true, type: 'complaint', recipients: recipients.length, suppressed: Boolean(token) });
+    return NextResponse.json({ ok: true, type: 'complaint', recipients: recipients.length, suppression: token ? 'unsubscribe_token' : 'suppress_contact' });
   }
 
   return NextResponse.json({ ignored: eventType });

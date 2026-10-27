@@ -42,7 +42,6 @@ export const UI_PAIRS: Record<string, string> = {
   "Alan adı sahipliği doğrulandı.": "Domain ownership verified.",
   "Analist / Görüntüleyici": "Analyst / Viewer",
   "API hatası": "API error",
-  "Araştırma {0}tamamlandı. {1} lead bulundu, havuzda {2} lead var.{3}": "Research {0}completed. {1} lead(s) found, {2} in the pool.{3}",
   "Araştırma başarısız oldu": "Research failed",
   "Araştırma iptal edildi": "Research cancelled",
   "Araştırma kısmen tamamlandı": "Research partially completed",

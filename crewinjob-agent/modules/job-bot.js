@@ -50,8 +50,14 @@ async function callGet(endpoint, params = {}) {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(12000),
   });
-  if (!res.ok) throw new Error(`GET ${endpoint} → HTTP ${res.status}`);
-  const json = await res.json();
+  // ABP hata gövdesi: { success:false, error:{ message } } (ör. "İlan bulunamadı."). Mesaj hataya eklenir.
+  let json = null; try { json = await res.json(); } catch { json = null; }
+  if (!res.ok || json?.success === false) {
+    const message = String(json?.error?.message || '').slice(0, 300);
+    const error = new Error(`GET ${endpoint} → HTTP ${res.status}${message ? ' | ' + message : ''}`);
+    error.status = res.status; error.apiMessage = message;
+    throw error;
+  }
   return json?.result !== undefined ? json.result : json;
 }
 
@@ -594,14 +600,16 @@ function isSameCreatedIlan(item, dto, jobData, sinceMs) {
 }
 
 // ── İlan sona erme güncelleme ─────────────────────────────────────────────────
-// Ilan/CreateOrEdit tam DTO bekler; sadece { id, expirationDate } göndermek HTTP 500 veriyordu
-// (başarılı olsa diğer alanları silebilirdi). Doğru yöntem: tam DTO'yu çek → yalnızca
-// expirationDate'i değiştir → geri gönder.
-// Tam DTO getter'ı (ör. ASP.NET Zero kalıbı "Ilan/GetIlanForEdit") kod tabanında/dokümanlarda
-// TANIMLI DEĞİL. Backend doğrulayana kadar uzatma DEVRE DIŞI; getter teyit edilince
-// CREWINJOB_ILAN_EDIT_GETTER=Ilan/GetIlanForEdit ile açılır.
+// Ilan/CreateOrEdit tam DTO bekler; eksik alanla gönderilirse ilanın diğer alanları silinebilir. Backend'in
+// onayladığı yol (27 Ekim 2026): GET Ilan/GetIlanForEdit?Id= → result.ilan nesnesini hiçbir alanı silmeden al,
+// yalnız expirationDate'i değiştir, olduğu gibi Ilan/CreateOrEdit'e gönder. Servis Pages.Ilan yetkisi ister.
+// Uzatma CREWINJOB_ILAN_EDIT_GETTER=Ilan/GetIlanForEdit ile açılır; boşken kapalıdır.
 class IlanExpiryUnsupportedError extends Error {
   constructor(msg) { super(msg); this.code = 'ILAN_EDIT_GETTER_MISSING'; }
+}
+// Tek bir ilan için uzatma yapılamaz (bulunamadı veya tekrar kaydedilince hata verecek alanlar); diğer ilanlar sürer.
+class IlanExpirySkippedError extends Error {
+  constructor(msg, reason) { super(msg); this.code = 'ILAN_EXPIRY_SKIPPED'; this.reason = reason; }
 }
 
 async function updateIlanExpiry(ilanId, newExpirationDate) {
@@ -614,11 +622,21 @@ async function updateIlanExpiry(ilanId, newExpirationDate) {
   if (!/^Ilan\/[A-Za-z]+$/.test(getter)) {
     throw new IlanExpiryUnsupportedError(`CREWINJOB_ILAN_EDIT_GETTER geçersiz: "${getter.slice(0, 60)}"`);
   }
-  const raw = await callGet(getter, { Id: ilanId });
-  // ASP.NET Zero: GetXForEdit → { ilan: CreateOrEditIlanDto }
+  let raw;
+  try {
+    raw = await callGet(getter, { Id: ilanId });
+  } catch (error) {
+    if (/bulunamad/i.test(error.apiMessage || '')) throw new IlanExpirySkippedError(`İlan #${ilanId} bulunamadı; uzatılmadı.`, 'not_found');
+    throw error;
+  }
+  // Backend sözleşmesi: result.ilan. Kökte dönen eski biçim de kabul edilir.
   const full = raw && typeof raw === 'object' ? (raw.ilan || raw) : null;
   if (!full || Number(full.id) !== Number(ilanId) || full.positionId == null) {
     throw new IlanExpiryUnsupportedError(`İlan #${ilanId}: ${getter} tam DTO döndürmedi — uzatma iptal (veri kaybı riski)`);
+  }
+  // positionId veya shipTypeId 0 olan ilanlar tekrar kaydedilince hata verebilir (backend notu); bunlar atlanır.
+  if (Number(full.positionId) === 0 || Number(full.shipTypeId) === 0) {
+    throw new IlanExpirySkippedError(`İlan #${ilanId}: pozisyon veya gemi tipi tanımsız (0); uzatılmadı.`, 'incomplete');
   }
   await callPost('Ilan/CreateOrEdit', { ...full, expirationDate: newExpirationDate });
 }

@@ -27,6 +27,7 @@ async function manageExpirations() {
   log(`[expiry] Süresi yaklaşan: ${expiring.length} | Süresi dolmuş: ${expired.length}`);
 
   let extended = 0;
+  let skipped = 0;
   let disabledReason = null;
   for (const job of expiring) {
     try {
@@ -43,6 +44,12 @@ async function manageExpirations() {
         log(`[expiry] ⛔ Uzatma durduruldu: ${e.message}`);
         break;
       }
+      if (e.code === 'ILAN_EXPIRY_SKIPPED') {
+        // Bulunamayan veya pozisyon/gemi tipi 0 olan ilan: yalnız bu ilan atlanır
+        skipped++;
+        log(`[expiry] ⏭️ ${e.message}`);
+        continue;
+      }
       log(`[expiry] ⚠️ İlan #${job.ilanId} uzatılamadı: ${e.message}`);
     }
   }
@@ -53,6 +60,7 @@ async function manageExpirations() {
     expiring: expiring.length,
     expired:  expired.length,
     extended,
+    skipped,
     disabled: disabledReason,
   };
 }

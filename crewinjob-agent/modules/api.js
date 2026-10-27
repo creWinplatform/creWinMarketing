@@ -480,7 +480,7 @@ var TRACKED_EVENT_NAMES = [
   'cv_uploaded', 'cv_parse_succeeded', 'cv_parse_partial', 'cv_parse_failed', 'cv_parse_confirmed',
   'profile_completed_50', 'profile_completed_80', 'certificate_uploaded', 'availability_updated',
   'social_signup_initiated', 'social_signup_completed',
-  'email_sent', 'email_opened', 'email_clicked', 'email_bounced',
+  'email_sent', 'email_opened', 'email_clicked', 'email_bounced', 'email_complained',
 ];
 
 async function trackActivationEvent(eventName, userId, metadata, source) {
