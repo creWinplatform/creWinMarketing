@@ -75,6 +75,6 @@ test('the email message is bilingual by order language and states no figures bey
 test('migration 56 is additive and repeatable',async()=>{
   const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'contract-')),'fixture.sqlite');
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeContractEmailSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,55);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,60);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_billing_contract_emails'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,61);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_billing_contract_emails'").get());db.close();
   db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=56').get().n,1);db.close();
 });

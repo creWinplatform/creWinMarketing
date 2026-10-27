@@ -1260,6 +1260,38 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE UNIQUE INDEX platform_member_invites_open ON platform_member_invites(project_id,email_hash) WHERE state='pending';
     INSERT INTO platform_migrations(version,applied_at) VALUES(60,datetime('now'));
   `))();
+  // Agency package: a prepaid Growth period marked package='agency' on the agency's own project covers up to ten linked
+  // client projects. A client project is linked when the agency opened it or its owner agreed.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=61').get())db.transaction(()=>db.exec(`
+    ALTER TABLE platform_billing_live_orders ADD COLUMN package TEXT CHECK(package IS NULL OR package='agency' AND plan_id='growth');
+    ALTER TABLE platform_project_subscriptions ADD COLUMN package TEXT CHECK(package IS NULL OR package='agency' AND plan_id='growth');
+    CREATE TABLE platform_agency_links (
+      id TEXT PRIMARY KEY, agency_organization_id TEXT NOT NULL, agency_project_id TEXT NOT NULL,
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      origin TEXT NOT NULL CHECK(origin IN ('created','invited')), state TEXT NOT NULL CHECK(state IN ('requested','linked','declined','removed')),
+      requested_by TEXT NOT NULL REFERENCES platform_users(id), requested_at TEXT NOT NULL, decided_by TEXT REFERENCES platform_users(id), decided_at TEXT,
+      FOREIGN KEY(agency_project_id,agency_organization_id) REFERENCES platform_projects(id,organization_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id),
+      CHECK(project_id<>agency_project_id)
+    );
+    CREATE UNIQUE INDEX platform_agency_links_open ON platform_agency_links(project_id) WHERE state IN ('requested','linked');
+    CREATE INDEX platform_agency_links_agency ON platform_agency_links(agency_project_id,state);
+    -- A project an agency opens has base mode 'agency': no rights of its own, Growth rights only while a package covers
+    -- it. Nothing references this table, so it is rebuilt in place to allow the new mode.
+    CREATE TABLE platform_project_entitlements_v61 (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      mode TEXT NOT NULL CHECK(mode IN ('pilot','trial','agency')),
+      trial_owner_id TEXT UNIQUE REFERENCES platform_users(id),
+      started_at TEXT NOT NULL, ends_at TEXT,
+      CHECK((mode IN ('pilot','agency') AND ends_at IS NULL AND trial_owner_id IS NULL) OR (mode='trial' AND ends_at IS NOT NULL AND trial_owner_id IS NOT NULL)),
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_project_entitlements_v61 SELECT organization_id,project_id,mode,trial_owner_id,started_at,ends_at FROM platform_project_entitlements;
+    DROP TABLE platform_project_entitlements;
+    ALTER TABLE platform_project_entitlements_v61 RENAME TO platform_project_entitlements;
+    INSERT INTO platform_migrations(version,applied_at) VALUES(61,datetime('now'));
+  `))();
   return db;
 }
 

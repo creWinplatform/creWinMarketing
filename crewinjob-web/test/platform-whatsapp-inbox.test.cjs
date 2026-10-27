@@ -95,11 +95,11 @@ test('offline recovery authenticates WhatsApp phone numbers, the webhook secret 
     const counts=['platform_whatsapp_contacts','platform_whatsapp_hooks','platform_social_inbox'].map(table=>f.db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n);
     assert.ok(counts.every(n=>n>0),JSON.stringify(counts));
     const others=f.db.prepare("SELECT COUNT(*) n FROM platform_connections WHERE encrypted_credentials<>''").get().n;
-    const report=inspectSnapshot(file,KEY,60);assert.equal(report.credentialCheck,'authenticated');
+    const report=inspectSnapshot(file,KEY,61);assert.equal(report.credentialCheck,'authenticated');
     assert.equal(report.encryptedRecords,others+counts.reduce((a,b)=>a+b,0),'every WhatsApp and inbox envelope is checked, not only the connection');
     // A WhatsApp phone number sealed for another resource is refused even though every connection still opens.
     const copy=new (require('better-sqlite3'))(file);const contact=copy.prepare('SELECT id FROM platform_whatsapp_contacts LIMIT 1').get();
     copy.prepare('UPDATE platform_whatsapp_contacts SET phone_encrypted=(SELECT secret_encrypted FROM platform_whatsapp_hooks LIMIT 1) WHERE id=?').run(contact.id);copy.close();
-    assert.throws(()=>inspectSnapshot(file,KEY,60),/credential_authentication_failed/);
+    assert.throws(()=>inspectSnapshot(file,KEY,61),/credential_authentication_failed/);
   }finally{fs.rmSync(folder,{recursive:true,force:true});}
 }));

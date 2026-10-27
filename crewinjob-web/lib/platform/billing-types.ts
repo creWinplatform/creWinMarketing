@@ -17,8 +17,8 @@ export type ProjectBillingView = {
   projectId:string;readiness:BillingReadiness;emailVerified:boolean;plans:BillingPlan[];orders:BillingOrder[];statusCheckEnabled:boolean;
 };
 // Live billing (prepaid periods, behind PLATFORM_PAYTR_LIVE_ENABLED).
-export type LivePlanId='launch'|'growth';
-export type LiveBillingPlan={id:LivePlanId;name:string;cadence:'monthly'|'yearly';amountMinor:number;seats:number;socialAccounts:number;ai:number;audits:number};
+export type LivePlanId='launch'|'growth'|'agency';
+export type LiveBillingPlan={id:LivePlanId;name:string;cadence:'monthly'|'yearly';amountMinor:number;seats:number;socialAccounts:number;ai:number;audits:number;projects?:number};
 export type LiveBillingOrderState='preparing'|'pending'|'paid'|'failed'|'rejected'|'uncertain'|'review';
 export type LiveBillingOrder={id:string;planId:LivePlanId;cadence:'monthly'|'yearly';amountMinor:number;currency:'USD';state:LiveBillingOrderState;createdAt:string;expiresAt:string;paidAt:string|null;checkoutUrl:string|null;
   /** The accepted terms are kept with the order; the copy is emailed once the payment is confirmed. */

@@ -19,11 +19,11 @@ export function termsSnapshot(language: Lang, origin: string) {
   return { version: SALES_TERMS_VERSION, language, text, digest: createHash('sha256').update(text).digest('hex') };
 }
 
-type Order = { id: string; plan_id: string; cadence: 'monthly' | 'yearly'; amount_minor: number; paid_at: string | null; terms_version: string | null; terms_language: Lang | null; terms_text: string | null };
+type Order = { id: string; plan_id: string; package?: 'agency' | null; cadence: 'monthly' | 'yearly'; amount_minor: number; paid_at: string | null; terms_version: string | null; terms_language: Lang | null; terms_text: string | null };
 type Period = { starts_at: string; ends_at: string } | undefined;
 const day = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '-');
 export function contractEmailMessage(order: Order, period: Period) {
-  const tr = order.terms_language !== 'en', plan = `Ryzevo ${order.plan_id === 'growth' ? 'Growth' : 'Launch'} (${order.cadence === 'monthly' ? (tr ? 'aylık' : 'monthly') : (tr ? 'yıllık' : 'yearly')})`;
+  const tr = order.terms_language !== 'en', plan = `Ryzevo ${order.package === 'agency' ? 'Agency' : order.plan_id === 'growth' ? 'Growth' : 'Launch'} (${order.cadence === 'monthly' ? (tr ? 'aylık' : 'monthly') : (tr ? 'yıllık' : 'yearly')})`;
   const amount = `$${(order.amount_minor / 100).toFixed(order.amount_minor % 100 ? 2 : 0)} (USD)`;
   const subject = tr ? `Ryzevo siparişiniz ve satış sözleşmeniz (${order.id})` : `Your Ryzevo order and terms of sale (${order.id})`;
   const head = tr
@@ -50,7 +50,7 @@ export async function deliverNextContractEmail(db: Database.Database, deliver: D
     const row = db.prepare("SELECT order_id,user_id FROM platform_billing_contract_emails WHERE state='queued' ORDER BY created_at,rowid LIMIT 1").get() as { order_id: string; user_id: string } | undefined;
     if (!row) return null;
     const now = new Date().toISOString(), skip = (reason: string) => { db.prepare("UPDATE platform_billing_contract_emails SET state='skipped',reason=?,updated_at=? WHERE order_id=?").run(reason, now, row.order_id); return 'skipped' as const; };
-    const order = db.prepare("SELECT id,plan_id,cadence,amount_minor,paid_at,terms_version,terms_language,terms_text FROM platform_billing_live_orders WHERE id=? AND state='paid'").get(row.order_id) as Order | undefined;
+    const order = db.prepare("SELECT id,plan_id,package,cadence,amount_minor,paid_at,terms_version,terms_language,terms_text FROM platform_billing_live_orders WHERE id=? AND state='paid'").get(row.order_id) as Order | undefined;
     if (!order?.terms_text) return skip('no_paid_snapshot');
     const email = (db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as { email: string } | undefined)?.email;
     if (!email) return skip('no_verified_email');

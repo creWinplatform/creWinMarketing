@@ -156,6 +156,16 @@ if(process.argv.includes('--portfolio')){
   db.prepare("INSERT INTO platform_memberships VALUES(?,?,?,'editor',1)").run(fixture.userId,clientA.organizationId,clientA.projectId);
   new MemberInvites(db,{subject:clientB.userId,organizationId:clientB.organizationId,projectId:clientB.projectId}).invite({action:'invite',email:'ajans@ryzevo.example',role:'editor'});
   console.log('Portfolio QA: one joined client project and one pending invitation for design-fixture; client owners qa-client-a / qa-client-b.');}
+if(process.argv.includes('--agency')){
+  // Agency QA (with --portfolio): the fixture project holds a running agency package, stored like a paid PayTR period
+  // but written directly, so nothing reaches PayTR. The fixture project becomes a trial so the package can apply.
+  const {randomBytes:rb}=require('node:crypto'),id='RZLIVE'+rb(16).toString('hex'),start=new Date(Date.now()-86400000).toISOString(),end=new Date(Date.now()+29*86400000).toISOString(),grace=new Date(Date.now()+36*86400000).toISOString();
+  db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(fixture.userId,new Date().toISOString(),new Date(Date.now()+14*86400000).toISOString(),fixture.organizationId,fixture.projectId);
+  db.prepare("INSERT INTO platform_billing_live_orders(id,organization_id,project_id,actor_id,idempotency_key,request_digest,merchant_revision,catalog_version,plan_id,cadence,amount_minor,state,terms_url,created_at,expires_at,updated_at,paid_at,package) VALUES(?,?,?,?,?,'qa','qa','qa','growth','monthly',29900,'paid','https://ryzevo.example/terms',?,?,?,?,'agency')").run(id,fixture.organizationId,fixture.projectId,fixture.userId,id,start,start,start,start);
+  db.prepare("INSERT INTO platform_project_subscriptions(order_id,organization_id,project_id,plan_id,cadence,starts_at,ends_at,grace_ends_at,created_at,package) VALUES(?,?,?,'growth','monthly',?,?,?,?,'agency')").run(id,fixture.organizationId,fixture.projectId,start,end,grace,start);
+  // Client projects from --portfolio become self-service trials, so they can join the package with their owner's consent.
+  for(const row of db.prepare("SELECT m.user_id,m.organization_id,m.project_id FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE u.username LIKE 'qa-client-%' AND m.role='owner'").all())db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(row.user_id,new Date().toISOString(),new Date(Date.now()+14*86400000).toISOString(),row.organization_id,row.project_id);
+  console.log('Agency QA: the fixture project has a running agency package (stub period, no PayTR call).');}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.

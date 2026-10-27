@@ -2,7 +2,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {CreditCard,ExternalLink,LockKeyhole,RefreshCw} from 'lucide-react';
 import type {Locale} from '@/lib/platform/catalog';
-import type {LiveBillingOrderState,LiveBillingView} from '@/lib/platform/billing-types';
+import type {LiveBillingOrderState,LiveBillingPlan,LiveBillingView} from '@/lib/platform/billing-types';
 import {projectRequest} from '@/lib/platform/client';
 import {localeTag} from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
@@ -13,7 +13,7 @@ import {onTabKeys} from './tab-keys';
 export default function LiveBilling({lang}:{lang:Locale}){
   const tr=lang==='tr',controller=useRef<AbortController|null>(null),key=useRef('');
   const [data,setData]=useState<LiveBillingView|null>(null),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState('');
-  const [cadence,setCadence]=useState<'monthly'|'yearly'>('monthly'),[planId,setPlanId]=useState<'launch'|'growth'>('launch');
+  const [cadence,setCadence]=useState<'monthly'|'yearly'>('monthly'),[planId,setPlanId]=useState<LiveBillingPlan['id']>('launch');
   const [name,setName]=useState(''),[phone,setPhone]=useState(''),[address,setAddress]=useState(''),[terms,setTerms]=useState(false);
   const load=useCallback(async()=>{
     controller.current?.abort();const next=new AbortController();controller.current=next;setLoading(true);setError('');
@@ -55,7 +55,7 @@ export default function LiveBilling({lang}:{lang:Locale}){
       <fieldset className="live-billing-plans"><legend className="sr-only">{tr?'Plan':'Plan'}</legend>{plans.map(plan=><label key={plan.id} className={chosen?.id===plan.id?'selected':''}>
         <input type="radio" name="live-plan" checked={chosen?.id===plan.id} onChange={()=>{setPlanId(plan.id);edit();}}/>
         <span><strong>{plan.name}</strong><span>{money(plan.amountMinor)} / {plan.cadence==='monthly'?(tr?'ay':'month'):(tr?'yıl':'year')}</span>
-          <small>{tr?`${plan.seats} ekip üyesi · ${plan.socialAccounts} sosyal hesap · ayda ${plan.ai} AI taslağı · ${plan.audits} site denetimi`:`${plan.seats} team members · ${plan.socialAccounts} social accounts · ${plan.ai} AI drafts a month · ${plan.audits} site audits`}</small></span></label>)}</fieldset>
+          <small>{plan.projects?(tr?`Bu proje ve ${plan.projects} müşteri projesine kadar, her biri Growth haklarıyla (${plan.seats} ekip üyesi · ${plan.socialAccounts} sosyal hesap · ayda ${plan.ai} AI taslağı · ${plan.audits} site denetimi). Müşteri projeleri Tüm projeler sayfasından bağlanır.`:`This project and up to ${plan.projects} client projects, each with Growth rights (${plan.seats} team members · ${plan.socialAccounts} social accounts · ${plan.ai} AI drafts a month · ${plan.audits} site audits). Client projects are linked from the All projects page.`):tr?`${plan.seats} ekip üyesi · ${plan.socialAccounts} sosyal hesap · ayda ${plan.ai} AI taslağı · ${plan.audits} site denetimi`:`${plan.seats} team members · ${plan.socialAccounts} social accounts · ${plan.ai} AI drafts a month · ${plan.audits} site audits`}</small></span></label>)}</fieldset>
       {!data.emailVerified?<a className="studio-text-button" href="/?tab=project&settings=team">{tr?'Önce hesap e-postanızı doğrulayın':'Verify your account email first'}<ExternalLink size={14}/></a>
       :<form className="billing-test-form" onSubmit={start}>
         <fieldset className="studio-form-grid" disabled={saving}>

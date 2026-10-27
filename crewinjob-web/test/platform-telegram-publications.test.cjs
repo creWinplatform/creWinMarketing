@@ -82,6 +82,6 @@ test('schema43 keeps existing social accounts and is repeatable',async()=>{
     const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'telegram-')),'fixture.sqlite');
     await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeTelegramSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,42);
     assert.throws(()=>db.prepare("INSERT INTO platform_social_accounts(connection_id,platform,account_id) VALUES('x','telegram','@abcdef')").run(),/CHECK|FOREIGN/);db.close();
-    db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,60);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_social_accounts').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+    db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,61);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_social_accounts').get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
   }finally{f.db.close();}
 });

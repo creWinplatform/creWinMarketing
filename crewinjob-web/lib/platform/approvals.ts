@@ -59,6 +59,11 @@ export function approvalQueue(db: Database.Database, scope: Scope, now = Date.no
     const ready = one<{ n: number; oldest: string | null }>("SELECT COUNT(*) n,MIN(e.due_at) oldest FROM platform_automation_enrollments e JOIN platform_automations a ON a.id=e.automation_id AND a.organization_id=e.organization_id AND a.project_id=e.project_id WHERE e.organization_id=? AND e.project_id=? AND e.state='ready' AND a.state='active'");
     add('automation', ready.n, ready.oldest, '/?tab=campaigns&campaignView=automations');
   }
+  // An agency asked to cover this project with its package; only the owner agrees.
+  if (can('billing.manage')) {
+    const links = one<{ n: number; oldest: string | null }>("SELECT COUNT(*) n,MIN(requested_at) oldest FROM platform_agency_links WHERE organization_id=? AND project_id=? AND state='requested'");
+    add('agency_link', links.n, links.oldest, '/?tab=project&settings=plan');
+  }
   return items.sort((a, b) => (a.oldest || '').localeCompare(b.oldest || ''));
 }
 

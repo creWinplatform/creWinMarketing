@@ -6,3 +6,5 @@ export const PLAN_CATALOG = Object.freeze([
   Object.freeze({ id: 'team' as const, name: 'Team', monthlyUsdMinor: 14900, seats: 10, socialAccounts: 10, ai: 500, audits: 50, availability: 'later' as const }),
 ]);
 export type PlanCatalogEntry = typeof PLAN_CATALOG[number];
+// Agency package: one prepaid period on the agency's own project; it and up to ten linked client projects get Growth rights.
+export const AGENCY_PACKAGE = Object.freeze({ id: 'agency' as const, name: 'Agency', monthlyUsdMinor: 29900, projects: 10, plan: 'growth' as const });

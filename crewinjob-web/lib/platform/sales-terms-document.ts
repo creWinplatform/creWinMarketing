@@ -1,7 +1,7 @@
 // Ön bilgilendirme formu + mesafeli satış sözleşmesi: tek kaynak. /legal/sales sayfası bunu çizer; ödeme onaylanınca
 // aynı metnin düz yazı hâli siparişle saklanır ve alıcıya e-postayla gönderilir (kalıcı veri saklayıcısı).
 // Türkçe metin esastır; İngilizce metin bilgi amaçlı çeviridir. Fiyatlar PLAN_CATALOG'dan gelir.
-import { PLAN_CATALOG } from './plan-catalog';
+import { AGENCY_PACKAGE, PLAN_CATALOG } from './plan-catalog';
 import {
   PRIVACY_PATH, SALES_INVOICE_DAYS, SALES_MERCHANT_COURT, SALES_PRICES_INCLUDE_VAT, SALES_SELLER, SALES_TERMS_VERSION,
 } from './sales-terms';
@@ -65,9 +65,11 @@ export function salesTermsDocument(lang: Lang): TermsDocument {
       ]),
       sec('price', t('3. Planlar ve fiyatlar', '3. Plans and prices'), [
         { table: { head: [t('Plan', 'Plan'), t('Aylık', 'Monthly'), t('Yıllık', 'Yearly'), t('Koltuk', 'Seats'), t('Sosyal hesap', 'Social accounts'), t('AI / ay', 'AI / month'), t('Denetim / ay', 'Audits / month')],
-          rows: plans.map(plan => [plan.name, usd(plan.monthlyUsdMinor), usd(plan.monthlyUsdMinor * 10), String(plan.seats), String(plan.socialAccounts), String(plan.ai), String(plan.audits)]) } },
+          rows: [...plans.map(plan => [plan.name, usd(plan.monthlyUsdMinor), usd(plan.monthlyUsdMinor * 10), String(plan.seats), String(plan.socialAccounts), String(plan.ai), String(plan.audits)]),
+            ...plans.filter(plan => plan.id === AGENCY_PACKAGE.plan).map(plan => [t(`${AGENCY_PACKAGE.name} (ajans paketi)`, `${AGENCY_PACKAGE.name} (agency package)`), usd(AGENCY_PACKAGE.monthlyUsdMinor), usd(AGENCY_PACKAGE.monthlyUsdMinor * 10), String(plan.seats), String(plan.socialAccounts), String(plan.ai), String(plan.audits)])] } },
         { ul: [
           [t('Fiyatlar ABD doları (USD) cinsindendir. Yıllık plan on aylık fiyatına satılır.', 'Prices are in US dollars (USD). A yearly plan costs ten months.'), ' ', vat],
+          [t(`Ajans paketi, satın alındığı projeyi ve alıcının bağladığı en fazla ${AGENCY_PACKAGE.projects} müşteri projesini kapsar; tablodaki sınırlar her proje için ayrı ayrı geçerlidir. Bir müşteri projesi yalnız o projenin sahibinin onayıyla bağlanır ve proje sahibi onu istediği an paketten çıkarabilir; çıkarılan proje kendi planına döner. Paketten bir projenin çıkması fiyatı değiştirmez.`, `The agency package covers the project it is bought for and up to ${AGENCY_PACKAGE.projects} client projects the buyer links; the limits in the table apply to each project separately. A client project is linked only with its owner’s consent, and that owner can remove it from the package at any time; a removed project returns to its own plan. A project leaving the package does not change the price.`)],
           [t('Sipariş anında gösterilen fiyat o dönem için sabittir; sonraki fiyat değişiklikleri ödenmiş dönemi etkilemez.', 'The price shown when you order is fixed for that period; later price changes do not affect a period already paid for.')],
           [t('Kartınızı veren banka döviz çevirisi veya işlem ücreti uygulayabilir; bu ücretler satıcıya ödenmez.', 'Your card issuer may apply currency conversion or transaction fees; these are not paid to the seller.')],
           [t('Teslimat veya kurulum ücreti yoktur.', 'There is no delivery or set-up fee.')],

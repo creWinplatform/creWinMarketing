@@ -34,8 +34,9 @@ test('every live gate is required: switch, merchant, USD approval, https origin 
     const saved={...process.env};Object.assign(process.env,patch);try{assert.equal(paytrLiveReadiness(paytrConfiguration()).ready,false,JSON.stringify(patch));}finally{Object.assign(process.env,saved);for(const k of Object.keys(patch))if(saved[k]===undefined)delete process.env[k];}}
 }));
 
-test('Launch and Growth are sold monthly and yearly (a year costs ten months); Team is not',()=>{
-  assert.deepEqual(JSON.parse(JSON.stringify(livePlans().map(p=>[p.id,p.cadence,p.amountMinor]))),[['launch','monthly',2900],['launch','yearly',29000],['growth','monthly',7900],['growth','yearly',79000]]);
+test('Launch, Growth and the agency package are sold monthly and yearly (a year costs ten months); Team is not',()=>{
+  assert.deepEqual(JSON.parse(JSON.stringify(livePlans().map(p=>[p.id,p.cadence,p.amountMinor]))),[['launch','monthly',2900],['launch','yearly',29000],['growth','monthly',7900],['growth','yearly',79000],['agency','monthly',29900],['agency','yearly',299000]]);
+  assert.equal(livePlans().find(p=>p.id==='agency').projects,10);
 });
 
 test('the server picks the price; the owner must accept the terms and have a verified email; the checkout is live USD',()=>withConfig(async()=>{
@@ -118,6 +119,6 @@ test('the operator console reports live billing readiness without values',()=>wi
 test('migration 54 is additive and repeatable',async()=>{
   const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'live-billing-')),'fixture.sqlite');
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeLiveBillingSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_project_subscriptions'").get().n,0);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,60);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_project_subscriptions','platform_billing_live_orders')").get().n,2);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,61);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_project_subscriptions','platform_billing_live_orders')").get().n,2);db.close();
   db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=54').get().n,1);db.close();
 });

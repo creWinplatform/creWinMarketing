@@ -6,6 +6,12 @@ and an operator-approved live acceptance are different milestones.
 
 ## Delivered on 27 October 2026
 
+- **Agency package, phase 2 (schema 61)** (`SAAS-AGENCY.md`):
+  - 10 client projects for USD 299 a month (USD 2,990 a year), each with Growth rights.
+  - It is bought through the same live PayTR flow and is off by default.
+  - Agencies open client projects from the portfolio. Invited projects join with the client owner's consent, and the owner can remove them at any time.
+  - Migration 61 was dry-run on a copy; it is not yet applied to the real database.
+
 - **Agency view, phase 1 (schema 60)** (`SAAS-AGENCY.md`):
   - Existing accounts can be invited to a project by verified email; only a hash and a masked form are stored, and the answer never reveals whether the account exists.
   - The new `/portfolio` page shows every project of a person, with alerts, decisions waiting, posts and report status, each read with that person's rights.

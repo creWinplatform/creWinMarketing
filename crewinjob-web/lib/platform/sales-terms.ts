@@ -2,7 +2,7 @@
 // Hukuki inceleme bitip alanlar doldurulana kadar sayfa "taslak" etiketli ve noindex kalır; bu adres
 // PLATFORM_BILLING_TERMS_URL olarak verilse bile canlı ödeme açılmaz (paytrLiveReadiness).
 export const SALES_TERMS_PATH = '/legal/sales';
-export const SALES_TERMS_VERSION = '2026-10-23';
+export const SALES_TERMS_VERSION = '2026-10-27';
 
 export type SalesSeller = {
   name: string; mersis: string; taxOffice: string; taxNumber: string;

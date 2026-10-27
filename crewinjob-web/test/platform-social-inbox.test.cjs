@@ -74,5 +74,5 @@ test('AI drafts a reply into the box only and refuses links or contact details',
 test('schema51 is additive and repeatable',async()=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'inbox-')),'fixture.sqlite');
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeInboxSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,50);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,60);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,61);db.close();
 });
