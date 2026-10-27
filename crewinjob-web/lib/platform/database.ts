@@ -1292,6 +1292,27 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     ALTER TABLE platform_project_entitlements_v61 RENAME TO platform_project_entitlements;
     INSERT INTO platform_migrations(version,applied_at) VALUES(61,datetime('now'));
   `))();
+  // The project a person last opened (login returns there) and browser push subscriptions for alerts and approvals.
+  // A push carries no payload; the endpoint is a capability URL, so it is stored encrypted with a hash for uniqueness.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=62').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_user_preferences (
+      user_id TEXT PRIMARY KEY REFERENCES platform_users(id), last_organization_id TEXT, last_project_id TEXT, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE platform_push_subscriptions (
+      id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES platform_users(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      endpoint_hash TEXT NOT NULL UNIQUE CHECK(length(endpoint_hash)=64), encrypted_endpoint TEXT NOT NULL,
+      created_at TEXT NOT NULL, checked_at TEXT, last_sent_at TEXT, failures INTEGER NOT NULL DEFAULT 0 CHECK(failures>=0),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_push_subscriptions_due ON platform_push_subscriptions(checked_at);
+    CREATE TABLE platform_push_notices (
+      subscription_id TEXT NOT NULL REFERENCES platform_push_subscriptions(id) ON DELETE CASCADE, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      notice_key TEXT NOT NULL CHECK(length(notice_key) BETWEEN 1 AND 200), notified_at TEXT NOT NULL,
+      PRIMARY KEY(subscription_id,notice_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(62,datetime('now'));
+  `))();
   return db;
 }
 

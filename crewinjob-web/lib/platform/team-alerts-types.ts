@@ -13,5 +13,7 @@ export type TeamAlert = {
 export type TeamAlertsView = {
   alerts: TeamAlert[]; timezone: string;
   email: { enabled: boolean; subscribed: boolean; language: 'tr' | 'en' | null; hasVerifiedEmail: boolean };
+  // Phone (web push) notifications are set per browser, so only whether the server offers them is known here.
+  push: { enabled: boolean };
 };
 export const TEAM_ALERT_LIMITS = { inboxWarningHours: 6, eventDays: 7, accessDays: 7, paidDays: 7, trialDays: 3, emailGapHours: 3, emailsPerDay: 6 } as const;

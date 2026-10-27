@@ -5,7 +5,7 @@ import { lstat, open, readFile, realpath } from 'node:fs/promises';
 import { join, parse, relative, resolve, sep } from 'node:path';
 
 // Bump alongside schema changes and add any new encrypted-column AAD contracts.
-export const MAX_RECOVERY_SCHEMA = 61;
+export const MAX_RECOVERY_SCHEMA = 62;
 const MAX_DATABASE_BYTES = 4 * 1024 ** 3;
 const identifier = value => `"${value.replaceAll('"', '""')}"`;
 export class RecoveryError extends Error {
@@ -103,6 +103,7 @@ const ENCRYPTED_COLUMNS = [
   { since: 48, table: 'platform_whatsapp_hooks', column: 'secret_encrypted', resource: row => `whatsapp-hook:${row.hook_id}` },
   { since: 51, table: 'platform_social_inbox', column: 'recipient_encrypted', resource: row => `inbox:${row.id}` },
   { since: 54, table: 'platform_billing_live_orders', column: 'encrypted_token', resource: row => row.id },
+  { since: 62, table: 'platform_push_subscriptions', column: 'encrypted_endpoint', resource: row => `push:${row.id}` },
 ];
 // Both spellings mark an encrypted field: encrypted_<name> (older tables) and <name>_encrypted (WhatsApp, inbox).
 const isEncryptedColumn = column => column.startsWith('encrypted_') || column.endsWith('_encrypted');

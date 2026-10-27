@@ -6,6 +6,7 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import type { TeamAlert, TeamAlertsView } from '@/lib/platform/team-alerts-types';
 import Msg from '@/components/Msg';
+import PushNotifications from './PushNotifications';
 
 // "Needs attention": deadline-sensitive records the member can act on, with an opt-in email. Each row links to the
 // screen where the work is done; nothing here sends anything to customers.
@@ -23,7 +24,7 @@ export default function TeamAlerts({lang}:{lang:Locale}){
     finally{if(mounted.current)setBusy(false);}
   }
   if(error&&!data)return <p role="alert" className="studio-error"><Msg text={error}/></p>;
-  if(!data||!data.alerts.length&&!data.email.enabled)return null;
+  if(!data||!data.alerts.length&&!data.email.enabled&&!data.push?.enabled)return null;
   const n=(value:number)=>value.toLocaleString(locale),time=(value:string|null)=>value?new Date(value).toLocaleString(locale,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:data.timezone}):'';
   const text=(alert:TeamAlert)=>{switch(alert.kind){
     case 'inbox_window':return tr?`${n(alert.count)} mesajın 24 saatlik cevap penceresi kapanmak üzere (${alert.count>1?'ilk kapanış':'kapanış'}: ${time(alert.at)}). Pencere kapanınca bu kanaldan cevap gönderilemez.`:`The 24-hour reply window of ${n(alert.count)} message(s) is about to close (${alert.count>1?'first closes':'closes'} ${time(alert.at)}). After it closes, no reply can be sent on that channel.`;
@@ -50,5 +51,6 @@ export default function TeamAlerts({lang}:{lang:Locale}){
       :data.email.hasVerifiedEmail?<button type="button" className="studio-secondary" disabled={busy} onClick={()=>void act({action:'subscribe',language:lang})}><BellRing size={15}/>{tr?'Yeni konularda bana e-postayla haber ver':'Email me when something new comes up'}</button>
       :<a className="studio-text-button" href="/?tab=project&settings=team">{tr?'E-posta uyarıları için hesap e-postanızı doğrulayın':'Verify your account email to get email alerts'}<ExternalLink size={14}/></a>}
     </div>:<p className="studio-note">{tr?'E-posta uyarıları bu sunucuda kapalı; uyarılar burada görünür.':'Email alerts are off on this server; alerts are shown here.'}</p>}
+    {data.push?.enabled&&<PushNotifications lang={lang}/>}
   </section>;
 }

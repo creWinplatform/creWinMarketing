@@ -9,6 +9,7 @@ import { identityEmailConfiguration } from './identity-email';
 import { deliverCoachDigest, type DigestDelivery, type DigestMail } from './coach-digest';
 import { INBOX_LIMITS } from './social-inbox-types';
 import { receivedInvites } from './member-invites';
+import { webPushConfiguration } from './web-push-config';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
 
 type Lang = 'tr' | 'en';
@@ -104,7 +105,7 @@ export class TeamAlerts {
   read(): TeamAlertsView {
     this.authorize(); const subscription = this.subscription();
     return { alerts: teamAlerts(this.db, this.scope), timezone: this.repo.workspace(this.scope.subject, ...args(this.scope))!.project.timezone,
-      email: { enabled: Boolean(alertEmailConfiguration()), subscribed: Boolean(subscription), language: subscription?.language || null, hasVerifiedEmail: Boolean(this.email()) } };
+      email: { enabled: Boolean(alertEmailConfiguration()), subscribed: Boolean(subscription), language: subscription?.language || null, hasVerifiedEmail: Boolean(this.email()) }, push: { enabled: Boolean(webPushConfiguration()) } };
   }
   // Opting in marks what is already open as seen, so the first email is about something new.
   subscribe(raw: Record<string, unknown>) {

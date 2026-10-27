@@ -241,6 +241,9 @@
 .studio-section-title { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; }
 .studio-section-title h2,.studio-editor h2 { font-size:14px; font-weight:600; }
 .studio-text-button { display:inline-flex; align-items:center; gap:7px; font-size:11px; font-weight:500; color:var(--studio-accent); }
+.repurpose-box { display:grid; gap:10px; margin-top:12px; padding:12px 14px; border:1px solid var(--studio-border); border-radius:5px; background:var(--studio-surface); }
+.repurpose-channels,.repurpose-actions { display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
+.repurpose-channel { display:inline-flex; align-items:center; gap:6px; font-size:12px; min-height:32px; }
 .studio-checklist-row { display:flex; align-items:center; width:100%; gap:12px; text-align:left; padding:13px 0; font-size:12px; border-bottom:1px solid var(--studio-border); }
 .studio-checklist-row>svg { margin-left:auto; color:var(--studio-muted); }
 .checklist-number,.checklist-complete { display:grid; place-items:center; width:23px; height:23px; border-radius:50%; border:1px solid var(--studio-border); color:var(--studio-muted); font-size:10px; flex-shrink:0; }

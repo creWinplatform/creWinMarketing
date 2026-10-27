@@ -138,6 +138,6 @@ test('the learning view and the monthly renewal use visits per channel as an obs
 test('migration 57 is additive and repeatable',async()=>{
  const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'link-tracking-')),'fixture.sqlite');
  let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeLinkTrackingSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_link_tracking','platform_link_results')").get().n,0);db.close();
- db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,61);assert.ok(db.prepare("SELECT name FROM pragma_table_info('platform_social_publications')").all().some(item=>item.name==='link_tag'));assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+ db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,62);assert.ok(db.prepare("SELECT name FROM pragma_table_info('platform_social_publications')").all().some(item=>item.name==='link_tag'));assert.equal(db.pragma('foreign_key_check').length,0);db.close();
  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=57').get().n,1);db.close();
 });

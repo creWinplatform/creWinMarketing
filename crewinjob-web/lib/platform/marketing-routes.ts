@@ -94,7 +94,7 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   if(story&&(platform!=='instagram'||!imageData||images?.length||video))throw new MarketingStoreError('Görselli Story yalnız tek görselli Instagram içeriği için seçilebilir.');
   return { id: current?.id || `hist_${randomUUID()}`, timestamp: current?.timestamp || Date.now(),
     content, platform, language, prompt: string(raw.prompt, 3000, current?.prompt),
-    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(video?{video}:{}),...(story?{story:true}:{}),...(coachRef(raw.coachRef,current?.coachRef)) };
+    headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(video?{video}:{}),...(story?{story:true}:{}),...(coachRef(raw.coachRef,current?.coachRef)),...(current?.repurposedFrom?{repurposedFrom:current.repurposedFrom}:{}) };
 }
 
 async function context(request: NextRequest) {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse }                                             from 'next/server';
+import { preferredWorkspace } from '@/lib/platform/user-preferences';
 import { validateCredentials, createSessionToken, createPlatformSessionToken, authConfigured, COOKIE_NAME, SESSION_HOURS } from '@/lib/auth';
 import { platformRepository } from '@/lib/platform/workspace-server';
 import { consumeLoginAttempt, securityVersion } from '@/lib/platform/account';
@@ -31,7 +32,8 @@ export async function POST(req: NextRequest) {
   const repository = platformRepository();
   if(!consumeLoginAttempt(platformDatabase(),username)) return NextResponse.json({error:'Çok fazla giriş denemesi. 15 dakika sonra tekrar deneyin.'},{status:429});
   const user = legacy ? null : repository.authenticate(username, password);
-  const workspace = user ? repository.workspaces(user.id)[0] : null;
+  // The project the person opened last, else the first one they belong to.
+  const workspace = user ? preferredWorkspace(platformDatabase(), repository, user.id) : null;
   if (!legacy && (!user || !workspace)) {
     await new Promise(r => setTimeout(r, 800)); // brute-force yavaşlatma
     return NextResponse.json({ error: 'Kullanıcı adı veya şifre hatalı' }, { status: 401 });

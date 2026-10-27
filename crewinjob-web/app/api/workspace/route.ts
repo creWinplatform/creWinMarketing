@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthorizedWorkspace, getPlatformAccess } from '@/lib/platform/workspace-server';
 import { createPlatformSessionToken, createSessionToken, COOKIE_NAME, SESSION_HOURS } from '@/lib/auth';
 import { hasSameRequestOrigin } from '@/lib/platform/request-origin';
+import { platformDatabase } from '@/lib/platform/database';
+import { rememberProject } from '@/lib/platform/user-preferences';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +25,7 @@ export async function POST(request: NextRequest) {
     const token = access.subject === 'legacy-admin' && organizationId === 'crewin' && projectId === 'crewinjob'
       ? await createSessionToken(process.env.ADMIN_USERNAME!)
       : await createPlatformSessionToken({ subject: access.subject, organizationId, projectId, securityVersion: access.identity.securityVersion || 0 });
+    if (access.identity.mode === 'platform') rememberProject(platformDatabase(), access.subject, organizationId, projectId);
     const response = NextResponse.json(workspace);
     response.cookies.set(COOKIE_NAME, token, { httpOnly: true, sameSite: 'lax', secure: request.nextUrl.protocol === 'https:', path: '/', maxAge: SESSION_HOURS * 3600 });
     return response;

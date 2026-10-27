@@ -6,6 +6,12 @@ and an operator-approved live acceptance are different milestones.
 
 ## Delivered on 27 October 2026
 
+- **Content repurposing, phone notifications and the last-opened project (schema 62)** (`SAAS-WEB-PUSH.md`):
+  - A saved social draft can be adapted for up to 4 other channels, by rules or with AI. Each version becomes its own unpublished draft.
+  - Phone notifications (web push) tell a device that something new needs the person, at most every 30 minutes. They carry no data and are off by default.
+  - Login returns to the project opened last.
+  - Migration 62 only adds tables. It was dry-run on a copy and is not yet applied to the real database.
+
 - **Agency package, phase 2 (schema 61)** (`SAAS-AGENCY.md`):
   - 10 client projects for USD 299 a month (USD 2,990 a year), each with Growth rights.
   - It is bought through the same live PayTR flow and is off by default.

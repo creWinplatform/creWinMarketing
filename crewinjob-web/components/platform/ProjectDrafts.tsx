@@ -26,6 +26,7 @@ import type { HistoryItem } from '@/lib/content-history';
 import { projectRequest,searchText } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import SegmentBindingPicker from './SegmentBindingPicker';
+import ContentRepurpose from './ContentRepurpose';
 import Msg from '@/components/Msg';
 import { COACH_PREFILL_KEY, COACH_REF } from '@/lib/platform/coach-types';
 const CampaignReviewPanel=dynamic(()=>import('./CampaignReviewPanel'));
@@ -40,6 +41,8 @@ const channels = [
   'blog',
 ];
 const channelNames: Record<string, [string, string]> = { email: ['E-posta', 'Email'], linkedin: ['LinkedIn', 'LinkedIn'], instagram: ['Instagram', 'Instagram'], facebook: ['Facebook', 'Facebook'], twitter: ['X', 'X'], telegram: ['Telegram', 'Telegram'], tiktok: ['TikTok', 'TikTok'], blog: ['Blog', 'Blog'] };
+// Channels a saved post can be adapted to and from (Content repurposing).
+const REPURPOSABLE = ['linkedin', 'facebook', 'instagram', 'twitter', 'telegram'];
 const channelLabel = (channel: string, lang: Locale) => channelNames[channel]?.[lang === 'en' ? 1 : 0] || channel;
 const empty = {
   name: '',
@@ -805,6 +808,9 @@ export default function ProjectDrafts({
                       <ChevronDown size={14} />
                     )}
                   </button>
+                  {canWrite && history && !history.starter && !/\{\{[\s\S]*?\}\}/.test(history.content) && REPURPOSABLE.includes(history.platform) && (
+                    <ContentRepurpose id={history.id} platform={history.platform} lang={lang} disabled={busy || aiBusy} onDone={message => { setNotice(message); void load(); }} />
+                  )}
                 </article>
               );
             })}

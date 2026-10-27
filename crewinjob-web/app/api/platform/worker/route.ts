@@ -22,6 +22,7 @@ import { deliverWhatsAppBatches } from '@/lib/platform/whatsapp';
 import { readDueInboxAccounts } from '@/lib/platform/social-inbox';
 import { syncDueLinkResults } from '@/lib/platform/link-tracking';
 import { deliverNextAlertEmail } from '@/lib/platform/team-alerts';
+import { deliverDuePushes } from '@/lib/platform/web-push';
 export const dynamic = 'force-dynamic',
   maxDuration = 60;
 export async function POST(request: NextRequest) {
@@ -96,5 +97,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const linkResults=Date.now()-startedAt<20000?await syncDueLinkResults(db,credentialEncryptionKey()).catch(()=>0):0;
   // Opted-in members hear about new deadline-sensitive records by email; one subscriber is looked at per tick.
   const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail };
+  // Phone notifications carry no data: a fixed notice that something new needs the person, at most every 30 minutes.
+  const pushes=Date.now()-startedAt<25000?await deliverDuePushes(db,credentialEncryptionKey()).catch(()=>0):0;
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes };
 }

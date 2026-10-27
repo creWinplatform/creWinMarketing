@@ -166,6 +166,12 @@ if(process.argv.includes('--agency')){
   // Client projects from --portfolio become self-service trials, so they can join the package with their owner's consent.
   for(const row of db.prepare("SELECT m.user_id,m.organization_id,m.project_id FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE u.username LIKE 'qa-client-%' AND m.role='owner'").all())db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(row.user_id,new Date().toISOString(),new Date(Date.now()+14*86400000).toISOString(),row.organization_id,row.project_id);
   console.log('Agency QA: the fixture project has a running agency package (stub period, no PayTR call).');}
+if(process.argv.includes('--push')){
+  // Phone-notification QA: a throwaway VAPID pair made for this run, so the button shows. The worker is not run here,
+  // so nothing is posted to a push service.
+  const {generateKeyPairSync:gk}=require('node:crypto'),{publicKey,privateKey}=gk('ec',{namedCurve:'P-256'}),jwk=publicKey.export({format:'jwk'});
+  Object.assign(process.env,{PLATFORM_WEB_PUSH_ENABLED:'1',PLATFORM_WEB_PUSH_PUBLIC_KEY:Buffer.concat([Buffer.from([4]),Buffer.from(jwk.x,'base64url'),Buffer.from(jwk.y,'base64url')]).toString('base64url'),PLATFORM_WEB_PUSH_PRIVATE_KEY:privateKey.export({format:'jwk'}).d,PLATFORM_WEB_PUSH_SUBJECT:'mailto:qa@ryzevo.example'});
+  console.log('Push QA: throwaway VAPID keys; no push is sent.');}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.

@@ -37,6 +37,8 @@ export interface HistoryItem {
   story?: boolean;
   /** Starter draft prepared by the growth coach after approval; dropped when the team saves the item. */
   starter?: boolean;
+  /** Draft adapted from another draft for this channel (its id); saved as a separate, unpublished draft. */
+  repurposedFrom?: string;
 }
 
 /** Görselle birlikte saklanan yeniden düzenleme verisi. */
