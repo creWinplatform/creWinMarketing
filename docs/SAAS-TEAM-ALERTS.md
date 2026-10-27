@@ -47,3 +47,27 @@ Viewers and analysts see no alerts. When nothing is open and email is off, the c
 - Worker: `deliverNextAlertEmail`.
 - Tests: `test/platform-team-alerts.test.cjs`.
 - QA: `scripts/preview-design.cjs --dev --inbox --alerts`. It shows a closing reply window, a rejected live post and a grant ending tomorrow; email stays off and nothing is sent.
+
+## Waiting for your decision (27 October 2026, no schema change)
+
+A second overview card lists, for the signed-in member, the records that wait for a decision that member may make. Each row links to the screen where the decision is made, with that screen's preview, checks and acknowledgement. Nothing is approved from the list, and the card is hidden when nothing is waiting.
+
+| Item | Counted when | Who sees it |
+| --- | --- | --- |
+| Strategy draft | The growth coach has a draft brief | `campaign.approve` |
+| Weekly review proposals | This week's review has proposals in state `proposed` | `campaign.approve` |
+| Monthly renewal | This month's renewal is proposed | `campaign.approve` |
+| Content plan | Suggestions for this month or later exist and an approved brief lets the plan screen act on them | `content.write` |
+| Saved inbox replies | A new item has a saved, non-empty reply draft. For messages this applies only while the 24-hour window is open. | Inbox publish duty (owners hold it) |
+| Ad plan drafts | Ad plans in `draft` (approving does not start spend) | `campaign.approve` |
+| WhatsApp sends | Batches in `draft` need approval (`campaign.approve`); `approved` batches need a rehearsal or send (publish duty) | as stated |
+| Automations | Due enrollments in active automations wait for a pilot approval | `campaign.approve`, `connections.manage` and `recipients.manage` |
+| Last month's report | During the first ten days of a month, when last month had posts, readings or inbox records and no approved report | `campaign.approve` |
+
+The card shows counts, the oldest waiting time and links only. It contains no titles, message text or names.
+
+- Code: `lib/platform/approvals.ts` and `approvals-types.ts`.
+- Route: `app/api/platform/approvals/route.ts` (GET only).
+- UI: `components/platform/ProjectApprovals.tsx`.
+- Tests: `test/platform-approvals.test.cjs`, plus the anonymous 401 check in `test/platform-http.test.cjs`.
+- QA: `scripts/preview-design.cjs --dev --inbox --ads --approvals`.

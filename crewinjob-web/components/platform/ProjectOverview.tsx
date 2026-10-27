@@ -7,6 +7,7 @@ import CoachWeeklyReview from './CoachWeeklyReview';
 import CoachRefresh from './CoachRefresh';
 import CoachMyWork from './CoachMyWork';
 import TeamAlerts from './TeamAlerts';
+import ProjectApprovals from './ProjectApprovals';
 import type { Locale, ModuleId, WorkspaceContext } from '@/lib/platform/catalog';
 import type { WorkItem, MetricEntry } from '@/lib/platform/operations';
 import { projectRequest } from '@/lib/platform/client';
@@ -65,6 +66,7 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
         <div className="studio-overview-grid">
           <div>
             {workspace.project.productPack === 'standard' && <TeamAlerts lang={lang}/>}
+            {workspace.project.productPack === 'standard' && <ProjectApprovals lang={lang}/>}
             <GrowthCoach key={coachKey} workspace={workspace} lang={lang} onChange={load}/>
             <CoachWeeklyReview workspace={workspace} lang={lang} onChange={() => { load(); setCoachKey(value => value + 1); }}/>
             <CoachRefresh key={`refresh-${coachKey}`} workspace={workspace} lang={lang} onChange={() => { load(); setCoachKey(value => value + 1); }}/>

@@ -1259,4 +1259,6 @@ export const MESSAGES_EN: Record<string, string> = {
   "Rapordaki sayılar siz incelerken değişti. Yenileyip tekrar inceleyin.": "The figures changed while you were reviewing. Refresh and review again.",
   "Son 12 aydan birini seçin.": "Choose one of the last 12 months.",
   "Yalnız tamamlanmış bir ayın raporu onaylanabilir.": "Only a completed month’s report can be approved.",
+  "Onay listesi alınamadı.": "Could not load the approval list.",
+  "Onay listesi için standart proje erişimi gerekli.": "The approval list needs standard project access.",
 };

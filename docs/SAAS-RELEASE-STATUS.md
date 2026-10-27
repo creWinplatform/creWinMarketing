@@ -6,6 +6,10 @@ and an operator-approved live acceptance are different milestones.
 
 ## Delivered on 27 October 2026
 
+- **Waiting for your decision** (`SAAS-TEAM-ALERTS.md`):
+  - An overview list of everything the member may approve, with counts and links only, in one place: strategy draft, weekly and monthly coach proposals, content plan, saved inbox replies, ad plan drafts, WhatsApp sends, automation approvals and last month's report.
+  - Decisions are still made on each screen. No schema change.
+
 - **Monthly results report (schema 59)** (`SAAS-MONTHLY-REPORT.md`):
   - It is built from the month's records: posts with site visits and interactions, inbox counts, email, ads and measurements.
   - Only a completed month can be approved, and only the exact figures that were reviewed.

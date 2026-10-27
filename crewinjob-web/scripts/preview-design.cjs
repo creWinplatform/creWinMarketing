@@ -137,6 +137,15 @@ if(process.argv.includes('--monthly-report')){
     db.prepare("INSERT INTO platform_social_inbox(id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,author_hash,text,received_at,created_at,state,replied_at) VALUES(?,?,?,?,'linkedin',?,?,?,'qa','QA mesajı · gerçek değil',?,?,?,?)").run(`qa-report-${index}`,fixture.organizationId,fixture.projectId,account.id,kind,`t${index}`,`i${index}`,received,received,state,hours===null?null:new Date(Date.parse(received)+hours*3600000).toISOString());});
   operations.saveMetric({goalId:'demo',stageIndex:0,value:18,observedAt:at('05'),note:'Yalnızca görsel QA örneği'});operations.saveMetric({goalId:'demo',stageIndex:0,value:27,observedAt:at('25'),note:'Yalnızca görsel QA örneği'});
   console.log(`Monthly report QA: last month (${month}) has three accepted posts, five inbox records and two readings; no provider is contacted.`);}
+if(process.argv.includes('--approvals')){
+  // Approval center QA (with --inbox --ads): a strategy draft, two content plan suggestions and a saved inbox reply wait
+  // next to the ads fixture's draft plan. Nothing is approved or sent.
+  const {coachMonthKey}=load('coach-content.ts'),zone=repo.workspace(fixture.userId,fixture.organizationId,fixture.projectId).project.timezone,month=coachMonthKey(new Date(),0,zone),now=new Date().toISOString();
+  if(!db.prepare('SELECT 1 FROM platform_growth_coach WHERE organization_id=? AND project_id=?').get(fixture.organizationId,fixture.projectId))db.prepare("INSERT INTO platform_growth_coach(organization_id,project_id,answers_json,draft_json,draft_source,draft_at,updated_by,created_at,updated_at) VALUES(?,?,'{}','{}','template',?,?,?,?)").run(fixture.organizationId,fixture.projectId,now,fixture.userId,now,now);
+  // The content plan acts on an approved brief; with --coach-brief the fixture already has one.
+  for(const [id,title] of [['qa-plan-a','Müşteri sorusu: kurulum ne kadar sürer?'],['qa-plan-b','Kısa vaka: bir dükkânın ilk ayı']])db.prepare("INSERT INTO platform_coach_content_items(id,organization_id,project_id,month,channel,theme,title,angle,planned_for,state,source,updated_by,created_at,updated_at) VALUES(?,?,?,?,'linkedin','QA',?,'QA','"+"2030-01-01"+"','suggested','template',?,?,?)").run(id,fixture.organizationId,fixture.projectId,month,title,fixture.userId,new Date(Date.now()-2*86400000).toISOString(),now);
+  db.prepare("UPDATE platform_social_inbox SET reply_state='draft',reply_text='Merhaba, fiyat listemizi DM ile iletiyoruz.' WHERE id='qa-inbox-2'").run();
+  console.log('Approvals QA: a strategy draft, two content plan suggestions and a saved reply are waiting; nothing is approved or sent.');}
 const liveBillingEnv={};
 if(process.argv.includes('--live-billing')){
   // Live billing screen with disposable merchant values only: the page can be viewed, but "Pay" must not be pressed.
