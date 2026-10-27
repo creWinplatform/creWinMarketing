@@ -76,3 +76,10 @@ Ayrıntı repo kökündeki `BACKEND-StartResearch-kaynak-fix.md` dosyasında. Ö
 - `UpdateStatus` artık Swagger'daki gibi `PUT { id, status, reason }` ile çağrılıyor (önceden POST gönderiliyordu ve HTTP 405 dönüyordu; panelden lead durumu değiştirilemiyordu).
 - `VerifyEmails` Swagger'daki `{ emails, prospectIds, updateProspects }` gövdesiyle çağrılıyor ve `EmailVerificationResultDto` alanları okunuyor.
 
+**Backend yaptı (27 Ekim 2026, yayında):**
+- `StartResearch` e-posta alamayan alan adlarını artık kaydetmiyor; `GetResearchStatus.errorMessage` bulunan ile kaydedilen arasındaki farkın sebebini yazıyor (panel bunu bilgi notu olarak gösteriyor).
+- `VerifyEmails.isDomainValid` her adreste gerçek MX sonucunu gösteriyor. `status`: `valid` · `role_based` · `unverifiable` · `invalid` · `disposable`; lead kaydında `valid` sonucu `verified` olarak saklanıyor.
+- Alan adı arama kaynaklarında geçmeyen lead'lerde `fitScore` 30 puan düşük ve `scoreReason` sonunda "Alan adı arama kaynaklarında doğrulanmadı." notu var.
+
+**Panelde (aynı gün):** `isDomainValid` yeniden kullanılıyor; doğrulama nedeni (`reason`) lead detayında görünüyor; kaynaklarda doğrulanmayan alan adlarına "elle kontrol et" rozeti eklendi; "Havuzdaki e-postaları doğrula" düğmesi 50'şerli gruplarla `updateProspects: true` gönderiyor. Panelin kendi DNS/MX kontrolü yedek olarak duruyor. Havuzdaki 58 lead doğrulandı: 33 `role_based`, 23 `unverifiable` (22'si zaten reddedilmişti; kalan Unix Line incelemede), 2 `verified`; onaylı 10 lead'in hepsi e-posta alıyor.
+

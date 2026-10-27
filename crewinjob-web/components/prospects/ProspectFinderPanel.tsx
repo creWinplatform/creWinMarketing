@@ -57,6 +57,9 @@ function responseRoot(data: ProspectApiResponse): ProspectApiResponse {
 }
 
 function responseItems(data: ProspectApiResponse): Array<Record<string, unknown>> {
+  // Bazı servisler (ör. VerifyEmails) sonucu düz bir dizi olarak döndürür.
+  if (Array.isArray(data)) return data as Array<Record<string, unknown>>;
+  if (Array.isArray((data as { result?: unknown }).result)) return (data as { result: Array<Record<string, unknown>> }).result;
   const root = responseRoot(data);
   const items = root.items || root.prospects || root.leads || root.results || root.companies || root.data || root.research;
   return Array.isArray(items) ? items as Array<Record<string, unknown>> : [];
@@ -130,19 +133,22 @@ function backendLead(item: Record<string, unknown>): ProspectLead | null {
   };
 }
 
-// Backend e-posta doğrulaması (VerifyEmails → EmailVerificationResultDto; GetAll → deliverabilityStatus).
-// Alan adı geçersiz, tek kullanımlık veya sözdizimi bozuk adres "geçersiz"dir; status 'valid' teslim edilebilir sayılır.
-// Backend, rol adreslerinde (info@) alan adına bakmadan isDomainValid:false döndürüyor; bu alan güvenilmez. Alan adı
-// panel sunucusunda DNS ile ayrıca kontrol edilir (emailDomain).
-const DELIVERABLE = new Set(['valid', 'deliverable', 'verified', 'ok']), UNDELIVERABLE = new Set(['invalid', 'undeliverable', 'bounced', 'disposable', 'no_mx', 'domain_invalid']);
+// Backend e-posta doğrulaması (27 Ekim 2026 sözleşmesi). VerifyEmails → EmailVerificationResultDto: isDomainValid gerçek MX
+// sonucudur (rol adreslerinde de). status: valid (kişisel adres) · role_based (rol adresi, alan adı e-posta alıyor) ·
+// unverifiable (alan adı/MX yok veya DNS sonuçlanmadı) · invalid (biçim) · disposable. Lead kaydında aynı değer
+// deliverabilityStatus'tadır (valid → verified); orada "unknown" alan adı e-posta alan kişisel adres demektir.
+const UNDELIVERABLE = new Set(['invalid', 'disposable', 'undeliverable', 'bounced']);
 function emailCheck(item: Record<string, unknown>): Pick<ProspectLead, 'emailValid' | 'emailDeliverable'> {
-  // Lead kaydında durum deliverabilityStatus'tadır; doğrulama sonucunda status alanındadır.
-  const status = String(('companyName' in item ? item.deliverabilityStatus : item.status) || '').toLowerCase();
-  const broken = item.isSyntaxValid === false || item.isDisposable === true;
-  const valid = broken ? false : item.emailValid === undefined ? (UNDELIVERABLE.has(status) ? false : DELIVERABLE.has(status) ? true : undefined) : Boolean(item.emailValid);
-  const deliverable = UNDELIVERABLE.has(status) || broken ? false : DELIVERABLE.has(status) ? true : item.emailDeliverable === undefined ? undefined : Boolean(item.emailDeliverable);
-  return { emailValid: valid, emailDeliverable: deliverable };
+  const record = 'companyName' in item, status = String((record ? item.deliverabilityStatus : item.status) || '').toLowerCase();
+  if (item.isSyntaxValid === false || item.isDisposable === true || UNDELIVERABLE.has(status)) return { emailValid: false, emailDeliverable: false };
+  if (item.isDomainValid === false || status === 'unverifiable') return { emailValid: true, emailDeliverable: false };
+  // VerifyEmails 'valid' sonucu lead kaydında 'verified' olarak saklanıyor.
+  if (item.isDomainValid === true || status === 'valid' || status === 'verified' || status === 'role_based') return { emailValid: true, emailDeliverable: true };
+  return { emailValid: item.emailValid === undefined ? undefined : Boolean(item.emailValid), emailDeliverable: item.emailDeliverable === undefined ? undefined : Boolean(item.emailDeliverable) };
 }
+// Backend, Gemini'nin bulduğu alan adı arama kaynaklarında geçmiyorsa skoru düşürüp gerekçeye bu notu ekliyor.
+const UNVERIFIED_DOMAIN_NOTE = 'Alan adı arama kaynaklarında doğrulanmadı';
+const domainUnverified = (item: ProspectLead) => Boolean(item.selectionReason?.includes(UNVERIFIED_DOMAIN_NOTE));
 
 function backendUpsertPayload(item: ProspectLead): Record<string, unknown> {
   return {
@@ -321,12 +327,14 @@ function ProspectDecisionPanel({ item, lang }: { item: ProspectLead; lang: Lang 
     { ok: Boolean(sourceUrl), text: t('Kamuya açık kaynak', 'Public source') },
     { ok: Boolean(website), text: t('Şirket web sitesi', 'Company website') },
     { ok: item.emailDomain === 'mx', text: item.emailDomain === 'mx' ? t('Alan adı e-posta alıyor', 'Domain receives email') : item.emailDomain === 'no_mx' || item.emailDomain === 'not_found' ? t('Alan adı e-posta almıyor', 'Domain receives no email') : t('Alan adı kontrol edilemedi', 'Domain not checked') },
-    { ok: item.emailDeliverable === true || item.emailValid === true, text: item.emailDeliverable === false || item.emailValid === false ? t('E-posta geçersiz', 'Email invalid') : t('E-posta doğrulaması', 'Email verification') },
+    { ok: item.emailDeliverable === true, text: item.emailValid === false ? t('E-posta geçersiz', 'Email invalid') : item.emailDeliverable === false ? t('E-posta alamıyor', 'Cannot receive email') : item.emailDeliverable === true ? t('E-posta doğrulandı', 'Email verified') : t('E-posta doğrulanmadı', 'Email not verified') },
+    { ok: !domainUnverified(item), text: domainUnverified(item) ? t('Alan adı kaynaklarda doğrulanmadı', 'Domain not confirmed in sources') : t('Alan adı kaynaklarda geçiyor', 'Domain found in sources') },
     { ok: !item.isSuppressed && item.consentStatus !== 'restricted', text: t('Gönderim engeli yok', 'Not suppressed') },
     { ok: Boolean(item.contactName || item.contactRole), text: t('Muhatap doğrulandı', 'Contact verified') },
   ];
-  const readyCount = checks.filter(check => check.ok).length;
+  const readyCount = checks.filter(check => check.ok).length, readyRatio = readyCount / checks.length;
   const canDraft = !item.isSuppressed && item.consentStatus !== 'restricted' && item.emailValid !== false && item.emailDeliverable !== false && item.emailDomain !== 'no_mx' && item.emailDomain !== 'not_found';
+  const verificationNote = item.emailVerificationReason;
   const subject = `Crewinjob partnership for ${item.companyName}`;
   const greeting = item.contactName ? `Hello ${item.contactName},` : 'Hello Crewing Team,';
   const body = `${greeting}\n\nCrewinjob helps maritime companies publish jobs for free, filter relevant seafarers, and pay only when they choose to unlock a CV. I would be glad to show you a short pilot tailored to ${item.companyName}.\n\nWould a 15-minute introduction next week be convenient?\n\nBest regards`;
@@ -361,8 +369,8 @@ function ProspectDecisionPanel({ item, lang }: { item: ProspectLead; lang: Lang 
 
     <div className="mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-700 lg:flex-row lg:items-center lg:justify-between">
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{t('İletişime hazır olma', 'Outreach readiness')}</p><span className="text-xs text-slate-500">{readyCount}/5</span></div>
-        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className={`h-full ${readyCount >= 4 ? 'bg-green-500' : readyCount >= 2 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${readyCount * 20}%` }} /></div>
+        <div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{t('İletişime hazır olma', 'Outreach readiness')}</p><span className="text-xs text-slate-500">{readyCount}/{checks.length}</span></div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"><div className={`h-full ${readyRatio >= 0.8 ? 'bg-green-500' : readyRatio >= 0.4 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${Math.round(readyRatio * 100)}%` }} /></div>
         <div className="mt-2 flex flex-wrap gap-1.5">{checks.map(check => <span key={check.text} className={`px-2 py-1 text-[11px] ${check.ok ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>{check.ok ? t('Hazır', 'Ready') : t('Eksik', 'Missing')}: {check.text}</span>)}</div>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -371,6 +379,7 @@ function ProspectDecisionPanel({ item, lang }: { item: ProspectLead; lang: Lang 
         <a href={canDraft ? mailto : undefined} aria-disabled={!canDraft} className={`px-3 py-2 text-xs font-semibold ${canDraft ? 'bg-ocean text-white' : 'pointer-events-none bg-slate-200 text-slate-600 dark:bg-slate-700'}`}>{t('E-posta taslağını aç', 'Open email draft')}</a>
       </div>
     </div>
+    {verificationNote && <p className="mt-3 text-[11px] text-slate-600 dark:text-slate-300">{t('E-posta doğrulaması', 'Email verification')}: <Msg text={verificationNote} /></p>}
     <p className="mt-3 text-[11px] text-slate-600">{t('Skorlar ve öneriler karar desteğidir; kaynak, muhatap ve iletişim izni insan tarafından doğrulanmalıdır.', 'Scores and recommendations support decisions; a person must verify the source, contact and outreach basis.')}</p>
   </div>;
 }
@@ -696,7 +705,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
   const updateStatus = async (id: string, status: ProspectLeadStatus) => {
     const item = leads.find(lead => lead.id === id);
     if (!item) return;
-    if ((status === 'approved' || status === 'contacted') && (item.emailDomain === 'no_mx' || item.emailDomain === 'not_found')) {
+    if ((status === 'approved' || status === 'contacted') && (item.emailDomain === 'no_mx' || item.emailDomain === 'not_found' || item.emailValid === false || (item.emailDeliverable === false && item.emailDomain !== 'mx'))) {
       setError(t(`${item.companyName}: ${item.email} adresinin alan adı e-posta almıyor; gönderilen e-posta geri döner. Doğru adresi bulup lead'i güncelleyin.`, `${item.companyName}: the domain of ${item.email} receives no email; a message would bounce. Find the right address and update the lead.`));
       return;
     }
@@ -712,11 +721,15 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
     if (!items.length) return;
     setBusy(true); setError('');
     try {
-      // Swagger: VerifyEmailsInput { emails, prospectIds: int64[], updateProspects } — sonuç lead kaydına da yazılır.
-      const result = await prospectRequest('VerifyEmails', 'POST', { prospectIds: items.map(item => Number(item.id)).filter(Number.isSafeInteger), emails: items.map(item => item.email), updateProspects: true });
-      const verified = responseItems(result);
+      // Swagger: VerifyEmailsInput { emails, prospectIds: int64[], updateProspects } — sonuç lead kaydına da yazılır. İstek başına en fazla 50.
+      const verified: Array<Record<string, unknown>> = [];
+      for (let start = 0; start < items.length; start += 50) {
+        const batch = items.slice(start, start + 50);
+        verified.push(...responseItems(await prospectRequest('VerifyEmails', 'POST', { prospectIds: batch.map(item => Number(item.id)).filter(Number.isSafeInteger), emails: batch.map(item => item.email), updateProspects: true })));
+      }
       if (verified.length) setLeads(current => current.map(item => { const match = verified.find(row => String(row.id || row.prospectId || '').toLowerCase() === item.id.toLowerCase() || String(row.email || '').toLowerCase() === item.email.toLowerCase()); return match ? { ...item, ...emailCheck(match), emailVerificationReason: match.reason ? String(match.reason) : item.emailVerificationReason, emailCheckedAt: match.checkedAt ? String(match.checkedAt) : new Date().toISOString() } : item; }));
-      setOperationMessage(t(`${items.length} e-posta doğrulaması tamamlandı.`, `${items.length} email(s) verified.`));
+      const failing = verified.filter(row => row.isDomainValid === false || row.isSyntaxValid === false || row.isDisposable === true).length;
+      setOperationMessage(t(`${verified.length} e-posta doğrulandı; ${failing} adres e-posta alamıyor.`, `${verified.length} email(s) verified; ${failing} cannot receive email.`));
     } catch (err) { setError(err instanceof Error ? err.message : t('E-posta doğrulaması başlatılamadı.', "Couldn't start email verification.")); }
     finally { setBusy(false); }
   };
@@ -787,7 +800,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
                 <td className="p-3 text-xs text-slate-500">{companyTypeLabel(item.companyType, lang)}{item.country ? ` · ${item.country}` : ''}</td>
                 <td className="p-3 text-xs text-slate-500">{label(item.source, lang)}{item.sourceUrl ? <span className="mt-1 block text-green-600 dark:text-green-400">{t('Kaynak mevcut', 'Source available')}</span> : <span className="mt-1 block text-amber-600 dark:text-amber-400">{t('Doğrulanmalı', 'Needs verification')}</span>}</td>
                 <td className="p-3 text-xs text-slate-500"><span className="block">{t('Uyum', 'Fit')}: {item.fitScore ?? '—'}</span><span className="block">{t('Niyet', 'Intent')}: {item.intentScore ?? '—'}</span></td>
-                <td className="p-3"><span className={`rounded-full px-2 py-1 text-[11px] ${badge(item.status)}`}>{label(item.status, lang)}</span><p className="mt-1 text-[11px] text-slate-600">{label(item.consentStatus, lang)}</p>{(item.emailDomain === 'no_mx' || item.emailDomain === 'not_found') && <p className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">{t('E-posta alan adı yok', 'No email domain')}</p>}</td>
+                <td className="p-3"><span className={`rounded-full px-2 py-1 text-[11px] ${badge(item.status)}`}>{label(item.status, lang)}</span><p className="mt-1 text-[11px] text-slate-600">{label(item.consentStatus, lang)}</p>{(item.emailDomain === 'no_mx' || item.emailDomain === 'not_found') && <p className="mt-1 text-[11px] font-medium text-red-600 dark:text-red-400">{t('E-posta alan adı yok', 'No email domain')}</p>}{domainUnverified(item) && <p className="mt-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">{t('Alan adı kaynaklarda yok · elle kontrol et', 'Domain not in sources · check by hand')}</p>}</td>
                 <td className="p-3"><div className="flex min-w-36 flex-col gap-2"><button type="button" aria-expanded={expandedLeadId === item.id} onClick={() => setExpandedLeadId(current => current === item.id ? null : item.id)} className="border border-ocean px-2 py-1.5 text-xs font-semibold text-ocean">{expandedLeadId === item.id ? t('Detayı kapat', 'Close details') : t('Değerlendir', 'Review')}</button><select value={item.status} onChange={event => updateStatus(item.id, event.target.value as ProspectLeadStatus)} aria-label={t(`${item.companyName} durumu`, `${item.companyName} status`)} className="border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-white">{STATUS_OPTIONS.map(option => <option key={option} value={option}>{label(option, lang)}</option>)}</select></div></td>
               </tr>
               {expandedLeadId === item.id && <tr className="border-t border-cyan-200 dark:border-cyan-900"><td colSpan={7} className="p-0"><ProspectDecisionPanel item={item} lang={lang} /></td></tr>}
@@ -806,7 +819,7 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
           {expandedLeadId === item.id && <div className="border border-t-0 border-cyan-200 dark:border-cyan-900"><ProspectDecisionPanel item={item} lang={lang} /></div>}
         </div>)}{!filteredLeads.length && <div className="py-10 text-center text-sm text-slate-600">{t('Henüz prospect yok.', 'No prospects yet.')}</div>}</div>
       </div>}
-      {mode === 'pool' && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 dark:border-slate-700 pt-4"><button type="button" onClick={() => void checkSuppression(approvedLeads.filter(item => selectedIds.length === 0 || selectedIds.includes(item.id)))} disabled={busy || !selectedApprovedEmails.length} className="border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili suppression durumunu kontrol et', 'Check suppression for selected')}</button>{selectedApprovedEmails.length === 1 && <button type="button" onClick={() => void suppressLead(approvedLeads.find(item => item.email === selectedApprovedEmails[0])!)} disabled={busy} className="border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili lead’i engelle', 'Suppress selected lead')}</button>}{providerStatus && <span className="text-xs text-slate-500 dark:text-slate-400">{t('Sağlayıcı:', 'Provider:')} {providerStatus}</span>}{sourceCount !== null && <span className="text-xs text-slate-500 dark:text-slate-400">{sourceCount} {t('araştırma kaynağı', 'research sources')}</span>}{operationMessage && <span role="status" className="text-xs text-green-700 dark:text-green-300"><Msg text={operationMessage} /></span>}</div>}
+      {mode === 'pool' && <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-200 dark:border-slate-700 pt-4"><button type="button" onClick={() => void verifyEmails(leads.filter(item => item.status !== 'rejected'))} disabled={busy || !leads.some(item => item.status !== 'rejected')} className="border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Havuzdaki e-postaları doğrula', 'Verify emails in the pool')}</button><button type="button" onClick={() => void checkSuppression(approvedLeads.filter(item => selectedIds.length === 0 || selectedIds.includes(item.id)))} disabled={busy || !selectedApprovedEmails.length} className="border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili suppression durumunu kontrol et', 'Check suppression for selected')}</button>{selectedApprovedEmails.length === 1 && <button type="button" onClick={() => void suppressLead(approvedLeads.find(item => item.email === selectedApprovedEmails[0])!)} disabled={busy} className="border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-3 py-2 rounded-lg text-xs disabled:opacity-40">{t('Seçili lead’i engelle', 'Suppress selected lead')}</button>}{providerStatus && <span className="text-xs text-slate-500 dark:text-slate-400">{t('Sağlayıcı:', 'Provider:')} {providerStatus}</span>}{sourceCount !== null && <span className="text-xs text-slate-500 dark:text-slate-400">{sourceCount} {t('araştırma kaynağı', 'research sources')}</span>}{operationMessage && <span role="status" className="text-xs text-green-700 dark:text-green-300"><Msg text={operationMessage} /></span>}</div>}
     </div>
   </section>;
 }
