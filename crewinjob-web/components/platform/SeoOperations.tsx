@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { CalendarPlus, Copy, EyeOff, History, Play, RefreshCw, ShieldCheck, Square, Undo2 } from 'lucide-react';
+import { CalendarClock, CalendarPlus, Copy, EyeOff, History, Play, RefreshCw, ShieldCheck, Square, Undo2 } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
@@ -18,6 +18,7 @@ const EVENTS:Record<string,[string,string]>={detected:['İlk bulundu','First fou
 // The page drives the scan one page at a time; if the tab closes, the worker continues it.
 export default function SeoOperations({workspace,lang}:{workspace:WorkspaceContext;lang:Locale}){
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
+  const [llms,setLlms]=useState<{text:string;pages:number;fromScan:boolean;hasSummary:boolean}|null>(null);
   const [data,setData]=useState<SeoOperationsSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(''),[filter,setFilter]=useState<SeoFindingState>('open'),[copied,setCopied]=useState('');
   const live=useRef(true),driving=useRef(false);
   const load=useCallback(()=>projectRequest<SeoOperationsSnapshot>('/api/platform/seo').then(value=>{if(live.current)setData(value);return value;}).catch(reason=>{if(live.current)setError(reason.message);return null;}),[]);
@@ -54,6 +55,22 @@ export default function SeoOperations({workspace,lang}:{workspace:WorkspaceConte
         {' · '}{scan.source==='sitemap'?(tr?'kaynak: sitemap':'source: sitemap'):(tr?'kaynak: ana sayfa bağlantıları':'source: home-page links')}
         {running&&<progress className="seo-ops-progress" max={scan.pages.total} value={scan.pages.done+scan.pages.failed} aria-label={tr?'Tarama ilerlemesi':'Scan progress'}/>}
       </div>}
+    {data.origin&&<div className="seo-schedule" role="group" aria-label={tr?'Otomatik tarama':'Automatic scan'}>
+      <CalendarClock size={16} aria-hidden="true"/>
+      <div><strong>{tr?'Otomatik tarama':'Automatic scan'}</strong>
+        <small>{data.schedule.cadence?(tr?`Sıradaki: ${date(data.schedule.nextAt!)} · yeni veya yeniden görülen bulgular “Dikkat gerekenler”e düşer. Her tarama bir denetim hakkı kullanır${data.schedule.ownedByYou?'':' ve onu ayarlayan ekip üyesinin yetkisiyle çalışır'}.`:`Next: ${date(data.schedule.nextAt!)} · new or returning findings appear in “Needs attention”. Each scan uses one audit credit${data.schedule.ownedByYou?'':' and runs with the rights of the teammate who set it'}.`):(tr?'Siteniz belirli aralıklarla kendiliğinden taranır; yeni bir sorun çıkınca haber verilir.':'Your site is scanned on its own at a set interval; you hear about new issues.')}</small>
+        {data.schedule.lastError&&<small className="seo-schedule-error" role="status"><Msg text={data.schedule.lastError}/> {tr?'Yarın yeniden denenecek.':'It is retried tomorrow.'}</small>}
+      </div>
+      {data.canWrite?<select aria-label={tr?'Tarama sıklığı':'Scan frequency'} value={data.schedule.cadence||'off'} disabled={Boolean(busy)} onChange={event=>void act('schedule',{action:'schedule',cadence:event.target.value},event.target.value==='off'?(tr?'Otomatik tarama kapatıldı.':'Automatic scan turned off.'):(tr?'Otomatik tarama açıldı.':'Automatic scan turned on.'))}>
+        <option value="off">{tr?'Kapalı':'Off'}</option><option value="weekly">{tr?'Haftada bir':'Weekly'}</option><option value="monthly">{tr?'Ayda bir':'Monthly'}</option>
+      </select>:<span className="studio-badge">{data.schedule.cadence==='weekly'?(tr?'Haftada bir':'Weekly'):data.schedule.cadence==='monthly'?(tr?'Ayda bir':'Monthly'):(tr?'Kapalı':'Off')}</span>}
+    </div>}
+    {data.findings.some(item=>item.state==='open'&&item.title==='llms.txt bulunamadı')&&<div className="seo-llms">
+      <p><strong>{tr?'llms.txt taslağı':'llms.txt draft'}</strong> · {tr?'Proje adınızdan, onaylı stratejinizden ve son taramada okunan sayfalardan hazırlanır. Düzenleyip sitenizin köküne /llms.txt olarak koyun; Ryzevo sitenizi değiştirmez.':'Built from your project name, approved strategy and the pages the last scan read. Edit it and put it at your site root as /llms.txt; Ryzevo does not change your site.'}</p>
+      {llms?<><textarea readOnly rows={Math.min(18,llms.text.split('\n').length+1)} value={llms.text} aria-label={tr?'llms.txt taslağı':'llms.txt draft'}/>{!llms.hasSummary&&<p className="coach-muted">{tr?'Özet satırını siz doldurun; strateji onaylandıysa konumlandırmanız buraya gelir.':'Fill in the summary line yourself; once the strategy is approved your positioning appears here.'}</p>}
+        <button type="button" className="studio-text-button" onClick={()=>{void navigator.clipboard?.writeText(llms.text).then(()=>setCopied('llms')).catch(()=>setCopied(''));}}><Copy size={14}/>{copied==='llms'?(tr?'Kopyalandı':'Copied'):(tr?'Taslağı kopyala':'Copy the draft')}</button></>
+        :<button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={()=>{setBusy('llms');projectRequest<{text:string;pages:number;fromScan:boolean;hasSummary:boolean}>('/api/platform/seo?view=llms').then(setLlms).catch(reason=>setError(reason.message)).finally(()=>setBusy(''));}}>{tr?'Taslağı hazırla':'Prepare the draft'}</button>}
+    </div>}
     {running&&!data.canWrite&&<p className="coach-muted">{tr?'Tarama süreniyor; sayfa kapatılsa da arka planda tamamlanır.':'The scan is running; it finishes in the background even if this page is closed.'}</p>}
     <div className="publication-view-tabs seo-ops-filter" role="tablist" onKeyDown={onTabKeys} aria-label={tr?'Bulgu durumu':'Finding state'}>
       {(['open','fixed','ignored'] as const).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}

@@ -12,8 +12,9 @@ import { developerTask, rankAuditFindings, type RankedFinding } from '@/lib/plat
 const CoachSeo=dynamic(()=>import('./CoachSeo'));
 const SeoOperations=dynamic(()=>import('./SeoOperations'));
 const SeoOpportunities=dynamic(()=>import('./SeoOpportunities'));
-type SeoView='scan'|'audit'|'opportunities'|'topics';
-const SEO_VIEWS:SeoView[]=['scan','audit','opportunities','topics'];
+const AiVisibilityPanel=dynamic(()=>import('./AiVisibilityPanel'));
+type SeoView='scan'|'audit'|'opportunities'|'visibility'|'topics';
+const SEO_VIEWS:SeoView[]=['scan','audit','opportunities','visibility','topics'];
 const IMPACT_LABELS: Record<string, [string, string]> = { high: ['Olası etki: yüksek', 'Likely impact: high'], medium: ['Olası etki: orta', 'Likely impact: medium'], low: ['Olası etki: düşük', 'Likely impact: low'] };
 const PRIORITY_LABELS: Record<string, [string, string]> = { high: ['Yüksek', 'High'], medium: ['Orta', 'Medium'], low: ['Düşük', 'Low'] };
 export default function ProjectAudit({
@@ -75,7 +76,7 @@ export default function ProjectAudit({
       setSaving('');
     }
   };
-  const labels: Record<SeoView, [string, string]> = { scan: ['Site taraması', 'Site scan'], audit: ['Tek sayfa denetimi', 'Single-page audit'], opportunities: ['Arama fırsatları', 'Search opportunities'], topics: ['Konular ve briefler', 'Topics & briefs'] };
+  const labels: Record<SeoView, [string, string]> = { scan: ['Site taraması', 'Site scan'], audit: ['Tek sayfa denetimi', 'Single-page audit'], opportunities: ['Arama fırsatları', 'Search opportunities'], visibility: ['AI aramalarında görünürlük', 'AI search visibility'], topics: ['Konular ve briefler', 'Topics & briefs'] };
   const tabs = (
     <div className="publication-view-tabs" role="tablist" aria-label={tr ? 'SEO görünümü' : 'SEO view'} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight'].includes(event.key)) { event.preventDefault(); const next = SEO_VIEWS[(SEO_VIEWS.indexOf(view) + (event.key === 'ArrowRight' ? 1 : SEO_VIEWS.length - 1)) % SEO_VIEWS.length]; setView(next); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[SEO_VIEWS.indexOf(next)]?.focus(); } }}>
       {SEO_VIEWS.map(item => <button key={item} role="tab" aria-selected={view === item} tabIndex={view === item ? 0 : -1} onClick={() => setView(item)}>{labels[item][tr ? 0 : 1]}</button>)}
@@ -84,6 +85,7 @@ export default function ProjectAudit({
   if (view === 'topics') return <section>{tabs}<CoachSeo lang={lang} /></section>;
   if (view === 'scan') return <section>{tabs}<SeoOperations workspace={workspace} lang={lang} /></section>;
   if (view === 'opportunities') return <section>{tabs}<SeoOpportunities lang={lang} /></section>;
+  if (view === 'visibility') return <section>{tabs}<AiVisibilityPanel workspace={workspace} lang={lang} /></section>;
   return (
     <section>
       {tabs}

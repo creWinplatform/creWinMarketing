@@ -8,17 +8,20 @@ import { MarketingStoreError } from './errors';
 import { PlatformRepository } from './repository';
 import { ProjectOperations } from './operations';
 import { compassSiteReceipt } from './guidance';
+import { coachState } from './coach-compass';
 import { developerTask, rankAuditFindings } from './seo-impact';
-import type { SearchConsoleQuery } from './search-console-queries';
-import { SEO_SCAN_MAX_PAGES, type SeoFindingEvent, type SeoFindingState, type SeoFindingView, type SeoOpportunitiesSnapshot, type SeoOpportunity, type SeoOperationsSnapshot, type SeoScanView } from './seo-operations-types';
+import { readSearchConsoleTotals, type SearchConsoleQuery, type SearchConsoleTotalsReader } from './search-console-queries';
+import { decryptCredentials, encryptCredentials, type StoredCredentials } from './credential-envelope';
+import { refreshGoogleCredentials } from './google-client';
+import { searchDropped, SEO_SCAN_MAX_PAGES, SEO_SCHEDULE_DAYS, type SeoScheduleView, type SeoSearchWatchView, type SeoFindingEvent, type SeoFindingState, type SeoFindingView, type SeoOpportunitiesSnapshot, type SeoOpportunity, type SeoOperationsSnapshot, type SeoScanView } from './seo-operations-types';
 
-type Scan={id:string;origin:string;source:'sitemap'|'homepage_links';discovered:number;state:'running'|'completed'|'cancelled';started_by:string;started_at:string;updated_at:string;finished_at:string|null};
+type Scan={id:string;origin:string;source:'sitemap'|'homepage_links';discovered:number;state:'running'|'completed'|'cancelled';started_via:'manual'|'schedule';started_by:string;started_at:string;updated_at:string;finished_at:string|null};
 type Page={scan_id:string;position:number;url:string;state:string;lease_token:string|null;lease_until:string|null;attempts:number};
 type Finding={id:string;finding_key:string;url:string;category:string;title:string;priority:'high'|'medium'|'low';detail:string;recommendation:string;evidence:string;state:SeoFindingState;first_seen_at:string;last_seen_at:string;last_scan_id:string;fixed_at:string|null;task_id:string|null;revision:number};
 export type SeoDependencies={audit?:(url:string)=>Promise<PageAudit>;discover?:typeof discoverSiteUrls};
 const LEASE_MS=90000,MAX_ATTEMPTS=2,STALE_MS=120000;
 // robots.txt and sitemap checks describe the whole site, so they are tracked once per origin, not once per page.
-const SITE_WIDE=new Set(['robots.txt doğrulanamadı','Sitemap doğrulanamadı']);
+const SITE_WIDE=new Set(['robots.txt doğrulanamadı','Sitemap doğrulanamadı','AI arama botları engelli','llms.txt bulunamadı']);
 const normalize=(value:string)=>{const url=new URL(value);url.hash='';return url.toString();};
 const keyOf=(url:string,finding:Pick<AuditFinding,'category'|'title'>)=>createHash('sha256').update(`${url}\n${finding.category}\n${finding.title}`).digest('hex');
 
@@ -40,7 +43,7 @@ export class SeoOperations{
   private latest(){return this.db.prepare('SELECT * FROM platform_seo_scans WHERE organization_id=? AND project_id=? ORDER BY started_at DESC,rowid DESC LIMIT 1').get(...this.args()) as Scan|undefined;}
   private event(findingId:string,kind:SeoFindingEvent['kind'],scanId:string|null,actor:string|null,at=new Date().toISOString()){this.db.prepare('INSERT INTO platform_seo_finding_events(finding_id,organization_id,project_id,kind,scan_id,actor_id,at) VALUES(?,?,?,?,?,?,?)').run(findingId,...this.args(),kind,scanId,actor,at);}
   // Starts a scan of up to SEO_SCAN_MAX_PAGES pages from the sitemap (or home-page links). One audit unit per scan.
-  async start(){
+  async start(via:'manual'|'schedule'='manual'){
     this.authorize('content.write');const origin=this.origin();if(!origin)throw new MarketingStoreError('Önce proje ayarlarında web sitesi adresini girin.',409);
     if(this.running())return this.read();
     const operations=new ProjectOperations(this.db,this.scope),reservation=operations.reserveAi('audits');let completed=false;
@@ -52,10 +55,10 @@ export class SeoOperations{
       this.db.transaction(()=>{
         this.authorize('content.write');if(this.running())throw new MarketingStoreError('Bu proje için zaten süren bir tarama var.',409);
         const id=`seoscan_${randomUUID()}`,now=new Date().toISOString();
-        this.db.prepare("INSERT INTO platform_seo_scans(id,organization_id,project_id,origin,source,discovered,state,started_by,started_at,updated_at) VALUES(?,?,?,?,?,?,'running',?,?,?)").run(id,...this.args(),origin,found.source,found.discoveredCount,this.scope.subject,now,now);
+        this.db.prepare("INSERT INTO platform_seo_scans(id,organization_id,project_id,origin,source,discovered,state,started_via,started_by,started_at,updated_at) VALUES(?,?,?,?,?,?,'running',?,?,?,?)").run(id,...this.args(),origin,found.source,found.discoveredCount,via,this.scope.subject,now,now);
         const insert=this.db.prepare("INSERT INTO platform_seo_scan_pages(scan_id,organization_id,project_id,position,url,state) VALUES(?,?,?,?,?,'pending')");
         urls.forEach((url,index)=>insert.run(id,...this.args(),index,url));
-        operations.completeAi(reservation);completed=true;this.audit_('seo.scan.start');
+        operations.completeAi(reservation);completed=true;this.audit_(via==='schedule'?'seo.scan.scheduled':'seo.scan.start');
       }).immediate();
     }catch(error){if(!completed){try{operations.refundAi(reservation);}catch{console.error('platform_usage_release_failed');}}throw error;}
     return this.read();
@@ -148,7 +151,7 @@ export class SeoOperations{
     this.authorize();const scan=this.running()||this.latest(),origin=this.origin();
     let view:SeoScanView|null=null;
     if(scan){const counts=Object.fromEntries((this.db.prepare('SELECT state,COUNT(*) n FROM platform_seo_scan_pages WHERE scan_id=? GROUP BY state').all(scan.id) as {state:string;n:number}[]).map(row=>[row.state,row.n]));
-      view={id:scan.id,origin:scan.origin,source:scan.source,discovered:scan.discovered,state:scan.state,startedAt:scan.started_at,finishedAt:scan.finished_at,pages:{total:Object.values(counts).reduce((sum,value)=>sum+value,0),done:counts.done||0,failed:counts.failed||0,pending:(counts.pending||0)+(counts.running||0),skipped:counts.skipped||0}};}
+      view={id:scan.id,origin:scan.origin,source:scan.source,discovered:scan.discovered,state:scan.state,startedVia:scan.started_via||'manual',startedAt:scan.started_at,finishedAt:scan.finished_at,pages:{total:Object.values(counts).reduce((sum,value)=>sum+value,0),done:counts.done||0,failed:counts.failed||0,pending:(counts.pending||0)+(counts.running||0),skipped:counts.skipped||0}};}
     const rows=this.db.prepare("SELECT * FROM platform_seo_findings WHERE organization_id=? AND project_id=? ORDER BY CASE state WHEN 'open' THEN 0 WHEN 'fixed' THEN 1 ELSE 2 END,last_seen_at DESC,id LIMIT 400").all(...this.args()) as Finding[];
     const tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task.status]));
     const events=this.db.prepare('SELECT kind,at,scan_id FROM platform_seo_finding_events WHERE finding_id=? ORDER BY id DESC LIMIT 6');
@@ -160,17 +163,61 @@ export class SeoOperations{
         events:(events.all(row.id) as {kind:SeoFindingEvent['kind'];at:string;scan_id:string|null}[]).map(item=>({kind:item.kind,at:item.at,scanId:item.scan_id}))};})
       .sort((a,b)=>Number(a.state!=='open')-Number(b.state!=='open')||order[a.impact]-order[b.impact]||a.url.localeCompare(b.url));
     const counts={open:0,fixed:0,ignored:0} as Record<SeoFindingState,number>;for(const row of rows)counts[row.state]++;
-    return {origin,scan:view,counts,findings,maxPages:SEO_SCAN_MAX_PAGES,canWrite:this.can('content.write')};
+    return {origin,scan:view,counts,findings,maxPages:SEO_SCAN_MAX_PAGES,canWrite:this.can('content.write'),schedule:this.scheduleView()};
+  }
+  private scheduleRow(){return this.db.prepare('SELECT * FROM platform_seo_schedules WHERE organization_id=? AND project_id=?').get(...this.args()) as {cadence:'weekly'|'monthly';owner_id:string;next_at:string;last_started_at:string|null;last_error:string|null;search_checked_at:string|null}|undefined;}
+  private scheduleView():SeoScheduleView{const row=this.scheduleRow();return row?{cadence:row.cadence,nextAt:row.next_at,lastStartedAt:row.last_started_at,lastError:row.last_error,ownedByYou:row.owner_id===this.scope.subject}:{cadence:null,nextAt:null,lastStartedAt:null,lastError:null,ownedByYou:false};}
+  // Weekly or monthly scans of the same site, run as the member who sets them (their rights and the plan quota apply).
+  // The first one follows the last scan by the chosen interval, or starts on the next worker tick when none is recent.
+  schedule(raw:Record<string,unknown>){
+    this.authorize('content.write');
+    if(Object.keys(raw).some(key=>!['action','cadence'].includes(key))||!['weekly','monthly','off'].includes(raw.cadence as string))throw new MarketingStoreError('Geçersiz tarama sıklığı.');
+    if(raw.cadence!=='off'&&!this.origin())throw new MarketingStoreError('Önce proje ayarlarında web sitesi adresini girin.',409);
+    this.db.transaction(()=>{
+      this.authorize('content.write');const now=new Date().toISOString();
+      if(raw.cadence==='off'){this.db.prepare('DELETE FROM platform_seo_schedules WHERE organization_id=? AND project_id=?').run(...this.args());this.audit_('seo.schedule.off');return;}
+      const cadence=raw.cadence as 'weekly'|'monthly',last=this.db.prepare("SELECT MAX(started_at) at FROM platform_seo_scans WHERE organization_id=? AND project_id=? AND state<>'cancelled'").get(...this.args()) as {at:string|null};
+      const due=last.at?Date.parse(last.at)+SEO_SCHEDULE_DAYS[cadence]*86400000:Date.now(),nextAt=new Date(Math.max(due,Date.now())).toISOString();
+      this.db.prepare('INSERT INTO platform_seo_schedules(organization_id,project_id,cadence,owner_id,next_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id) DO UPDATE SET cadence=excluded.cadence,owner_id=excluded.owner_id,next_at=excluded.next_at,last_error=NULL,updated_at=excluded.updated_at').run(...this.args(),cadence,this.scope.subject,nextAt,now,now);
+      this.audit_(`seo.schedule.${cadence}`);
+    }).immediate();
+    return this.read();
+  }
+  // A starting llms.txt from what the project already knows: its name, the approved positioning and the pages the last
+  // scan read. Nothing is invented and nothing is published; the team edits it and puts it on its own site.
+  llmsDraft(){
+    this.authorize();const project=this.project()!,origin=this.origin();if(!origin)throw new MarketingStoreError('Önce proje ayarlarında web sitesi adresini girin.',409);
+    const brief=coachState(this.db,...this.args()).brief,tr=(brief?.language||project.language)!=='en';
+    const scan=this.db.prepare("SELECT id FROM platform_seo_scans WHERE organization_id=? AND project_id=? AND state='completed' ORDER BY finished_at DESC LIMIT 1").get(...this.args()) as {id:string}|undefined;
+    const pages=scan?(this.db.prepare("SELECT url FROM platform_seo_scan_pages WHERE scan_id=? AND state='done' ORDER BY position LIMIT 20").all(scan.id) as {url:string}[]).map(row=>row.url):[origin+'/'];
+    const label=(url:string)=>{const path=new URL(url).pathname.replace(/\/$/,'');return path?decodeURIComponent(path.split('/').pop()!).replace(/[-_]+/g,' '):(tr?'Ana sayfa':'Home page');};
+    // Only the approved positioning describes the business; the brand voice describes tone, so it is not used here.
+    const summary=(brief?.positioning||'').replace(/\s+/g,' ').trim().slice(0,400);
+    const lines=[`# ${project.name}`,'',`> ${summary||(tr?'Bu satıra işletmenizi bir cümleyle anlatın.':'Describe your business in one sentence on this line.')}`,''];
+    if(brief?.icp.summary)lines.push(tr?`Kimler için: ${brief.icp.summary}`:`Who it is for: ${brief.icp.summary}`,'');
+    lines.push(tr?'## Önemli sayfalar':'## Key pages',...pages.map(url=>`- [${label(url)}](${url})`),'',tr?'## İletişim':'## Contact',`- ${tr?'Web sitesi':'Website'}: ${origin}`);
+    return {text:lines.join('\n'),pages:pages.length,fromScan:Boolean(scan),hasSummary:Boolean(summary)};
+  }
+  // Totals are shown only to members who manage connections, like the Search Console query rows.
+  watchView():SeoSearchWatchView{
+    const empty={currentFrom:null,currentTo:null,clicks:null,impressions:null,previousClicks:null,previousImpressions:null,checkedAt:null,drop:false};
+    const connection=this.db.prepare("SELECT id FROM platform_connections WHERE organization_id=? AND project_id=? AND provider='search_console' AND active=1 ORDER BY updated_at DESC,id LIMIT 1").get(...this.args()) as {id:string}|undefined;
+    if(!connection)return {state:'not_connected',...empty};
+    if(!this.can('connections.manage'))return {state:'restricted',...empty};
+    if(!this.scheduleRow())return {state:'not_scheduled',...empty};
+    const row=this.db.prepare('SELECT * FROM platform_seo_search_watch WHERE organization_id=? AND project_id=? AND connection_id=?').get(...this.args(),connection.id) as {status:'ready'|'no_data'|'unavailable';current_from:string;current_to:string;clicks:number|null;impressions:number|null;previous_clicks:number|null;previous_impressions:number|null;checked_at:string}|undefined;
+    if(!row)return {state:'not_checked',...empty};
+    return {state:row.status,currentFrom:row.current_from,currentTo:row.current_to,clicks:row.clicks,impressions:row.impressions,previousClicks:row.previous_clicks,previousImpressions:row.previous_impressions,checkedAt:row.checked_at,drop:searchDropped(row.clicks,row.previous_clicks)};
   }
   // Fixed editorial rules over the stored Search Console snapshot; only members who manage connections see query rows.
   opportunities():SeoOpportunitiesSnapshot{
     this.authorize();
     const connection=this.db.prepare("SELECT id FROM platform_connections WHERE organization_id=? AND project_id=? AND provider='search_console' AND active=1 ORDER BY updated_at DESC,id LIMIT 1").get(...this.args()) as {id:string}|undefined;
-    if(!connection)return {state:'not_connected',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false};
-    if(!this.can('connections.manage'))return {state:'restricted',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false};
+    if(!connection)return {state:'not_connected',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false,watch:this.watchView()};
+    if(!this.can('connections.manage'))return {state:'restricted',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false,watch:this.watchView()};
     const row=this.db.prepare('SELECT connection_id,status,date_from,date_to,rows_json,checked_at FROM platform_coach_seo_queries WHERE organization_id=? AND project_id=?').get(...this.args()) as {connection_id:string;status:'ready'|'no_data'|'unavailable';date_from:string;date_to:string;rows_json:string;checked_at:string}|undefined;
     const current=row&&row.connection_id===connection.id?row:undefined;
-    if(!current)return {state:'not_fetched',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:true};
+    if(!current)return {state:'not_fetched',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:true,watch:this.watchView()};
     const queries=current.status==='ready'?JSON.parse(current.rows_json) as SearchConsoleQuery[]:[];
     const items:SeoOpportunity[]=[];
     for(const query of queries){
@@ -179,7 +226,7 @@ export class SeoOperations{
       else if(query.position<=5&&query.impressions>=50&&ctr<0.02)items.push({...query,ctr,kind:'low_ctr'});
     }
     items.sort((a,b)=>b.impressions-a.impressions||a.query.localeCompare(b.query));
-    return {state:current.status,from:current.date_from,to:current.date_to,checkedAt:current.checked_at,queries:queries.length,items:items.slice(0,25),canRefresh:true};
+    return {state:current.status,from:current.date_from,to:current.date_to,checkedAt:current.checked_at,queries:queries.length,items:items.slice(0,25),canRefresh:true,watch:this.watchView()};
   }
 }
 // Worker step: continues scans whose tab was closed. One page per scan per tick; the starter's rights are re-checked.
@@ -192,3 +239,44 @@ export async function advanceSeoScans(db:Database.Database,dependencies:SeoDepen
   }
   return advanced;
 }
+type ScheduleRow={organization_id:string;project_id:string;cadence:'weekly'|'monthly';owner_id:string;next_at:string;search_checked_at:string|null};
+export type SeoScheduleDependencies=SeoDependencies&{totals?:SearchConsoleTotalsReader;refresh?:typeof refreshGoogleCredentials;now?:number};
+// Worker step: starts due scheduled scans (the worker then continues them page by page) and, once a week per
+// scheduled project, reads Search Console totals with the stored grant of a member who may use it.
+export async function runSeoSchedules(db:Database.Database,key:string,dependencies:SeoScheduleDependencies={},limit=2){
+  const now=dependencies.now??Date.now(),at=new Date(now).toISOString(),day=86400000;let started=0,checked=0;
+  const stop=(row:ScheduleRow,reason:string)=>{db.prepare('DELETE FROM platform_seo_schedules WHERE organization_id=? AND project_id=?').run(row.organization_id,row.project_id);db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(row.owner_id,row.organization_id,row.project_id,`seo.schedule.stopped:${reason}`,at);};
+  for(const row of db.prepare('SELECT * FROM platform_seo_schedules WHERE next_at<=? ORDER BY next_at LIMIT ?').all(at,limit) as ScheduleRow[]){
+    const scope={subject:row.owner_id,organizationId:row.organization_id,projectId:row.project_id},repo=new PlatformRepository(db);
+    // The member who set the schedule must still be able to scan; otherwise the schedule stops (it is never moved to someone else).
+    if(!repo.can(row.owner_id,row.organization_id,row.project_id,'content.write')||repo.workspace(row.owner_id,row.organization_id,row.project_id)?.project.productPack!=='standard'){stop(row,'rights');continue;}
+    try{await new SeoOperations(db,scope,dependencies).start('schedule');started++;
+      db.prepare('UPDATE platform_seo_schedules SET next_at=?,last_started_at=?,last_error=NULL,updated_at=? WHERE organization_id=? AND project_id=?').run(new Date(now+SEO_SCHEDULE_DAYS[row.cadence]*day).toISOString(),at,at,row.organization_id,row.project_id);}
+    catch(error){
+      // Quota used up, site unreachable or similar: try again tomorrow and show why on the SEO screen.
+      const message=error instanceof MarketingStoreError?error.message:'Planlı tarama başlatılamadı.';
+      db.prepare('UPDATE platform_seo_schedules SET next_at=?,last_error=?,updated_at=? WHERE organization_id=? AND project_id=?').run(new Date(now+day).toISOString(),message.slice(0,300),at,row.organization_id,row.project_id);
+    }
+  }
+  for(const row of db.prepare('SELECT * FROM platform_seo_schedules WHERE search_checked_at IS NULL OR search_checked_at<=? ORDER BY search_checked_at IS NOT NULL,search_checked_at LIMIT ?').all(new Date(now-7*day).toISOString(),limit) as ScheduleRow[]){
+    db.prepare('UPDATE platform_seo_schedules SET search_checked_at=? WHERE organization_id=? AND project_id=?').run(at,row.organization_id,row.project_id);
+    const repo=new PlatformRepository(db);if(!repo.can(row.owner_id,row.organization_id,row.project_id,'connections.manage'))continue;
+    const connection=db.prepare("SELECT id,integration_id,encrypted_credentials FROM platform_connections WHERE organization_id=? AND project_id=? AND provider='search_console' AND active=1 ORDER BY updated_at DESC,id LIMIT 1").get(row.organization_id,row.project_id) as {id:string;integration_id:string;encrypted_credentials:string}|undefined;
+    if(!connection)continue;
+    // Search Console data settles after about three days; both weeks end before that.
+    const end=now-3*day,iso=(value:number)=>new Date(value).toISOString().slice(0,10),current={from:iso(end-6*day),to:iso(end)},previous={from:iso(end-13*day),to:iso(end-7*day)};
+    let status:'ready'|'no_data'|'unavailable'='unavailable',now_:Awaited<ReturnType<SearchConsoleTotalsReader>>=null,before:Awaited<ReturnType<SearchConsoleTotalsReader>>=null;
+    try{
+      const credentials=decryptCredentials<StoredCredentials>(connection.encrypted_credentials,key,row.organization_id,row.project_id,connection.id),fresh=await (dependencies.refresh||refreshGoogleCredentials)(credentials);
+      if(fresh!==credentials)db.prepare('UPDATE platform_connections SET encrypted_credentials=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=? AND active=1 AND encrypted_credentials=?').run(encryptCredentials(fresh,key,row.organization_id,row.project_id,connection.id),at,connection.id,row.organization_id,row.project_id,connection.encrypted_credentials);
+      const read=dependencies.totals||readSearchConsoleTotals;
+      now_=await read({resource:connection.integration_id,token:fresh.accessToken,...current});before=await read({resource:connection.integration_id,token:fresh.accessToken,...previous});
+      status=now_||before?'ready':'no_data';
+    }catch{status='unavailable';now_=null;before=null;}
+    db.prepare('INSERT INTO platform_seo_search_watch(organization_id,project_id,connection_id,status,current_from,current_to,clicks,impressions,previous_clicks,previous_impressions,checked_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id) DO UPDATE SET connection_id=excluded.connection_id,status=excluded.status,current_from=excluded.current_from,current_to=excluded.current_to,clicks=excluded.clicks,impressions=excluded.impressions,previous_clicks=excluded.previous_clicks,previous_impressions=excluded.previous_impressions,checked_at=excluded.checked_at')
+      .run(row.organization_id,row.project_id,connection.id,status,current.from,current.to,status==='ready'?Math.round(now_?.clicks||0):null,status==='ready'?Math.round(now_?.impressions||0):null,status==='ready'?Math.round(before?.clicks||0):null,status==='ready'?Math.round(before?.impressions||0):null,at);
+    checked++;
+  }
+  return {started,checked};
+}
+

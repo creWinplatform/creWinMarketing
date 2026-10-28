@@ -85,6 +85,6 @@ test('another project cannot see, approve or share this project’s report',()=>
 test('migration 59 is additive and repeatable',async()=>{
  const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'monthly-report-')),'fixture.sqlite');
  let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeMonthlyReportSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_monthly_reports','platform_report_shares')").get().n,0);db.close();
- db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,62);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_monthly_reports','platform_report_shares')").get().n,2);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+ db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,64);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_monthly_reports','platform_report_shares')").get().n,2);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=59').get().n,1);db.close();
 });

@@ -67,5 +67,5 @@ test('measured values come from this project’s records with source and period;
 test('schema45 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'budget-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeBudgetSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,44);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,62);assert.ok(db.prepare('PRAGMA table_info(platform_ad_plans)').all().some(column=>column.name==='clicks'));db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,64);assert.ok(db.prepare('PRAGMA table_info(platform_ad_plans)').all().some(column=>column.name==='clicks'));db.close();
 }));

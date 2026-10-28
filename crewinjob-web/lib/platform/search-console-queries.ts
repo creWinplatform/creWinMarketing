@@ -18,3 +18,14 @@ export const readSearchConsoleQueries:SearchConsoleQueryReader=async input=>{
     return {query,clicks:metric(row.clicks),impressions:metric(row.impressions),position:metric(row.position,1000)};
   });
 };
+// Site totals for one date range (no dimensions): one row, or none when the property has no data.
+export type SearchConsoleTotals={clicks:number;impressions:number}|null;
+export type SearchConsoleTotalsReader=(input:{resource:string;token:string;from:string;to:string})=>Promise<SearchConsoleTotals>;
+export const readSearchConsoleTotals:SearchConsoleTotalsReader=async input=>{
+  if(!/^sc-domain:[a-z0-9.-]+$/i.test(input.resource)){const site=new URL(input.resource);if(!['https:','http:'].includes(site.protocol)||site.username||site.password||site.hash||site.search)throw new Error('Invalid site.');}
+  const response=await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(input.resource)}/searchAnalytics/query`,{method:'POST',headers:{Authorization:`Bearer ${input.token}`,'Content-Type':'application/json'},body:JSON.stringify({startDate:input.from,endDate:input.to,dataState:'final'}),redirect:'error',signal:AbortSignal.timeout(15000)});
+  if(!response.ok){await response.body?.cancel();throw new Error('Provider report unavailable.');}
+  const text=await response.text();if(text.length>65536)throw new Error('Provider response too large.');
+  const rows=JSON.parse(text).rows||[];if(!Array.isArray(rows)||rows.length>1)throw new Error('Invalid provider rows.');
+  return rows.length?{clicks:metric(rows[0].clicks),impressions:metric(rows[0].impressions)}:null;
+};

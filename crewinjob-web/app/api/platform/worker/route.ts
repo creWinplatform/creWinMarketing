@@ -15,7 +15,9 @@ import { MobileGrowth } from '@/lib/platform/mobile-store';
 import { MobileDelivery,settleUnauthorizedMobileJob } from '@/lib/platform/mobile-delivery';
 import { deliverNextCoachDigest } from '@/lib/platform/coach-digest';
 import { deliverNextContractEmail } from '@/lib/platform/billing-contract';
-import { advanceSeoScans } from '@/lib/platform/seo-operations';
+import { advanceSeoScans, runSeoSchedules } from '@/lib/platform/seo-operations';
+import { runAiVisibilityChecks } from '@/lib/platform/ai-visibility';
+import { visibilityGemini } from '../coach/shared';
 import { evaluateDueAutomations } from '@/lib/platform/automations';
 import { readDueMessagingSources } from '@/lib/platform/messaging-sources';
 import { deliverWhatsAppBatches } from '@/lib/platform/whatsapp';
@@ -84,7 +86,11 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const coachDigest=Date.now()-startedAt<25000?await deliverNextCoachDigest(db).catch(()=>false):false;
   const contractEmail=Date.now()-startedAt<25000?await deliverNextContractEmail(db).catch(()=>false):false;
   // SEO scans whose tab was closed continue here, one page at a time.
+  // Scheduled scans start here (as the member who set them) and the weekly Search Console totals are read.
+  const seoSchedules=Date.now()-startedAt<20000?await runSeoSchedules(db,credentialEncryptionKey()).catch(()=>({started:0,checked:0})):{started:0,checked:0};
   const seoPages=Date.now()-startedAt<20000?await advanceSeoScans(db).catch(()=>0):0;
+  // Weekly AI search visibility checks (opt-in; one AI credit per question, as the member who turned them on).
+  const aiVisibility=Date.now()-startedAt<15000?await runAiVisibilityChecks(db,visibilityGemini()).catch(()=>0):0;
   // Automation bookkeeping only (enrollments and exits); sending always waits for a person's approval.
   let automations=0;try{automations=evaluateDueAutomations(db,credentialEncryptionKey());}catch{automations=0;}
   // Channel posts wait about 24 hours on Telegram, so sources with automatic reading are read every 30 minutes.
@@ -99,5 +105,5 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
   // Phone notifications carry no data: a fixed notice that something new needs the person, at most every 30 minutes.
   const pushes=Date.now()-startedAt<25000?await deliverDuePushes(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes };
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes };
 }

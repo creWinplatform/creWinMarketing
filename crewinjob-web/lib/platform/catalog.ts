@@ -12,7 +12,7 @@ export type ModuleDefinition = {
 
 // IDs preserve the existing tab and route contracts.
 export const MODULES = [
-  { id: 'dashboard', label: { tr: 'Dashboard', en: 'Dashboard' }, icon: '📈', scope: 'shared', group: 'overview' },
+  { id: 'dashboard', label: { tr: 'Genel bakış', en: 'Overview' }, icon: '📈', scope: 'shared', group: 'overview' },
   { id: 'social', label: { tr: 'Sosyal medya', en: 'Social media' }, icon: '📱', scope: 'shared', group: 'marketing' },
   { id: 'mobile', label: { tr: 'Mobil büyüme', en: 'Mobile growth' }, icon: 'mobile', scope: 'shared', group: 'marketing' },
   { id: 'library', label: { tr: 'İçerik kütüphanesi', en: 'Content library' }, icon: '🗂️', scope: 'shared', group: 'marketing' },

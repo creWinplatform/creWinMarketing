@@ -10,6 +10,7 @@ import { deliverCoachDigest, type DigestDelivery, type DigestMail } from './coac
 import { INBOX_LIMITS } from './social-inbox-types';
 import { receivedInvites } from './member-invites';
 import { webPushConfiguration } from './web-push-config';
+import { searchDropped } from './seo-operations-types';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
 
 type Lang = 'tr' | 'en';
@@ -64,6 +65,17 @@ export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()
       .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { id: string; revision: number; updated_at: string }[];
     if (rows.length) alerts.push({ kind: 'ad_error', severity: 'warning', count: rows.length, at: rows[0].updated_at, href: '/?tab=campaigns&campaignView=ads', keys: rows.map(row => `ad:${row.id}:${row.revision}`) });
   }
+  // New or returning findings from a scheduled site scan (a scan someone starts by hand is looked at right away).
+  if (can('content.write')) {
+    const rows = db.prepare("SELECT e.finding_id,MAX(e.at) at FROM platform_seo_finding_events e JOIN platform_seo_findings f ON f.id=e.finding_id JOIN platform_seo_scans s ON s.id=e.scan_id WHERE e.organization_id=? AND e.project_id=? AND e.kind IN ('detected','reopened') AND e.at>=? AND f.state='open' AND s.started_via='schedule' GROUP BY e.finding_id ORDER BY at DESC LIMIT 100")
+      .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { finding_id: string; at: string }[];
+    if (rows.length) alerts.push({ kind: 'seo_findings', severity: 'warning', count: rows.length, at: rows[0].at, href: '/?tab=seo', keys: rows.map(row => `seo:${row.finding_id}:${row.at}`) });
+  }
+  // Clicks from Google search fell by the fixed rule in the weekly check. Search Console figures stay with connection managers.
+  if (can('connections.manage')) {
+    const watch = db.prepare("SELECT w.clicks,w.previous_clicks,w.current_to,w.checked_at FROM platform_seo_search_watch w JOIN platform_connections c ON c.id=w.connection_id AND c.active=1 WHERE w.organization_id=? AND w.project_id=? AND w.status='ready' AND w.checked_at>=?").get(...args(scope), iso(now - 8 * DAY)) as { clicks: number | null; previous_clicks: number | null; current_to: string; checked_at: string } | undefined;
+    if (watch && searchDropped(watch.clicks, watch.previous_clicks)) alerts.push({ kind: 'search_drop', severity: 'warning', count: 1, at: watch.checked_at, href: '/?tab=seo', keys: [`search:${watch.current_to}`], clicks: { current: watch.clicks!, previous: watch.previous_clicks! } });
+  }
   // Invitations to other projects belong to the person, not this project; they are accepted in the portfolio.
   const invites = receivedInvites(db, scope.subject);
   if (invites.length) alerts.push({ kind: 'invite_pending', severity: 'warning', count: invites.length, at: [...invites].sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))[0].expiresAt, href: '/portfolio', keys: invites.map(item => `invite:${item.id}`) });
@@ -84,6 +96,8 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
         : (tr ? `Ücretli dönem ${time(alert.at)} tarihinde bitiyor. Yenileme otomatik değildir.` : `The paid period ends at ${time(alert.at)}. Renewal is not automatic.`);
       case 'ad_error': return tr ? `${n(alert.count)} reklam planında sağlayıcı hatası var. Harcamanın durumunu reklam hesabından kontrol edin.` : `${n(alert.count)} ad plan(s) have a provider error. Check the spend status in the ad account.`;
       case 'invite_pending': return tr ? `${n(alert.count)} proje daveti kabulünüzü bekliyor (ilk bitiş: ${time(alert.at)}).` : `${n(alert.count)} project invitation(s) are waiting for you (first expires ${time(alert.at)}).`;
+      case 'seo_findings': return tr ? `Planlı site taramasında ${n(alert.count)} yeni veya yeniden görülen SEO bulgusu var.` : `The scheduled site scan found ${n(alert.count)} new or returning SEO finding(s).`;
+      case 'search_drop': return tr ? `Google aramadan gelen tıklamalar son 7 günde önceki haftaya göre düştü (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).` : `Clicks from Google search fell in the last 7 days compared with the week before (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).`;
     }
   };
   const lines = [tr ? `${project.name} · dikkat gerekenler` : `${project.name} · needs attention`, ''];

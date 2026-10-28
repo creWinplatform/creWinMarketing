@@ -14,6 +14,8 @@ const CompassContext=createContext<Context|null>(null);
 // First-run path pre-filled from the approved strategy brief when there is one.
 const initial=(data:CompassSnapshot|null):Draft=>data?.suggestion?{...empty,intent:data.suggestion.intent,channels:data.suggestion.channels.length?data.suggestion.channels:empty.channels,goalId:data.suggestion.goalId}:{...empty,goalId:data?.goals.length===1?data.goals[0].id:''};
 export function useCompassRefresh(){return useContext(CompassContext)?.refresh||(()=>{});}
+// The overview's guided start reads the same snapshot; null outside standard projects.
+export function useCompassState(){return useContext(CompassContext);}
 const empty:Draft={intent:'leads',experience:'guided',goalId:'',campaignId:'',appId:'',channels:['linkedin_company'],obstacles:{}};
 const channelNames:Record<string,[string,string]>={linkedin_company:['LinkedIn şirket','LinkedIn company'],linkedin_person:['LinkedIn kişisel','LinkedIn personal'],facebook:['Facebook Sayfası','Facebook Page'],instagram:['Instagram','Instagram'],twitter:['X','X'],email:['E-posta','Email']};
 const labels={done:['Doğrulandı','Verified'],todo:['Sırada','Next'],blocked:['Ön koşul var','Prerequisite'],unknown:['Doğrulanmadı','Unverified']} as const;
@@ -36,6 +38,9 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
     if(data.firstRun&&!callbackVisit.current){
       // One guided start: with no strategy brief yet, a member who can write starts with the growth diagnosis instead of a second dialog.
       if(data.coach.canDiagnose&&!data.coach.hasBrief&&!data.coach.hasDraft){(window as Window&{__ryzevoCoachStart?:boolean}).__ryzevoCoachStart=true;window.dispatchEvent(new Event('ryzevo:coach-start'));return;}
+      // Until a strategy is approved the path is not asked for separately: the diagnosis already asked for the goal, and
+      // the approved brief pre-fills the path. The overview's next-step card says what to do meanwhile.
+      if(!data.coach.hasBrief)return;
       setDraft(initial(data));setView('setup');setOpened(true);}
   },[data]);
   useEffect(()=>{

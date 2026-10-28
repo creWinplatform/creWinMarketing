@@ -1313,6 +1313,54 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(62,datetime('now'));
   `))();
+  // Schema 63: scheduled site scans (run as the member who set them) and a weekly Search Console totals check.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=63').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_seo_schedules (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, cadence TEXT NOT NULL CHECK(cadence IN ('weekly','monthly')),
+      owner_id TEXT NOT NULL REFERENCES platform_users(id), next_at TEXT NOT NULL, last_started_at TEXT, last_error TEXT,
+      search_checked_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_seo_schedules_due ON platform_seo_schedules(next_at);
+    ALTER TABLE platform_seo_scans ADD COLUMN started_via TEXT NOT NULL DEFAULT 'manual' CHECK(started_via IN ('manual','schedule'));
+    CREATE TABLE platform_seo_search_watch (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, connection_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ready','no_data','unavailable')),
+      current_from TEXT NOT NULL, current_to TEXT NOT NULL, clicks INTEGER, impressions INTEGER, previous_clicks INTEGER, previous_impressions INTEGER,
+      checked_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(63,datetime('now'));
+  `))();
+  // Schema 64: AI search visibility — the team's questions and what a search-grounded assistant answered.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=64').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ai_visibility_questions (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      question TEXT NOT NULL CHECK(length(question) BETWEEN 8 AND 300), created_by TEXT NOT NULL REFERENCES platform_users(id), created_at TEXT NOT NULL,
+      UNIQUE(id,organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_ai_visibility_questions_project ON platform_ai_visibility_questions(organization_id,project_id);
+    CREATE TABLE platform_ai_visibility_checks (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, question_id TEXT NOT NULL,
+      provider TEXT NOT NULL, model TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('ok','failed')),
+      brand_mentioned INTEGER CHECK(brand_mentioned IN (0,1)), site_cited INTEGER CHECK(site_cited IN (0,1)),
+      competitors_json TEXT NOT NULL DEFAULT '[]', sources_json TEXT NOT NULL DEFAULT '[]', queries_json TEXT NOT NULL DEFAULT '[]',
+      excerpt TEXT, asked_by TEXT NOT NULL REFERENCES platform_users(id), via TEXT NOT NULL CHECK(via IN ('manual','schedule')), asked_at TEXT NOT NULL,
+      FOREIGN KEY(question_id,organization_id,project_id) REFERENCES platform_ai_visibility_questions(id,organization_id,project_id) ON DELETE CASCADE
+    );
+    CREATE INDEX platform_ai_visibility_checks_question ON platform_ai_visibility_checks(question_id,asked_at);
+    CREATE TABLE platform_ai_visibility_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, owner_id TEXT NOT NULL REFERENCES platform_users(id),
+      next_at TEXT NOT NULL, last_error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_ai_visibility_settings_due ON platform_ai_visibility_settings(next_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(64,datetime('now'));
+  `))();
   return db;
 }
 

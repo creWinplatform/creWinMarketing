@@ -84,10 +84,10 @@ test('Search Console opportunities follow fixed rules and are visible only to co
   const snapshot=seo(f,deps).opportunities();
   assert.equal(snapshot.state,'ready');assert.equal(snapshot.queries,4);assert.deepEqual(plain(snapshot.items.map(item=>[item.query,item.kind])),[['low ctr','low_ctr'],['near','near_first_page']]);
   assert.equal(snapshot.items[1].ctr,1/120,'CTR is computed from the stored clicks and impressions only');
-  const editor=f.member('editor');assert.deepEqual(plain(seo(f,deps,editor).opportunities()),{state:'restricted',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false});
+  const editor=f.member('editor');assert.deepEqual(plain(seo(f,deps,editor).opportunities()),{state:'restricted',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false,watch:{state:'restricted',currentFrom:null,currentTo:null,clicks:null,impressions:null,previousClicks:null,previousImpressions:null,checkedAt:null,drop:false}});
 }));
 test('schema40 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'seo-ops-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeSeoOperationsSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,39);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,62);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_seo_findings').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,64);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_seo_findings').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

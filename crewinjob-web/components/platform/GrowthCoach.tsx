@@ -36,7 +36,9 @@ const openLabels:Record<CoachTool,Pair>={library:['İçerik stüdyosunu aç','Op
 const toEdit=(brief:CoachBrief):EditBrief=>({...brief,icp:{summary:brief.icp.summary,pains:brief.icp.pains.join('\n')}});
 const fromEdit=(brief:EditBrief):CoachBrief=>({...brief,icp:{summary:brief.icp.summary,pains:brief.icp.pains.split('\n').map(item=>item.trim()).filter(Boolean)}});
 
-export default function GrowthCoach({workspace,lang,onChange}:{workspace:WorkspaceContext;lang:Locale;onChange?:()=>void}){
+// guided: the overview's next-step card already invites to the diagnosis and the draft review, so before a brief is
+// approved this card shows only its dialog (opened by the 'ryzevo:coach-open' event).
+export default function GrowthCoach({workspace,lang,onChange,guided=false}:{workspace:WorkspaceContext;lang:Locale;onChange?:()=>void;guided?:boolean}){
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
   const [data,setData]=useState<CoachSnapshot|null>(null),[error,setError]=useState(''),[dialogError,setDialogError]=useState(''),[notice,setNotice]=useState(''),[calendarNotice,setCalendarNotice]=useState(false),[libraryNotice,setLibraryNotice]=useState(false),[busy,setBusy]=useState('');
   const [opened,setOpened]=useState(false),[view,setView]=useState<'questions'|'review'|'brief'>('questions'),[answers,setAnswers]=useState<CoachAnswers>(emptyAnswers),[language,setLanguage]=useState<'tr'|'en'>(workspace.project.language||lang),[edit,setEdit]=useState<EditBrief|null>(null);
@@ -53,6 +55,10 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
     start();window.addEventListener('ryzevo:coach-start',start);return()=>window.removeEventListener('ryzevo:coach-start',start);
   },[data]);
   useEffect(()=>{
+    const open=()=>{if(!data||opened)return;if(data.draft)openReview(data.draft);else if(data.canWrite)openQuestions();};
+    window.addEventListener('ryzevo:coach-open',open);return()=>window.removeEventListener('ryzevo:coach-open',open);
+  },[data,opened]);
+  useEffect(()=>{
     const element=dialog.current;if(!element)return;
     if(opened&&!element.open){previousFocus.current=document.activeElement as HTMLElement;element.showModal();}
     if(!opened&&element.open){element.close();previousFocus.current?.focus();}
@@ -68,7 +74,7 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   const close=()=>{if(busy)return;setOpened(false);if(firstStart.current&&!data?.draft&&!data?.brief){firstStart.current=false;void projectRequest('/api/platform/compass',{method:'POST',body:JSON.stringify({action:'defer',expectedRevision:0})}).catch(()=>{}).finally(refreshCompass);}};
   const diagnose=async(mode:'ai'|'template',event?:FormEvent)=>{
     event?.preventDefault();if(!data||busy)return;setBusy(mode);setDialogError('');
-    try{const value=await post<CoachSnapshot>({action:'diagnose',mode,language,answers,expectedRevision:data.revision});setData(value);if(value.draft)openReview(value.draft);}
+    try{const value=await post<CoachSnapshot>({action:'diagnose',mode,language,answers,expectedRevision:data.revision});setData(value);refreshCompass();if(value.draft)openReview(value.draft);}
     catch(reason){setDialogError(fail(reason));void load();}finally{setBusy('');}
   };
   const saveBrief=async(action:'save'|'approve')=>{
@@ -118,18 +124,19 @@ export default function GrowthCoach({workspace,lang,onChange}:{workspace:Workspa
   const updatePlan=(index:number,patch:Partial<CoachBrief['plan'][number]>)=>setEdit(old=>old&&{...old,plan:old.plan.map((item,i)=>i===index?{...item,...patch}:item)});
   const briefLabel=(key:string)=>({tr:{icp:'İdeal müşteri (ICP)',pains:'Müşteri sorunları ve doğrulanacak varsayımlar',positioning:'Konumlandırma',channels:'Öncelikli kanallar',plan:'30 günlük plan'},en:{icp:'Ideal customer (ICP)',pains:'Customer problems and assumptions to validate',positioning:'Positioning',channels:'Priority channels',plan:'30-day plan'}})[lang][key as 'icp'];
 
-  return <section className="coach-panel" aria-labelledby="coach-panel-title">
-    <div className="studio-section-title"><h2 id="coach-panel-title"><Lightbulb size={17}/>{brief?(tr?'Bu hafta':'This week'):(tr?'Büyüme koçu':'Growth coach')}</h2>
+  const cardHidden=guided&&!brief;
+  return <section className={cardHidden?'coach-panel coach-panel-guided':'coach-panel'} aria-labelledby={cardHidden?undefined:'coach-panel-title'}>
+    {!cardHidden&&<div className="studio-section-title"><h2 id="coach-panel-title"><Lightbulb size={17}/>{brief?(tr?'Bu hafta':'This week'):(tr?'Büyüme koçu':'Growth coach')}</h2>
       {brief&&<div className="coach-panel-tools">{data?.week&&<span className="studio-badge">{data.week<=4?(tr?`Hafta ${data.week} / 4`:`Week ${data.week} of 4`):(tr?'30 günlük dönem bitti':'30-day period ended')}</span>}<a className="studio-text-button" href="/?tab=calendar&planning=content">{tr?'İçerik planı':'Content plan'}<ArrowRight size={14}/></a><a className="studio-text-button" href="/?tab=project&settings=brand">{tr?'Marka & rakipler':'Brand & competitors'}<ArrowRight size={14}/></a><button type="button" className="studio-text-button" onClick={openBrief}>{tr?'Strateji briefi':'Strategy brief'}<ArrowRight size={14}/></button></div>}
-    </div>
+    </div>}
     {error&&<div className="studio-error" role="alert"><Msg text={error}/><button type="button" className="icon-button" title={tr?'Yeniden dene':'Retry'} aria-label={tr?'Yeniden dene':'Retry'} onClick={()=>void load()}><RefreshCw size={16}/></button></div>}
     {notice&&<p className="studio-success" role="status"><Msg text={notice}/>{calendarNotice&&<> <a href="/?tab=calendar">{tr?'Takvimi aç':'Open Calendar'}</a></>}{libraryNotice&&<> <a href="/?tab=library">{tr?'Taslakları aç':'Open the drafts'}</a></>}</p>}
-    {!data&&!error&&<p className="studio-skeleton" role="status">{tr?'Büyüme koçu yükleniyor…':'Loading growth coach…'}</p>}
-    {data&&!brief&&!pending&&<div className="coach-intro">
+    {!data&&!error&&!cardHidden&&<p className="studio-skeleton" role="status">{tr?'Büyüme koçu yükleniyor…':'Loading growth coach…'}</p>}
+    {data&&!cardHidden&&!brief&&!pending&&<div className="coach-intro">
       <div><h3>{tr?'Nereden başlayacağınızdan emin değil misiniz?':'Not sure where to start?'}</h3><p>{tr?'Ana hedefinizi seçin ve ürününüz ile ekibiniz hakkında 11 kısa soruyu yanıtlayın. Ryzevo; ideal müşteri, konumlandırma, 2–3 öncelikli kanal ve 30 günlük bir plan içeren bir strateji briefi taslağı hazırlar. Siz inceleyip düzenler ve onaylarsınız.':'Pick your main goal and answer 11 short questions about your product and team. Ryzevo drafts a strategy brief — ideal customer, positioning, 2–3 priority channels and a 30-day plan — for you to review, edit and approve.'} <a className="coach-guide-link" href="/guide" target="_blank" rel="noreferrer">{tr?'Kullanım rehberi':'User guide'}</a></p></div>
       {data.canWrite?<button type="button" className="studio-primary" onClick={openQuestions}>{tr?'Teşhise başla':'Start the diagnosis'}<ArrowRight size={16}/></button>:<p className="coach-muted">{tr?'Teşhisi içerik yetkisi olan bir ekip üyesi başlatabilir.':'A teammate with content permission can start the diagnosis.'}</p>}
     </div>}
-    {data&&pending&&<div className="coach-pending" role="status"><div><strong>{brief?(tr?'Güncellenmiş bir brief taslağı onay bekliyor.':'A revised brief draft is waiting for approval.'):(tr?'Strateji briefi taslağınız inceleme bekliyor.':'Your strategy brief draft is waiting for review.')}</strong><span>{data.draftSource==='ai'?(tr?'AI önerisi':'AI suggestion'):(tr?'Yanıtlarınızdan kural tabanlı başlangıç':'Rule-based starter from your answers')}{data.draftAt?` · ${date(data.draftAt)}`:''}</span></div><button type="button" className="studio-secondary" onClick={()=>openReview(pending)}>{tr?'Taslağı incele':'Review draft'}<ArrowRight size={15}/></button></div>}
+    {data&&pending&&!cardHidden&&<div className="coach-pending" role="status"><div><strong>{brief?(tr?'Güncellenmiş bir brief taslağı onay bekliyor.':'A revised brief draft is waiting for approval.'):(tr?'Strateji briefi taslağınız inceleme bekliyor.':'Your strategy brief draft is waiting for review.')}</strong><span>{data.draftSource==='ai'?(tr?'AI önerisi':'AI suggestion'):(tr?'Yanıtlarınızdan kural tabanlı başlangıç':'Rule-based starter from your answers')}{data.draftAt?` · ${date(data.draftAt)}`:''}</span></div><button type="button" className="studio-secondary" onClick={()=>openReview(pending)}>{tr?'Taslağı incele':'Review draft'}<ArrowRight size={15}/></button></div>}
     {data&&brief&&<>
       {data.actions.length>0?<ol className="coach-actions">{data.actions.map(actionCard)}</ol>:<div className="studio-empty"><Check size={24}/><p>{data.remaining===0&&data.resolved.length===0?(tr?'Plandaki tüm eylemler tamamlandı. Gelecek ay için yeni bir teşhis yapabilirsiniz.':'Every plan action is handled. You can run a new diagnosis for next month.'):(tr?'Bu haftanın eylemleri tamamlandı veya ertelendi.':'This week’s actions are done or deferred.')}</p>{data.canWrite&&<button type="button" className="studio-text-button" onClick={openQuestions}>{tr?'Yeni teşhis':'New diagnosis'}<ArrowRight size={14}/></button>}</div>}
       {data.resolved.length>0&&<details className="coach-resolved"><summary>{tr?`Bu hafta ele alınanlar (${data.resolved.length})`:`Handled this week (${data.resolved.length})`}</summary><ul>{data.resolved.map(action=><li key={action.id}><span className={`coach-state ${action.state}`}>{action.state==='done'?(tr?'Tamamlandı':'Done'):(tr?'Atlandı':'Skipped')}</span><span>{show(action.title)}</span>{data.canWrite&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void act(action,'open')}><Undo2 size={14}/>{tr?'Geri al':'Undo'}</button>}</li>)}</ul></details>}

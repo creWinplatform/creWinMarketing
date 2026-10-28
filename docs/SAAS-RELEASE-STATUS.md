@@ -1,8 +1,17 @@
-# Ryzevo release status - 27 October 2026
+# Ryzevo release status - 28 October 2026
 
 The core monolith is suitable for continued isolated testing. It is NOT yet an
 accepted public/paid production service. An implementation, a local fixture test
 and an operator-approved live acceptance are different milestones.
+
+## Delivered on 28 October 2026
+
+- **Guided start** (`SAAS-GUIDED-START.md`): one next-step card on the overview (diagnosis → strategy approval → the Compass path's next verified step), a setup mode that hides empty counters and duplicate shortcuts, and a "What would you like to do?" list that names missing prerequisites first. No schema change.
+- **SEO automation and AI search (schemas 63–64)** (`SAAS-SEO-GEO.md`):
+  - weekly or monthly automatic site scans, with alerts for new findings;
+  - a weekly Search Console drop check;
+  - AI search readiness checks, an llms.txt draft, AI search visibility tracking with Gemini and Google Search, and GEO-friendly content briefs.
+  - Migrations 63–64 were dry-run on a copy; they are not yet applied to the real database.
 
 ## Delivered on 27 October 2026
 

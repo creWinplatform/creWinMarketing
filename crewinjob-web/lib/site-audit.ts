@@ -10,7 +10,7 @@ export type AuditFinding = { id: string; priority: AuditPriority; category: stri
 export type PageAudit = {
   ok: true; source: 'public_html'; checkedAt: string; requestedUrl: string; finalUrl: string;
   httpStatus: number; redirects: string[]; findings: AuditFinding[];
-  summary: { title: string; description: string; h1Count: number; h2Count: number; canonical: string; robots: string | null; imageCount: number; imagesMissingAlt: number; internalLinksChecked: number; schemaBlocks: number; indexStatus: 'unknown'; robotsStatus: number | null; sitemapStatus: number | null; checkedLinks: Array<{ url: string; status: number | null }> };
+  summary: { title: string; description: string; h1Count: number; h2Count: number; canonical: string; robots: string | null; imageCount: number; imagesMissingAlt: number; internalLinksChecked: number; schemaBlocks: number; indexStatus: 'unknown'; robotsStatus: number | null; sitemapStatus: number | null; llmsStatus?: number | null; aiSearchBotsBlocked?: string[]; checkedLinks: Array<{ url: string; status: number | null }> };
   limitations: string[];
 };
 
@@ -195,7 +195,35 @@ function attribute(tag: string, name: string): string { return tag.match(new Reg
 function plain(value: string): string { return value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(); }
 function add(findings: AuditFinding[], finding: Omit<AuditFinding, 'id'>) { findings.push({ id: `finding-${findings.length + 1}`, ...finding }); }
 
-function inspectHtml(html: string, pageUrl: URL, status: number, redirects: string[]) {
+// ── AI search readiness (GEO) ──────────────────────────────────────────────────────────────────────────────
+// Fixed checks only. Being cited in AI answers cannot be measured from the page; these are prerequisites the
+// assistants' own documentation names (crawler access, readable HTML, structured data).
+export const GEO_CATEGORY = 'AI arama (GEO)';
+// Crawlers that fetch pages to answer or cite in AI search. Training-only crawlers (GPTBot, ClaudeBot,
+// Google-Extended) are a separate business choice and are not flagged.
+export const AI_SEARCH_BOTS = ['OAI-SearchBot', 'ChatGPT-User', 'PerplexityBot', 'Claude-SearchBot'] as const;
+// Page-level types that say nothing about who runs the site; anything else (Organization, any LocalBusiness subtype such
+// as CafeOrCoffeeShop, Person, Product…) names an entity.
+const GENERIC_SCHEMA_TYPES = new Set(['WebSite', 'WebPage', 'BreadcrumbList', 'ItemList', 'SiteNavigationElement', 'ImageObject', 'SearchAction', 'ReadAction', 'CollectionPage']);
+/** robots.txt groups → the AI search bots whose group (or the * group) disallows the whole site. */
+export function blockedAiSearchBots(robots: string): string[] {
+  const groups: { agents: string[]; disallowAll: boolean; allowAll: boolean }[] = [];
+  let current: { agents: string[]; disallowAll: boolean; allowAll: boolean } | null = null, collecting = false;
+  for (const raw of robots.split(/\r?\n/)) {
+    const line = raw.replace(/#.*/, '').trim(); if (!line) continue;
+    const match = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/); if (!match) continue;
+    const field = match[1].toLowerCase(), value = match[2].trim();
+    if (field === 'user-agent') { if (!current || !collecting) { current = { agents: [], disallowAll: false, allowAll: false }; groups.push(current); collecting = true; } current.agents.push(value.toLowerCase()); continue; }
+    collecting = false; if (!current) continue;
+    if (field === 'disallow' && value === '/') current.disallowAll = true;
+    if (field === 'allow' && value === '/') current.allowAll = true;
+  }
+  const rule = (agent: string) => groups.find(group => group.agents.includes(agent.toLowerCase())) || groups.find(group => group.agents.includes('*'));
+  return AI_SEARCH_BOTS.filter(bot => { const group = rule(bot); return Boolean(group && group.disallowAll && !group.allowAll); });
+}
+
+/** Exported for tests: the checks run on one page's HTML, without fetching anything. */
+export function inspectHtml(html: string, pageUrl: URL, status: number, redirects: string[]) {
   const findings: AuditFinding[] = [];
   const title = plain(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '');
   const descriptionTag = html.match(/<meta\b[^>]*\bname\s*=\s*["']description["'][^>]*>/i)?.[0] || html.match(/<meta\b[^>]*\bcontent\s*=\s*["'][^"']*["'][^>]*\bname\s*=\s*["']description["'][^>]*>/i)?.[0] || '';
@@ -212,6 +240,14 @@ function inspectHtml(html: string, pageUrl: URL, status: number, redirects: stri
   const linkTargets = links.filter(href => !href.startsWith('#') && !/^(mailto:|tel:|javascript:)/i.test(href)).map(href => { try { return new URL(href, pageUrl); } catch { return null; } }).filter((url): url is URL => Boolean(url) && url!.origin === pageUrl.origin).filter((url, index, all) => all.findIndex(item => item.href === url.href) === index).slice(0, MAX_LINK_CHECKS);
   const ctaText = [...Array.from(html.matchAll(/<(a|button)\b[^>]*>([\s\S]*?)<\/\1>/gi)).map(match => plain(match[2])), ...Array.from(html.matchAll(/<input\b[^>]*>/gi)).map(match => attribute(match[0], 'value') || attribute(match[0], 'aria-label'))].filter(Boolean);
   const hasCta = ctaText.some(text => /(kaydol|üye ol|başvur|teklif|randevu|satın al|register|sign up|apply|book|buy|get started)/i.test(text));
+  const schemaTypes = schemas.flatMap(script => { try { const value = JSON.parse(script.replace(/^.*?>/, '').replace(/<\/script>$/i, '').trim()); const items = Array.isArray(value) ? value : Array.isArray(value?.['@graph']) ? value['@graph'] : [value]; return items.flatMap((item: { '@type'?: unknown }) => Array.isArray(item?.['@type']) ? item['@type'] : [item?.['@type']]).filter((type: unknown): type is string => typeof type === 'string'); } catch { return []; } });
+  // Text a crawler that does not run JavaScript would read (scripts, styles and markup removed).
+  const bodyText = plain((html.match(/<body\b[^>]*>([\s\S]*)<\/body>/i)?.[1] || html).replace(/<(script|style|noscript|template)\b[\s\S]*?<\/\1>/gi, ' '));
+  // JSON-LD blocks are data, not JavaScript.
+  const scriptCount = (html.match(/<script\b[^>]*>/gi) || []).filter(tag => !/application\/ld\+json/i.test(tag)).length;
+  // A JavaScript app shell, not just a short page with an analytics script: an empty mount element, a "turn on
+  // JavaScript" notice, or several scripts carrying the page.
+  const appShell = /<div\b[^>]*\bid\s*=\s*["']?(root|app|__next|__nuxt|svelte|main-app)["']?[^>]*>\s*<\/div>/i.test(html) || /<noscript\b[^>]*>[\s\S]*?javascript[\s\S]*?<\/noscript>/i.test(html) || scriptCount >= 3;
 
   if (status >= 400) add(findings, { priority: 'high', category: 'Erişilebilirlik', title: 'Sayfa başarılı yanıt vermiyor', detail: `HTTP ${status} döndü.`, recommendation: 'Sunucu yanıtını ve yönlendirme kuralını düzeltin.', evidence: `HTTP durum kodu: ${status}` });
   if (redirects.length) add(findings, { priority: redirects.length > 1 ? 'medium' : 'low', category: 'Yönlendirme', title: 'Yönlendirme zinciri bulundu', detail: `${redirects.length} yönlendirme takip edildi.`, recommendation: 'Mümkünse hedef URL’ye tek yönlendirme ile ulaşın.', evidence: redirects.join(' → ') });
@@ -224,6 +260,9 @@ function inspectHtml(html: string, pageUrl: URL, status: number, redirects: stri
   if (/noindex/i.test(robots)) add(findings, { priority: 'high', category: 'İndekslenebilirlik', title: 'Sayfa noindex olarak işaretli', detail: 'Sayfa taranabilir olsa dahi indekslenmemesi isteniyor.', recommendation: 'Bu bilinçli değilse robots yönergesini kaldırın.', evidence: `robots: ${robots}` });
   if (imagesMissingAlt) add(findings, { priority: 'low', category: 'Erişilebilirlik', title: 'Alt metni olmayan görseller var', detail: `${imagesMissingAlt} görselde alt metin bulunamadı.`, recommendation: 'Anlam taşıyan görsellere kısa ve açıklayıcı alt metin ekleyin.', evidence: `Toplam görsel: ${images.length}; alt metinsiz: ${imagesMissingAlt}` });
   if (invalidSchema) add(findings, { priority: 'medium', category: 'Yapılandırılmış veri', title: 'Geçersiz JSON-LD bulundu', detail: `${invalidSchema} JSON-LD bloğu JSON olarak ayrıştırılamadı.`, recommendation: 'Yapılandırılmış veri söz dizimini doğrulayın.', evidence: `JSON-LD blokları: ${schemas.length}; geçersiz: ${invalidSchema}` });
+  if (status < 400 && bodyText.length < 250 && scriptCount > 0 && appShell) add(findings, { priority: 'medium', category: GEO_CATEGORY, title: 'Sayfa içeriği JavaScript olmadan okunamıyor', detail: `JavaScript çalıştırılmadan sayfada ${bodyText.length} karakter metin var.`, recommendation: 'Ana metni sunucuda HTML olarak üretin (sunucu tarafı oluşturma veya statik sayfa). AI tarayıcılarının çoğu JavaScript çalıştırmaz.', evidence: `Görünen metin: ${bodyText.length} karakter; script etiketi: ${scriptCount}` });
+  if (status < 400 && !schemas.length) add(findings, { priority: 'low', category: GEO_CATEGORY, title: 'Yapılandırılmış veri yok', detail: 'Sayfada JSON-LD yapılandırılmış veri bulunamadı.', recommendation: 'Sayfanın türüne uygun schema.org işaretlemesi ekleyin (ör. Organization, LocalBusiness, Product, FAQPage, Article).', evidence: 'application/ld+json bulunamadı' });
+  if (status < 400 && pageUrl.pathname === '/' && schemas.length && schemaTypes.every(type => GENERIC_SCHEMA_TYPES.has(type))) add(findings, { priority: 'low', category: GEO_CATEGORY, title: 'Kurum bilgisi işaretlenmemiş', detail: 'Ana sayfada Organization veya LocalBusiness türünde yapılandırılmış veri yok.', recommendation: 'Ana sayfaya ad, logo, adres, iletişim ve sosyal profilleri içeren Organization (yerel işletmeyse LocalBusiness) JSON-LD ekleyin.', evidence: `Bulunan türler: ${schemaTypes.join(', ') || 'yok'}` });
   if (!hasCta) add(findings, { priority: 'medium', category: 'Dönüşüm', title: 'Belirgin bir ana CTA bulunamadı', detail: 'Kayıt, teklif, randevu, satın alma veya başvuru niyeti taşıyan görünür bir eylem metni saptanamadı.', recommendation: 'Sayfanın amacına uygun tek bir ana eylemi görünür ve açık biçimde ekleyin.', evidence: `İncelenen bağlantı/düğme metni: ${ctaText.slice(0, 8).join(' | ') || 'yok'}` });
   return { findings, linkTargets, summary: { title, description, h1Count, h2Count, canonical, robots: robots || null, imageCount: images.length, imagesMissingAlt, internalLinksChecked: linkTargets.length, schemaBlocks: schemas.length, indexStatus: 'unknown' as const } };
 }
@@ -237,13 +276,19 @@ export async function auditPublicPage(input: string): Promise<PageAudit> {
   const checkedLinks = await Promise.all(audit.linkTargets.map(async link => { try { const result = await fetchPublic(link, 'text/html,*/*;q=0.8'); discardBody(result.response); return { url: link.toString(), status: result.response.status }; } catch { return { url: link.toString(), status: null }; } }));
   const broken = checkedLinks.filter(link => link.status === null || link.status >= 400);
   if (broken.length) add(audit.findings, { priority: 'medium', category: 'İç bağlantılar', title: 'Kontrol edilen iç bağlantılarda sorun var', detail: `${broken.length} bağlantı başarılı yanıt vermedi.`, recommendation: 'Bağlantı hedeflerini ve yönlendirmelerini doğrulayın.', evidence: broken.map(link => `${link.url} (${link.status ?? 'erişilemedi'})`).join(' | ') });
-  const [robotsResult, sitemapResult] = await Promise.allSettled([fetchPublic(new URL('/robots.txt', finalUrl), 'text/plain,*/*;q=0.8'), fetchPublic(new URL('/sitemap.xml', finalUrl), 'application/xml,text/xml,*/*;q=0.8')]);
-  for (const result of [robotsResult, sitemapResult]) if (result.status === 'fulfilled') discardBody(result.value.response);
+  const [robotsResult, sitemapResult, llmsResult] = await Promise.allSettled([fetchPublic(new URL('/robots.txt', finalUrl), 'text/plain,*/*;q=0.8'), fetchPublic(new URL('/sitemap.xml', finalUrl), 'application/xml,text/xml,*/*;q=0.8'), fetchPublic(new URL('/llms.txt', finalUrl), 'text/plain,text/markdown,*/*;q=0.8')]);
   const robotsStatus = robotsResult.status === 'fulfilled' ? robotsResult.value.response.status : null;
+  let robotsText = '';
+  if (robotsResult.status === 'fulfilled' && robotsStatus && robotsStatus < 400) { try { robotsText = await readLimited(robotsResult.value.response, 65536); } catch { robotsText = ''; } } else if (robotsResult.status === 'fulfilled') discardBody(robotsResult.value.response);
+  for (const result of [sitemapResult, llmsResult]) if (result.status === 'fulfilled') discardBody(result.value.response);
+  const llmsStatus = llmsResult.status === 'fulfilled' ? llmsResult.value.response.status : null;
+  const blockedBots = robotsText ? blockedAiSearchBots(robotsText) : [];
+  if (blockedBots.length) add(audit.findings, { priority: 'medium', category: GEO_CATEGORY, title: 'AI arama botları engelli', detail: `robots.txt şu AI arama tarayıcılarının siteyi okumasını engelliyor: ${blockedBots.join(', ')}.`, recommendation: 'ChatGPT, Perplexity veya Claude cevaplarında kaynak olarak görünmek istiyorsanız bu tarayıcılara izin verin. Eğitim amaçlı tarayıcılar (GPTBot, ClaudeBot, Google-Extended) ayrı bir tercihtir.', evidence: `Engelli: ${blockedBots.join(', ')}` });
+  if (llmsStatus === 404 || llmsStatus === 410) add(audit.findings, { priority: 'low', category: GEO_CATEGORY, title: 'llms.txt bulunamadı', detail: '/llms.txt yok. Bu dosya, AI araçlarına sitenizin kısa bir özetini ve önemli sayfalarını sunan öneri niteliğinde bir standarttır.', recommendation: 'SEO & Blog ekranındaki taslaktan bir llms.txt hazırlayıp sitenizin köküne koyun. Etkisi garanti değildir; zararı yoktur.', evidence: `HTTP ${llmsStatus}` });
   const sitemapStatus = sitemapResult.status === 'fulfilled' ? sitemapResult.value.response.status : null;
   if (!robotsStatus || robotsStatus >= 400) add(audit.findings, { priority: 'low', category: 'Tarama', title: 'robots.txt doğrulanamadı', detail: 'robots.txt başarılı biçimde alınamadı.', recommendation: 'robots.txt dosyasını yayınlayın ve tarama yönergelerini kontrol edin.', evidence: robotsStatus ? `HTTP ${robotsStatus}` : 'istek başarısız' });
   if (!sitemapStatus || sitemapStatus >= 400) add(audit.findings, { priority: 'low', category: 'Tarama', title: 'Sitemap doğrulanamadı', detail: 'sitemap.xml başarılı biçimde alınamadı.', recommendation: 'Sitemap konumunu ve robots.txt içindeki Sitemap satırını kontrol edin.', evidence: sitemapStatus ? `HTTP ${sitemapStatus}` : 'istek başarısız' });
-  return { ok: true, source: 'public_html', checkedAt: new Date().toISOString(), requestedUrl: requestedUrl.toString(), finalUrl: finalUrl.toString(), httpStatus: response.status, redirects, summary: { ...audit.summary, robotsStatus, sitemapStatus, checkedLinks }, findings: audit.findings, limitations: ['Google indeks durumu bu denetimden doğrulanmaz.', 'Hız ve Core Web Vitals ölçülmedi; performans puanı üretilmedi.', `İç bağlantıların yalnızca ilk ${MAX_LINK_CHECKS} benzersiz aynı alan adı hedefi kontrol edildi.`] };
+  return { ok: true, source: 'public_html', checkedAt: new Date().toISOString(), requestedUrl: requestedUrl.toString(), finalUrl: finalUrl.toString(), httpStatus: response.status, redirects, summary: { ...audit.summary, robotsStatus, sitemapStatus, llmsStatus, aiSearchBotsBlocked: blockedBots, checkedLinks }, findings: audit.findings, limitations: ['Google indeks durumu bu denetimden doğrulanmaz.', 'Hız ve Core Web Vitals ölçülmedi; performans puanı üretilmedi.', `İç bağlantıların yalnızca ilk ${MAX_LINK_CHECKS} benzersiz aynı alan adı hedefi kontrol edildi.`] };
 }
 
 function locs(xml: string): string[] { return Array.from(xml.matchAll(/<loc>([\s\S]*?)<\/loc>/gi)).map(match => match[1].trim().replace(/&amp;/g, '&')).filter(Boolean); }

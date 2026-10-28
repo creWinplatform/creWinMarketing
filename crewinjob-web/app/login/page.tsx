@@ -78,7 +78,7 @@ function LoginForm() {
         <form onSubmit={submit}>
           <div className="studio-form-grid">
             <label className="studio-form-full" htmlFor="username">
-              {tr ? 'Kullanıcı adı' : 'Username'}
+              {tr ? 'E-posta veya kullanıcı adı' : 'Email or username'}
               <input
                 id="username"
                 name="username"
