@@ -1,6 +1,6 @@
 'use client';
-import { ArrowRight, ArrowUpRight, BarChart3, CalendarClock, Check, Compass, FolderOpen, HelpCircle, LockKeyhole, Mail, Megaphone, MessagesSquare, Search, ShieldCheck, UserPlus } from 'lucide-react';
-import type { Locale, ModuleId, WorkspaceContext } from '@/lib/platform/catalog';
+import { ArrowRight, Check, Compass, HelpCircle, LockKeyhole, ShieldCheck } from 'lucide-react';
+import type { Locale } from '@/lib/platform/catalog';
 import { useCompassState } from './GrowthCompass';
 
 // One answer to "what do I do now?": the growth diagnosis, then approving the strategy, then the Compass path's next
@@ -54,39 +54,5 @@ export function NextStepCard({ lang }: { lang: Locale }) {
       <progress max={total} value={done} aria-label={tr ? 'Doğrulanmış kurulum adımları' : 'Verified setup steps'} />
       <small className="guided-start-safety"><ShieldCheck size={13} />{tr ? 'Hiçbir şey kendiliğinden yayınlanmaz veya gönderilmez.' : 'Nothing is published or sent automatically.'}</small>
     </div>
-  </section>;
-}
-
-type Task = { id: string; tab: ModuleId; href: string; Icon: typeof FolderOpen; label: [string, string]; hint: [string, string]; permission?: string; needs?: { ok: boolean; label: [string, string]; href: string; permission: string } };
-// Common jobs with the screen that does them. A missing prerequisite (an account to connect) is named first, with a
-// link to where it is set up, so nobody lands on a screen that cannot do the job yet.
-export function TaskLauncher({ workspace, lang, connections }: { workspace: WorkspaceContext; lang: Locale; connections: string[] }) {
-  const tr = lang === 'tr', idx = tr ? 0 : 1, can = (permission?: string) => !permission || Boolean(workspace.permissions?.includes(permission as never));
-  const enabled = (id: ModuleId) => workspace.modules.some(module => module.id === id), has = (...providers: string[]) => providers.some(provider => connections.includes(provider));
-  const social = { ok: has('social', 'x'), label: ['Önce bir sosyal hesap bağlayın', 'Connect a social account first'] as [string, string], href: '/?tab=project&settings=connections', permission: 'connections.manage' };
-  const tasks: Task[] = [
-    { id: 'content', tab: 'library', href: '/?tab=library', Icon: FolderOpen, label: ['Paylaşım hazırla', 'Prepare a post'], hint: ['Kendiniz yazın veya AI ile taslak çıkarın; başka kanallara da uyarlayabilirsiniz.', 'Write it yourself or draft it with AI; adapt it for other channels too.'], permission: 'content.write' },
-    { id: 'publish', tab: 'calendar', href: '/?tab=calendar&planning=social', Icon: CalendarClock, label: ['Paylaşımı planla ve yayınla', 'Schedule and publish'], hint: ['Onaylı taslağı takvime koyun; önce prova, sonra gerçek yayın.', 'Put an approved draft on the calendar; rehearse first, then publish.'], needs: social },
-    { id: 'inbox', tab: 'campaigns', href: '/?tab=campaigns&campaignView=inbox', Icon: MessagesSquare, label: ['Mesaj ve yorumları yanıtla', 'Answer messages and comments'], hint: ['Gelen kutusu tek yerde; yanıtlar onaydan sonra gider.', 'One inbox; replies go only after approval.'], needs: social },
-    { id: 'search', tab: 'seo', href: '/?tab=seo', Icon: Search, label: ['Google’da ve AI aramalarında görün', 'Be found on Google and in AI answers'], hint: has('search_console', 'google') ? ['Site taraması, Search Console fırsatları ve içerik konuları.', 'Site scan, Search Console opportunities and content topics.'] : ['Site taramasıyla başlayın; Search Console bağlarsanız gerçek arama verisi de gelir.', 'Start with a site scan; connect Search Console for real search data.'] },
-    { id: 'email', tab: 'campaigns', href: '/?tab=campaigns', Icon: Mail, label: ['E-posta kampanyası', 'Email campaign'], hint: ['Kitleyi seçin, içeriği onaylayın, önce sınırlı pilotla gönderin.', 'Choose the audience, approve the content, send a bounded pilot first.'], needs: { ok: has('email'), label: ['Önce gönderen e-posta hesabını bağlayın', 'Connect a sender account first'], href: '/?tab=campaigns&campaignView=sender', permission: 'connections.manage' } },
-    { id: 'ads', tab: 'campaigns', href: '/?tab=campaigns&campaignView=ads', Icon: Megaphone, label: ['Reklam planla', 'Plan an ad'], hint: ['Bütçe tavanıyla plan; kampanya duraklatılmış oluşturulur, başlatmak ayrıca onaylanır.', 'A plan with a spend cap; campaigns are created paused and starting needs separate approval.'], permission: 'campaign.approve' },
-    { id: 'results', tab: 'analytics', href: '/?tab=analytics', Icon: BarChart3, label: ['Sonuçları gör', 'See results'], hint: has('google') ? ['Ölçümler, gönderilerden gelen ziyaretler ve aylık rapor.', 'Measurements, visits from posts and the monthly report.'] : ['Google Analytics bağlarsanız sonuçlar kendiliğinden gelir.', 'Connect Google Analytics and results arrive on their own.'] },
-    { id: 'team', tab: 'project', href: '/?tab=project&settings=team', Icon: UserPlus, label: ['Ekip arkadaşı davet et', 'Invite a teammate'], hint: ['Rolü siz seçersiniz; her rol yalnız kendi işini görür.', 'You choose the role; each role sees only its own work.'], permission: 'members.manage' },
-  ];
-  const visible = tasks.filter(task => enabled(task.tab) && can(task.permission));
-  if (!visible.length) return null;
-  return <section id="task-launcher" className="task-launcher" aria-labelledby="task-launcher-title">
-    <h2 id="task-launcher-title">{tr ? 'Ne yapmak istiyorsunuz?' : 'What would you like to do?'}</h2>
-    <ul>{visible.map(task => {
-      const blocked = task.needs && !task.needs.ok;
-      return <li key={task.id}>
-        <a className="task-launcher-item" href={blocked && can(task.needs!.permission) ? task.needs!.href : task.href}>
-          <task.Icon size={17} aria-hidden="true" />
-          <span><strong>{task.label[idx]}</strong><small>{blocked ? (can(task.needs!.permission) ? task.needs!.label[idx] : (tr ? 'Önce yetkili bir ekip üyesi hesap bağlamalı.' : 'An authorized teammate must connect an account first.')) : task.hint[idx]}</small></span>
-          {blocked ? <span className="task-launcher-needs">{tr ? 'Ön koşul' : 'Needs setup'}</span> : <ArrowUpRight size={14} aria-hidden="true" />}
-        </a>
-      </li>;
-    })}</ul>
   </section>;
 }

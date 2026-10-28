@@ -17,6 +17,7 @@ import ProjectPlanning from '@/components/platform/ProjectPlanning';
 import ProjectReports from '@/components/platform/ProjectReports';
 import ProjectAudit from '@/components/platform/ProjectAudit';
 import { GrowthCompassProvider, CompassLauncher } from '@/components/platform/GrowthCompass';
+import { JobGuideProvider, JobGuideLauncher } from '@/components/platform/JobGuide';
 
 function TabLoading() {
   const { lang } = useLang();
@@ -181,12 +182,13 @@ export default function Home() {
     );
   return (
     <GrowthCompassProvider key={workspace.project.id} enabled={!isCrewin} lang={lang}>
+    <JobGuideProvider key={`jobs-${workspace.project.id}`} enabled={!isCrewin} lang={lang}>
     <WorkspaceShell
       workspace={workspace}
       activeTab={activeTab}
       onNavigate={navigate}
       lang={lang}
-      guidance={!isCrewin ? <CompassLauncher lang={lang}/> : undefined}
+      guidance={!isCrewin ? <><JobGuideLauncher lang={lang}/><CompassLauncher lang={lang}/></> : undefined}
       tools={
         isCrewin ? (
           <>
@@ -347,6 +349,7 @@ export default function Home() {
         </>
       )}
     </WorkspaceShell>
+    </JobGuideProvider>
     </GrowthCompassProvider>
   );
 }

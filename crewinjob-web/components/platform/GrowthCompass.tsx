@@ -36,9 +36,8 @@ export function GrowthCompassProvider({enabled,lang,children}:{enabled:boolean;l
   useEffect(()=>{
     if(!data||firstConsidered.current)return;firstConsidered.current=true;
     if(data.firstRun&&!callbackVisit.current){
-      // One guided start: with no strategy brief yet, a member who can write starts with the growth diagnosis instead of a second dialog.
-      if(data.coach.canDiagnose&&!data.coach.hasBrief&&!data.coach.hasDraft){(window as Window&{__ryzevoCoachStart?:boolean}).__ryzevoCoachStart=true;window.dispatchEvent(new Event('ryzevo:coach-start'));return;}
-      // Until a strategy is approved the path is not asked for separately: the diagnosis already asked for the goal, and
+      // Nothing opens on its own before a strategy exists: the overview's next-step card invites to the diagnosis and the
+      // job guide lets the member do something else first. Until a strategy is approved the path is not asked for separately: the diagnosis already asked for the goal, and
       // the approved brief pre-fills the path. The overview's next-step card says what to do meanwhile.
       if(!data.coach.hasBrief)return;
       setDraft(initial(data));setView('setup');setOpened(true);}

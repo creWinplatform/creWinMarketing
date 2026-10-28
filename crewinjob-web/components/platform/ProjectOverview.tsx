@@ -8,7 +8,8 @@ import CoachRefresh from './CoachRefresh';
 import CoachMyWork from './CoachMyWork';
 import TeamAlerts from './TeamAlerts';
 import ProjectApprovals from './ProjectApprovals';
-import { NextStepCard, TaskLauncher, useGuidedStage } from './GuidedStart';
+import { NextStepCard, useGuidedStage } from './GuidedStart';
+import { JobGuidePanel } from './JobGuide';
 import type { Locale, ModuleId, WorkspaceContext } from '@/lib/platform/catalog';
 import type { WorkItem, MetricEntry } from '@/lib/platform/operations';
 import { projectRequest } from '@/lib/platform/client';
@@ -37,8 +38,11 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
   const tasks = data?.tasks.filter(item => ['planned','in_progress'].includes(item.status)) || [];
   // Standard projects are guided: one next-step card instead of several starting points. Until the strategy is approved
   // (setup), empty counters, lists and shortcuts stay hidden so the first screen has one thing to do.
-  const { stage } = useGuidedStage(), guided = workspace.project.productPack === 'standard' && stage !== null;
-  const setup = guided && ['diagnose', 'approve', 'waiting'].includes(stage!);
+  const { compass, stage } = useGuidedStage(), guided = workspace.project.productPack === 'standard' && Boolean(compass) && !(compass?.error && !compass.data);
+  // Until the Compass answers, only the next-step card (in its loading state) is shown, so a new member never sees the
+  // full overview flash up and disappear.
+  const waiting = guided && stage === null;
+  const welcome = guided && ['diagnose', 'approve', 'waiting'].includes(stage!), setup = waiting || welcome;
   const anyRecords = Boolean(data && (data.campaigns || data.content || tasks.length || workspace.project.goals.length));
   const activityLabels: Record<string, [string,string]> = {
     'campaign.create':['Kampanya oluşturuldu','Campaign created'], 'campaign.update':['Kampanya güncellendi','Campaign updated'], 'campaign.delete':['Kampanya silindi','Campaign deleted'],
@@ -56,12 +60,13 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
   return (
     <section className="studio-overview">
       <header className="studio-page-heading">
-        <div><p className="overview-intro-date">{new Date().toLocaleDateString(locale, { day:'numeric', month:'long', weekday:'long', timeZone:workspace.project.timezone })}</p><h1>{setup ? (tr ? 'Hoş geldiniz' : 'Welcome') : (tr ? 'Çalışma merkezi' : 'Workspace overview')}</h1><p className="studio-subtitle">{setup ? (tr ? 'Birkaç adımda kurulumu tamamlayın; her adımda ne yapacağınız burada yazar.' : 'Finish setup in a few steps; each step is explained here.') : (tr ? 'Bugünün öncelikleri ve ürününüzün büyüme yolculuğu.' : 'Today’s priorities and your product’s growth journey.')}</p></div>
+        <div><p className="overview-intro-date">{new Date().toLocaleDateString(locale, { day:'numeric', month:'long', weekday:'long', timeZone:workspace.project.timezone })}</p><h1>{welcome ? (tr ? 'Hoş geldiniz' : 'Welcome') : (tr ? 'Çalışma merkezi' : 'Workspace overview')}</h1><p className="studio-subtitle">{welcome ? (tr ? 'Birkaç adımda kurulumu tamamlayın; her adımda ne yapacağınız burada yazar.' : 'Finish setup in a few steps; each step is explained here.') : (tr ? 'Bugünün öncelikleri ve ürününüzün büyüme yolculuğu.' : 'Today’s priorities and your product’s growth journey.')}</p></div>
         <div className="overview-header-actions"><button className="icon-button" disabled={refreshing} title={tr ? 'Yenile' : 'Refresh'} aria-label={tr ? 'Yenile' : 'Refresh'} onClick={load}><RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} /></button>{enabled('campaigns') && canWrite && !setup && <button className={guided ? 'studio-secondary' : 'studio-primary'} title={tr ? 'Yeni kampanya' : 'New campaign'} onClick={() => onNavigate('campaigns')}><Plus size={17} />{tr ? 'Yeni kampanya' : 'New campaign'}</button>}</div>
       </header>
       {error && <div className="studio-error" role="alert"><Msg text={error}/><button className="icon-button" title={tr ? 'Yeniden dene' : 'Retry'} aria-label={tr ? 'Yeniden dene' : 'Retry'} onClick={load}><RefreshCw size={17} /></button></div>}
-      {!data && !error && <div className="studio-skeleton" role="status">{tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…'}</div>}
-      {data && <>
+      {!data && !error && !waiting && <div className="studio-skeleton" role="status">{tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…'}</div>}
+      {guided && waiting && <NextStepCard lang={lang}/>}
+      {data && !waiting && <>
         {guided && <NextStepCard lang={lang}/>}
         {!guided && <div className="ryz-focus-bar"><div><h2>{tasks.length ? (tr ? `${tasks.length} iş sıradaki adımını bekliyor.` : (tasks.length === 1 ? '1 task is ready for the next step.' : `${tasks.length} tasks are ready for the next step.`)) : (tr ? 'Bugünün yönünü sen belirle.' : 'Set the direction for today.')}</h2><p>{tasks.length ? tasks[0].title : (tr ? 'Bir taslakla başla veya büyüme hedefini netleştir.' : 'Start with a draft or refine your growth goal.')}</p></div><button className="studio-text-button" disabled={!enabled(tasks.length ? 'calendar' : 'project')} onClick={() => onNavigate(tasks.length ? 'calendar' : 'project')}>{tr ? 'Devam et' : 'Continue'}<ArrowRight size={15} /></button></div>}
         {!setup && (!guided || anyRecords) && <div className="studio-stats">{[
@@ -96,7 +101,7 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
             </>}
           </div>
           <aside className="overview-rail">
-            {guided && <TaskLauncher workspace={workspace} lang={lang} connections={data.connections}/>}
+            {guided && <JobGuidePanel lang={lang}/>}
             {!guided && <CompassOverview lang={lang}/>}
             {!guided && <section><h2>{tr ? 'Hızlı başlangıç' : 'Quick start'}</h2>{[{tab:'library',Icon:FolderOpen,label:tr?'İçerik taslağı hazırla':'Prepare content'},{tab:'calendar',Icon:CalendarDays,label:tr?'Bir sonraki işi planla':'Plan your next task'},{tab:'seo',Icon:CircleDashed,label:tr?'Web sitenizi denetle':'Audit your website'}].filter(item => enabled(item.tab as ModuleId)).map(item => <button key={item.tab} className="overview-quick-action" onClick={() => onNavigate(item.tab as ModuleId)}><item.Icon size={17} /><span>{item.label}</span><ArrowUpRight size={14} /></button>)}</section>}
           </aside>

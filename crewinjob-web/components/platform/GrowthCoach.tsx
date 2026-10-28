@@ -49,11 +49,6 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
     return projectRequest<CoachSnapshot>('/api/platform/coach',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(25000)])}).then(value=>{if(!controller.signal.aborted)setData(value);return value;}).catch(reason=>{if(!controller.signal.aborted)setError(reason.message);return null;});
   },[]);
   useEffect(()=>{void load();return()=>request.current?.abort();},[load]);
-  // Guided first start (set by the Compass on a member's first visit): open the diagnosis once, never over another dialog.
-  useEffect(()=>{
-    const start=()=>{const flag=window as Window&{__ryzevoCoachStart?:boolean};if(!flag.__ryzevoCoachStart||!data||!data.canWrite||data.brief||data.draft||opened)return;flag.__ryzevoCoachStart=false;firstStart.current=true;openQuestions();};
-    start();window.addEventListener('ryzevo:coach-start',start);return()=>window.removeEventListener('ryzevo:coach-start',start);
-  },[data]);
   useEffect(()=>{
     const open=()=>{if(!data||opened)return;if(data.draft)openReview(data.draft);else if(data.canWrite)openQuestions();};
     window.addEventListener('ryzevo:coach-open',open);return()=>window.removeEventListener('ryzevo:coach-open',open);

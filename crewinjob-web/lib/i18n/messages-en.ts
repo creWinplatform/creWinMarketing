@@ -1350,4 +1350,5 @@ export const MESSAGES_EN: Record<string, string> = {
   "Soru bulunamadı.": "Question not found.",
   "AI cevabı alınamadı. Biraz sonra yeniden deneyin.": "No AI answer could be fetched. Try again a little later.",
   "Haftalık kontrol tamamlanamadı.": "The weekly check could not finish.",
+  "İş rehberi için standart proje erişimi gerekli.": "The job guide needs standard project access.",
 };
