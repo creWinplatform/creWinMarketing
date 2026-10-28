@@ -156,8 +156,9 @@ export default function WorkspaceShell({
     setOpen(false);
     setQuery('');
   };
+  // Hidden modules stay reachable: by search, by link, and while open.
   const list = workspace.modules.filter((module) =>
-    searchText(module.label[lang],lang).includes(searchText(query,lang)),
+    (query || module.id === activeTab || !workspace.hiddenNav?.includes(module.id as ModuleId)) && searchText(module.label[lang],lang).includes(searchText(query,lang)),
   );
   const menu = (
     <>

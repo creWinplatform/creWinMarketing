@@ -75,7 +75,17 @@ export class PlatformRepository {
     const rights=row.product_pack==='standard'?projectEntitlement(this.db,{organizationId:row.organization_id,projectId:row.id}):null;
     return { organization: { id: row.organization_id, name: row.organization_name }, project,
       ...(rights?{plan:{id:rights.id,active:rights.active,endsAt:rights.endsAt,...('inGrace' in rights?{inGrace:rights.inGrace}:{})}}:{}),
-      modules: modulesForProject(project.productPack, enabledModules), accessMode: 'platform_account' };
+      modules: modulesForProject(project.productPack, enabledModules), ...(row.product_pack==='standard'&&!this.needsMobile(row.organization_id,row.id)?{hiddenNav:['mobile' as const]}:{}), accessMode: 'platform_account' };
+  }
+  // Mobile growth is listed only for projects that have an app, a mobile connection or chose mobile as a goal.
+  private needsMobile(organizationId: string, projectId: string) {
+    const one = (sql: string) => Boolean(this.db.prepare(sql).get(organizationId, projectId));
+    try {
+      return one('SELECT 1 FROM platform_mobile_apps WHERE organization_id=? AND project_id=? LIMIT 1')
+        || one("SELECT 1 FROM platform_connections WHERE organization_id=? AND project_id=? AND active=1 AND provider IN ('mobile','bridge','firebase','onesignal','appsflyer','adjust','branch','revenuecat','google_play') LIMIT 1")
+        || one("SELECT 1 FROM platform_growth_coach WHERE organization_id=? AND project_id=? AND json_extract(answers_json,'$.goal')='mobile'")
+        || one("SELECT 1 FROM platform_compass_preferences WHERE organization_id=? AND project_id=? AND json_extract(preferences_json,'$.intent')='mobile' LIMIT 1");
+    } catch { return true; }
   }
 
   provision(actor: string, input: { organizationName: string; projectName: string; website: string; username: string; password: string; timezone?: string }) {

@@ -61,6 +61,8 @@ export type WorkspaceContext = {
   organization: { id: string; name: string };
   project: ProjectProfile;
   modules: ModuleDefinition[];
+  /** Enabled but not listed in the menu because nothing in the project needs them yet (still reachable and searchable). */
+  hiddenNav?: ModuleId[];
   accessMode: 'legacy_single_account' | 'platform_account';
   permissions?: WorkspacePermission[];
   plan?: {id:'pilot'|'trial'|'paid';active:boolean;endsAt:string|null;inGrace?:boolean};

@@ -62,3 +62,11 @@ test('the member’s own path and waiting work come first',coachRun(async f=>{
   const admin=jobGuide(f.db,f.member('admin'));assert.equal(admin.intent,null,'another member keeps their own path');assert.notEqual(order(admin)[0],'email');
   assert.equal(order(admin)[0],'google','with no path, a job already under way comes first');
 }));
+
+test('mobile growth is listed only for projects that need it, and stays enabled for the others',coachRun(async f=>{
+  const ws=()=>f.repo.workspace(f.scope.subject,f.scope.organizationId,f.scope.projectId);
+  assert.deepEqual(plain(ws().hiddenNav),['mobile'],'a project without an app or a mobile goal does not list it');
+  assert.ok(ws().modules.some(item=>item.id==='mobile'),'it stays enabled: links and search still reach it');
+  f.db.prepare("INSERT INTO platform_compass_preferences(user_id,organization_id,project_id,revision,deferred,preferences_json,created_at,updated_at) VALUES(?,?,?,1,0,?,?,?)").run(f.scope.subject,f.scope.organizationId,f.scope.projectId,JSON.stringify({intent:'mobile'}),new Date().toISOString(),new Date().toISOString());
+  assert.equal(ws().hiddenNav,undefined,'a mobile path lists it');
+}));
