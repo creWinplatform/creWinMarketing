@@ -9,6 +9,7 @@ import { localeTag } from '@/lib/i18n/shared';
 import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
 import type { StatsResponse } from '@/lib/types';
+import { urlView } from '@/lib/url-view';
 
 type SubTab = 'whatsapp' | 'telegram_channel' | 'telegram_bot' | 'notify_wa' | 'notify_tg' | 'notify_email' | 'notify_job_match';
 
@@ -155,7 +156,7 @@ const BOT_FEATURES = [
 export default function MessagingTab({ stats }: Props) {
   const { lang } = useLang();
   const locale = localeTag(lang);
-  const [subTab,   setSubTab]   = useState<SubTab>('whatsapp');
+  const [subTab,   setSubTab]   = useState<SubTab>(() => urlView<SubTab>(['whatsapp', 'telegram_channel', 'telegram_bot', 'notify_wa', 'notify_tg', 'notify_email', 'notify_job_match'], 'whatsapp'));
   const [language, setLanguage] = useState<'tr' | 'en'>('en');
   const [output,   setOutput]   = useState('');
   const [loading,  setLoading]  = useState(false);

@@ -8,6 +8,7 @@ import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
 import SiteAuditPanel from '@/components/seo/SiteAuditPanel';
 import { onTabKeys } from '@/components/platform/tab-keys';
+import { urlView } from '@/lib/url-view';
 
 type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor' | 'ctr_report' | 'site_audit';
 
@@ -159,7 +160,7 @@ export default function SeoTab() {
     { id: 'site_audit', label: lang === 'tr' ? 'Site Denetimi'    : 'Site audit',           icon: '🧭' },
   ];
 
-  const [subTab,     setSubTab]     = useState<SubTab>('blog');
+  const [subTab,     setSubTab]     = useState<SubTab>(() => urlView<SubTab>(['blog', 'seo', 'keyword', 'competitor', 'ctr_report', 'site_audit'], 'blog'));
   const [blogTopic,  setBlogTopic]  = useState('');
   const [jobTitle,   setJobTitle]   = useState('Chief Officer');
   const [vesselType, setVesselType] = useState('Bulk Carrier');

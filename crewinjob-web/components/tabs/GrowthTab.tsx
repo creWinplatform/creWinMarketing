@@ -5,6 +5,7 @@ import { onTabKeys } from '@/components/platform/tab-keys';
 import { getTextModel } from '../ModelPicker';
 import { useLang } from '@/lib/lang';
 import { translateMessage } from '@/lib/i18n/messages';
+import { urlView } from '@/lib/url-view';
 
 const TIKTOK_TYPES = [
   { value: 'problem_solution', labelTr: '⚡ Problem → Çözüm (en etkili)',             labelEn: '⚡ Problem → Solution (most effective)' },
@@ -20,7 +21,7 @@ type SubTab = 'registration' | 'tiktok';
 
 export default function GrowthTab() {
   const { lang } = useLang();
-  const [subTab,     setSubTab]     = useState<SubTab>('registration');
+  const [subTab,     setSubTab]     = useState<SubTab>(() => urlView<SubTab>(['registration', 'tiktok'], 'registration'));
   const [platform,   setPlatform]   = useState('instagram');
   const [tiktokType, setTiktokType] = useState('problem_solution');
   const [language,   setLanguage]   = useState<'tr' | 'en'>('en');

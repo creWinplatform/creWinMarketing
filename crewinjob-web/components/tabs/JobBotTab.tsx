@@ -4,6 +4,7 @@ import { onTabKeys } from '@/components/platform/tab-keys';
 import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
+import { urlView } from '@/lib/url-view';
 
 // ── Sabit lookup veriler (crewinjob API'sinden alınmış) ──────────────────────
 const SHIP_TYPES = [
@@ -258,7 +259,7 @@ function StatusBadge({ status }: { status: QueueItem['status'] }) {
 export default function JobBotTab() {
   const { lang } = useLang();
   const t = (tr: string, en: string) => (lang === 'tr' ? tr : en);
-  const [subTab, setSubTab]  = useState<'create' | 'queue' | 'history'>('create');
+  const [subTab, setSubTab]  = useState<'create' | 'queue' | 'history'>(() => urlView(['create', 'queue', 'history'] as const, 'create'));
   const [form,    setForm]    = useState<JobForm>(EMPTY_FORM);
   const [aiLoad,  setAiLoad]  = useState(false);
   const aiTextRef             = useRef<HTMLTextAreaElement>(null);

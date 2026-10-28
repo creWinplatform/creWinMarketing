@@ -4,6 +4,7 @@ import { useLang } from '@/lib/lang';
 import { localeTag, type Lang } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
 import { onTabKeys } from '@/components/platform/tab-keys';
+import { urlView } from '@/lib/url-view';
 
 // ── Tipler ────────────────────────────────────────────────────────────────────
 interface TgGroup {
@@ -56,7 +57,7 @@ export default function PipelineTab() {
   const [backendBusy,  setBackendBusy]  = useState<string | null>(null);
   const [msg,          setMsg]          = useState('');
   const [msgOk,        setMsgOk]        = useState(true);
-  const [activePanel,  setActivePanel]  = useState<'review' | 'groups' | 'stats' | 'jobs'>('review');
+  const [activePanel,  setActivePanel]  = useState<'review' | 'groups' | 'stats' | 'jobs'>(() => urlView(['review', 'groups', 'stats', 'jobs'] as const, 'review'));
   // Pozisyon seçimi (needsPositionReview ilanları için)
   const [positions,    setPositions]    = useState<Position[]>([]);
   const [posSelections, setPosSelections] = useState<Record<string, number>>({});

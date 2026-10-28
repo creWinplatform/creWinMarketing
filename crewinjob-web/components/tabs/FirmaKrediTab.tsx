@@ -6,6 +6,7 @@ import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
 import { useDialog } from '@/components/a11y/useDialog';
 import { onTabKeys } from '@/components/platform/tab-keys';
+import { urlView } from '@/lib/url-view';
 
 type HakTipi = 1 | 2 | 3;
 type KaynakTipi = 1 | 2 | 3 | 4 | 5 | 6;
@@ -670,7 +671,7 @@ function RightModal({ firma, onDone, onClose }: { firma: FirmaDurum; onDone: () 
 export default function FirmaKrediTab() {
   const { lang } = useLang();
   const tr = lang === 'tr';
-  const [page, setPage] = useState<Page>('bekleyen');
+  const [page, setPage] = useState<Page>(() => urlView<Page>(['bekleyen', 'firma', 'odemeler'], 'bekleyen'));
   const [toast, setToast] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');

@@ -19,6 +19,7 @@ import type {
 } from '@/lib/campaigns';
 import type { SavedAudience } from '@/lib/saved-audiences';
 import type { AdPlatform } from '@/lib/ads-types';
+import { urlView } from '@/lib/url-view';
 
 type View = 'flows' | 'paid' | 'lifecycle' | 'prospects';
 
@@ -314,7 +315,7 @@ export default function CampaignHubTab() {
   const { lang } = useLang();
   const t = useCallback((tr: string, en: string) => lang === 'tr' ? tr : en, [lang]);
   const fid = useId();
-  const [view, setView] = useState<View>('flows');
+  const [view, setView] = useState<View>(() => urlView<View>(['flows', 'paid', 'lifecycle', 'prospects'], 'flows'));
   const [campaigns, setCampaigns] = useState<UnifiedCampaign[]>([]);
   const [savedAudiences, setSavedAudiences] = useState<SavedAudience[]>([]);
   const [loading, setLoading] = useState(true);

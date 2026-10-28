@@ -107,7 +107,20 @@ The Crewin workspace (the single legacy account) now has its own "What would you
 - **Backend failures:** a service that does not answer hides only its own job, and the guide says so. Answers are reused for 60 s, and a failure is retried after 15 s.
 - **Speed:** large files (content history about 22 MB, review queue about 6 MB) are parsed again only when they change. A warm request took 86–600 ms on the real data.
 - **New records:** a published job ad (Job bot "Publish now" / "Approve & publish") and a published blog post are now recorded in the activity log (`job_posted`, `blog_published`). Without these, those steps could not be ticked from a record.
-- **Legacy tabs are unchanged.** They open on their first view, so each step names the exact sub-tab and button.
+- **Sub-tab links:** each step opens the exact sub-tab, and its text still names the button. Seven legacy tabs read the sub-view from the address; an unknown value falls back to the tab's default. Switching tabs from the menu drops the sub-view from the address.
+
+  | Tab | Address parameter | Values |
+  | --- | --- | --- |
+  | Campaigns | `view` | `flows`, `paid`, `lifecycle`, `prospects` |
+  | AI Prospect Finder | `section` | `research`, `add`, `pool` |
+  | Automation | `view` | `review`, `groups`, `stats`, `jobs` |
+  | Job bot | `view` | `create`, `queue`, `history` |
+  | WA & Telegram | `view` | `notify_email` and the other sub-tabs |
+  | SEO & Blog | `view` | `blog`, `site_audit` and the other sub-tabs |
+  | Seafarer growth | `view` | `registration`, `tiktok` |
+  | Credits & payments | `view` | `bekleyen`, `firma`, `odemeler` |
+
+  In AI Prospect Finder, a `section` in the link wins over the section remembered in the browser. The parameters are read by `lib/url-view.ts`.
 - **Tests:** `test/platform-crewin-job-guide.test.cjs` covers:
   - all jobs;
   - 7-day windows;

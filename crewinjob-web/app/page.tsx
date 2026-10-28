@@ -146,6 +146,8 @@ export default function Home() {
       setActiveTab(tab);
       const url = new URL(window.location.href);
       url.searchParams.set('tab', tab);
+      // A sub-view chosen by a link belongs to the tab it was opened for.
+      url.searchParams.delete('view'); url.searchParams.delete('section');
       window.history.pushState({}, '', url);
       window.scrollTo({ top: 0 });
     },

@@ -5,6 +5,7 @@ import type { ProspectLead, ProspectLeadStatus, ProspectResearchRequest } from '
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
 import { onTabKeys } from '@/components/platform/tab-keys';
+import { hasUrlView, urlView } from '@/lib/url-view';
 
 type Lang = 'tr' | 'en';
 type Mode = 'research' | 'add' | 'pool';
@@ -429,7 +430,7 @@ function ResearchProgressPanel({ progress, lang }: { progress: ResearchProgress;
 export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: Lang; onUseInCampaign: (emails: string[]) => void }) {
   const t = (tr: string, en: string) => lang === 'tr' ? tr : en;
   const fid = useId();
-  const [mode, setMode] = useState<Mode>('research');
+  const [mode, setMode] = useState<Mode>(() => urlView<Mode>(['research', 'add', 'pool'], 'research', 'section'));
   const [leads, setLeads] = useState<ProspectLead[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -459,7 +460,8 @@ export default function ProspectFinderPanel({ lang, onUseInCampaign }: { lang: L
       // Eski sürümün sakladığı lead PII'sini temizle; yalnızca UI tercihlerini geri yükle
       localStorage.removeItem(LEGACY_LEADS_STORAGE_KEY);
       const prefs = JSON.parse(localStorage.getItem(PREFS_STORAGE_KEY) || '{}') as Record<string, unknown>;
-      if (prefs.mode === 'research' || prefs.mode === 'add' || prefs.mode === 'pool') setMode(prefs.mode);
+      // A link that names the section (?section=pool) wins over the remembered one.
+      if (!hasUrlView('section') && (prefs.mode === 'research' || prefs.mode === 'add' || prefs.mode === 'pool')) setMode(prefs.mode);
       if (typeof prefs.statusFilter === 'string' && (prefs.statusFilter === 'all' || (STATUS_OPTIONS as string[]).includes(prefs.statusFilter))) setStatusFilter(prefs.statusFilter);
       const saved = prefs.research as Partial<ProspectResearchRequest> | undefined;
       if (saved && typeof saved === 'object') {

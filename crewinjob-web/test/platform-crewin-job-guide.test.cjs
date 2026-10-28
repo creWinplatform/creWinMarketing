@@ -30,10 +30,11 @@ test('every Crewin job is offered with real steps that open a Crewin tab',async(
   assert.deepEqual(plain(view.jobs.map(item=>item.id)).sort(),['crewin_campaign','crewin_credits','crewin_jobs','crewin_leads','crewin_profiles','crewin_results','crewin_seo','crewin_social']);
   assert.equal(view.unavailable,undefined);
   for(const item of view.jobs){assert.ok(item.title.tr&&item.title.en&&item.outcome.en,item.id);assert.equal(item.total,item.steps.length);
-    for(const step of item.steps){assert.match(step.href,/^\/\?tab=(pipeline|jobbot|retention|messaging|kpi|social|growth|library|campaigns|seo|analytics|firma_kredi)$/,`${item.id}/${step.id}`);assert.ok(step.detail.tr&&step.detail.en);}}
+    for(const step of item.steps){assert.match(step.href,/^\/\?tab=(pipeline|jobbot|retention|messaging|kpi|social|growth|library|campaigns|seo|analytics|firma_kredi)(&view=[a-z_]+(&section=[a-z]+)?)?$/,`${item.id}/${step.id}`);assert.ok(step.detail.tr&&step.detail.en);}}
   assert.deepEqual(plain(job(view,'crewin_profiles').badge),{count:9000,label:{tr:'boş profil',en:'empty profile(s)'}},'empty profiles from the live stats');
   assert.deepEqual(plain(job(view,'crewin_leads').badge),{count:2,label:{tr:'lead incelemede',en:'lead(s) in review'}});
   assert.deepEqual(states(job(view,'crewin_leads')),[['research','done'],['review','todo'],['campaign','todo']]);
+  assert.equal(job(view,'crewin_leads').steps[1].href,'/?tab=campaigns&view=prospects&section=pool','the step opens the lead pool itself');
   assert.equal(job(view,'crewin_credits').complete,true,'no pending orders: done, listed last');assert.equal(view.jobs.at(-1).complete,true);
 }finally{f.done();}});
 
