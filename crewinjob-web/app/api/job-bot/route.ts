@@ -4,6 +4,7 @@ import fs   from 'fs';
 import { execFile } from 'child_process';
 import { agentDir, agentModule } from '@/lib/agent-bridge';
 import { readJson, writeJsonAtomic } from '@/lib/json-store';
+import { recordActivity } from '@/lib/activity-log-server';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -331,6 +332,8 @@ export async function POST(req: NextRequest) {
       const result = await runCli('create_direct', { jobData });
       if (result.ok) {
         const r = result.result as { id?: number; url?: string } | null;
+        // A direct post leaves no queue record; the activity entry is what the job guide reads as "posted this week".
+        void recordActivity({ type: 'job_posted', label: 'İlan yayınlandı', detail: r?.url || undefined, entityType: 'ilan', entityId: r?.id ? String(r.id) : undefined }).catch(() => undefined);
         return NextResponse.json({ ...result, message: 'İlan başarıyla oluşturuldu!', ilanId: r?.id || null, ilanUrl: r?.url || null });
       }
       return NextResponse.json({ ok: false, message: (result as { error?: string }).error || 'API hatası' });
@@ -346,6 +349,7 @@ export async function POST(req: NextRequest) {
       const result = await runCli('approve', { id });
       if (result.ok) {
         const r = result.result as { id?: number; url?: string } | null;
+        void recordActivity({ type: 'job_posted', label: 'İlan yayınlandı', detail: r?.url || undefined, entityType: 'ilan', entityId: r?.id ? String(r.id) : undefined }).catch(() => undefined);
         return NextResponse.json({ ...result, message: 'İlan yayınlandı!', ilanId: r?.id || null, ilanUrl: r?.url || null });
       }
       return NextResponse.json({ ok: false, message: (result as { error?: string }).error || 'Hata' });

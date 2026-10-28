@@ -1,18 +1,21 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowRight, BarChart3, Check, ChevronDown, FolderOpen, LockKeyhole, Mail, Megaphone, MessagesSquare, Search, Send, Shuffle, Sparkles, UserPlus, X } from 'lucide-react';
+import { ArrowRight, BarChart3, Briefcase, Building2, Check, ChevronDown, CircleAlert, FolderOpen, LockKeyhole, Mail, Megaphone, MessagesSquare, Search, Send, Shuffle, Sparkles, UserPlus, UserRoundCheck, Wallet, X } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest, searchText } from '@/lib/platform/client';
 import type { JobGuideItem, JobGuideView, JobId } from '@/lib/platform/job-guide-types';
 import Msg from '@/components/Msg';
 
-const ICONS: Record<JobId, typeof Send> = { social_post: Send, inbox: MessagesSquare, google: Search, ai_answers: Sparkles, email: Mail, ads: Megaphone, results: BarChart3, team: UserPlus, repurpose: Shuffle };
-type Context = { data: JobGuideView | null; error: string; loading: boolean; refresh: () => void; open: (query?: string) => void };
+const ICONS: Record<JobId, typeof Send> = { social_post: Send, inbox: MessagesSquare, google: Search, ai_answers: Sparkles, email: Mail, ads: Megaphone, results: BarChart3, team: UserPlus, repurpose: Shuffle,
+  crewin_jobs: Briefcase, crewin_profiles: UserRoundCheck, crewin_social: Send, crewin_leads: Building2, crewin_campaign: Mail, crewin_seo: Search, crewin_results: BarChart3, crewin_credits: Wallet };
+// The Crewin workspace has its own jobs; only the search examples differ.
+const EXAMPLES = { ryzevo: { tr: 'Ör. instagram, rapor, google, reklam…', en: 'E.g. instagram, report, google, ads…' }, crewin: { tr: 'Ör. ilan, lead, profil, rapor, havale…', en: 'E.g. job ad, lead, profile, report, transfer…' } };
+type Context = { data: JobGuideView | null; error: string; loading: boolean; refresh: () => void; open: (query?: string) => void; variant: keyof typeof EXAMPLES };
 const JobGuideContext = createContext<Context | null>(null);
 
 // One snapshot for the overview list and the global dialog (Ctrl/⌘+K). It is read again when the tab regains focus, so a
 // step finished on another screen is ticked on return.
-export function JobGuideProvider({ enabled, lang, children }: { enabled: boolean; lang: Locale; children: ReactNode }) {
+export function JobGuideProvider({ enabled, lang, variant = 'ryzevo', children }: { enabled: boolean; lang: Locale; variant?: keyof typeof EXAMPLES; children: ReactNode }) {
   const tr = lang === 'tr';
   const [data, setData] = useState<JobGuideView | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false), [opened, setOpened] = useState(false), [query, setQuery] = useState('');
   const dialog = useRef<HTMLDialogElement>(null), previousFocus = useRef<HTMLElement | null>(null), request = useRef<AbortController | null>(null);
@@ -33,7 +36,7 @@ export function JobGuideProvider({ enabled, lang, children }: { enabled: boolean
     if (opened && !element.open) { previousFocus.current = document.activeElement as HTMLElement; element.showModal(); requestAnimationFrame(() => element.querySelector<HTMLInputElement>('input[type=search]')?.focus()); }
     if (!opened && element.open) { element.close(); previousFocus.current?.focus(); }
   }, [opened]);
-  const value: Context = { data, error, loading, refresh, open };
+  const value: Context = { data, error, loading, refresh, open, variant };
   if (!enabled) return <>{children}</>;
   return <JobGuideContext.Provider value={value}>{children}
     <dialog ref={dialog} className="growth-compass job-guide-dialog" aria-labelledby="job-guide-dialog-title" onCancel={event => { event.preventDefault(); setOpened(false); }} onClick={event => { if (event.target === dialog.current) setOpened(false); }}>
@@ -64,10 +67,11 @@ export function JobGuideBody({ lang, initialQuery = '', showAll = false, onNavig
   const shown = all || query ? jobs : jobs.slice(0, 5);
   return <div className="job-guide-body">
     <label className="job-guide-search"><Search size={15} aria-hidden="true" /><span className="sr-only">{tr ? 'İş ara' : 'Search jobs'}</span>
-      <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={tr ? 'Ör. instagram, rapor, google, reklam…' : 'E.g. instagram, report, google, ads…'} /></label>
+      <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={EXAMPLES[guide.variant][lang]} /></label>
     {shown.length === 0 ? <p className="coach-muted">{tr ? 'Bu aramayla eşleşen bir iş yok. Başka bir kelime deneyin ya da menüden ilgili ekranı açın.' : 'No job matches this search. Try another word or open the screen from the menu.'}</p>
       : <ul className="job-guide-list">{shown.map(job => <JobRow key={job.id} job={job} lang={lang} expanded={expanded === job.id} onToggle={() => setExpanded(expanded === job.id ? null : job.id)} onNavigate={onNavigate} />)}</ul>}
     {!all && !query && jobs.length > 5 && <button type="button" className="studio-text-button" onClick={() => setAll(true)}>{tr ? `Tüm işler (${jobs.length})` : `All jobs (${jobs.length})`}<ChevronDown size={14} /></button>}
+    {guide.data.unavailable?.map(note => <p key={note.en} className="job-guide-unavailable" role="note"><CircleAlert size={13} aria-hidden="true" />{note[lang]}</p>)}
   </div>;
 }
 
@@ -88,6 +92,7 @@ function JobRow({ job, lang, expanded, onToggle, onNavigate }: { job: JobGuideIt
         return <li key={item.id} className={`job-step ${item.state}${current ? ' current' : ''}`} aria-current={current ? 'step' : undefined}>
           <span className="job-step-mark" aria-hidden="true">{item.state === 'done' ? <Check size={13} /> : item.state === 'blocked' ? <LockKeyhole size={12} /> : index + 1}</span>
           <div><h3>{item.label[lang]}<span className="sr-only"> — {item.state === 'done' ? (tr ? 'tamam' : 'done') : item.state === 'blocked' ? (tr ? 'başkası yapmalı' : 'someone else must do it') : (tr ? 'yapılacak' : 'to do')}</span>{item.state === 'done' && <a className="job-step-review" href={item.href} onClick={onNavigate}>{tr ? 'Aç' : 'Open'}<ArrowRight size={12} /></a>}</h3>
+            {item.evidence && <p className="job-step-evidence">{item.evidence[lang]}</p>}
             {(current || item.state !== 'done') && <p>{item.detail[lang]}</p>}
             {item.reason && <p className="job-step-reason"><LockKeyhole size={12} aria-hidden="true" />{item.reason[lang]}</p>}
             {current && item.canAct && <a className="studio-primary" href={item.href} onClick={onNavigate}>{tr ? 'Bu adımı yap' : 'Do this step'}<ArrowRight size={15} /></a>}

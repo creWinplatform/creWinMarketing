@@ -82,3 +82,36 @@ Checked in the browser on the isolated QA server with a new sign-up:
 - phone width without horizontal scrolling.
 
 Compass tests pass.
+
+## Crewin workspace (28 October 2026)
+
+The Crewin workspace (the single legacy account) now has its own "What would you like to do?" guide: on the overview under the heading, from the header button, and with Ctrl/⌘+K. The same endpoint (`GET /api/platform/job-guide`) answers a legacy session from `lib/platform/crewin-job-guide.ts`.
+
+- **Eight Crewin jobs:**
+  - approve pending bank-transfer orders;
+  - find company leads and prepare them for a campaign;
+  - get empty profiles completed;
+  - post jobs and announce them on Telegram;
+  - post on social media to bring sign-ups;
+  - review this week's results;
+  - rank higher on Google;
+  - send a campaign.
+- **Records read:**
+  - web `data/` JSON files: content and post history, activity log, scheduled posts, SEO work items;
+  - agent files: review queue, posted jobs, job queue;
+  - the Crewin backend: stats, leads, pending orders, campaigns, post history.
+  - Nothing is written, and a click never completes a step.
+- **Weekly work counts from the last 7 days:** posting, the KPI report, job ads and Telegram announcements. A job done last month comes back as the next step. Monthly work counts from the last 30 days: reminders and blog posts.
+- **Evidence on each step:** what the records show, for example "Last ad: 32 days ago", "10 approved, 15 in review" or "6,416 empty profiles".
+- **Missing server settings are named** (TG_SESSION, SMTP or WhatsApp, GA4). Earlier steps stay doable.
+- **Backend failures:** a service that does not answer hides only its own job, and the guide says so. Answers are reused for 60 s, and a failure is retried after 15 s.
+- **Speed:** large files (content history about 22 MB, review queue about 6 MB) are parsed again only when they change. A warm request took 86–600 ms on the real data.
+- **New records:** a published job ad (Job bot "Publish now" / "Approve & publish") and a published blog post are now recorded in the activity log (`job_posted`, `blog_published`). Without these, those steps could not be ticked from a record.
+- **Legacy tabs are unchanged.** They open on their first view, so each step names the exact sub-tab and button.
+- **Tests:** `test/platform-crewin-job-guide.test.cjs` covers:
+  - all jobs;
+  - 7-day windows;
+  - ticking from files;
+  - server settings;
+  - backend failure and caching;
+  - order.

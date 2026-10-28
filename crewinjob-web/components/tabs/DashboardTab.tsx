@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Users, BriefcaseBusiness, FolderOpen, Send, CircleCheck, Target, UserRoundCheck, RefreshCw, ArrowUpRight, Megaphone, ChartNoAxesCombined } from 'lucide-react';
 import { getHistory as getContentHistory } from '@/lib/content-history';
 import { getHistory as getPostHistory } from '@/lib/post-history';
@@ -14,7 +14,8 @@ interface DashboardData {
   dailyRegistrations?: number[]; topCountries?: BreakdownItem[]; topPositions?: BreakdownItem[];
   isRealData?: boolean; partial?: boolean; apiErrors?: string[]; fetchedAt?: string; error?: string;
 }
-export default function DashboardTab({ onNavigate }: { onNavigate?: (id: ModuleId) => void }) {
+// guide: the "What would you like to do?" panel, shown right under the heading.
+export default function DashboardTab({ onNavigate, guide }: { onNavigate?: (id: ModuleId) => void; guide?: ReactNode }) {
   const { lang } = useLang(), tr = lang === 'tr', locale = localeTag(lang);
   const [data,setData] = useState<DashboardData | null>(null), [loading,setLoading] = useState(true);
   const [contentCount,setContentCount] = useState<number | null>(null), [postCount,setPostCount] = useState<number | null>(null);
@@ -45,6 +46,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate?: (id: ModuleI
   return (
     <section>
       <header className="studio-page-heading"><div><p className="studio-eyebrow">CREWINJOB / MARKETING</p><h1>{tr?'Pazarlama genel bakışı':'Marketing overview'}</h1><p className="studio-subtitle">{tr?'Aday kazanımı, profil aktivasyonu ve şirket büyümesi.':'Acquisition, profile activation and company growth.'}</p></div><div className="overview-header-actions"><button className="icon-button" onClick={refresh} disabled={loading} title={tr?'Yenile':'Refresh'} aria-label={tr?'Yenile':'Refresh'}><RefreshCw size={17} className={loading?'animate-spin':''} /></button>{onNavigate && <button className="studio-primary" onClick={() => onNavigate('campaigns')}><Megaphone size={16} />{tr?'Kampanya merkezi':'Campaign hub'}</button>}</div></header>
+      {guide}
       <div role="status" className="studio-data-notice"><span aria-hidden="true" className={`status-dot ${!trusted || data?.partial ? 'status-dot-amber' : ''}`} /><span>{loading ? (tr?'Canlı veriler yükleniyor…':'Loading live data…') : trusted ? (data.partial ? (tr?'Kısmi canlı yanıt':'Partial live response') : (tr?'Gerçek API verisi':'Live API data')) : (tr?'Canlı veri doğrulanamadı':'Live data unavailable')}{data?.fetchedAt && ` · ${new Date(data.fetchedAt).toLocaleString(locale)}`}</span></div>
       {data?.error && <div role="alert" className="studio-error"><Msg text={data.error} /></div>}
       {historyError && <div role="alert" className="studio-error"><Msg text={historyError} /></div>}

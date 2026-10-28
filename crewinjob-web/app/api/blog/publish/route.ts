@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs   from 'fs';
 import path from 'path';
 import { internalFetch, publicAppUrl } from '@/lib/internal-fetch';
+import { recordActivity } from '@/lib/activity-log-server';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -367,6 +368,8 @@ export async function POST(req: NextRequest) {
   }
 
   const blogId = blogData?.result?.id ?? blogData?.id ?? 0;
+  // The backend keeps no list we read; this entry is the record the job guide reads as "blog published".
+  void recordActivity({ type: 'blog_published', label: 'Blog yayınlandı', detail: title, entityType: 'blog', entityId: blogId ? String(blogId) : undefined }).catch(() => undefined);
 
   return NextResponse.json({
     success: true,

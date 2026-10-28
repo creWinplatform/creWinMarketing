@@ -21,6 +21,8 @@ export type ActivityType =
   | 'seo_rejected'
   | 'seo_applied'
   | 'email_complaint'
+  | 'job_posted'
+  | 'blog_published'
   | 'test';
 
 export interface ActivityEntry {
@@ -73,6 +75,8 @@ export const ACTIVITY_META: Record<ActivityType, { icon: string; color: string }
   seo_rejected:        { icon: '🚫', color: 'text-red-500'     },
   seo_applied:         { icon: '🛠️', color: 'text-emerald-600' },
   email_complaint:     { icon: '⚠️', color: 'text-red-500'     },
+  job_posted:          { icon: '📋', color: 'text-green-600'   },
+  blog_published:      { icon: '📰', color: 'text-teal-600'    },
   test:                { icon: '🧪', color: 'text-slate-400'   },
 };
 

@@ -17,7 +17,7 @@ import ProjectPlanning from '@/components/platform/ProjectPlanning';
 import ProjectReports from '@/components/platform/ProjectReports';
 import ProjectAudit from '@/components/platform/ProjectAudit';
 import { GrowthCompassProvider, CompassLauncher } from '@/components/platform/GrowthCompass';
-import { JobGuideProvider, JobGuideLauncher } from '@/components/platform/JobGuide';
+import { JobGuideProvider, JobGuideLauncher, JobGuidePanel } from '@/components/platform/JobGuide';
 
 function TabLoading() {
   const { lang } = useLang();
@@ -182,13 +182,13 @@ export default function Home() {
     );
   return (
     <GrowthCompassProvider key={workspace.project.id} enabled={!isCrewin} lang={lang}>
-    <JobGuideProvider key={`jobs-${workspace.project.id}`} enabled={!isCrewin} lang={lang}>
+    <JobGuideProvider key={`jobs-${workspace.project.id}`} enabled lang={lang} variant={isCrewin ? 'crewin' : 'ryzevo'}>
     <WorkspaceShell
       workspace={workspace}
       activeTab={activeTab}
       onNavigate={navigate}
       lang={lang}
-      guidance={!isCrewin ? <><JobGuideLauncher lang={lang}/><CompassLauncher lang={lang}/></> : undefined}
+      guidance={!isCrewin ? <><JobGuideLauncher lang={lang}/><CompassLauncher lang={lang}/></> : <JobGuideLauncher lang={lang}/>}
       tools={
         isCrewin ? (
           <>
@@ -212,7 +212,7 @@ export default function Home() {
       )}
       {isCrewin && activeTab === 'dashboard' && (
         <>
-          <DashboardTab onNavigate={navigate} />
+          <DashboardTab onNavigate={navigate} guide={<JobGuidePanel lang={lang} />} />
           <details className="crewin-detail-disclosure"><summary>{tr ? 'Profil ve şirket verileri: detaylı dağılım' : 'Profile and company data: detailed breakdown'}</summary>
           {statsLoading ? (
             <p className="studio-data-notice" role="status">
