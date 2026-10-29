@@ -333,6 +333,7 @@ export const UI_PAIRS: Record<string, string> = {
   "Tarama süreniyor; sayfa kapatılsa da arka planda tamamlanır.": "The scan is running; it finishes in the background even if this page is closed.",
   "Tarama tamamlanamadı.": "The crawl did not complete.",
   "Tarama tamamlandı. Bulgular önceki taramalarla karşılaştırıldı.": "Scan completed. Findings were compared with earlier scans.",
+  "Tarayıcı kopyalamaya izin vermedi; metin seçildi, Ctrl+C ile kopyalayın.": "The browser did not allow copying; the text is selected, press Ctrl+C.",
   "Taslağı hazırla": "Prepare the draft",
   "Taslağı kopyala": "Copy the draft",
   "Taslak kaydedildi.": "Draft saved.",

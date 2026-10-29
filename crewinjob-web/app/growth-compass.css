@@ -123,3 +123,4 @@
 .setup-env pre{margin:0;padding:10px;white-space:pre-wrap;border-radius:0;background:var(--studio-surface)}
 .setup-verify{border-top:1px solid var(--studio-border);padding-top:10px}.setup-verify p{margin:0;font-size:12px;line-height:1.7}
 .setup-copy{min-height:32px}
+.setup-copy-failed{font-size:11px;color:#b9800f}
