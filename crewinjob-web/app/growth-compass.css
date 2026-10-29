@@ -107,3 +107,19 @@
 .job-step.done{padding:5px 0}
 .job-step .job-step-evidence{color:var(--studio-ink);font-weight:600}
 .job-guide-unavailable{display:flex;gap:6px;align-items:flex-start;margin:0;font-size:11px;line-height:1.6;color:var(--rz-amber,#b9800f)}.job-guide-unavailable svg{flex:none;margin-top:3px}
+.server-setup{display:grid;gap:10px}
+.setup-card{border:1px solid var(--studio-border);border-radius:var(--rz-r-card,8px);background:var(--studio-surface)}
+.setup-card.missing{border-left:3px solid #b42318}.setup-card.warning{border-left:3px solid #b9800f}.setup-card.ready{border-left:3px solid var(--rz-good,#3e7d2c)}
+.setup-head{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;text-align:left;background:none;border:0;color:inherit;cursor:pointer;min-height:44px}
+.setup-head strong{flex:1;min-width:0;font-size:13px}
+.setup-card.missing .setup-head>svg{color:#b42318}.setup-card.warning .setup-head>svg{color:#b9800f}.setup-card.ready .setup-head>svg{color:var(--rz-good,#3e7d2c)}
+.setup-body{display:grid;gap:10px;padding:0 14px 14px}
+.setup-unlocks,.setup-done{margin:0;font-size:12px;line-height:1.6}.setup-done{display:flex;gap:6px;align-items:center;color:var(--rz-good,#3e7d2c)}
+.setup-problems{margin:0;padding:0;list-style:none;display:grid;gap:4px}.setup-problems li{display:flex;gap:6px;align-items:flex-start;font-size:12px;line-height:1.6;color:#b42318}.setup-problems svg{flex:none;margin-top:3px}
+.setup-steps{margin:0;padding-left:20px;display:grid;gap:10px}.setup-steps li{font-size:12px;line-height:1.7}.setup-steps p{margin:0}
+.setup-step-tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin-top:4px}
+.setup-value{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0;max-width:100%}.setup-value code,.setup-env pre{font-size:11px;padding:3px 6px;border-radius:4px;background:var(--studio-hover);overflow-wrap:anywhere;word-break:break-all;max-width:100%}
+.setup-env{border:1px solid var(--studio-border);border-radius:6px;overflow:hidden}.setup-env-head{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;font-size:11px;font-weight:650;background:var(--studio-hover)}
+.setup-env pre{margin:0;padding:10px;white-space:pre-wrap;border-radius:0;background:var(--studio-surface)}
+.setup-verify{border-top:1px solid var(--studio-border);padding-top:10px}.setup-verify p{margin:0;font-size:12px;line-height:1.7}
+.setup-copy{min-height:32px}

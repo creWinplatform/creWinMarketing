@@ -90,3 +90,32 @@ The workspace still opens with the single Crewin login. Team accounts are a sepa
   - Overview, SEO views, Analytics, Inbox, Calendar plan, Connections and Brand all loaded.
   - Coach diagnosis → approval gave actions linking to Crewin tabs.
   - At phone width the page does not scroll sideways.
+
+## Server setup guide (29 October 2026)
+
+**Where:** Project settings → Operations → "Setup guide". Only the deployment administrator sees it; in Crewin, that is its single account.
+
+**Cards:** one card each for Google (Search Console, GA4), Meta (Page and Instagram inbox), the search-grounded Gemini model, and scheduled jobs (worker). `lib/platform/server-setup.ts` builds them, `components/platform/ServerSetupGuide.tsx` shows them, and `GET /api/platform/operator?view=setup` serves them.
+
+**Each card shows:**
+- what the setting opens;
+- the exact problem: a missing setting, a callback that is not https, the wrong callback path, a callback on another address, a Graph version in the wrong format, a model older than gemini-2, or a worker that never ran or ran too long ago;
+- numbered steps with links to the provider's console pages;
+- the values to register, derived from the address the panel is opened from (callback URLs, the Meta permission list including the inbox permissions, the worker address);
+- `.env.local` lines with secrets as placeholders;
+- the last step to try in the panel.
+
+**Worker card:**
+- On this machine: a one-off PowerShell command.
+- On a live server: a `crontab` line.
+- It reads the last successful run from `platform_worker_observations`.
+
+**Safety:** setting values are never returned. A test checks that secret values never appear in the guide.
+
+**Links into the guide:** `?setup=google|meta|gemini|worker` opens that card. These link to it:
+- Crewin job-guide steps that wait for a server setting ("Open the setup guide");
+- the "not configured" notes in Connections and in AI visibility.
+
+**New job-guide step:** the Google tracking job has "Check that scheduled jobs run". It is done when the worker succeeded in the last 30 minutes.
+
+**Tests:** `test/platform-server-setup.test.cjs` covers the missing, invalid and ready states; that no value leaks; local vs live commands; and the worker freshness check.

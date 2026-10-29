@@ -6,7 +6,7 @@ import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
 type Selection = { target: string; publishing?: boolean; items: { id: string; name: string; instagramId: string | null; instagramUsername: string | null }[]; hasMore: boolean; limitReached: boolean };
 // inboxDefault: the inbox permission box starts ticked (the Crewin workspace connects Meta only for the inbox).
-export default function MetaConnection({ lang, onSaved, requestedProvider, inboxDefault = false }: { lang: Locale; onSaved: () => Promise<void>; requestedProvider?:string; inboxDefault?: boolean }) {
+export default function MetaConnection({ lang, onSaved, requestedProvider, inboxDefault = false, setupHref }: { lang: Locale; onSaved: () => Promise<void>; requestedProvider?:string; inboxDefault?: boolean; setupHref?: string }) {
   const tr = lang === 'tr';
   const failed = tr ? 'İstek tamamlanamadı.' : 'Request failed.';
   const [configured, setConfigured] = useState<boolean | null>(null), [selection, setSelection] = useState<Selection | null>(null), [pageId, setPageId] = useState('');
@@ -81,7 +81,7 @@ export default function MetaConnection({ lang, onSaved, requestedProvider, inbox
         <button disabled={busy} className="self-end studio-primary disabled:opacity-50">{tr ? 'Meta ile devam et' : 'Continue with Meta'}</button>
         <label key={target} className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" name="publishing" className="mt-1"/>{target==='instagram'?(tr?'Instagram görsel gönderileri için yayın izni de iste':'Also request permission to publish Instagram images'):(tr ? 'Sayfa gönderileri için yayın izni de iste' : 'Also request permission to publish Page posts')}</label>
         <label key={`inbox-${target}`} className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" name="inbox" defaultChecked={inboxDefault} className="mt-1"/>{target==='instagram'?(tr?'Gelen kutusu için Instagram yorum ve mesaj izinlerini de iste':'Also request Instagram comment and message permissions for the inbox'):(tr?'Gelen kutusu için Sayfa yorum ve mesaj izinlerini de iste':'Also request Page comment and message permissions for the inbox')}</label>
-      </form> : <p className="mt-2 text-sm text-amber-600 dark:text-amber-300">{tr ? 'Meta OAuth henüz sunucuda yapılandırılmadı.' : 'Meta OAuth is not configured on the server yet.'}</p>}
+      </form> : <p className="mt-2 text-sm text-amber-600 dark:text-amber-300">{tr ? 'Meta OAuth henüz sunucuda yapılandırılmadı.' : 'Meta OAuth is not configured on the server yet.'}{setupHref && <> <a href={setupHref}>{tr ? 'Kurulum rehberini aç' : 'Open the setup guide'}</a></>}</p>}
     </details>
   </div>;
 }

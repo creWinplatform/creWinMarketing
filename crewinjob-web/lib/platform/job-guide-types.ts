@@ -12,6 +12,8 @@ export type JobStep = {
   reason: LocalizedText | null;
   // What the records show (e.g. “last post 2 days ago”), so a step that repeats weekly says where it stands.
   evidence?: LocalizedText | null;
+  // A step waiting for a server setting: the setup guide card that explains it (for the team running the server).
+  setupHref?: string;
 };
 export type JobGuideItem = {
   id: JobId; title: LocalizedText; outcome: LocalizedText; keywords: string[];

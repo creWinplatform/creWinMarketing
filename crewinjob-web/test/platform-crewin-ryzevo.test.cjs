@@ -92,7 +92,12 @@ test('the Crewin job guide adds the Ryzevo jobs, read from the platform tables',
     for(const id of ['crewin_growth','crewin_ai','crewin_search','crewin_inbox'])assert.ok(job(id),id);
     assert.equal(job('crewin_search').steps[0].state,'blocked','Google OAuth not set: the step names the server setting');assert.match(job('crewin_search').steps[0].reason.tr,/PLATFORM_GOOGLE_CLIENT_ID/);
     assert.equal(job('crewin_results').steps.at(-1).id,'monthly');
-    for(const item of view.jobs)for(const step of item.steps)assert.match(step.href,/^\/\?tab=[a-z_]+(&(view|section|settings)=[a-z_]+)*$/,`${item.id}/${step.id}`);
+    assert.equal(job('crewin_search').steps[0].setupHref,'/?tab=project&settings=operations&setup=google','a step waiting for Google opens the setup guide card');
+    assert.equal(job('crewin_inbox').steps[0].setupHref,'/?tab=project&settings=operations&setup=meta');
+    const worker=job('crewin_search').steps.find(step=>step.id==='worker');assert.equal(worker.state,'todo');assert.match(worker.evidence.tr,/hiç çalışmadı/);
+    f.db.prepare("INSERT INTO platform_worker_observations(component,run_id,first_observed_at,started_at,finished_at,outcome,checked,failed,last_success_at,consecutive_failures) VALUES('platform-worker','r',?,?,?,'completed',0,0,?,0)").run(...Array(4).fill(new Date().toISOString()));
+    resetCrewinGuideCache();assert.equal((await crewinJobGuide({...deps,now:Date.now()})).jobs.find(item=>item.id==='crewin_search').steps.find(step=>step.id==='worker').state,'done','a recent worker run ticks it');
+    for(const item of view.jobs)for(const step of item.steps)assert.match(step.href,/^\/\?tab=[a-z_]+(&(view|section|settings|setup)=[a-z_]+)*$/,`${item.id}/${step.id}`);
     const {GrowthCoach}=load('coach.ts'),coach=new GrowthCoach(f.db,CREWIN);await coach.diagnose({answers:f.answers,language:'tr',mode:'template',expectedRevision:coach.read().revision});
     resetCrewinGuideCache();view=await crewinJobGuide({...deps,now:Date.now()});
     assert.deepEqual(plain(job('crewin_growth').steps.map(step=>[step.id,step.state])),[['diagnose','done'],['approve','todo'],['review','todo']]);

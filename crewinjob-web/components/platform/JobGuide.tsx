@@ -96,6 +96,7 @@ function JobRow({ job, lang, expanded, onToggle, onNavigate }: { job: JobGuideIt
             {item.evidence && <p className="job-step-evidence">{item.evidence[lang]}</p>}
             {(current || item.state !== 'done') && <p>{item.detail[lang]}</p>}
             {item.reason && <p className="job-step-reason"><LockKeyhole size={12} aria-hidden="true" />{item.reason[lang]}</p>}
+            {item.setupHref && <a className={current ? 'studio-primary' : 'studio-text-button'} href={item.setupHref} onClick={onNavigate}>{tr ? 'Kurulum rehberini aç' : 'Open the setup guide'}<ArrowRight size={current ? 15 : 13} /></a>}
             {current && item.canAct && <a className="studio-primary" href={item.href} onClick={onNavigate}>{tr ? 'Bu adımı yap' : 'Do this step'}<ArrowRight size={15} /></a>}
             {!current && item.state === 'todo' && item.canAct && <a className="studio-text-button" href={item.href} onClick={onNavigate}>{tr ? 'Şimdi yap' : 'Do it now'}<ArrowRight size={13} /></a>}
           </div>

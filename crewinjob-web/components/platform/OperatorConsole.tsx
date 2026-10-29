@@ -5,6 +5,7 @@ import type { Locale } from '@/lib/platform/catalog';
 import type { FunnelSnapshot, FunnelStep, ProbeResult, ReadinessGroup, ReadinessSnapshot, ReadinessState } from '@/lib/platform/operator-types';
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
+import ServerSetupGuide from './ServerSetupGuide';
 
 const GROUPS: Record<ReadinessGroup, [string, string]> = { core: ['Temel ve güvenlik', 'Core and security'], email: ['E-posta', 'Email'], social: ['Sosyal medya', 'Social media'], messaging: ['Mesajlaşma', 'Messaging'], ads: ['Reklam', 'Ads'], ai: ['AI', 'AI'], billing: ['Ödeme', 'Billing'] };
 const STATES: Record<ReadinessState, [string, string]> = { ready: ['Hazır', 'Ready'], warning: ['Dikkat', 'Attention'], missing: ['Eksik', 'Missing'], off: ['Kapalı', 'Off'] };
@@ -41,6 +42,8 @@ export default function OperatorConsole({ lang }: { lang: Locale }) {
       <button type="button" className="icon-button" onClick={() => void load()} disabled={loading} aria-label={tr ? 'Yenile' : 'Refresh'} title={tr ? 'Yenile' : 'Refresh'}><RefreshCw size={16} /></button></header>
     <p className="studio-note">{tr ? 'Yalnız Ryzevo’yu işleten yönetici görür. Ayarların değeri değil, yalnız tanımlı olup olmadığı gösterilir; huni yalnız sayılardan oluşur, müşteri adı veya adresi içermez.' : 'Only the administrator running Ryzevo sees this. Settings are shown as present or missing, never their values; the funnel is counts only, with no customer names or addresses.'}</p>
     {error && <p role="alert" className="studio-error"><Msg text={error} /></p>}
+
+    <ServerSetupGuide lang={lang} />
 
     {readiness && <div className="studio-band operator-readiness">
       <div className="plan-section-heading"><h3>{tr ? 'Canlıya geçiş durumu' : 'Go-live readiness'}</h3><p className="coach-muted">{when(readiness.generatedAt)}</p></div>
