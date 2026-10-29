@@ -13,6 +13,7 @@
     "test:platform:usage": "node --test test/platform-usage.test.cjs",
     "test:platform:entitlements": "node --test test/platform-entitlements.test.cjs",
     "test:platform:billing-checks": "node --test test/platform-billing-checks.test.cjs",
+    "worker:local": "node scripts/local-worker.cjs",
     "test:platform:http": "node --test test/platform-http.test.cjs",
     "test:platform:concurrency": "node --test test/platform-concurrency.test.cjs",
     "test:platform:requests": "node --test test/platform-request-json.test.cjs",
