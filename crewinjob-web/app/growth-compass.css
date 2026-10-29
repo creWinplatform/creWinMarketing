@@ -125,3 +125,11 @@
 .setup-copy{min-height:32px}
 .setup-copy-failed{font-size:11px;color:#b9800f}
 .setup-probe-detail{flex-basis:100%;margin:0;font-size:12px;line-height:1.6;color:var(--studio-muted)}
+.job-guide-highlights{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:4px 0 0}
+.job-guide-highlights-label{font-size:12px;font-weight:650;color:var(--studio-muted)}
+.job-guide-highlight{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:4px 10px;font-size:12px;border:1px solid color-mix(in srgb,var(--rz-amber,#b9800f) 45%,transparent);border-radius:999px;background:color-mix(in srgb,var(--rz-amber,#b9800f) 10%,transparent);color:var(--studio-ink);cursor:pointer}
+.job-guide-highlight:hover,.job-guide-highlight:focus-visible{background:color-mix(in srgb,var(--rz-amber,#b9800f) 18%,transparent)}
+.job-guide-highlight>svg{color:var(--rz-amber,#b9800f)}
+.crewin-overview-actions{display:grid;gap:12px;margin:0 0 24px}
+.team-alerts-unavailable{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+.studio-overview>.job-guide-highlights{margin:0 0 16px}

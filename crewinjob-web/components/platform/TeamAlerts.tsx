@@ -14,16 +14,20 @@ export default function TeamAlerts({lang}:{lang:Locale}){
   const tr=lang==='tr',locale=localeTag(lang);
   const [data,setData]=useState<TeamAlertsView|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const mounted=useRef(false);
-  useEffect(()=>{mounted.current=true;const controller=new AbortController();
-    projectRequest<TeamAlertsView>('/api/platform/alerts',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])}).then(value=>{if(mounted.current)setData(value);}).catch(reason=>{if(mounted.current&&!controller.signal.aborted)setError(reason instanceof Error?reason.message:(tr?'Uyarılar alınamadı.':'Could not load alerts.'));});
-    return()=>{mounted.current=false;controller.abort();};},[tr]);
+  // A slow first answer (e.g. right after the server starts) is retried once before anything is shown.
+  const [attempt,setAttempt]=useState(0);
+  useEffect(()=>{mounted.current=true;const controller=new AbortController();let retry:ReturnType<typeof setTimeout>|undefined;
+    projectRequest<TeamAlertsView>('/api/platform/alerts',{signal:AbortSignal.any([controller.signal,AbortSignal.timeout(15000)])}).then(value=>{if(mounted.current){setData(value);setError('');}}).catch(reason=>{if(!mounted.current||controller.signal.aborted)return;
+      if(attempt===0){retry=setTimeout(()=>setAttempt(1),3000);return;}
+      setError(reason instanceof Error?reason.message:(tr?'Uyarılar alınamadı.':'Could not load alerts.'));});
+    return()=>{mounted.current=false;controller.abort();if(retry)clearTimeout(retry);};},[tr,attempt]);
   async function act(body:Record<string,unknown>){
     if(busy)return;setBusy(true);setError('');
     try{const value=await projectRequest<TeamAlertsView>('/api/platform/alerts',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(15000)});if(mounted.current)setData(value);}
     catch(reason){if(mounted.current)setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}
     finally{if(mounted.current)setBusy(false);}
   }
-  if(error&&!data)return <p role="alert" className="studio-error"><Msg text={error}/></p>;
+  if(error&&!data)return <p className="coach-muted team-alerts-unavailable" role="status">{tr?'Uyarılar şu an yüklenemedi.':'Alerts could not load right now.'} <button type="button" className="studio-text-button" onClick={()=>{setError('');setAttempt(value=>value+1);}}>{tr?'Yeniden dene':'Try again'}</button></p>;
   if(!data||!data.alerts.length&&!data.email.enabled&&!data.push?.enabled)return null;
   const n=(value:number)=>value.toLocaleString(locale),time=(value:string|null)=>value?new Date(value).toLocaleString(locale,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',timeZone:data.timezone}):'';
   const text=(alert:TeamAlert)=>{switch(alert.kind){

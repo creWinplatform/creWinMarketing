@@ -14,8 +14,9 @@ interface DashboardData {
   dailyRegistrations?: number[]; topCountries?: BreakdownItem[]; topPositions?: BreakdownItem[];
   isRealData?: boolean; partial?: boolean; apiErrors?: string[]; fetchedAt?: string; error?: string;
 }
-// guide: the "What would you like to do?" panel, shown right under the heading.
-export default function DashboardTab({ onNavigate, guide }: { onNavigate?: (id: ModuleId) => void; guide?: ReactNode }) {
+// focus: one line under the heading (what is waiting now); guide: the "What would you like to do?" panel, right after the
+// figures so they stay in view on first sight.
+export default function DashboardTab({ onNavigate, focus, guide }: { onNavigate?: (id: ModuleId) => void; focus?: ReactNode; guide?: ReactNode }) {
   const { lang } = useLang(), tr = lang === 'tr', locale = localeTag(lang);
   const [data,setData] = useState<DashboardData | null>(null), [loading,setLoading] = useState(true);
   const [contentCount,setContentCount] = useState<number | null>(null), [postCount,setPostCount] = useState<number | null>(null);
@@ -46,7 +47,7 @@ export default function DashboardTab({ onNavigate, guide }: { onNavigate?: (id: 
   return (
     <section>
       <header className="studio-page-heading"><div><p className="studio-eyebrow">CREWINJOB / MARKETING</p><h1>{tr?'Pazarlama genel bakışı':'Marketing overview'}</h1><p className="studio-subtitle">{tr?'Aday kazanımı, profil aktivasyonu ve şirket büyümesi.':'Acquisition, profile activation and company growth.'}</p></div><div className="overview-header-actions"><button className="icon-button" onClick={refresh} disabled={loading} title={tr?'Yenile':'Refresh'} aria-label={tr?'Yenile':'Refresh'}><RefreshCw size={17} className={loading?'animate-spin':''} /></button>{onNavigate && <button className="studio-primary" onClick={() => onNavigate('campaigns')}><Megaphone size={16} />{tr?'Kampanya merkezi':'Campaign hub'}</button>}</div></header>
-      {guide}
+      {focus}
       <div role="status" className="studio-data-notice"><span aria-hidden="true" className={`status-dot ${!trusted || data?.partial ? 'status-dot-amber' : ''}`} /><span>{loading ? (tr?'Canlı veriler yükleniyor…':'Loading live data…') : trusted ? (data.partial ? (tr?'Kısmi canlı yanıt':'Partial live response') : (tr?'Gerçek API verisi':'Live API data')) : (tr?'Canlı veri doğrulanamadı':'Live data unavailable')}{data?.fetchedAt && ` · ${new Date(data.fetchedAt).toLocaleString(locale)}`}</span></div>
       {data?.error && <div role="alert" className="studio-error"><Msg text={data.error} /></div>}
       {historyError && <div role="alert" className="studio-error"><Msg text={historyError} /></div>}
@@ -60,6 +61,7 @@ export default function DashboardTab({ onNavigate, guide }: { onNavigate?: (id: 
         {Icon:Target,label:tr?'Aktivasyon kitlesi':'Activation audience',value:number(below),note:tr?'Profil doluluğu %80 altı':'Profile completion below 80%'},
         {Icon:UserRoundCheck,label:tr?'Tam profil':'Complete profiles',value:number(trusted?data?.seafarers?.completeProfiles:undefined),note:tr?'Kesin %100 profil doluluğu':'Exact 100% profile completion'},
       ].map(item => <div key={item.label}><span><item.Icon size={15} />{item.label}</span><strong>{item.value}</strong><small>{item.note}</small></div>)}</div>
+      {guide}
       <div className="crewin-dashboard-grid"><div>
         <section className="studio-band"><div className="studio-section-title"><h2>{tr?'Son 7 gün kayıtları':'Registrations / last 7 days'}</h2><span className="studio-badge">{tr?'Günlük':'Daily'}</span></div>{daily.length ? <div className="crewin-daily-chart">{daily.map((value,index) => <div key={index} title={`${dateAt(index).toLocaleDateString(locale)}: ${value}`}><strong>{value}</strong><div className="bar-track"><div style={{height:`${value/maxDaily*100}%`}} /></div><span>{dateAt(index).toLocaleDateString(locale,{day:'numeric',month:'short'})}</span></div>)}</div> : <div className="studio-empty"><ChartNoAxesCombined size={25} /><p>{tr?'Günlük kayıt verisi henüz alınamadı.':'Daily registration data is unavailable.'}</p></div>}</section>
         <section className="studio-band"><div className="studio-section-title"><h2>{tr?'Profil aktivasyonu':'Profile activation'}</h2>{onNavigate && <button className="studio-text-button" onClick={() => onNavigate('retention')}>Retention<ArrowUpRight size={14} /></button>}</div>{buckets && total ? <><div className="crewin-segment-bar" aria-hidden="true">{[{key:'zero',color:'#e4757b'},{key:'low',color:'#c3ab72'},{key:'mid',color:'#9e92db'},{key:'high',color:'#549584'}].map(item => <div key={item.key} style={{width:`${buckets[item.key as keyof FillRateBuckets]/total*100}%`,background:item.color}} title={number(buckets[item.key as keyof FillRateBuckets])} />)}</div><div className="crewin-segments">{[{key:'zero',label:tr?'Boş profil':'Empty profile'},{key:'low',label:'1–49%'},{key:'mid',label:'50–79%'},{key:'high',label:tr?'80%+ aktif':'80%+ activated'}].map(item => <div key={item.key}><strong>{number(buckets[item.key as keyof FillRateBuckets])}</strong><span>{item.label}</span></div>)}</div></> : <p className="studio-note">{tr?'Profil dağılımı için doğrulanmış veri yok.':'No verified profile distribution data.'}</p>}</section>

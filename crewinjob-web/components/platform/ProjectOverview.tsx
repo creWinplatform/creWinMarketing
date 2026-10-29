@@ -9,7 +9,7 @@ import CoachMyWork from './CoachMyWork';
 import TeamAlerts from './TeamAlerts';
 import ProjectApprovals from './ProjectApprovals';
 import { NextStepCard, useGuidedStage } from './GuidedStart';
-import { JobGuidePanel } from './JobGuide';
+import { JobGuideHighlights, JobGuidePanel } from './JobGuide';
 import type { Locale, ModuleId, WorkspaceContext } from '@/lib/platform/catalog';
 import type { WorkItem, MetricEntry } from '@/lib/platform/operations';
 import { projectRequest } from '@/lib/platform/client';
@@ -63,6 +63,8 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
         <div><p className="overview-intro-date">{new Date().toLocaleDateString(locale, { day:'numeric', month:'long', weekday:'long', timeZone:workspace.project.timezone })}</p><h1>{welcome ? (tr ? 'Hoş geldiniz' : 'Welcome') : (tr ? 'Çalışma merkezi' : 'Workspace overview')}</h1><p className="studio-subtitle">{welcome ? (tr ? 'Birkaç adımda kurulumu tamamlayın; her adımda ne yapacağınız burada yazar.' : 'Finish setup in a few steps; each step is explained here.') : (tr ? 'Bugünün öncelikleri ve ürününüzün büyüme yolculuğu.' : 'Today’s priorities and your product’s growth journey.')}</p></div>
         <div className="overview-header-actions"><button className="icon-button" disabled={refreshing} title={tr ? 'Yenile' : 'Refresh'} aria-label={tr ? 'Yenile' : 'Refresh'} onClick={load}><RefreshCw size={17} className={refreshing ? 'animate-spin' : ''} /></button>{enabled('campaigns') && canWrite && !setup && <button className={guided ? 'studio-secondary' : 'studio-primary'} title={tr ? 'Yeni kampanya' : 'New campaign'} onClick={() => onNavigate('campaigns')}><Plus size={17} />{tr ? 'Yeni kampanya' : 'New campaign'}</button>}</div>
       </header>
+      {/* What is waiting right now (new messages, open findings, reports to approve), one line; each opens its job. */}
+      <JobGuideHighlights lang={lang}/>
       {error && <div className="studio-error" role="alert"><Msg text={error}/><button className="icon-button" title={tr ? 'Yeniden dene' : 'Retry'} aria-label={tr ? 'Yeniden dene' : 'Retry'} onClick={load}><RefreshCw size={17} /></button></div>}
       {!data && !error && !waiting && <div className="studio-skeleton" role="status">{tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…'}</div>}
       {guided && waiting && <NextStepCard lang={lang}/>}
@@ -101,7 +103,7 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
             </>}
           </div>
           <aside className="overview-rail">
-            {guided && <JobGuidePanel lang={lang}/>}
+            {guided && <JobGuidePanel lang={lang} compact/>}
             {!guided && <CompassOverview lang={lang}/>}
             {!guided && <section><h2>{tr ? 'Hızlı başlangıç' : 'Quick start'}</h2>{[{tab:'library',Icon:FolderOpen,label:tr?'İçerik taslağı hazırla':'Prepare content'},{tab:'calendar',Icon:CalendarDays,label:tr?'Bir sonraki işi planla':'Plan your next task'},{tab:'seo',Icon:CircleDashed,label:tr?'Web sitenizi denetle':'Audit your website'}].filter(item => enabled(item.tab as ModuleId)).map(item => <button key={item.tab} className="overview-quick-action" onClick={() => onNavigate(item.tab as ModuleId)}><item.Icon size={17} /><span>{item.label}</span><ArrowUpRight size={14} /></button>)}</section>}
           </aside>

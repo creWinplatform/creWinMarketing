@@ -11,21 +11,22 @@ const ICONS: Record<JobId, typeof Send> = { social_post: Send, inbox: MessagesSq
   crewin_growth: Sparkles, crewin_ai: Sparkles, crewin_search: Search, crewin_inbox: MessagesSquare };
 // The Crewin workspace has its own jobs; only the search examples differ.
 const EXAMPLES = { ryzevo: { tr: 'Ör. instagram, rapor, google, reklam…', en: 'E.g. instagram, report, google, ads…' }, crewin: { tr: 'Ör. ilan, lead, profil, rapor, havale…', en: 'E.g. job ad, lead, profile, report, transfer…' } };
-type Context = { data: JobGuideView | null; error: string; loading: boolean; refresh: () => void; open: (query?: string) => void; variant: keyof typeof EXAMPLES };
+// open(query, focus): the dialog, optionally filtered or with one job already open.
+type Context = { data: JobGuideView | null; error: string; loading: boolean; refresh: () => void; open: (query?: string, focus?: JobId) => void; variant: keyof typeof EXAMPLES };
 const JobGuideContext = createContext<Context | null>(null);
 
 // One snapshot for the overview list and the global dialog (Ctrl/⌘+K). It is read again when the tab regains focus, so a
 // step finished on another screen is ticked on return.
 export function JobGuideProvider({ enabled, lang, variant = 'ryzevo', children }: { enabled: boolean; lang: Locale; variant?: keyof typeof EXAMPLES; children: ReactNode }) {
   const tr = lang === 'tr';
-  const [data, setData] = useState<JobGuideView | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false), [opened, setOpened] = useState(false), [query, setQuery] = useState('');
+  const [data, setData] = useState<JobGuideView | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false), [opened, setOpened] = useState(false), [query, setQuery] = useState(''), [focus, setFocus] = useState<JobId | null>(null);
   const dialog = useRef<HTMLDialogElement>(null), previousFocus = useRef<HTMLElement | null>(null), request = useRef<AbortController | null>(null);
   const refresh = useCallback(() => {
     if (!enabled) return; request.current?.abort(); const controller = new AbortController(); request.current = controller; setLoading(true);
     projectRequest<JobGuideView>('/api/platform/job-guide', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]) }).then(value => { if (!controller.signal.aborted) { setData(value); setError(''); } }).catch(reason => { if (!controller.signal.aborted) setError(reason.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
   }, [enabled]);
   useEffect(() => { refresh(); const onFocus = () => { if (document.visibilityState === 'visible') refresh(); }; window.addEventListener('focus', onFocus); return () => { request.current?.abort(); window.removeEventListener('focus', onFocus); }; }, [refresh]);
-  const open = useCallback((value = '') => { setQuery(value); setOpened(true); refresh(); }, [refresh]);
+  const open = useCallback((value = '', job?: JobId) => { setQuery(value); setFocus(job ?? null); setOpened(true); refresh(); }, [refresh]);
   useEffect(() => {
     if (!enabled) return;
     // Not over another dialog (the diagnosis, the Compass): the member is in the middle of something there.
@@ -42,7 +43,7 @@ export function JobGuideProvider({ enabled, lang, variant = 'ryzevo', children }
   return <JobGuideContext.Provider value={value}>{children}
     <dialog ref={dialog} className="growth-compass job-guide-dialog" aria-labelledby="job-guide-dialog-title" onCancel={event => { event.preventDefault(); setOpened(false); }} onClick={event => { if (event.target === dialog.current) setOpened(false); }}>
       <header className="compass-header"><span className="compass-symbol"><Search size={21} /></span><div><p>{tr ? 'İş rehberi' : 'Job guide'}</p><h2 id="job-guide-dialog-title">{tr ? 'Ne yapmak istiyorsunuz?' : 'What would you like to do?'}</h2></div><button type="button" className="icon-button" aria-label={tr ? 'Kapat' : 'Close'} title={tr ? 'Kapat' : 'Close'} onClick={() => setOpened(false)}><X size={19} /></button></header>
-      <div className="compass-scroll">{opened && <JobGuideBody lang={lang} initialQuery={query} showAll onNavigate={() => setOpened(false)} />}</div>
+      <div className="compass-scroll">{opened && <JobGuideBody lang={lang} initialQuery={query} initialExpanded={focus} showAll onNavigate={() => setOpened(false)} />}</div>
     </dialog>
   </JobGuideContext.Provider>;
 }
@@ -54,9 +55,10 @@ export function JobGuideLauncher({ lang }: { lang: Locale }) {
 }
 
 // The list: search, the most relevant jobs first and, for each job, the steps to its outcome with the next one to do.
-export function JobGuideBody({ lang, initialQuery = '', showAll = false, onNavigate }: { lang: Locale; initialQuery?: string; showAll?: boolean; onNavigate?: () => void }) {
+// limit: how many jobs show before “All jobs”; moreInDialog: “All jobs” opens the dialog instead of growing the page.
+export function JobGuideBody({ lang, initialQuery = '', initialExpanded = null, showAll = false, limit = 5, moreInDialog = false, onNavigate }: { lang: Locale; initialQuery?: string; initialExpanded?: JobId | null; showAll?: boolean; limit?: number; moreInDialog?: boolean; onNavigate?: () => void }) {
   const tr = lang === 'tr', guide = useJobGuide();
-  const [query, setQuery] = useState(initialQuery), [expanded, setExpanded] = useState<JobId | null>(null), [all, setAll] = useState(showAll);
+  const [query, setQuery] = useState(initialQuery), [expanded, setExpanded] = useState<JobId | null>(initialExpanded), [all, setAll] = useState(showAll);
   const jobs = useMemo(() => {
     const list = guide?.data?.jobs || [], words = searchText(query, lang).split(/\s+/).filter(Boolean);
     if (!words.length) return list;
@@ -65,13 +67,13 @@ export function JobGuideBody({ lang, initialQuery = '', showAll = false, onNavig
   useEffect(() => { if (query && jobs.length === 1) setExpanded(jobs[0].id); }, [query, jobs]);
   if (!guide) return null;
   if (!guide.data) return guide.error ? <p role="alert" className="studio-error"><Msg text={guide.error} /></p> : <p className="studio-skeleton" role="status">{tr ? 'İşler hazırlanıyor…' : 'Preparing your jobs…'}</p>;
-  const shown = all || query ? jobs : jobs.slice(0, 5);
+  const shown = all || query ? jobs : jobs.slice(0, limit);
   return <div className="job-guide-body">
     <label className="job-guide-search"><Search size={15} aria-hidden="true" /><span className="sr-only">{tr ? 'İş ara' : 'Search jobs'}</span>
       <input type="search" value={query} onChange={event => setQuery(event.target.value)} placeholder={EXAMPLES[guide.variant][lang]} /></label>
     {shown.length === 0 ? <p className="coach-muted">{tr ? 'Bu aramayla eşleşen bir iş yok. Başka bir kelime deneyin ya da menüden ilgili ekranı açın.' : 'No job matches this search. Try another word or open the screen from the menu.'}</p>
       : <ul className="job-guide-list">{shown.map(job => <JobRow key={job.id} job={job} lang={lang} expanded={expanded === job.id} onToggle={() => setExpanded(expanded === job.id ? null : job.id)} onNavigate={onNavigate} />)}</ul>}
-    {!all && !query && jobs.length > 5 && <button type="button" className="studio-text-button" onClick={() => setAll(true)}>{tr ? `Tüm işler (${jobs.length})` : `All jobs (${jobs.length})`}<ChevronDown size={14} /></button>}
+    {!all && !query && jobs.length > limit && <button type="button" className="studio-text-button" onClick={() => moreInDialog ? guide.open() : setAll(true)}>{tr ? `Tüm işler (${jobs.length})` : `All jobs (${jobs.length})`}<ChevronDown size={14} /></button>}
     {guide.data.unavailable?.map(note => <p key={note.en} className="job-guide-unavailable" role="note"><CircleAlert size={13} aria-hidden="true" />{note[lang]}</p>)}
   </div>;
 }
@@ -107,12 +109,26 @@ function JobRow({ job, lang, expanded, onToggle, onNavigate }: { job: JobGuideIt
   </li>;
 }
 
-// Overview rail: the same guide, top jobs only.
-export function JobGuidePanel({ lang }: { lang: Locale }) {
+// Overview rail: the same guide, top jobs only. compact: four jobs, and “All jobs” opens the dialog (the page stays short).
+export function JobGuidePanel({ lang, compact = false }: { lang: Locale; compact?: boolean }) {
   const guide = useJobGuide(); if (!guide) return null; const tr = lang === 'tr';
   return <section id="task-launcher" className="task-launcher job-guide-panel" aria-labelledby="job-guide-title">
     <div className="job-guide-panel-head"><h2 id="job-guide-title">{tr ? 'Ne yapmak istiyorsunuz?' : 'What would you like to do?'}</h2><kbd title={tr ? 'Her ekrandan açılır' : 'Opens from every screen'}>Ctrl K</kbd></div>
     <p className="coach-muted">{tr ? 'Bir iş seçin; sonuca kadar hangi adımların kaldığını ve sıradakini gösteririz.' : 'Pick a job; we show which steps remain to the outcome and the next one.'}</p>
-    <JobGuideBody lang={lang} />
+    <JobGuideBody lang={lang} limit={compact ? 4 : 5} moreInDialog={compact} />
   </section>;
+}
+
+// One line under the page heading: what is waiting right now (orders, leads in review, empty profiles…). Each item opens
+// its job in the guide; the figures stay in view right below.
+export function JobGuideHighlights({ lang, max = 3 }: { lang: Locale; max?: number }) {
+  const guide = useJobGuide(), tr = lang === 'tr', locale = tr ? 'tr-TR' : 'en-US';
+  const waiting = (guide?.data?.jobs || []).filter(job => job.badge && !job.complete).slice(0, max);
+  if (!guide || !waiting.length) return null;
+  return <nav className="job-guide-highlights" aria-label={tr ? 'Şu an bekleyenler' : 'Waiting right now'}>
+    <span className="job-guide-highlights-label">{tr ? 'Bekleyenler:' : 'Waiting:'}</span>
+    {waiting.map(job => { const Icon = ICONS[job.id] || FolderOpen; return <button key={job.id} type="button" className="job-guide-highlight" onClick={() => guide.open('', job.id)} title={job.title[lang]}>
+      <Icon size={14} aria-hidden="true" /><strong>{job.badge!.count.toLocaleString(locale)}</strong> {job.badge!.label[lang]}</button>; })}
+    <button type="button" className="studio-text-button" onClick={() => guide.open()}>{tr ? 'Ne yapmak istiyorsunuz?' : 'What would you like to do?'}<ArrowRight size={13} /></button>
+  </nav>;
 }

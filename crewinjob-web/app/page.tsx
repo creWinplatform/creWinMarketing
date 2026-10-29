@@ -17,7 +17,7 @@ import ProjectPlanning from '@/components/platform/ProjectPlanning';
 import ProjectReports from '@/components/platform/ProjectReports';
 import ProjectAudit from '@/components/platform/ProjectAudit';
 import { GrowthCompassProvider, CompassLauncher } from '@/components/platform/GrowthCompass';
-import { JobGuideProvider, JobGuideLauncher, JobGuidePanel } from '@/components/platform/JobGuide';
+import { JobGuideProvider, JobGuideLauncher, JobGuidePanel, JobGuideHighlights } from '@/components/platform/JobGuide';
 import CrewinGrowthPanel from '@/components/platform/CrewinGrowthPanel';
 import CrewinReportsPanel from '@/components/platform/CrewinReportsPanel';
 import CrewinCalendar from '@/components/platform/CrewinCalendar';
@@ -217,7 +217,7 @@ export default function Home() {
       )}
       {isCrewin && activeTab === 'dashboard' && (
         <>
-          <DashboardTab onNavigate={navigate} guide={<><JobGuidePanel lang={lang} /><CrewinGrowthPanel workspace={workspace} lang={lang} part="attention" /></>} />
+          <DashboardTab onNavigate={navigate} focus={<JobGuideHighlights lang={lang} />} guide={<div className="crewin-overview-actions"><CrewinGrowthPanel workspace={workspace} lang={lang} part="attention" /><JobGuidePanel lang={lang} compact /></div>} />
           <CrewinGrowthPanel workspace={workspace} lang={lang} part="coach" />
           <details className="crewin-detail-disclosure"><summary>{tr ? 'Profil ve şirket verileri: detaylı dağılım' : 'Profile and company data: detailed breakdown'}</summary>
           {statsLoading ? (
