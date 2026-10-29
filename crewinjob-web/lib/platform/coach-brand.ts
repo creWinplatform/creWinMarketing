@@ -68,7 +68,9 @@ export class CoachBrand{
     this.coach.authorize();if(!this.coach.can('connections.manage'))throw new MarketingStoreError('Marka dilini ürün profiline yalnız proje ayarlarını yöneten ekip üyeleri uygulayabilir.',403);
     return this.db.transaction(()=>{
       const row=this.row();if(!row?.voice_draft)throw new MarketingStoreError('Önce bir marka dili taslağı hazırlayın.',404);if(raw.expectedRevision!==row.revision)throw conflict();
-      const project=this.project();this.coach.repo.updateProject(this.scope.subject,...this.args(),{name:project.name,website:project.website,timezone:project.timezone,language:project.language||'tr',brandVoice:row.voice_draft,goals:project.goals});
+      const project=this.project();
+      if(project.productPack==='crewin')this.coach.repo.updateBrandVoice(this.scope.subject,...this.args(),row.voice_draft);
+      else this.coach.repo.updateProject(this.scope.subject,...this.args(),{name:project.name,website:project.website,timezone:project.timezone,language:project.language||'tr',brandVoice:row.voice_draft,goals:project.goals});
       this.write(row.revision,{voice_applied_at:new Date().toISOString()},'coach.brand.voice.apply');return this.read();
     }).immediate();
   }

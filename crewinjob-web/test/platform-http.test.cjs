@@ -186,7 +186,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     }finally{identityDb.close();}
     assert.equal((await request('/api/platform/data-sources',admin)).status,403);
     assert.equal((await request('/api/platform/ses',admin)).status,403);
-    assert.equal((await request('/api/platform/measurements',admin)).status,403);
+    assert.equal((await request('/api/platform/measurements',admin)).status,200,'the Crewin workspace has Ryzevo measurements (lib/platform/ryzevo-features.ts)');
     assert.equal((await request('/api/platform/publications',admin)).status,403);
     const sourceConfig={url:'https://127.0.0.1/users',auth:'bearer',itemsPath:'result.items',idPath:'id',updatedAtPath:'updatedAt',entityType:'user',attributes:[{key:'progress',path:'progress',type:'number'}],nextCursorPath:'',cursorParam:''};
     const saveSource=await request('/api/platform/data-sources',alpha,'POST',{action:'save',name:'Alpha source',config:sourceConfig,token:'fixture-product-token',organizationId:b.organizationId,projectId:b.projectId});
@@ -201,7 +201,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.equal((await request('/api/marketing/automation',alpha,'POST',{jobType:'connection.verify',connectionId:source.id,idempotencyKey:'wrong-kind'})).status,400);
     assert.equal((await fetch(`${base}/api/platform/data-sources`,{method:'POST',headers:{Cookie:alpha,'Content-Type':'application/json',Origin:'https://untrusted.example'},body:JSON.stringify({action:'pause',id:source.id,version:1})})).status,403);
     assert.equal((await request('/api/platform/google')).status, 401);
-    assert.equal((await request('/api/platform/google', admin)).status, 403);
+    assert.equal((await request('/api/platform/google', admin)).status, 200, 'the Crewin workspace connects Google for Ryzevo features');
     assert.equal((await (await request('/api/platform/google', alpha)).json()).configured, true);
     const googleStart = await request('/api/platform/google', alpha, 'POST', { provider: 'ga4', resource: '123', accountName: 'Alpha analytics' });
     assert.equal(googleStart.status, 200);
@@ -350,7 +350,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.equal((await request('/api/platform/x',alpha,'POST',{accountName:'X',publishing:'true'})).status,400);
     assert.equal((await request('/api/platform/x/callback/extra')).status,401);
     assert.equal((await request('/api/platform/meta')).status, 401);
-    assert.equal((await request('/api/platform/meta', admin)).status, 403);
+    assert.equal((await request('/api/platform/meta', admin)).status, 200, 'the Crewin workspace connects Meta for the inbox');
     const metaCapabilities = await (await request('/api/platform/meta', alpha)).json();
     assert.equal(metaCapabilities.configured, true); assert.equal(metaCapabilities.selection, null);
     const metaStart = await request('/api/platform/meta', alpha, 'POST', { action: 'start', target: 'instagram' });

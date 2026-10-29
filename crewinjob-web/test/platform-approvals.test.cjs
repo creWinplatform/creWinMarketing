@@ -32,7 +32,7 @@ test('each member sees only what their role or duty lets them decide',()=>close(
  assert.deepEqual(f.kinds(f.member('viewer')),[]);assert.deepEqual(f.kinds(f.member('analyst')),[]);
  assert.deepEqual(f.kinds(f.member('admin')),['ad_plan:1','coach_brief:1','coach_renewal:1','coach_review:2','content_plan:2','whatsapp_approve:1'].sort(),'admins need the publish duty given on purpose to send replies');
  assert.deepEqual(f.kinds(f.other),[],'another project sees nothing');
- assert.throws(()=>new ProjectApprovals(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),error=>error.status===403);
+ assert.doesNotThrow(()=>new ProjectApprovals(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
 }));
 
 test('last month’s report is suggested in the first ten days of a month, only when there was activity and no approval',()=>close(f=>{

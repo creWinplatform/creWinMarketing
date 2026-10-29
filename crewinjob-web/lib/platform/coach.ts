@@ -12,6 +12,8 @@ import { compassSiteReceipt } from './guidance';
 import { COACH_BUDGETS,COACH_CHANNELS,COACH_CONTENT_CHANNELS,COACH_CURRENT,COACH_HOURS,COACH_GOALS,COACH_MARKETS,COACH_OBSTACLES,COACH_PRICES,COACH_SALES,COACH_SKILLS,COACH_TOOLS,coachDraftChannel,isCoachContentChannel,type CoachAction,type CoachAnswers,type CoachBrief,type CoachBriefKind,type CoachChannel,type CoachPlanItem,type CoachSnapshot,type CoachTool } from './coach-types';
 import { compassFromBrief,seedCompassFromBrief } from './coach-compass';
 import { coachAssignmentRows } from './coach-assignment-rows';
+import { ryzevoFeature } from './ryzevo-features';
+import { crewinConnectedChannels,draftTotal,isCrewinProject } from './coach-activity';
 
 type Lang='tr'|'en';
 type Row={revision:number;answers_json:string;draft_json:string|null;draft_source:'ai'|'template'|null;draft_at:string|null;brief_json:string|null;approved_at:string|null};
@@ -188,15 +190,21 @@ const TOOL_PERMISSION:Record<CoachTool,WorkspacePermission>={library:'content.wr
 const OWN_VIEW:Partial<Record<CoachChannel|CoachTool,string>>={whatsapp:'/?tab=campaigns&campaignView=whatsapp',ads:'/?tab=campaigns&campaignView=ads'};
 const AD_PROVIDERS=['meta_ads','google_ads','linkedin_ads'];
 const GUIDE:Partial<Record<CoachChannel,string>>={linkedin:'linkedin_company',instagram:'instagram',facebook:'facebook',twitter:'twitter'};
+// The Crewin workspace opens its own tabs: social accounts are connected in Social media, email and WhatsApp in WA & Telegram,
+// ads in Ad content; Ryzevo's Project settings → Connections is only for Google and Meta there.
+const CREWIN_TAB:Record<CoachTool,ModuleId>={...TOOL_TAB,ads:'ads',whatsapp:'messaging'};
+const CREWIN_HREF:Record<CoachTool,string>={library:'/?tab=library',campaigns:'/?tab=campaigns&view=flows',seo:'/?tab=seo&view=ops',calendar:'/?tab=calendar&view=work',project:'/?tab=project',connections:'/?tab=project&settings=connections',analytics:'/?tab=analytics',ads:'/?tab=ads',whatsapp:'/?tab=messaging&view=whatsapp'};
+const crewinHref=(tool:CoachTool,channel:CoachChannel|null)=>tool!=='connections'?CREWIN_HREF[tool]:channel==='email'?'/?tab=messaging&view=notify_email':channel==='whatsapp'?'/?tab=messaging&view=whatsapp':channel==='ads'?'/?tab=ads':channel&&['linkedin','instagram','facebook','twitter'].includes(channel)?'/?tab=social':CREWIN_HREF.connections;
 const toolHref=(tool:CoachTool,channel:CoachChannel|null)=>OWN_VIEW[tool]?OWN_VIEW[tool]!:tool==='connections'&&channel&&OWN_VIEW[channel]?OWN_VIEW[channel]!:tool==='connections'?channel==='email'?'/?tab=campaigns&campaignView=sender':`/?tab=project&settings=connections${channel&&GUIDE[channel]?`&guideProvider=${GUIDE[channel]}`:''}`:`/?tab=${TOOL_TAB[tool]}`;
 
 export class GrowthCoach{
   repo:PlatformRepository;
   constructor(public db:Database.Database,public scope:MarketingScope){this.repo=new PlatformRepository(db);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
+  crewin(){return isCrewinProject(this.db,this.args());}
   can(permission:WorkspacePermission){return this.repo.can(this.scope.subject,...this.args(),permission);}
   authorize(permission:WorkspacePermission='read',denied?:string){
-    if(!this.can('read')||this.repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Büyüme koçu için standart proje erişimi gerekli.',403);
+    if(!this.can('read')||!ryzevoFeature(this.repo.workspace(this.scope.subject,...this.args())?.project.productPack,'coach'))throw new MarketingStoreError('Büyüme koçu için standart proje erişimi gerekli.',403);
     if(!this.can(permission))throw new MarketingStoreError(denied||(permission==='campaign.approve'?'Strateji briefini yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.'),403);
   }
   // Applies an accepted weekly-review adjustment to the approved plan; same approval right as approving the brief.
@@ -272,10 +280,10 @@ export class GrowthCoach{
   versions(limit=10){return (this.db.prepare('SELECT coach_revision,kind,brief_json,approved_at FROM platform_growth_coach_briefs WHERE organization_id=? AND project_id=? ORDER BY id DESC LIMIT ?').all(...this.args(),limit) as {coach_revision:number;kind:CoachBriefKind;brief_json:string;approved_at:string}[]).map(row=>({revision:row.coach_revision,kind:row.kind,approvedAt:row.approved_at,brief:JSON.parse(row.brief_json) as CoachBrief}));}
   private actionRows(){return new Map((this.db.prepare('SELECT action_id,state,week,task_id FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=?').all(...this.args()) as ActionRow[]).map(row=>[row.action_id,row]));}
   // Saved active connections by coach channel name; any of the three ad providers counts as "ads".
-  private connected(){return new Set((this.db.prepare('SELECT c.provider,s.platform FROM platform_connections c LEFT JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1').all(...this.args()) as {provider:string;platform:string|null}[]).map(item=>item.provider==='social'?item.platform:AD_PROVIDERS.includes(item.provider)?'ads':item.provider));}
+  private connected(){const saved=new Set<string|null>((this.db.prepare('SELECT c.provider,s.platform FROM platform_connections c LEFT JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1').all(...this.args()) as {provider:string;platform:string|null}[]).map(item=>item.provider==='social'?item.platform:AD_PROVIDERS.includes(item.provider)?'ads':item.provider));if(this.crewin())for(const channel of crewinConnectedChannels())saved.add(channel);return saved;}
   private candidates(brief:CoachBrief,week:number,connected:Set<string|null>):Candidate[]{
     const project=this.repo.workspace(this.scope.subject,...this.args())!.project,list:Candidate[]=[],planned=(tool:CoachTool,channel?:CoachChannel)=>brief.plan.some(item=>item.tool===tool&&(!channel||item.channel===channel));
-    const count=(table:string)=>(this.db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE organization_id=? AND project_id=?`).get(...this.args()) as {n:number}).n,drafts=count('platform_content_history')+count('platform_campaigns');
+    const drafts=draftTotal(this.db,this.args());
     if(!project.goals.length)list.push({id:'setup:goal',kind:'setup',week:null,title:l('Bir büyüme hedefi tanımlayın','Define a growth goal'),why:l('Projede henüz hedef yok. Hedef olmadan kampanyalar ve ölçümler bir sonuca bağlanamaz.','The project has no goal yet. Without one, campaigns and measurements can’t be tied to an outcome.'),how:l('Proje ayarları → Ürün profili’nde tek bir hedef ve 2–4 aşama ekleyin.','In Project settings → Product profile, add one goal with 2–4 stages.'),minutes:15,tool:'project',channel:null});
     const missing=brief.channels.find(item=>item.id!=='seo'&&!connected.has(item.id)&&!planned('connections',item.id));
     if(missing)list.push({id:`setup:connect:${missing.id}`,kind:'setup',week:null,title:missing.id==='email'?l('E-posta gönderenini kurun','Set up the email sender'):missing.id==='ads'?l('Reklam hesabınızı bağlayın','Connect your ad account'):l(`${channelName(missing.id,'tr')} bağlantısını kurun`,`Connect ${channelName(missing.id,'en')}`),why:l('Öncelikli kanallarınızdan biri için kayıtlı bir bağlantı yok. Bağlantı kurmak hiçbir şey yayınlamaz.','One of your priority channels has no saved connection. Connecting publishes nothing.'),how:l('Rehberdeki adımları izleyin; hesap sahibinden kendi hesabınıza erişim isteyin. Parola veya token paylaşmayın.','Follow the guide; ask the account owner for access for your own account. Never share passwords or tokens.'),minutes:15,tool:'connections',channel:missing.id});
@@ -299,13 +307,13 @@ export class GrowthCoach{
     const states=this.actionRows(),tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task])),modules=this.repo.workspace(this.scope.subject,...this.args())!.modules;
     const assignments=coachAssignmentRows(this.db,...this.args(),'action',zonedDateKey(new Date(),this.timeZone()),this.scope.subject);
     const connected=this.connected(),all=this.candidates(brief,Math.min(week,4),connected).map((item):CoachAction=>{
-      const stored=states.get(item.id),task=stored?.task_id?tasks.get(stored.task_id):undefined,href=toolHref(item.tool,item.channel);
+      const stored=states.get(item.id),task=stored?.task_id?tasks.get(stored.task_id):undefined,href=this.crewin()?crewinHref(item.tool,item.channel):toolHref(item.tool,item.channel);
       // Done comes from the team's own mark, a completed linked Calendar task, or (for connection items) a saved active connection.
       const state=stored?.state==='done'||task?.status==='completed'||item.kind==='plan'&&item.tool==='connections'&&connected.has(item.channel)?'done':stored?.state==='skipped'&&stored.week===weekKey?'skipped':'open';
       const pick=(value:string|LocalizedText)=>typeof value==='string'?value:value[brief.language];
       const prefill=item.tool==='library'||item.tool==='campaigns'?{brief:`${pick(item.title)}\n${pick(item.why)}`.slice(0,3000),channel:item.tool==='campaigns'?isCoachContentChannel(item.channel)&&item.channel!=='seo'?item.channel:'email':coachDraftChannel(item.channel),name:pick(item.title).slice(0,140),ref:item.id}:null;
       const assigned=assignments.get(item.id),assignment=assigned?{...assigned,overdue:assigned.overdue&&state==='open'}:null;
-      return {...item,href,canAct:modules.some(module=>module.id===TOOL_TAB[item.tool])&&this.can(TOOL_PERMISSION[item.tool]),prefill,state,taskId:task&&!['cancelled'].includes(task.status)?task.id:null,assignment};
+      return {...item,href,canAct:modules.some(module=>module.id===(this.crewin()?CREWIN_TAB:TOOL_TAB)[item.tool])&&this.can(TOOL_PERMISSION[item.tool]),prefill,state,taskId:task&&!['cancelled'].includes(task.status)?task.id:null,assignment};
     });
     return {row,brief,week,weekKey,all};
   }

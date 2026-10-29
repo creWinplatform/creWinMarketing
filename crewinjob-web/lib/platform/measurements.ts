@@ -9,6 +9,7 @@ import { refreshGoogleCredentials } from './google-client';
 import { readGoogleMeasurement, type GoogleMeasurementReader } from './measurement-google';
 import { WEBHOOK_LIMITS } from './product-webhook-types';
 import { MEASUREMENT_METRICS, defaultMeasurementPeriod, type MeasurementSource, type MeasurementDefinition, type MeasurementProvider, type MeasurementResult, type MeasurementJob, type MeasurementWorkspace } from './measurement-types';
+import { ryzevoFeature } from './ryzevo-features';
 
 type Binding = { id: string; organization_id: string; project_id: string; goal_id: string; stage_index: number; goal_signature: string; connection_id: string; provider: MeasurementProvider; source_version: number | null; definition_json: string; version: number; enabled: number; manager_id: string; next_sync_at: string | null };
 type Connection = { id: string; provider: string; account_name: string; integration_id: string; encrypted_credentials: string; active: number };
@@ -26,9 +27,9 @@ export class ProjectMeasurements {
   private repo: PlatformRepository;
   constructor(private db: Database.Database, private scope: MarketingScope, private key: string) { this.repo = new PlatformRepository(db); }
   private args() { return [this.scope.organizationId, this.scope.projectId] as const; }
-  private can(subject = this.scope.subject) { return this.repo.can(subject, ...this.args(), 'connections.manage') && this.repo.workspace(subject, ...this.args())?.project.productPack === 'standard'; }
+  private can(subject = this.scope.subject) { return this.repo.can(subject, ...this.args(), 'connections.manage') && ryzevoFeature(this.repo.workspace(subject, ...this.args())?.project.productPack, 'measurements'); }
   private authorize(manage = false) {
-    if (!this.repo.can(this.scope.subject, ...this.args(), 'read') || this.repo.workspace(this.scope.subject, ...this.args())?.project.productPack !== 'standard' || manage && !this.can()) throw new MarketingStoreError('Ölçüm erişimi reddedildi.', 403);
+    if (!this.repo.can(this.scope.subject, ...this.args(), 'read') || !ryzevoFeature(this.repo.workspace(this.scope.subject, ...this.args())?.project.productPack, 'measurements') || manage && !this.can()) throw new MarketingStoreError('Ölçüm erişimi reddedildi.', 403);
   }
   private binding(id: string) {
     const row = this.db.prepare('SELECT * FROM platform_measurement_bindings WHERE id=? AND organization_id=? AND project_id=?').get(id, ...this.args()) as Binding | undefined;
@@ -46,7 +47,8 @@ export class ProjectMeasurements {
   sources(): MeasurementSource[] {
     this.authorize(true);
     const google = this.db.prepare("SELECT id,account_name AS name,provider,integration_id AS resource FROM platform_connections WHERE organization_id=? AND project_id=? AND active=1 AND provider IN ('ga4','search_console') ORDER BY account_name,id").all(...this.args()) as Omit<MeasurementSource, 'version' | 'eventNames'>[];
-    const events = new ProductSegments(this.db, this.scope).sources().filter(item => item.kind === 'webhook' && item.state === 'active');
+    // Product-data event sources exist only in standard projects; the Crewin workspace's data comes from its backend.
+    const events = this.repo.workspace(this.scope.subject, ...this.args())?.project.productPack === 'standard' ? new ProductSegments(this.db, this.scope).sources().filter(item => item.kind === 'webhook' && item.state === 'active') : [];
     return [...google.map(item => ({ ...item, version: null, eventNames: [] })), ...events.map(item => ({ id: item.id, name: item.name, provider: 'product_webhook' as const, resource: 'signed_events', version: item.version, eventNames: item.eventNames }))];
   }
   private valid(row: Binding) {

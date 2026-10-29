@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSessionIdentity } from '@/lib/auth';
 import { buildCampaign, type CampaignContent, type CreateCampaignInput, type UnifiedCampaign } from '@/lib/campaigns';
 import type { HistoryItem } from '@/lib/content-history';
-import { getPlatformAccess } from './workspace-server';
+import { getPlatformAccess, getRyzevoAccess } from './workspace-server';
 import { platformDatabase } from './database';
 import { ProjectMarketingStore, MarketingStoreError } from './marketing-store';
 import { hasSameRequestOrigin } from './request-origin';
@@ -97,11 +97,15 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
     headline: string(raw.headline, 200, current?.headline),...(imageData?{imageData,imageMime}:{}),...(images?.length?{images}:{}),...(video?{video}:{}),...(story?{story:true}:{}),...(coachRef(raw.coachRef,current?.coachRef)),...(current?.repurposedFrom?{repurposedFrom:current.repurposedFrom}:{}) };
 }
 
-async function context(request: NextRequest) {
+// ryzevoStore: Ryzevo connections in the Crewin workspace. A legacy session normally gets null (its Crewin adapter answers);
+// only a request that asks for the Ryzevo store (?store=ryzevo, sent by Project settings → Connections) reaches the platform
+// store, and only for the Crewin workspace's own account.
+async function context(request: NextRequest, ryzevoStore = false) {
   const identity = await getSessionIdentity();
-  if (identity?.mode !== 'platform') return null;
+  const crewin = ryzevoStore && identity?.mode === 'legacy' && request.nextUrl.searchParams.get('store') === 'ryzevo';
+  if (identity?.mode !== 'platform' && !crewin) return null;
   if (!['GET', 'HEAD'].includes(request.method) && !hasSameRequestOrigin(request)) throw new MarketingStoreError('İstek kaynağı geçersiz.', 403);
-  const access = await getPlatformAccess();
+  const access = crewin ? await getRyzevoAccess() : await getPlatformAccess();
   if (!access) throw new MarketingStoreError('Proje erişimi reddedildi.', 403);
   const store = new ProjectMarketingStore(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId });
   const jobs = new ConnectionJobs(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId });
@@ -178,7 +182,7 @@ export async function projectHistoryResponse(request: NextRequest): Promise<Next
 
 export async function projectConnectionResponse(request: NextRequest): Promise<NextResponse | null> {
   try {
-    const scope = await context(request);
+    const scope = await context(request, true);
     if (!scope) return null;
     const { store } = scope;
     if (request.method === 'GET') {
@@ -190,6 +194,8 @@ export async function projectConnectionResponse(request: NextRequest): Promise<N
     const raw = object(await request.json());
     if (raw.action === 'revoke') { store.revokeConnection(string(raw.id, 160)); return response({ ok: true }); }
     if (!scope.workspace.permissions?.includes('connections.manage')) throw new MarketingStoreError('Bağlantı yönetimi yetkisi gerekli.', 403);
+    // Crewin connects Google and Meta through their sign-in screens only; its other channels use its own tools.
+    if (scope.workspace.project.productPack === 'crewin') throw new MarketingStoreError('Crewin çalışma alanında Ryzevo bağlantıları yalnız Google ve Meta ile kurulur.', 403);
     if (['product_rest','product_webhook','mobile'].includes(String(raw.provider)) || (typeof raw.id==='string' && store.connections().some(item=>item.id===raw.id && ['product_rest','product_webhook','mobile'].includes(item.provider)))) throw new MarketingStoreError('Bu bağlantıyı ilgili Ürün verisi veya Mobil büyüme bölümünden yönetin.');
     return response(store.saveConnection({ id: raw.id === undefined ? undefined : string(raw.id, 160), provider: string(raw.provider, 50), integrationId: string(raw.integrationId, 160, raw.provider === 'social' ? 'social' : ''), accountName: string(raw.accountName, 160), accessToken: string(raw.accessToken, 16384), refreshToken: string(raw.refreshToken, 16384), ...(raw.smtp !== undefined ? { smtp: raw.smtp as SmtpConfiguration } : {}), ...(raw.social !== undefined ? { social: raw.social as SocialConfiguration } : {}) }, credentialEncryptionKey()));
   } catch (error) { return failure(error); }
@@ -197,7 +203,7 @@ export async function projectConnectionResponse(request: NextRequest): Promise<N
 
 export async function projectAutomationResponse(request: NextRequest): Promise<NextResponse | null> {
   try {
-    const scope = await context(request);
+    const scope = await context(request, true);
     if (!scope) return null;
     if (request.method === 'GET') {
       const id = request.nextUrl.searchParams.get('id') || undefined;

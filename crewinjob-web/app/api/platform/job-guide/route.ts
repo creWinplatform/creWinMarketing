@@ -24,6 +24,7 @@ function crewinGuide(){
     pendingOrders:()=>api().firmaKrediGet('GetBekleyenSiparisler',{sayfa:'1',boyut:'1'}),
     campaigns:()=>api().marketingCampaignV2Get('GetAll',{skipCount:0,maxResultCount:100}),
     posts:()=>api().marketingPostHistoryGet('GetAll',{skipCount:0,maxResultCount:20}),
+    db:platformDatabase(),
   });
 }
 

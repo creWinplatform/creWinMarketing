@@ -1,6 +1,6 @@
 import { NextRequest,NextResponse } from 'next/server';
 import { GoogleGenerativeAI,type GenerationConfig,type Tool } from '@google/generative-ai';
-import { getPlatformAccess } from '@/lib/platform/workspace-server';
+import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { hasSameRequestOrigin } from '@/lib/platform/request-origin';
 import { readBoundedJsonBytes } from '@/lib/platform/request-json';
 import { MarketingStoreError } from '@/lib/platform/errors';
@@ -25,7 +25,7 @@ export const coachGemini=(maxOutputTokens=6000):CoachGenerator|undefined=>{
 };
 export function coachRoute(run:(scope:MarketingScope,request:NextRequest)=>Promise<unknown>){
   return async (request:NextRequest)=>{const headers={'Cache-Control':'private, no-store'};try{
-    const access=await getPlatformAccess();if(!access||access.identity.mode!=='platform')return NextResponse.json({error:'Proje oturumu gerekli.'},{status:403,headers});
+    const access=await getRyzevoAccess();if(!access)return NextResponse.json({error:'Proje oturumu gerekli.'},{status:403,headers});
     if(request.method!=='GET'&&!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     return NextResponse.json(await run({subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},request),{headers});
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Büyüme koçu şu anda yüklenemedi. Mevcut araçlarınızı kullanmaya devam edebilirsiniz.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}};

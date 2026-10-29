@@ -9,6 +9,7 @@ import { GrowthCoach,coachChoice,coachWeekKey } from './coach';
 import { CoachAssignments } from './coach-assignments';
 import { identityEmailConfiguration } from './identity-email';
 import type { CoachDigestSnapshot,CoachReviewFacts,CoachAdjustment } from './coach-types';
+import { ryzevoFeature } from './ryzevo-features';
 
 type Lang='tr'|'en';
 type Configuration=NonNullable<ReturnType<typeof identityEmailConfiguration>>;
@@ -101,7 +102,7 @@ export async function deliverNextCoachDigest(db:Database.Database,deliver:Digest
     const subscription=db.prepare('SELECT language FROM platform_coach_digest_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(row.user_id,row.organization_id,row.project_id) as {language:Lang}|undefined;
     const email=(db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as {email:string}|undefined)?.email;
     const review=db.prepare('SELECT facts_json,adjustments_json FROM platform_coach_reviews WHERE id=? AND organization_id=? AND project_id=?').get(row.review_id,row.organization_id,row.project_id) as {facts_json:string;adjustments_json:string}|undefined;
-    if(!workspace||workspace.project.productPack!=='standard')return skip('membership');if(!subscription)return skip('unsubscribed');if(!email)return skip('email');if(!review)return skip('review');
+    if(!workspace||!ryzevoFeature(workspace.project.productPack,'coach'))return skip('membership');if(!subscription)return skip('unsubscribed');if(!email)return skip('email');if(!review)return skip('review');
     db.prepare("UPDATE platform_coach_digest_deliveries SET state='submitted',updated_at=? WHERE id=? AND state='queued'").run(now,row.id);
     const assigned=new CoachAssignments(db,{subject:row.user_id,organizationId:row.organization_id,projectId:row.project_id}).read().mine;
     return {id:row.id,mail:{to:email,...digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),subscription.language,workspace.project,configuration.origin,assigned)}};

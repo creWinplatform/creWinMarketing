@@ -18,6 +18,9 @@ import ProjectReports from '@/components/platform/ProjectReports';
 import ProjectAudit from '@/components/platform/ProjectAudit';
 import { GrowthCompassProvider, CompassLauncher } from '@/components/platform/GrowthCompass';
 import { JobGuideProvider, JobGuideLauncher, JobGuidePanel } from '@/components/platform/JobGuide';
+import CrewinGrowthPanel from '@/components/platform/CrewinGrowthPanel';
+import CrewinReportsPanel from '@/components/platform/CrewinReportsPanel';
+import CrewinCalendar from '@/components/platform/CrewinCalendar';
 
 function TabLoading() {
   const { lang } = useLang();
@@ -147,7 +150,7 @@ export default function Home() {
       const url = new URL(window.location.href);
       url.searchParams.set('tab', tab);
       // A sub-view chosen by a link belongs to the tab it was opened for.
-      url.searchParams.delete('view'); url.searchParams.delete('section');
+      for (const key of ['view', 'section', 'planning', 'seoView', 'campaignView', 'settings']) url.searchParams.delete(key);
       window.history.pushState({}, '', url);
       window.scrollTo({ top: 0 });
     },
@@ -214,7 +217,8 @@ export default function Home() {
       )}
       {isCrewin && activeTab === 'dashboard' && (
         <>
-          <DashboardTab onNavigate={navigate} guide={<JobGuidePanel lang={lang} />} />
+          <DashboardTab onNavigate={navigate} guide={<><JobGuidePanel lang={lang} /><CrewinGrowthPanel workspace={workspace} lang={lang} part="attention" /></>} />
+          <CrewinGrowthPanel workspace={workspace} lang={lang} part="coach" />
           <details className="crewin-detail-disclosure"><summary>{tr ? 'Profil ve şirket verileri: detaylı dağılım' : 'Profile and company data: detailed breakdown'}</summary>
           {statsLoading ? (
             <p className="studio-data-notice" role="status">
@@ -335,7 +339,7 @@ export default function Home() {
           {activeTab === 'retention' && (
             <RetentionTab segments={stats?.incomplete?.segments} />
           )}
-          {activeTab === 'seo' && <SeoTab />}
+          {activeTab === 'seo' && <SeoTab workspace={workspace} />}
           {activeTab === 'ads' && <AdsTab />}
           {activeTab === 'campaigns' && <CampaignHubTab />}
           {activeTab === 'messaging' && (
@@ -344,9 +348,9 @@ export default function Home() {
           {activeTab === 'telegrambot' && <TelegramBotTab />}
           {activeTab === 'jobbot' && <JobBotTab />}
           {activeTab === 'pipeline' && <PipelineTab />}
-          {activeTab === 'analytics' && <AnalyticsTab />}
+          {activeTab === 'analytics' && <><AnalyticsTab /><CrewinReportsPanel workspace={workspace} lang={lang} /></>}
           {activeTab === 'kpi' && <KpiTab stats={stats || undefined} />}
-          {activeTab === 'calendar' && <CalendarTab />}
+          {activeTab === 'calendar' && <CrewinCalendar workspace={workspace} lang={lang} posts={<CalendarTab />} />}
           {activeTab === 'firma_kredi' && <FirmaKrediTab />}
         </>
       )}

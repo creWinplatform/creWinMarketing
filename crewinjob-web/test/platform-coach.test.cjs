@@ -84,11 +84,11 @@ test('roles: viewer reads only, editor drafts and acts, only approvers approve',
   assert.throws(()=>viewer.schedule({actionId:view.actions[0].id}),error=>error.status===403);
   assert.equal(editor.act({actionId:view.actions[0].id,state:'done'}).resolved.length,1);
 }));
-test('scope: other projects, revoked members and Crewin pack are denied',run(async f=>{
+test('scope: other projects and revoked members are denied; the Crewin pack is allowed',run(async f=>{
   await f.approved();
   assert.throws(()=>new GrowthCoach(f.db,{...f.other,subject:f.scope.subject}).read(),error=>error.status===403);
   assert.equal(new GrowthCoach(f.db,f.other).read().brief,null);assert.equal(approvedCoachContext(f.db,f.other),null);
-  assert.throws(()=>new GrowthCoach(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),error=>error.status===403);
+  assert.doesNotThrow(()=>new GrowthCoach(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
   f.db.prepare('UPDATE platform_memberships SET active=0 WHERE user_id=?').run(f.scope.subject);
   for(const action of [()=>f.coach.read(),()=>f.coach.saveDraft({brief:{},expectedRevision:3}),()=>f.coach.act({actionId:'x',state:'done'})])assert.throws(action,error=>error.status===403);
 }));

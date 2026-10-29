@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlatformAccess } from '@/lib/platform/workspace-server';
+import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ProjectMetaOAuth, META_BROWSER_COOKIE, META_SELECTION_COOKIE } from '@/lib/platform/meta-oauth';
@@ -10,8 +10,8 @@ import { readAuthenticationJson } from '@/lib/platform/request-json';
 export const dynamic = 'force-dynamic';
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'private, no-store' } });
 export async function GET(request: NextRequest) {
-  const access = await getPlatformAccess('connections.manage');
-  if (!access || access.identity.mode !== 'platform') return json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, 403);
+  const access = await getRyzevoAccess('connections.manage');
+  if (!access) return json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, 403);
   let configured = false;
   try { metaConfiguration(); configured = true; } catch {}
   const cookie = request.cookies.get(META_SELECTION_COOKIE)?.value;
@@ -23,8 +23,8 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   if (!hasSameRequestOrigin(request)) return json({ error: 'İstek kaynağı geçersiz.' }, 403);
-  const access = await getPlatformAccess('connections.manage');
-  if (!access || access.identity.mode !== 'platform') return json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, 403);
+  const access = await getRyzevoAccess('connections.manage');
+  if (!access) return json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, 403);
   try {
     const input = await readAuthenticationJson(request);
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new MarketingStoreError('Geçersiz Meta isteği.');

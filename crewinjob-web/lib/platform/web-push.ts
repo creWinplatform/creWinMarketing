@@ -8,6 +8,7 @@ import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { teamAlerts } from './team-alerts';
 import { approvalQueue } from './approvals';
 import { webPushConfiguration, type WebPushConfig as Config } from './web-push-config';
+import { ryzevoFeature } from './ryzevo-features';
 
 type Fetcher = (url: string, init: RequestInit) => Promise<{ status: number }>;
 const MINUTE = 60000, DAY = 24 * 60 * MINUTE;
@@ -41,7 +42,7 @@ const hash = (endpoint: string) => createHash('sha256').update(endpoint).digest(
 // item and count (a higher count is new; a lower one is not).
 function openNotices(db: Database.Database, userId: string, now: number) {
   const keys: { organizationId: string; projectId: string; key: string; approval?: { prefix: string; count: number } }[] = [];
-  for (const space of new PlatformRepository(db).workspaces(userId).filter(item => item.project.productPack === 'standard').slice(0, WEB_PUSH_LIMITS.projects)) {
+  for (const space of new PlatformRepository(db).workspaces(userId).filter(item => ryzevoFeature(item.project.productPack, 'push')).slice(0, WEB_PUSH_LIMITS.projects)) {
     const scope = { subject: userId, organizationId: space.organization.id, projectId: space.project.id }, base = { organizationId: scope.organizationId, projectId: scope.projectId };
     for (const alert of teamAlerts(db, scope, now)) for (const key of alert.keys) if (!key.startsWith('invite:') || !keys.some(item => item.key === key)) keys.push({ ...base, key: key.startsWith('invite:') ? key : `${scope.projectId}:${key}` });
     for (const item of approvalQueue(db, scope, now)) { const prefix = `${scope.projectId}:approval:${item.kind}:${item.oldest || '-'}#`; keys.push({ ...base, key: `${prefix}${item.count}`, approval: { prefix, count: item.count } }); }
@@ -62,7 +63,7 @@ export class WebPush {
   constructor(private db: Database.Database, private scope: MarketingScope, private key: string) { this.repo = new PlatformRepository(db); }
   private args() { return [this.scope.organizationId, this.scope.projectId] as const; }
   private authorize() {
-    if (!this.repo.can(this.scope.subject, ...this.args(), 'read') || this.repo.workspace(this.scope.subject, ...this.args())?.project.productPack !== 'standard') throw new MarketingStoreError('Bildirimler için standart proje erişimi gerekli.', 403);
+    if (!this.repo.can(this.scope.subject, ...this.args(), 'read') || !ryzevoFeature(this.repo.workspace(this.scope.subject, ...this.args())?.project.productPack, 'push')) throw new MarketingStoreError('Bildirimler için standart proje erişimi gerekli.', 403);
   }
   private audit(operation: string) { this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...this.args(), operation, new Date().toISOString()); }
   private endpoint(raw: Record<string, unknown>) {

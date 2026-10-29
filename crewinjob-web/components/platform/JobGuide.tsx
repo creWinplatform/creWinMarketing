@@ -7,7 +7,8 @@ import type { JobGuideItem, JobGuideView, JobId } from '@/lib/platform/job-guide
 import Msg from '@/components/Msg';
 
 const ICONS: Record<JobId, typeof Send> = { social_post: Send, inbox: MessagesSquare, google: Search, ai_answers: Sparkles, email: Mail, ads: Megaphone, results: BarChart3, team: UserPlus, repurpose: Shuffle,
-  crewin_jobs: Briefcase, crewin_profiles: UserRoundCheck, crewin_social: Send, crewin_leads: Building2, crewin_campaign: Mail, crewin_seo: Search, crewin_results: BarChart3, crewin_credits: Wallet };
+  crewin_jobs: Briefcase, crewin_profiles: UserRoundCheck, crewin_social: Send, crewin_leads: Building2, crewin_campaign: Mail, crewin_seo: Search, crewin_results: BarChart3, crewin_credits: Wallet,
+  crewin_growth: Sparkles, crewin_ai: Sparkles, crewin_search: Search, crewin_inbox: MessagesSquare };
 // The Crewin workspace has its own jobs; only the search examples differ.
 const EXAMPLES = { ryzevo: { tr: 'Ör. instagram, rapor, google, reklam…', en: 'E.g. instagram, report, google, ads…' }, crewin: { tr: 'Ör. ilan, lead, profil, rapor, havale…', en: 'E.g. job ad, lead, profile, report, transfer…' } };
 type Context = { data: JobGuideView | null; error: string; loading: boolean; refresh: () => void; open: (query?: string) => void; variant: keyof typeof EXAMPLES };

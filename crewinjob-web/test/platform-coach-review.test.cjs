@@ -58,7 +58,7 @@ test('roles: viewers read, editors refresh and reject, only approvers change the
   assert.throws(()=>editor.decide({reviewId:id,adjustmentId:first.id,decision:'accept',expectedRevision:snapshot.coachRevision}),error=>error.status===403);
   assert.equal(editor.decide({reviewId:id,adjustmentId:second.id,decision:'reject'}).review.adjustments.find(item=>item.id===second.id).state,'rejected');
   assert.throws(()=>new CoachWeeklyReview(f.db,f.other).decide({reviewId:id,adjustmentId:first.id,decision:'reject'}),error=>error.status===404);
-  assert.throws(()=>new CoachWeeklyReview(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),error=>error.status===403);
+  assert.doesNotThrow(()=>new CoachWeeklyReview(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
   f.db.prepare('UPDATE platform_coach_reviews SET week=? WHERE id=?').run('2000-01-03',id);
   assert.throws(()=>review(f).decide({reviewId:id,adjustmentId:first.id,decision:'reject'}),error=>error.status===409,'old reviews are read-only');
 }));

@@ -9,8 +9,10 @@ import Msg from '@/components/Msg';
 import SiteAuditPanel from '@/components/seo/SiteAuditPanel';
 import { onTabKeys } from '@/components/platform/tab-keys';
 import { urlView } from '@/lib/url-view';
+import CrewinSeoViews, { CREWIN_SEO_VIEWS, crewinSeoLabels, type CrewinSeoView } from '@/components/platform/CrewinSeoViews';
+import type { WorkspaceContext } from '@/lib/platform/catalog';
 
-type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor' | 'ctr_report' | 'site_audit';
+type SubTab = 'blog' | 'seo' | 'keyword' | 'competitor' | 'ctr_report' | 'site_audit' | CrewinSeoView;
 
 interface RealJob {
   jobId:      number | null;
@@ -148,7 +150,9 @@ function extractKeywordsFromMarkdown(md: string): string[] {
   return out;
 }
 
-export default function SeoTab() {
+// workspace: given in the Crewin workspace, it adds Ryzevo's SEO automation views (scheduled scan, opportunities, AI
+// visibility, SEO topics) next to the tools below.
+export default function SeoTab({ workspace }: { workspace?: WorkspaceContext } = {}) {
   const { lang } = useLang();
 
   const SUB_TABS: { id: SubTab; label: string; icon: string }[] = [
@@ -158,9 +162,10 @@ export default function SeoTab() {
     { id: 'competitor', label: lang === 'tr' ? 'Rakip Analizi'    : 'Competitor analysis', icon: '⚔️' },
     { id: 'ctr_report', label: lang === 'tr' ? 'Düşük CTR Raporu' : 'Low CTR report',      icon: '📉' },
     { id: 'site_audit', label: lang === 'tr' ? 'Site Denetimi'    : 'Site audit',           icon: '🧭' },
+    ...(workspace ? CREWIN_SEO_VIEWS.map(id => ({ id, label: crewinSeoLabels(lang === 'tr')[id], icon: ({ ops: '🔁', opportunities: '📈', visibility: '🤖', topics: '🗂️' } as const)[id] })) : []),
   ];
 
-  const [subTab,     setSubTab]     = useState<SubTab>(() => urlView<SubTab>(['blog', 'seo', 'keyword', 'competitor', 'ctr_report', 'site_audit'], 'blog'));
+  const [subTab,     setSubTab]     = useState<SubTab>(() => urlView<SubTab>(['blog', 'seo', 'keyword', 'competitor', 'ctr_report', 'site_audit', ...(workspace ? CREWIN_SEO_VIEWS : [])], 'blog'));
   const [blogTopic,  setBlogTopic]  = useState('');
   const [jobTitle,   setJobTitle]   = useState('Chief Officer');
   const [vesselType, setVesselType] = useState('Bulk Carrier');
@@ -346,6 +351,10 @@ export default function SeoTab() {
     if (subTab === 'competitor')  return `${flag} ${lang === 'tr' ? 'Rakip Analizi Üret'   : 'Generate competitor analysis'}`;
     return lang === 'tr' ? 'Üret' : 'Generate';
   };
+
+  if (workspace && (CREWIN_SEO_VIEWS as readonly string[]).includes(subTab)) {
+    return <CrewinSeoViews view={subTab as CrewinSeoView} workspace={workspace} lang={lang} onView={setSubTab} onExit={() => setSubTab('blog')} />;
+  }
 
   if (subTab === 'site_audit') {
     return <SiteAuditPanel lang={lang} onExit={() => setSubTab('blog')} onOpenCtrReport={() => setSubTab('ctr_report')} />;

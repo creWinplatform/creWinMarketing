@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlatformAccess } from '@/lib/platform/workspace-server';
+import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ProjectMetaOAuth, META_BROWSER_COOKIE, META_SELECTION_COOKIE } from '@/lib/platform/meta-oauth';
@@ -11,8 +11,8 @@ export async function GET(request: NextRequest) {
   catch { return NextResponse.json({ error: 'Meta OAuth yapılandırılmadı.' }, { status: 503 }); }
   let selection: string | undefined;
   try {
-    const access = await getPlatformAccess('connections.manage');
-    if (!access || access.identity.mode !== 'platform' || request.nextUrl.searchParams.has('error')) throw new Error();
+    const access = await getRyzevoAccess('connections.manage');
+    if (!access || request.nextUrl.searchParams.has('error')) throw new Error();
     const oauth = new ProjectMetaOAuth(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId }, credentialEncryptionKey());
     selection = await oauth.complete(request.nextUrl.searchParams.get('state') || '', request.cookies.get(META_BROWSER_COOKIE)?.value || '', request.nextUrl.searchParams.get('code') || '');
   } catch { /* Provider errors and credentials never enter redirects or logs. */ }

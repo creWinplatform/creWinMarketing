@@ -107,7 +107,7 @@ test('roles and scope for SEO topics',coachRun(async f=>{
   await assert.rejects(viewer.generate({mode:'template'}),error=>error.status===403);await assert.rejects(viewer.draftBrief({topicId:topic.id,mode:'template'}),error=>error.status===403);
   assert.throws(()=>viewer.remove({topicId:topic.id}),error=>error.status===403);
   const foreign=new CoachSeo(f.db,f.other,KEY);assert.equal(foreign.read().topics.length,0);assert.throws(()=>foreign.remove({topicId:topic.id}),error=>error.status===404);
-  assert.throws(()=>new CoachSeo(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'},KEY).read(),error=>error.status===403);
+  assert.doesNotThrow(()=>new CoachSeo(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'},KEY).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
 }));
 test('schema33 is additive and repeatable',coachRun(async f=>{
   await f.approve();await seo(f).generate({mode:'template'});

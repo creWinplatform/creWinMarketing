@@ -79,7 +79,7 @@ test('another project cannot see, approve or share this project’s report',()=>
  await f.post();f.approve();const {token}=f.reports.share({action:'share',month:f.month,days:7});
  const other=new MonthlyReports(f.db,f.other);assert.equal(other.read(f.month).facts.publications.total,0);assert.equal(other.read(f.month).state,'draft');
  assert.throws(()=>other.share({action:'share',month:f.month,days:7}),error=>error.status===409);
- f.db.prepare("UPDATE platform_projects SET product_pack='crewin' WHERE id=?").run(f.a.projectId);assert.equal(openSharedReport(f.db,token),null,'only standard projects share');
+ f.db.prepare("UPDATE platform_projects SET product_pack='crewin' WHERE id=?").run(f.a.projectId);assert.ok(openSharedReport(f.db,token),'the Crewin workspace shares its reports too');
 }));
 
 test('migration 59 is additive and repeatable',async()=>{

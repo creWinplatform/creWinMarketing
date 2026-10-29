@@ -159,6 +159,21 @@ export class PlatformRepository {
     })();
   }
 
+  // The brand voice alone (from the brand studio). The Crewin workspace's name, site and goals stay with its adapter; its
+  // brand voice is stored in the project settings like a standard project's.
+  updateBrandVoice(actor: string, organizationId: string, projectId: string, brandVoice: string) {
+    this.db.transaction(() => {
+      if (!this.can(actor, organizationId, projectId, 'connections.manage')) throw new Error('Access denied.');
+      const current = this.workspace(actor, organizationId, projectId);
+      if (!current || !['standard', 'crewin'].includes(current.project.productPack)) throw new Error('Access denied.');
+      if (typeof brandVoice !== 'string' || brandVoice.length > 2000) throw new Error('Invalid brand voice.');
+      this.db.prepare(`INSERT INTO platform_project_settings VALUES(?,?,?,?,?) ON CONFLICT(project_id) DO UPDATE SET brand_voice=excluded.brand_voice`)
+        .run(projectId, organizationId, current.project.language || 'tr', brandVoice.trim(), JSON.stringify(current.project.goals));
+      this.audit(actor, organizationId, projectId, 'project.brand_voice');
+    })();
+    return this.workspace(actor, organizationId, projectId)!;
+  }
+
   updateProject(actor: string, organizationId: string, projectId: string, input: { name: string; website: string; timezone: string; language: string; brandVoice: string; goals: GoalDefinition[] }) {
     this.db.transaction(() => {
       if (!this.can(actor, organizationId, projectId, 'connections.manage')) throw new Error('Access denied.');

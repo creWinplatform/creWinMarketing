@@ -71,7 +71,7 @@ test('roles and scope: viewers read only; items never cross projects',coachRun(a
   const foreign=new CoachContentPlan(f.db,f.other);assert.equal(foreign.read(next).items.length,0);
   assert.throws(()=>foreign.decide({id:item.id,expectedRevision:2,decision:'dismiss'}),error=>error.status===404);
   assert.throws(()=>new CoachContentPlan(f.db,{...f.other,subject:f.scope.subject}).read(),error=>error.status===403);
-  assert.throws(()=>new CoachContentPlan(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),error=>error.status===403);
+  assert.doesNotThrow(()=>new CoachContentPlan(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
 }));
 test('months and "today" follow the project time zone',coachRun(async f=>{
   await f.approve();const late=new Date('2026-10-31T22:30:00Z');

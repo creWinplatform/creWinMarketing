@@ -50,6 +50,8 @@ export const UI_PAIRS: Record<string, string> = {
   "Araştırma sonuçları alındı ancak bazı lead kayıtları backend’e yazılamadı.": "Research results were received, but some leads couldn't be saved to the backend.",
   "Araştırma tamamlandı ancak sonuç bulunamadı. Backend yanıtı: {0}": "Research completed but no results found. Backend response: {0}",
   "Atlandı": "Skipped",
+  "Ay bitince Analitik’in altındaki “Aylık rapor” hazırlanır; okuyup onaylayın, isterseniz süreli bir bağlantıyla paylaşın. Rapor yalnız bağlı ölçümlerden ve kayıtlardan oluşur.": "When a month ends, the “Monthly report” under Analytics is prepared; read and approve it, and share it with an expiring link if you like. It is made only from connected measurements and records.",
+  "Aylık raporu onaylayın": "Approve the monthly report",
   "Aylık yenileme": "Monthly renewal",
   "Backend tarama iş kimliği döndürmedi.": "The backend did not return a crawl job ID.",
   "Backend tarama işi başlatılamadı.": "The backend crawl job could not be started.",

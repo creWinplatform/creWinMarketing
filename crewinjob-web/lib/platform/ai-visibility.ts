@@ -7,6 +7,7 @@ import { PlatformRepository } from './repository';
 import { ProjectOperations } from './operations';
 import { recordAiUsage } from './coach-ai';
 import { AI_VISIBILITY_LIMITS as LIMITS, type AiVisibilityCheck, type AiVisibilityView, type GroundedAnswer, type GroundedGenerator } from './ai-visibility-types';
+import { ryzevoFeature } from './ryzevo-features';
 
 type CheckRow = { question_id: string; status: 'ok' | 'failed'; brand_mentioned: number | null; site_cited: number | null; competitors_json: string; sources_json: string; queries_json: string; excerpt: string | null; via: 'manual' | 'schedule'; asked_at: string };
 const DAY = 86400000;
@@ -31,7 +32,7 @@ export class AiVisibility {
   private can(permission: 'read' | 'content.write') { return this.repo.can(this.scope.subject, ...this.args(), permission); }
   private project() { return this.repo.workspace(this.scope.subject, ...this.args())?.project; }
   private authorize(permission: 'read' | 'content.write' = 'read') {
-    if (!this.can('read') || this.project()?.productPack !== 'standard') throw new MarketingStoreError('AI görünürlüğü için standart proje erişimi gerekli.', 403);
+    if (!this.can('read') || !ryzevoFeature(this.project()?.productPack, 'ai_visibility')) throw new MarketingStoreError('AI görünürlüğü için standart proje erişimi gerekli.', 403);
     if (!this.can(permission)) throw new MarketingStoreError('Bu işlem için içerik yazma yetkisi gerekir.', 403);
   }
   private audit(operation: string) { this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...this.args(), operation, new Date().toISOString()); }

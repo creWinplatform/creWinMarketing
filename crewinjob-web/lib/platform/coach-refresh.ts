@@ -10,6 +10,7 @@ import { LinkTracking } from './link-tracking';
 import { coachMonthKey } from './coach-content';
 import { parseCoachJson,runCoachAi } from './coach-ai';
 import { COACH_CHANNELS,COACH_CONTENT_CHANNELS,isCoachContentChannel,diffBriefs,type CoachAnswers,type CoachBrief,type CoachChannel,type CoachPlanItem,type CoachRefresh,type CoachRefreshFacts,type CoachRefreshReason,type CoachRefreshSnapshot } from './coach-types';
+import { draftsByPlatform } from './coach-activity';
 
 type Lang='tr'|'en';
 type Row={id:string;month:string;base_revision:number;facts_json:string;brief_json:string;reasons_json:string;source:'ai'|'template';state:'proposed'|'approved'|'dismissed';revision:number;created_at:string;decided_at:string|null};
@@ -96,7 +97,7 @@ export class CoachRenewal{
     const tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task.status]));
     const plan=brief.plan.map(item=>{const row=stored.get(coachPlanId(item)),state:'done'|'skipped'|'open'=row?.state==='done'||row?.task_id&&tasks.get(row.task_id)==='completed'?'done':row?.state==='skipped'?'skipped':'open';return {title:item.title,channel:item.channel,tool:item.tool,week:item.week,state};});
     const drafts:Record<string,number>={};
-    for(const item of this.db.prepare("SELECT json_extract(payload,'$.platform') platform FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.timestamp')>=?").all(...this.args(),Date.parse(from)) as {platform:string|null}[])if(item.platform)drafts[item.platform]=(drafts[item.platform]||0)+1;
+    Object.assign(drafts,draftsByPlatform(this.db,this.args(),Date.parse(from)));
     const emails=this.count("SELECT COUNT(*) n FROM platform_campaigns WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.channels.email')=1 AND json_extract(payload,'$.createdAt')>=?",from);if(emails)drafts.email=(drafts.email||0)+emails;
     const entries=this.db.prepare('SELECT goal_id,stage_index,value,source FROM platform_metric_entries WHERE organization_id=? AND project_id=? AND observed_at>=? AND observed_at<=? ORDER BY observed_at,id').all(...this.args(),from,to) as {goal_id:string;stage_index:number;value:number;source:string}[];
     const measurements=project.goals.flatMap(goal=>goal.stages.flatMap((stage,index)=>[...new Set(entries.filter(item=>item.goal_id===goal.id&&item.stage_index===index).map(item=>item.source))].map(source=>{const list=entries.filter(item=>item.goal_id===goal.id&&item.stage_index===index&&item.source===source);return {goal:goal.label,stage,source,first:list[0].value,last:list.at(-1)!.value,entries:list.length};})));

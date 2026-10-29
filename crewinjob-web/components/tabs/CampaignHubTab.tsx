@@ -20,8 +20,9 @@ import type {
 import type { SavedAudience } from '@/lib/saved-audiences';
 import type { AdPlatform } from '@/lib/ads-types';
 import { urlView } from '@/lib/url-view';
+import ProjectSocialInbox from '@/components/platform/ProjectSocialInbox';
 
-type View = 'flows' | 'paid' | 'lifecycle' | 'prospects';
+type View = 'flows' | 'paid' | 'lifecycle' | 'prospects' | 'inbox';
 
 interface AudiencePreviewDistribution {
   profileCompletion: Array<{ name: string; count: number }>;
@@ -315,7 +316,7 @@ export default function CampaignHubTab() {
   const { lang } = useLang();
   const t = useCallback((tr: string, en: string) => lang === 'tr' ? tr : en, [lang]);
   const fid = useId();
-  const [view, setView] = useState<View>(() => urlView<View>(['flows', 'paid', 'lifecycle', 'prospects'], 'flows'));
+  const [view, setView] = useState<View>(() => urlView<View>(['flows', 'paid', 'lifecycle', 'prospects', 'inbox'], 'flows'));
   const [campaigns, setCampaigns] = useState<UnifiedCampaign[]>([]);
   const [savedAudiences, setSavedAudiences] = useState<SavedAudience[]>([]);
   const [loading, setLoading] = useState(true);
@@ -841,6 +842,8 @@ export default function CampaignHubTab() {
           <button type="button" role="tab" aria-selected={view === 'paid'} tabIndex={view === 'paid' ? 0 : -1} onClick={() => setView('paid')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'paid' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Ücretli reklamlar', 'Paid ads')}</button>
           <button type="button" role="tab" aria-selected={view === 'lifecycle'} tabIndex={view === 'lifecycle' ? 0 : -1} onClick={() => setView('lifecycle')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'lifecycle' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Lifecycle', 'Lifecycle')}</button>
           <button type="button" role="tab" aria-selected={view === 'prospects'} tabIndex={view === 'prospects' ? 0 : -1} onClick={() => setView('prospects')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'prospects' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('AI Prospect Finder', 'AI Prospect Finder')}</button>
+          {/* Ryzevo's social inbox: comments and DMs of the Meta Page / Instagram account connected in Project settings. */}
+          <button type="button" role="tab" aria-selected={view === 'inbox'} tabIndex={view === 'inbox' ? 0 : -1} onClick={() => setView('inbox')} className={`px-3 py-1.5 text-sm whitespace-nowrap rounded-md ${view === 'inbox' ? 'bg-ocean text-white' : 'text-slate-600 dark:text-slate-300'}`}>{t('Gelen kutusu', 'Inbox')}</button>
         </div>
       </div>
 
@@ -862,7 +865,7 @@ export default function CampaignHubTab() {
         </div>
       </div>
 
-      {view === 'paid' ? <CampaignManagerTab /> : view === 'lifecycle' ? <LifecycleDraftPanel lang={lang} /> : view === 'prospects' ? <ProspectFinderPanel lang={lang} onUseInCampaign={useProspectsInCampaign} /> : (
+      {view === 'inbox' ? <ProjectSocialInbox lang={lang} /> : view === 'paid' ? <CampaignManagerTab /> : view === 'lifecycle' ? <LifecycleDraftPanel lang={lang} /> : view === 'prospects' ? <ProspectFinderPanel lang={lang} onUseInCampaign={useProspectsInCampaign} /> : (
         <>
           {error && <div role="alert" className="border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg text-sm"><Msg text={error} /></div>}
 

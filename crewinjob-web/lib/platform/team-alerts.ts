@@ -12,6 +12,7 @@ import { receivedInvites } from './member-invites';
 import { webPushConfiguration } from './web-push-config';
 import { searchDropped } from './seo-operations-types';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
+import { ryzevoFeature } from './ryzevo-features';
 
 type Lang = 'tr' | 'en';
 type Scope = { subject: string; organizationId: string; projectId: string };
@@ -24,7 +25,7 @@ export function alertEmailConfiguration() { return process.env.PLATFORM_ALERT_EM
 export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()): TeamAlert[] {
   const repo = new PlatformRepository(db), can = (permission: Parameters<PlatformRepository['can']>[3]) => repo.can(scope.subject, ...args(scope), permission);
   const project = can('read') ? repo.workspace(scope.subject, ...args(scope))?.project : undefined;
-  if (!project || project.productPack !== 'standard') return [];
+  if (!project || !ryzevoFeature(project.productPack, 'alerts')) return [];
   const alerts: TeamAlert[] = [], iso = (value: number) => new Date(value).toISOString();
   // Messages whose reply window closes within the warning time and that have no reply on its way.
   if (hasMessagingDuty(db, scope.subject, ...args(scope), 'source.read')) {
@@ -111,7 +112,7 @@ export class TeamAlerts {
   private repo: PlatformRepository;
   constructor(private db: Database.Database, private scope: MarketingScope) { this.repo = new PlatformRepository(db); }
   private authorize() {
-    if (!this.repo.can(this.scope.subject, ...args(this.scope), 'read') || this.repo.workspace(this.scope.subject, ...args(this.scope))?.project.productPack !== 'standard') throw new MarketingStoreError('Uyarılar için standart proje erişimi gerekli.', 403);
+    if (!this.repo.can(this.scope.subject, ...args(this.scope), 'read') || !ryzevoFeature(this.repo.workspace(this.scope.subject, ...args(this.scope))?.project.productPack, 'alerts')) throw new MarketingStoreError('Uyarılar için standart proje erişimi gerekli.', 403);
   }
   private email() { return (this.db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(this.scope.subject) as { email: string } | undefined)?.email || null; }
   private subscription() { return this.db.prepare('SELECT language FROM platform_alert_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(this.scope.subject, ...args(this.scope)) as { language: Lang } | undefined; }
@@ -154,7 +155,7 @@ export async function deliverNextAlertEmail(db: Database.Database, deliver: Dige
     const scope = { subject: row.user_id, organizationId: row.organization_id, projectId: row.project_id };
     const repo = new PlatformRepository(db), workspace = repo.can(row.user_id, row.organization_id, row.project_id, 'read') ? repo.workspace(row.user_id, row.organization_id, row.project_id) : null;
     const email = (db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as { email: string } | undefined)?.email;
-    if (!workspace || workspace.project.productPack !== 'standard' || !email) return null;
+    if (!workspace || !ryzevoFeature(workspace.project.productPack, 'alerts') || !email) return null;
     const recent = db.prepare("SELECT MAX(created_at) AS last,SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END) AS today FROM platform_alert_deliveries WHERE user_id=? AND organization_id=? AND project_id=?").get(new Date(now - DAY).toISOString(), row.user_id, row.organization_id, row.project_id) as { last: string | null; today: number | null };
     if (recent.last && now - Date.parse(recent.last) < LIMITS.emailGapHours * HOUR || (recent.today || 0) >= LIMITS.emailsPerDay) return null;
     const alerts = teamAlerts(db, scope, now), seen = db.prepare('SELECT 1 FROM platform_alert_notices WHERE user_id=? AND organization_id=? AND project_id=? AND alert_key=?');

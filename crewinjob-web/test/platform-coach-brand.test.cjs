@@ -55,7 +55,7 @@ test('the suggested positioning changes the approved brief only with approval ri
   assert.equal(snapshot.positioning,'Bookkeeping with a real person helping.');assert.equal(f.coach.read().brief.positioning,'Bookkeeping with a real person helping.');
   const versions=new CoachLearning(f.db,f.scope).read();assert.equal(versions.versions[0].kind,'positioning');assert.equal(versions.changes.positioning,true);
   assert.equal(brand(f,f.other).read().competitors.length,0,'other projects see nothing');
-  assert.throws(()=>brand(f,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),error=>error.status===403);
+  assert.doesNotThrow(()=>brand(f,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
 }));
 test('schema37 is additive and repeatable',coachRun(async f=>{
   brand(f).saveCompetitors({competitors:rivals,difference:'',expectedRevision:0});

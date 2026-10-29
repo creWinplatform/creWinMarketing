@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlatformAccess } from '@/lib/platform/workspace-server';
+import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { platformDatabase } from '@/lib/platform/database';
 import { ProjectGoogleOAuth, GOOGLE_BROWSER_COOKIE } from '@/lib/platform/google-oauth';
 import { googleConfiguration } from '@/lib/platform/google-client';
@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
   catch { return NextResponse.json({ error: 'Google OAuth yapılandırılmadı.' }, { status: 503 }); }
   let result = 'failed';
   try {
-    const access = await getPlatformAccess('connections.manage');
-    if (!access || access.identity.mode !== 'platform' || request.nextUrl.searchParams.has('error')) throw new Error();
+    const access = await getRyzevoAccess('connections.manage');
+    if (!access || request.nextUrl.searchParams.has('error')) throw new Error();
     const oauth = new ProjectGoogleOAuth(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId }, credentialEncryptionKey());
     await oauth.complete(request.nextUrl.searchParams.get('state') || '', request.cookies.get(GOOGLE_BROWSER_COOKIE)?.value || '', request.nextUrl.searchParams.get('code') || '');
     result = 'connected';

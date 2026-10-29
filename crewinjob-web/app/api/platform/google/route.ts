@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlatformAccess } from '@/lib/platform/workspace-server';
+import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { platformDatabase } from '@/lib/platform/database';
 import { ProjectGoogleOAuth, GOOGLE_BROWSER_COOKIE } from '@/lib/platform/google-oauth';
 import { googleConfiguration } from '@/lib/platform/google-client';
@@ -9,16 +9,16 @@ import { hasSameRequestOrigin } from '@/lib/platform/request-origin';
 
 export const dynamic = 'force-dynamic';
 export async function GET() {
-  const access = await getPlatformAccess('connections.manage');
-  if (!access || access.identity.mode !== 'platform') return NextResponse.json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, { status: 403 });
+  const access = await getRyzevoAccess('connections.manage');
+  if (!access) return NextResponse.json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, { status: 403 });
   let configured = false;
   try { googleConfiguration(); configured = true; } catch {}
   return NextResponse.json({ configured }, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 export async function POST(request: NextRequest) {
   if (!hasSameRequestOrigin(request)) return NextResponse.json({ error: 'İstek kaynağı geçersiz.' }, { status: 403 });
-  const access = await getPlatformAccess('connections.manage');
-  if (!access || access.identity.mode !== 'platform') return NextResponse.json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, { status: 403 });
+  const access = await getRyzevoAccess('connections.manage');
+  if (!access) return NextResponse.json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, { status: 403 });
   try {
     const configuration = googleConfiguration();
     if (request.headers.get('origin') !== new URL(configuration.redirectUri).origin) return NextResponse.json({ error: 'Panel adresi Google dönüş adresiyle eşleşmiyor.' }, { status: 400 });

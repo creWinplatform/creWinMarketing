@@ -23,6 +23,7 @@ import { xConfiguration } from './x-client';
 import { COMPASS_CHANNELS,COMPASS_INTENTS,COMPASS_VERSION,GUIDE_IDS,connectionGuide,connectionGuideName,type GuideId,type CompassChannel } from './guidance-catalog';
 import type { CompassPreferences,CompassProvider,CompassSnapshot,CompassStep } from './guidance-types';
 import { coachState,compassFromBrief } from './coach-compass';
+import { ryzevoFeature } from './ryzevo-features';
 const l=(tr:string,en:string):LocalizedText=>({tr,en});
 const ready=(test:()=>unknown)=>{try{test();return true;}catch{return false;}};
 const object=(raw:unknown):Record<string,unknown>=>raw&&typeof raw==='object'&&!Array.isArray(raw)?raw as Record<string,unknown>:{};
@@ -34,7 +35,7 @@ export class GrowthCompass {
   constructor(public db:Database.Database,public scope:MarketingScope,public key:string){this.repo=new PlatformRepository(db);this.store=new ProjectMarketingStore(db,scope);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
   can(permission:WorkspacePermission){return this.repo.can(this.scope.subject,...this.args(),permission);}
-  authorize(){if(!this.can('read')||this.repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Pusula için standart proje erişimi gerekli.',403);}
+  authorize(){if(!this.can('read')||!ryzevoFeature(this.repo.workspace(this.scope.subject,...this.args())?.project.productPack,'compass_api'))throw new MarketingStoreError('Pusula için standart proje erişimi gerekli.',403);}
   private row(){return this.db.prepare('SELECT revision,preferences_json,deferred,updated_at FROM platform_compass_preferences WHERE user_id=? AND organization_id=? AND project_id=?').get(this.scope.subject,...this.args()) as PreferenceRow|undefined;}
   private preferences():CompassPreferences|null{const row=this.row();return row?{...JSON.parse(row.preferences_json),revision:row.revision,deferred:Boolean(row.deferred),updatedAt:row.updated_at}:null;}
   private normalize(raw:Record<string,unknown>){

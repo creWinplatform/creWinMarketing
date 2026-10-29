@@ -14,6 +14,7 @@ import { readSearchConsoleTotals, type SearchConsoleQuery, type SearchConsoleTot
 import { decryptCredentials, encryptCredentials, type StoredCredentials } from './credential-envelope';
 import { refreshGoogleCredentials } from './google-client';
 import { searchDropped, SEO_SCAN_MAX_PAGES, SEO_SCHEDULE_DAYS, type SeoScheduleView, type SeoSearchWatchView, type SeoFindingEvent, type SeoFindingState, type SeoFindingView, type SeoOpportunitiesSnapshot, type SeoOpportunity, type SeoOperationsSnapshot, type SeoScanView } from './seo-operations-types';
+import { ryzevoFeature } from './ryzevo-features';
 
 type Scan={id:string;origin:string;source:'sitemap'|'homepage_links';discovered:number;state:'running'|'completed'|'cancelled';started_via:'manual'|'schedule';started_by:string;started_at:string;updated_at:string;finished_at:string|null};
 type Page={scan_id:string;position:number;url:string;state:string;lease_token:string|null;lease_until:string|null;attempts:number};
@@ -34,7 +35,7 @@ export class SeoOperations{
   private can(permission:'read'|'content.write'|'connections.manage'){return this.repo.can(this.scope.subject,...this.args(),permission);}
   private project(){return this.repo.workspace(this.scope.subject,...this.args())?.project;}
   authorize(permission:'read'|'content.write'='read'){
-    if(!this.can('read')||this.project()?.productPack!=='standard')throw new MarketingStoreError('SEO operasyonu için standart proje erişimi gerekli.',403);
+    if(!this.can('read')||!ryzevoFeature(this.project()?.productPack,'seo_ops'))throw new MarketingStoreError('SEO operasyonu için standart proje erişimi gerekli.',403);
     if(!this.can(permission))throw new MarketingStoreError('Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
   private origin(){const website=this.project()?.website;try{return website?new URL(website).origin:null;}catch{return null;}}
@@ -249,7 +250,7 @@ export async function runSeoSchedules(db:Database.Database,key:string,dependenci
   for(const row of db.prepare('SELECT * FROM platform_seo_schedules WHERE next_at<=? ORDER BY next_at LIMIT ?').all(at,limit) as ScheduleRow[]){
     const scope={subject:row.owner_id,organizationId:row.organization_id,projectId:row.project_id},repo=new PlatformRepository(db);
     // The member who set the schedule must still be able to scan; otherwise the schedule stops (it is never moved to someone else).
-    if(!repo.can(row.owner_id,row.organization_id,row.project_id,'content.write')||repo.workspace(row.owner_id,row.organization_id,row.project_id)?.project.productPack!=='standard'){stop(row,'rights');continue;}
+    if(!repo.can(row.owner_id,row.organization_id,row.project_id,'content.write')||!ryzevoFeature(repo.workspace(row.owner_id,row.organization_id,row.project_id)?.project.productPack,'seo_ops')){stop(row,'rights');continue;}
     try{await new SeoOperations(db,scope,dependencies).start('schedule');started++;
       db.prepare('UPDATE platform_seo_schedules SET next_at=?,last_started_at=?,last_error=NULL,updated_at=? WHERE organization_id=? AND project_id=?').run(new Date(now+SEO_SCHEDULE_DAYS[row.cadence]*day).toISOString(),at,at,row.organization_id,row.project_id);}
     catch(error){

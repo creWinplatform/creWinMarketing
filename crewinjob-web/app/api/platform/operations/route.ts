@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlatformAccess } from '@/lib/platform/workspace-server';
+import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { platformDatabase } from '@/lib/platform/database';
 import { ProjectOperations } from '@/lib/platform/operations';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
@@ -10,8 +10,8 @@ import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 export const dynamic = 'force-dynamic';
 async function handle(request: NextRequest) {
   try {
-    const access = await getPlatformAccess();
-    if (!access || access.identity.mode !== 'platform')
+    const access = await getRyzevoAccess();
+    if (!access)
       return NextResponse.json(
         { error: 'Proje oturumu gerekli.' },
         { status: 403 },

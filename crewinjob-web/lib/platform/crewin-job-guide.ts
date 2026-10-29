@@ -1,8 +1,9 @@
 import 'server-only';
-import fs from 'fs';
 import path from 'path';
+import { fileSummary, resetFileSummaries } from './file-summary';
 import type { LocalizedText } from './catalog';
 import type { JobGuideItem, JobGuideView, JobId, JobStep } from './job-guide-types';
+import type Database from 'better-sqlite3';
 
 // "What would you like to do?" for the Crewin workspace. Its legacy tabs keep their records in JSON files (web data/,
 // agent data/) and in the Crewin backend, not in the platform tables, so the steps are read from there. A step is done
@@ -22,22 +23,15 @@ export type CrewinGuideDeps = {
   pendingOrders: () => Promise<unknown>;
   campaigns: () => Promise<unknown>;
   posts: () => Promise<unknown>;
+  // The platform database: Ryzevo's features in the Crewin workspace (coach, SEO automation, AI visibility, inbox, reports).
+  db?: Database.Database;
 };
 export type CrewinStats = { seafarers?: { newThisWeek?: number; fillRateBuckets?: { zero?: number; low?: number } }; jobs?: { newThisWeek?: number | null } };
 
-// Parsed summaries are kept until the file changes (content-history.json is ~20 MB of base64 images, the review queue
-// several MB), so a guide refresh on every tab focus costs a stat() per file.
-type Entry = { key: string; value: unknown };
-const g = globalThis as typeof globalThis & { __crewinGuideFiles?: Map<string, Entry>; __crewinGuideRemote?: Map<string, { at: number; ok: boolean; value: unknown; pending?: Promise<unknown> }> };
-const files = g.__crewinGuideFiles ?? (g.__crewinGuideFiles = new Map());
+// Backend answers, shared by concurrent requests (file summaries live in ./file-summary).
+const g = globalThis as typeof globalThis & { __crewinGuideRemote?: Map<string, { at: number; ok: boolean; value: unknown; pending?: Promise<unknown> }> };
 const remote = g.__crewinGuideRemote ?? (g.__crewinGuideRemote = new Map());
-function summary<T>(file: string, empty: T, reduce: (data: unknown) => T): T {
-  let stat: fs.Stats; try { stat = fs.statSync(file); } catch { return empty; }
-  const key = `${stat.mtimeMs}:${stat.size}`, hit = files.get(file);
-  if (hit?.key === key) return hit.value as T;
-  let value = empty; try { const raw = fs.readFileSync(file, 'utf8'); value = raw.trim() ? reduce(JSON.parse(raw)) : empty; } catch { value = empty; }
-  files.set(file, { key, value }); return value;
-}
+const summary = <T,>(file: string, empty: T, reduce: (data: unknown) => T) => fileSummary(file, empty, reduce, 'job-guide');
 // Backend reads: one call per minute at most (15 s after a failure), shared by concurrent requests, bounded by a timeout.
 async function cached(name: string, now: number, read: () => Promise<unknown>, timeoutMs = 8000): Promise<{ ok: boolean; value: unknown }> {
   const hit = remote.get(name);
@@ -49,7 +43,7 @@ async function cached(name: string, now: number, read: () => Promise<unknown>, t
   try { const value = await pending; remote.set(name, { at: now, ok: true, value }); } catch { remote.set(name, { at: now, ok: false, value: null }); }
   return remote.get(name)!;
 }
-export function resetCrewinGuideCache() { files.clear(); remote.clear(); }
+export function resetCrewinGuideCache() { resetFileSummaries(); remote.clear(); }
 
 const time = (value: unknown) => { const n = typeof value === 'number' ? value : Date.parse(String(value || '')); return Number.isFinite(n) ? n : 0; };
 const list = (value: unknown): Record<string, unknown>[] => {
@@ -215,6 +209,12 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
       ] });
   }
 
+  // Ryzevo's records for the Crewin project (empty until a Ryzevo feature is used there).
+  const db = deps.db, CREWIN = ['crewin', 'crewinjob'] as const;
+  const rows = (sql: string, ...values: unknown[]) => { try { return (db!.prepare(sql).get(...CREWIN, ...values) as { n: number } | undefined)?.n || 0; } catch { return 0; } };
+  const monthly = db ? step('monthly', l('Aylık raporu onaylayın', 'Approve the monthly report'), l('Ay bitince Analitik’in altındaki “Aylık rapor” hazırlanır; okuyup onaylayın, isterseniz süreli bir bağlantıyla paylaşın. Rapor yalnız bağlı ölçümlerden ve kayıtlardan oluşur.', 'When a month ends, the “Monthly report” under Analytics is prepared; read and approve it, and share it with an expiring link if you like. It is made only from connected measurements and records.'),
+    rows("SELECT COUNT(*) n FROM platform_monthly_reports WHERE organization_id=? AND project_id=? AND state='approved' AND approved_at>=?", new Date(now - 45 * DAY).toISOString()) > 0, 'analytics') : null;
+
   // 7. Weekly results: measurement sources, the weekly KPI report and acting on it.
   {
     const ga4 = Boolean(env.GA4_PROPERTY_ID && env.GOOGLE_SERVICE_ACCOUNT_JSON), report = content.kpi, acted = lastActivity('kpi_action');
@@ -225,6 +225,61 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
         step('ga4', l('Google Analytics bağlı olsun', 'Have Google Analytics connected'), l('Analitik sekmesi site ziyaretlerini GA4’ten okur; bağlı değilse orada “yapılandırılmamış” uyarısı görünür.', 'The Analytics tab reads site visits from GA4; if it is not connected, it shows a “not configured” notice.'), ga4, 'analytics', ga4 ? null : SERVER('GA4_PROPERTY_ID ve GOOGLE_SERVICE_ACCOUNT_JSON', 'GA4_PROPERTY_ID and GOOGLE_SERVICE_ACCOUNT_JSON'), null),
         step('report', l('Bu haftanın KPI raporunu çıkarın', 'Generate this week’s KPI report'), l('KPI & raporlar’da “Haftalık KPI Raporu Üret”e basın; rapor canlı Crewin verisiyle hazırlanır ve geçmişe kaydedilir. Geçmiş → “Karşılaştırmak için seç” ile önceki haftayla kıyaslayın.', 'In KPI & reports, press “Generate weekly KPI report”; it uses live Crewin data and is saved to history. Compare with last week via History → “Select to compare”.'), now - report < WEEK, 'kpi', null, last(l('Son rapor', 'Last report'), report, now)),
         step('act', l('Rapordaki bir öneriyi uygulayın', 'Act on one suggestion in the report'), l('Raporun altındaki eylem kartlarından birini seçin (ör. “Re-engagement — Profil Açmayanlar”); taslağı hazırlar, gönderme kararı yine sizdedir.', 'Pick one of the action cards under the report (e.g. “Re-engagement — profiles not opened”); it prepares a draft, sending is still your decision.'), now - acted < WEEK && acted >= report - DAY, 'kpi', null, last(l('Son eylem', 'Last action'), acted, now)),
+        ...(monthly ? [monthly] : []),
+      ] });
+  }
+
+  // 9–12. Ryzevo features in the Crewin workspace, read from the platform tables.
+  if (db) {
+    const grounded = Boolean(env.PLATFORM_GEMINI_API_KEY && /gemini-(?:2|[3-9])/.test(env.PLATFORM_GEMINI_MODEL || ''));
+    const google = Boolean(env.PLATFORM_GOOGLE_CLIENT_ID && env.PLATFORM_GOOGLE_CLIENT_SECRET && env.PLATFORM_GOOGLE_REDIRECT_URI);
+    const meta = Boolean(env.PLATFORM_META_APP_ID && env.PLATFORM_META_APP_SECRET && env.PLATFORM_META_REDIRECT_URI && env.PLATFORM_META_GRAPH_VERSION);
+    const coach = (() => { try { return db.prepare('SELECT draft_json,brief_json FROM platform_growth_coach WHERE organization_id=? AND project_id=?').get(...CREWIN) as { draft_json: string | null; brief_json: string | null } | undefined; } catch { return undefined; } })();
+    const review = rows('SELECT COUNT(*) n FROM platform_coach_reviews WHERE organization_id=? AND project_id=? AND updated_at>=?', new Date(now - WEEK).toISOString());
+    jobs.push({ id: 'crewin_growth', title: l('Büyüme stratejisi çıkar ve haftalık uygula', 'Build a growth strategy and follow it weekly'), outcome: l('Crewin için onaylı bir strateji briefi (ideal kullanıcı, öncelikli kanallar, 30 günlük plan) ve her hafta işlenen eylem listesi.', 'An approved strategy brief for Crewin (ideal user, priority channels, a 30-day plan) and an action list worked through every week.'),
+      keywords: ['strateji', 'strategy', 'koç', 'coach', 'plan', 'teşhis', 'diagnosis', 'brief', 'hedef', 'goal', 'büyüme', 'growth', 'haftalık', 'weekly'],
+      badge: coach?.draft_json && !coach.brief_json ? { count: 1, label: l('strateji taslağı onay bekliyor', 'strategy draft awaiting approval') } : null,
+      steps: [
+        step('diagnose', l('Büyüme teşhisini yapın', 'Run the growth diagnosis'), l('Genel bakış → Büyüme koçu → “Teşhise başla”: ana hedefi seçip 11 kısa soruyu yanıtlayın. Ryzevo yanıtlardan bir strateji taslağı hazırlar.', 'Overview → Growth coach → “Start the diagnosis”: pick the main goal and answer 11 short questions. Ryzevo drafts a strategy from the answers.'), Boolean(coach?.draft_json || coach?.brief_json), 'dashboard'),
+        step('approve', l('Strateji briefini onaylayın', 'Approve the strategy brief'), l('Büyüme koçu → “Taslağı incele”: istediğiniz satırı düzeltin ve “Briefi onayla”ya basın. Onaydan sonra haftanın eylemleri koç kartında listelenir.', 'Growth coach → “Review the draft”: edit any line and press “Approve the brief”. After approval, the week’s actions are listed on the coach card.'), Boolean(coach?.brief_json), 'dashboard'),
+        step('review', l('Bu haftanın özetini çıkarın', 'Prepare this week’s review'), l('Genel bakış → Haftalık değerlendirme → “Bu haftanın özetini hazırla”: özet yalnız Crewin kayıtlarından (taslaklar, paylaşımlar, ölçümler) çıkar; plan değişikliği önerisi onayla uygulanır.', 'Overview → Weekly review → “Prepare this week’s review”: it is built only from Crewin’s records (drafts, posts, measurements); a plan change is applied only with approval.'), review > 0, 'dashboard'),
+      ] });
+
+    const scanned = rows("SELECT COUNT(*) n FROM platform_seo_scans WHERE organization_id=? AND project_id=? AND state='completed'") > 0;
+    const finding = (...titles: string[]) => rows(`SELECT COUNT(*) n FROM platform_seo_findings WHERE organization_id=? AND project_id=? AND state='open' AND title IN (${titles.map(() => '?').join(',')})`, ...titles);
+    jobs.push({ id: 'crewin_ai', title: l('ChatGPT ve Gemini’de görün', 'Appear in ChatGPT and Gemini'), outcome: l('Gemi adamları veya firmalar AI asistanlarına sorduğunda Crewin’in anılması ve crewinjob.com’un kaynak gösterilmesi.', 'Crewin named and crewinjob.com cited when seafarers or companies ask AI assistants.'),
+      keywords: ['ai', 'yapay zeka', 'chatgpt', 'gemini', 'perplexity', 'claude', 'geo', 'llms', 'asistan', 'assistant', 'görünürlük', 'visibility'],
+      badge: null,
+      steps: [
+        step('scan', l('Otomatik taramayı bir kez çalıştırın', 'Run the automatic scan once'), l('SEO & Blog → “Otomatik tarama”da taramayı başlatın; AI tarayıcılarının siteyi okuyup okuyamadığı da kontrol edilir.', 'In SEO & Blog → “Automatic scan”, start the scan; it also checks whether AI crawlers can read the site.'), scanned, 'seo&view=ops'),
+        step('access', l('AI tarayıcılarının önündeki engeli kaldırın', 'Remove what blocks AI crawlers'), l('robots.txt AI arama botlarını engelliyorsa veya sayfa JavaScript olmadan boş görünüyorsa, bulgudaki geliştirici metnini kopyalayıp geliştiriciye verin. Ryzevo siteyi değiştirmez.', 'If robots.txt blocks AI search bots or the page is empty without JavaScript, copy the finding’s developer text to your developer. Ryzevo does not change the site.'), scanned && finding('AI arama botları engelli', 'Sayfa içeriği JavaScript olmadan okunamıyor') === 0, 'seo&view=ops'),
+        step('llms', l('llms.txt dosyasını yayınlayın', 'Publish llms.txt'), l('“Otomatik tarama” ekranındaki llms.txt taslağını düzenleyip crewinjob.com’un köküne koydurun.', 'Edit the llms.txt draft on the “Automatic scan” screen and have it placed at crewinjob.com’s root.'), scanned && finding('llms.txt bulunamadı') === 0, 'seo&view=ops'),
+        step('questions', l('Kullanıcılarınızın sorularını yazın', 'Write your users’ questions'), l('SEO & Blog → “AI görünürlüğü”nde markayı bilmeden sorulacak birkaç soru ekleyin (ör. “Gemi adamları için en iyi iş ilanı sitesi hangisi?”).', 'In SEO & Blog → “AI visibility”, add a few questions asked without knowing the brand (e.g. “Which is the best job site for seafarers?”).'), rows('SELECT COUNT(*) n FROM platform_ai_visibility_questions WHERE organization_id=? AND project_id=?') > 0, 'seo&view=visibility'),
+        step('ask', l('Soruları sorun ve sonucu görün', 'Ask and see the result'), l('Cevapta Crewin anıldı mı, crewinjob.com kaynak gösterildi mi, hangi rakipler geçti; haftalık takip de açılabilir.', 'Was Crewin named, was crewinjob.com cited, which competitors came up; weekly tracking can be turned on too.'), rows("SELECT COUNT(*) n FROM platform_ai_visibility_checks WHERE organization_id=? AND project_id=? AND status='ok'") > 0, 'seo&view=visibility',
+          grounded ? null : SERVER('Google aramalı AI modeli (PLATFORM_GEMINI_API_KEY ve gemini-2 veya üstü PLATFORM_GEMINI_MODEL)', 'the search-grounded AI model (PLATFORM_GEMINI_API_KEY and a gemini-2 or later PLATFORM_GEMINI_MODEL)')),
+      ] });
+
+    const open = rows("SELECT COUNT(*) n FROM platform_seo_findings WHERE organization_id=? AND project_id=? AND state='open'");
+    jobs.push({ id: 'crewin_search', title: l('Google’da otomatik takip', 'Automatic tracking on Google'), outcome: l('crewinjob.com’un düzenli taranması, yeni sorunların ve Search Console’daki düşüşlerin kendiliğinden haber verilmesi.', 'crewinjob.com scanned regularly, with new issues and Search Console drops reported on their own.'),
+      keywords: ['google', 'search console', 'gsc', 'otomatik', 'automatic', 'tarama', 'scan', 'takvim', 'schedule', 'düşüş', 'drop', 'seo', 'uyarı', 'alert'],
+      badge: open ? { count: open, label: l('açık SEO bulgusu', 'open SEO finding(s)') } : null,
+      steps: [
+        step('connect', l('Search Console’u Ryzevo’ya bağlayın', 'Connect Search Console to Ryzevo'), l('Proje ayarları → Bağlantılar → “Google hesabı bağla”da Search Console’u seçip crewinjob.com mülkünü yazın; Google’ın kendi ekranında izin verirsiniz.', 'In Project settings → Connections → “Connect Google account”, choose Search Console and enter the crewinjob.com property; you approve on Google’s own screen.'), rows("SELECT COUNT(*) n FROM platform_connections WHERE organization_id=? AND project_id=? AND active=1 AND provider='search_console'") > 0, 'project&settings=connections',
+          google ? null : SERVER('Google OAuth (PLATFORM_GOOGLE_CLIENT_ID, PLATFORM_GOOGLE_CLIENT_SECRET, PLATFORM_GOOGLE_REDIRECT_URI)', 'Google OAuth (PLATFORM_GOOGLE_CLIENT_ID, PLATFORM_GOOGLE_CLIENT_SECRET, PLATFORM_GOOGLE_REDIRECT_URI)')),
+        step('schedule', l('Otomatik taramayı açın', 'Turn on the automatic scan'), l('SEO & Blog → “Otomatik tarama”da haftalık veya aylık taramayı açın; yeni bulgu ve arama düşüşü Genel bakış → Dikkat gerekenler’de ve tarayıcı bildiriminde görünür.', 'In SEO & Blog → “Automatic scan”, turn on a weekly or monthly scan; new findings and search drops appear in Overview → Needs attention and as browser notifications.'), rows('SELECT COUNT(*) n FROM platform_seo_schedules WHERE organization_id=? AND project_id=?') > 0, 'seo&view=ops'),
+        step('findings', l('Açık bulguları ele alın', 'Handle the open findings'), l('Her bulgunun geliştirici metnini kopyalayın veya “İş planına ekle” ile Takvim → İş ve içerik planı’na koyun; düzeldiğinde sonraki tarama işaretler.', 'Copy each finding’s developer text or put it in Calendar → Work and content plan with “Add to work plan”; the next scan marks it fixed.'), scanned && open === 0, 'seo&view=ops', null,
+          open ? l(`${number(open).tr} açık bulgu`, `${number(open).en} open finding(s)`) : null),
+      ] });
+
+    const unread = rows("SELECT COUNT(*) n FROM platform_social_inbox WHERE organization_id=? AND project_id=? AND state='new'");
+    jobs.push({ id: 'crewin_inbox', title: l('Yorum ve mesajlara cevap ver', 'Answer comments and messages'), outcome: l('Crewin’in Facebook Sayfası ve Instagram hesabındaki yorum ve mesajları tek yerden okuyup onaylı cevap göndermek.', 'Reading comments and messages on Crewin’s Facebook Page and Instagram account in one place and sending approved replies.'),
+      keywords: ['mesaj', 'message', 'yorum', 'comment', 'dm', 'cevap', 'reply', 'gelen kutusu', 'inbox', 'facebook', 'instagram', 'meta'],
+      badge: unread ? { count: unread, label: l('yeni mesaj/yorum', 'new message(s)/comment(s)') } : null,
+      steps: [
+        step('connect', l('Meta hesabını Ryzevo’ya bağlayın', 'Connect the Meta account to Ryzevo'), l('Proje ayarları → Bağlantılar’da Meta ile bağlanıp Crewin Sayfasını ve Instagram hesabını seçin. Crewin’in paylaşımları yine Sosyal medya sekmesinden yapılır.', 'In Project settings → Connections, connect with Meta and choose the Crewin Page and Instagram account. Crewin’s posts are still made from the Social media tab.'), rows('SELECT COUNT(*) n FROM platform_social_inbox_accounts WHERE organization_id=? AND project_id=?') > 0, 'project&settings=connections',
+          meta ? null : SERVER('Meta uygulaması (PLATFORM_META_APP_ID, PLATFORM_META_APP_SECRET, PLATFORM_META_REDIRECT_URI, PLATFORM_META_GRAPH_VERSION)', 'the Meta app (PLATFORM_META_APP_ID, PLATFORM_META_APP_SECRET, PLATFORM_META_REDIRECT_URI, PLATFORM_META_GRAPH_VERSION)')),
+        step('read', l('Gelen kutusunu okuyun', 'Read the inbox'), l('Kampanyalar → “Gelen kutusu”nda okumayı açın; okuma 30 dakikada bir kendiliğinden de yapılır.', 'In Campaigns → “Inbox”, turn on reading; it also runs on its own every 30 minutes.'), rows('SELECT COUNT(*) n FROM platform_social_inbox WHERE organization_id=? AND project_id=?') > 0, 'campaigns&view=inbox'),
+        step('reply', l('Cevabı onaylayıp gönderin', 'Approve and send a reply'), l('Cevabı yazın veya AI önerisini düzenleyin; cevap ancak onaydan sonra gider. Mesajlarda 24 saatlik pencere kuralı vardır.', 'Write the reply or edit the AI suggestion; it goes only after approval. Messages have a 24-hour window.'), rows("SELECT COUNT(*) n FROM platform_social_inbox WHERE organization_id=? AND project_id=? AND reply_state='sent'") > 0, 'campaigns&view=inbox'),
       ] });
   }
 
@@ -241,7 +296,7 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
   } else unavailable.push(l('Havale siparişleri: kredi servisi şu an yanıt vermiyor veya bu hesapta yetki yok.', 'Bank-transfer orders: the credit service is not answering or this account lacks the permission.'));
 
   // Money and waiting work first, then jobs under way, then the base order of Crewin’s goals; finished jobs last.
-  const BASE: JobId[] = ['crewin_credits', 'crewin_jobs', 'crewin_profiles', 'crewin_social', 'crewin_leads', 'crewin_results', 'crewin_seo', 'crewin_campaign'];
+  const BASE: JobId[] = ['crewin_credits', 'crewin_jobs', 'crewin_profiles', 'crewin_social', 'crewin_leads', 'crewin_growth', 'crewin_results', 'crewin_seo', 'crewin_search', 'crewin_ai', 'crewin_inbox', 'crewin_campaign'];
   const items: JobGuideItem[] = jobs.map(job => {
     const done = job.steps.filter(item => item.state === 'done').length, next = job.steps.find(item => item.state !== 'done');
     const actionable = job.steps.some(item => item.state !== 'done' && item.canAct);

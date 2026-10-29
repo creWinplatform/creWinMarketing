@@ -8,6 +8,7 @@ import { coachWeekKey, zonedDateKey, zonedInstant } from './coach';
 import { coachMonthKey } from './coach-content';
 import { INBOX_LIMITS } from './social-inbox-types';
 import type { ApprovalItem, ApprovalsView } from './approvals-types';
+import { ryzevoFeature } from './ryzevo-features';
 
 type Scope = { subject: string; organizationId: string; projectId: string };
 const HOUR = 3600000;
@@ -18,7 +19,7 @@ const args = (scope: Scope) => [scope.organizationId, scope.projectId] as const;
 export function approvalQueue(db: Database.Database, scope: Scope, now = Date.now()): ApprovalItem[] {
   const repo = new PlatformRepository(db), can = (permission: Parameters<PlatformRepository['can']>[3]) => repo.can(scope.subject, ...args(scope), permission);
   const project = can('read') ? repo.workspace(scope.subject, ...args(scope))?.project : undefined;
-  if (!project || project.productPack !== 'standard') return [];
+  if (!project || !ryzevoFeature(project.productPack, 'approvals')) return [];
   const items: ApprovalItem[] = [], zone = project.timezone, at = new Date(now);
   const add = (kind: ApprovalItem['kind'], count: number, oldest: string | null, href: string) => { if (count > 0) items.push({ kind, count, oldest, href }); };
   const one = <T,>(sql: string, ...values: unknown[]) => db.prepare(sql).get(...args(scope), ...values) as T;
@@ -72,7 +73,7 @@ export class ProjectApprovals {
   constructor(private db: Database.Database, private scope: MarketingScope) { this.repo = new PlatformRepository(db); }
   read(): ApprovalsView {
     const project = this.repo.can(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'read') ? this.repo.workspace(this.scope.subject, this.scope.organizationId, this.scope.projectId)?.project : undefined;
-    if (!project || project.productPack !== 'standard') throw new MarketingStoreError('Onay listesi için standart proje erişimi gerekli.', 403);
+    if (!project || !ryzevoFeature(project.productPack, 'approvals')) throw new MarketingStoreError('Onay listesi için standart proje erişimi gerekli.', 403);
     return { items: approvalQueue(this.db, this.scope), timezone: project.timezone };
   }
 }

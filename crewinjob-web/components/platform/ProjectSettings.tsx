@@ -9,6 +9,7 @@ import ProjectConnections from './ProjectConnections';
 import ProjectProfileEditor from './ProjectProfileEditor';
 import AccountSettings from './AccountSettings';
 import CoachBrandStudio from './CoachBrandStudio';
+import { ryzevoFeature } from '@/lib/platform/ryzevo-features';
 const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
 const ProjectPlan=dynamic(()=>import('./ProjectPlan'));
 const ProjectBilling=dynamic(()=>import('./ProjectBilling'));
@@ -28,8 +29,12 @@ export default function ProjectSettings({
   const tr = lang === 'tr',
     project = workspace.project,
     [section, setSection] = useState('profile');
+  // The Crewin workspace's single account gets Ryzevo's Google and Meta connections and the brand studio (ryzevoFeature);
+  // product data and plan stay with standard projects.
+  const crewin = project.productPack === 'crewin' && workspace.accessMode === 'legacy_single_account',
+    brandOpen = (workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'brand'));
   const canConnections =
-      workspace.accessMode === 'platform_account' &&
+      (workspace.accessMode === 'platform_account' || crewin) &&
       workspace.permissions?.includes('connections.manage'),
     canTeam = workspace.permissions?.includes('members.manage'),
     // The deployment administrator (the team running Ryzevo) also gets the operator console.
@@ -47,14 +52,14 @@ export default function ProjectSettings({
       setSection('connections');
     else if (canConnections && project.productPack==='standard' && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
-    else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='brand')setSection('brand');
+    else if(brandOpen&&requested==='brand')setSection('brand');
     else if (canOperate && requested === 'operations') setSection('operations');
     else if (
       requested === 'team' &&
       (canTeam || workspace.accessMode === 'platform_account')
     )
       setSection('team');
-  }, [canConnections, canTeam, canOperate, workspace.accessMode, project.productPack]);
+  }, [canConnections, canTeam, canOperate, brandOpen, workspace.accessMode, project.productPack]);
   return (
     <section className="min-w-0">
       <header className="studio-page-heading">
@@ -102,7 +107,7 @@ export default function ProjectSettings({
           },
           {
             id:'brand',Icon:Palette,label:tr?'Marka dili & rakipler':'Brand voice & competitors',
-            visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
+            visible:brandOpen,
           },
           {
             id:'plan',Icon:Gauge,label:tr?'Plan & kullanım':'Plan & usage',
@@ -231,7 +236,7 @@ export default function ProjectSettings({
       )}
       {section === 'connections' && canConnections && (
         <div className="mt-6">
-          <ProjectConnections lang={lang} />
+          <ProjectConnections lang={lang} crewin={crewin} />
         </div>
       )}
       {section === 'operations' && canOperate && <div className="mt-6"><OperatorConsole lang={lang} /></div>}
@@ -249,7 +254,7 @@ export default function ProjectSettings({
         </div>
       )}
       {section === 'data' && canConnections && project.productPack==='standard' && <ProductDataSources key={project.id} lang={lang} />}
-      {section==='brand'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
+      {section==='brand'&&brandOpen&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<AgencyLinksPanel key={'agency-links-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<LiveBilling key={'live-billing-'+project.id} lang={lang}/>}

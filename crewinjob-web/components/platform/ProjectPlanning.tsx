@@ -47,8 +47,10 @@ export default function ProjectPlanning({
     [filter, setFilter] = useState('active'),
     [month, setMonth] = useState(() => new Date());
   const [view,setView]=useState<'work'|'social'|'content'>('work');
-  const views=(['work','social',...(workspace.project.productPack==='standard'?['content' as const]:[])] as const);
-  useEffect(()=>{const value=new URLSearchParams(window.location.search).get('planning');if(value==='social'||value==='content'&&workspace.project.productPack==='standard')setView(value);},[workspace.project.productPack]);
+  // The Crewin workspace publishes with its own Social media tools, so it has no social publication queue here.
+  const crewin=workspace.project.productPack==='crewin',content=crewin||workspace.project.productPack==='standard';
+  const views=([...(['work'] as const),...(crewin?[]:['social' as const]),...(content?['content' as const]:[])] as const);
+  useEffect(()=>{const value=new URLSearchParams(window.location.search).get('planning');if(value==='social'&&!crewin||value==='content'&&content)setView(value);},[crewin,content]);
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -136,7 +138,7 @@ export default function ProjectPlanning({
     <section>
       <div className="publication-view-tabs" role="tablist" aria-label={tr?'Takvim görünümü':'Calendar view'} onKeyDown={event=>{if(['ArrowLeft','ArrowRight'].includes(event.key)){event.preventDefault();const next=(views.indexOf(view)+(event.key==='ArrowRight'?1:views.length-1))%views.length;setView(views[next]);event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[next]?.focus();}}}>
         <button role="tab" aria-selected={view==='work'} tabIndex={view==='work'?0:-1} onClick={()=>setView('work')}>{tr?'İş planı':'Work plans'}</button>
-        <button role="tab" aria-selected={view==='social'} tabIndex={view==='social'?0:-1} onClick={()=>setView('social')}>{tr?'Sosyal yayınlar':'Social publications'}</button>
+        {!crewin&&<button role="tab" aria-selected={view==='social'} tabIndex={view==='social'?0:-1} onClick={()=>setView('social')}>{tr?'Sosyal yayınlar':'Social publications'}</button>}
         {views.includes('content' as never)&&<button role="tab" aria-selected={view==='content'} tabIndex={view==='content'?0:-1} onClick={()=>setView('content')}>{tr?'İçerik planı':'Content plan'}</button>}
       </div>
       {view==='content'?<CoachContentPlan workspace={workspace} lang={lang}/>:view==='social'?<SocialPublicationCenter workspace={workspace} lang={lang}/>:<>

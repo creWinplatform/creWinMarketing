@@ -19,6 +19,7 @@ function paidPeriod(db: Database.Database, scope: Scope): PaidRow | undefined {
       ?? db.prepare("SELECT s.plan_id,s.package,s.starts_at,s.ends_at,s.grace_ends_at,1 AS via_agency FROM platform_agency_links l JOIN platform_project_subscriptions s ON s.organization_id=l.agency_organization_id AND s.project_id=l.agency_project_id AND s.package='agency' WHERE l.organization_id=? AND l.project_id=? AND l.state='linked' AND s.starts_at<=? AND s.grace_ends_at>? ORDER BY s.ends_at DESC LIMIT 1").get(scope.organizationId, scope.projectId, at, at) as PaidRow | undefined;
   } catch { return undefined; }
 }
+const UNLIMITED = Object.fromEntries(Object.keys(PILOT_LIMITS).map(key => [key, Number.POSITIVE_INFINITY])) as { [K in keyof typeof PILOT_LIMITS]: number };
 export function projectEntitlement(db: Database.Database, scope: Scope) {
   const project = db.prepare('SELECT product_pack FROM platform_projects WHERE id=? AND organization_id=?').get(scope.projectId, scope.organizationId) as {product_pack: string} | undefined;
   if (!project) throw new MarketingStoreError('Proje bulunamadı.', 404);
@@ -37,7 +38,8 @@ export function projectEntitlement(db: Database.Database, scope: Scope) {
   if (trial && (!Number.isFinite(Date.parse(row.started_at)) || !row.ends_at || !Number.isFinite(Date.parse(row.ends_at)) || Date.parse(row.ends_at) - Date.parse(row.started_at) !== TRIAL_DAYS * 86400000)) throw new MarketingStoreError('Deneme dönemi doğrulanamadı.', 409);
   const active = !trial || Date.now() >= Date.parse(row.started_at) && Date.now() < Date.parse(row.ends_at!);
   return { id: row.mode, active, startsAt: trial ? row.started_at : null, endsAt: row.ends_at,
-    limits: trial ? TRIAL_LIMITS : PILOT_LIMITS, seats: trial ? 2 : null, socialAccounts: trial ? 1 : null,
+    // The Crewin workspace is the operator's own project: no monthly or stored-record cap (usage is still recorded).
+    limits: trial ? TRIAL_LIMITS : project.product_pack === 'crewin' ? UNLIMITED : PILOT_LIMITS, seats: trial ? 2 : null, socialAccounts: trial ? 1 : null,
     liveDeliveryAllowed: !trial, periodKey: trial ? 'trial-v1' : null };
 }
 

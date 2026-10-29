@@ -52,12 +52,12 @@ test('brief versions are recorded on approval and approved plan changes, with a 
   const changed=diffBriefs(approved.brief,{...approved.brief,positioning:'New',channels:[...approved.brief.channels.slice(1),{id:'instagram',rationale:'x'}],plan:approved.brief.plan.map((item,i)=>i===0?{...item,week:2}:item)});
   assert.deepEqual(plain(changed.channelsAdded),['instagram']);assert.deepEqual(plain(changed.channelsRemoved),[approved.brief.channels[0].id]);assert.equal(changed.positioning,true);assert.equal(changed.planMoved,1);
 }));
-test('measurement trend uses dated records only; viewers can read; Crewin is excluded',coachRun(async f=>{
+test('measurement trend uses dated records only; viewers can read; Crewin is included',coachRun(async f=>{
   f.setGoals();await f.approve();const {ProjectOperations}=load('operations.ts'),operations=new ProjectOperations(f.db,f.scope);
   operations.saveMetric({goalId:'demo',stageIndex:0,value:3,observedAt:new Date(Date.now()-20*86400000).toISOString()});operations.saveMetric({goalId:'demo',stageIndex:0,value:8,observedAt:new Date(Date.now()-86400000).toISOString()});
   operations.saveMetric({goalId:'demo',stageIndex:1,value:1,observedAt:new Date(Date.now()-90*86400000).toISOString()});
   const viewer=new CoachLearning(f.db,f.member('viewer')).read();assert.deepEqual(plain(viewer.measurements.map(item=>[item.stage.en,item.first,item.last,item.entries,item.source])),[['Visit',3,8,2,'manual']]);
-  assert.throws(()=>new CoachLearning(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),error=>error.status===403);
+  assert.doesNotThrow(()=>new CoachLearning(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
 }));
 test('schema35 backfills existing approved briefs and is repeatable',coachRun(async f=>{
   await f.approve();const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-learning-')),'fixture.sqlite');

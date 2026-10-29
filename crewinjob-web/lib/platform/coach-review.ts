@@ -6,6 +6,7 @@ import type { MarketingScope } from './marketing-store';
 import { MarketingStoreError } from './errors';
 import { GrowthCoach,coachChannelName,coachChoice,coachPlanId,coachWeekKey,zonedDateKey,zonedInstant,zonedShiftDays } from './coach';
 import type { CoachAdjustment,CoachBrief,CoachChannel,CoachPlanItem,CoachReview,CoachReviewFacts,CoachReviewMeasurement,CoachReviewSnapshot } from './coach-types';
+import { crewinPublishedBetween,draftsByPlatform,isCrewinProject } from './coach-activity';
 
 type Row={id:string;week:string;facts_json:string;adjustments_json:string;revision:number;created_at:string};
 const l=(tr:string,en:string):LocalizedText=>({tr,en});
@@ -32,13 +33,14 @@ export class CoachWeeklyReview{
     const states=this.db.prepare('SELECT action_id,state FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=? AND updated_at>=? AND updated_at<=?').all(...this.args(),from,to) as {action_id:string;state:string}[];
     const {brief}=this.coach.approved(),snapshot=brief?this.coach.read():null,titles=new Map((brief?.plan||[]).map(item=>[coachPlanId(item),item.title]));
     const byChannel:Record<string,number>={};
-    for(const item of this.db.prepare("SELECT json_extract(payload,'$.platform') platform FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.timestamp')>=?").all(...this.args(),Date.parse(from)) as {platform:string|null}[])if(item.platform)byChannel[item.platform]=(byChannel[item.platform]||0)+1;
+    Object.assign(byChannel,draftsByPlatform(this.db,this.args(),Date.parse(from)));
     const audits=(operation:string)=>this.count('SELECT COUNT(*) n FROM platform_audit WHERE organization_id=? AND project_id=? AND operation=? AND created_at>=? AND created_at<=?',operation,from,to);
     const activity=Object.values(byChannel).reduce((sum,value)=>sum+value,0)+states.filter(item=>item.state==='done').length;
     return {from,to,measurements,lastMeasuredAt:entries[0]?.observed_at||null,connections:{ga4:connected('ga4'),searchConsole:connected('search_console')},
       actions:{done:states.filter(item=>item.state==='done').length,skipped:states.filter(item=>item.state==='skipped').length,open:snapshot?.remaining||0,doneTitles:states.filter(item=>item.state==='done').map(item=>titles.get(item.action_id)).filter((item):item is string=>Boolean(item)).slice(0,5)},
       content:{drafts:audits('content.create'),draftsByChannel:byChannel,campaigns:audits('campaign.create'),
-        publications:this.count("SELECT COUNT(*) n FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state='accepted' AND j.updated_at>=? AND j.updated_at<=?",from,to),
+        // The Crewin workspace publishes with its own tools; its posts are in data/post-history.json.
+        publications:isCrewinProject(this.db,this.args())?crewinPublishedBetween(from,to):this.count("SELECT COUNT(*) n FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state='accepted' AND j.updated_at>=? AND j.updated_at<=?",from,to),
         planApproved:this.count('SELECT COUNT(*) n FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND approved_at>=? AND approved_at<=?',from,to)},
       seo:{audits:this.count("SELECT COUNT(*) n FROM platform_audit WHERE organization_id=? AND project_id=? AND operation GLOB 'seo.audit.completed:*' AND operation NOT GLOB '*:clean' AND created_at>=? AND created_at<=?",from,to),briefsApproved:audits('coach.seo.brief.approve')},
       rose:activity?measurements.filter(item=>item.previous!==null&&item.latest>item.previous).map(item=>({goal:item.goal,stage:item.stage,from:item.previous!,to:item.latest})):[]};

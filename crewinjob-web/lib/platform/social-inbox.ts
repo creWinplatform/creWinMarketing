@@ -12,6 +12,7 @@ import { COACH_BANNED, coachClip, coachObject, coachText, type CoachGenerator } 
 import { parseCoachJson, runCoachAi } from './coach-ai';
 import { xText } from './x-text';
 import { INBOX_LIMITS, type InboxItemView, type InboxSnapshot } from './social-inbox-types';
+import { ryzevoFeature, ryzevoPackSql } from './ryzevo-features';
 
 // One provider call; fixed hosts, the token only in the Authorization header. Injected in tests.
 export type InboxHttp=(request:{method:'GET'|'POST';url:string;token:string;form?:Record<string,string>;json?:unknown;headers?:Record<string,string>})=>Promise<{status:number;payload:Record<string,unknown>;header:(name:string)=>string|null}>;
@@ -53,7 +54,7 @@ export class ProjectSocialInbox{
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
   private duty(duty:'source.read'|'suggest'|'publish'){return hasMessagingDuty(this.db,this.scope.subject,...this.args(),duty);}
   private authorize(need?:'source.read'|'suggest'|'publish'){
-    if(!this.repo.can(this.scope.subject,...this.args(),'read')||this.repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Gelen kutusu için standart proje erişimi gerekli.',403);
+    if(!this.repo.can(this.scope.subject,...this.args(),'read')||!ryzevoFeature(this.repo.workspace(this.scope.subject,...this.args())?.project.productPack,'inbox'))throw new MarketingStoreError('Gelen kutusu için standart proje erişimi gerekli.',403);
     if(need&&!this.duty(need))throw new MarketingStoreError(need==='source.read'?'Yorum ve mesajları okumak için "kaynak okuma" görevi gerekir.':need==='suggest'?'Yanıt yazmak için "içerik önerisi" görevi gerekir.':'Yanıt göndermek için "yayın" görevi gerekir.',403);
   }
   private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
@@ -261,7 +262,8 @@ export async function readDueInboxAccounts(db:Database.Database,key:string,http:
   return read;
 }
 // Meta webhook (one per server, signed with the Meta app secret): new comments under the project's own accepted posts
-// and inbound Page/Instagram messages land in every standard project connected to that Page or Instagram account.
+// and inbound Page/Instagram messages land in every project (standard, or Crewin with the inbox feature) connected to that
+// Page or Instagram account.
 export function verifyMetaInboxHook(query:URLSearchParams){
   const expected=verifyToken(),challenge=query.get('hub.challenge')||'';
   if(!metaInboxHookConfigured()||query.get('hub.mode')!=='subscribe'||!/^[A-Za-z0-9_-]{1,200}$/.test(challenge))return null;
@@ -277,7 +279,7 @@ export function receiveMetaInboxHook(db:Database.Database,key:string,body:Uint8A
   let stored=0;
   for(const entry of (Array.isArray(payload.entry)?payload.entry:[]).slice(0,INBOX_LIMITS.hookEntries) as Record<string,unknown>[]){
     const owner=String(entry.id||'');if(!/^\d{1,30}$/.test(owner))continue;
-    const accounts=db.prepare("SELECT c.id,c.organization_id,c.project_id,c.account_name,c.encrypted_credentials,c.integration_id,s.account_id,s.platform,s.page_id FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id JOIN platform_projects p ON p.id=c.project_id AND p.organization_id=c.organization_id WHERE c.active=1 AND c.provider='social' AND p.product_pack='standard' AND s.platform=? AND s.account_id=?").all(platform,owner) as (Omit<Account,'organization'>&{organization_id:string;project_id:string})[];
+    const accounts=db.prepare(`SELECT c.id,c.organization_id,c.project_id,c.account_name,c.encrypted_credentials,c.integration_id,s.account_id,s.platform,s.page_id FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id JOIN platform_projects p ON p.id=c.project_id AND p.organization_id=c.organization_id WHERE c.active=1 AND c.provider='social' AND ${ryzevoPackSql('inbox')} AND s.platform=? AND s.account_id=?`).all(platform,owner) as (Omit<Account,'organization'>&{organization_id:string;project_id:string})[];
     for(const row of accounts){
       const account:Account={...row,organization:false},found:Found[]=[];
       const post=(id:unknown)=>typeof id==='string'&&ID.test(id)?(db.prepare("SELECT p.job_id FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND j.connection_id=? AND p.state='accepted' AND p.mode='publish' AND p.provider_post_id=?").get(row.organization_id,row.project_id,row.id,id) as {job_id:string}|undefined)?.job_id||null:null;

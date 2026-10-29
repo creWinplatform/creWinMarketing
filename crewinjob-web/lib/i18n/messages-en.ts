@@ -1354,4 +1354,5 @@ export const MESSAGES_EN: Record<string, string> = {
   "İş rehberi şu anda yüklenemedi; araçları menüden kullanabilirsiniz.": "The job guide can't load right now; you can use the tools from the menu.",
   "İlan yayınlandı": "Job posting published",
   "Blog yayınlandı": "Blog post published",
+  "Crewin çalışma alanında Ryzevo bağlantıları yalnız Google ve Meta ile kurulur.": "In the Crewin workspace, Ryzevo connections are made only with Google and Meta.",
 };

@@ -6,6 +6,7 @@ import { PlatformRepository } from './repository';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { adMinorUnit } from './ad-manager';
 import { validRange, type PaidInputs, type SeoInputs } from './budget-math';
+import { ryzevoFeature } from './ryzevo-features';
 
 export type MeasuredValue={value:number;label:LocalizedText;source:string;from:string|null;to:string|null;at:string};
 export type BudgetScenario={id:string;name:string;kind:'paid'|'seo';currency:string;inputs:PaidInputs|SeoInputs;sources:Record<string,string>;revision:number;updatedAt:string};
@@ -25,7 +26,7 @@ export class BudgetPlanner{
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
   private can(permission:'read'|'content.write'){return this.repo.can(this.scope.subject,...this.args(),permission);}
   authorize(permission:'read'|'content.write'='read'){
-    if(!this.can('read')||this.repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Bütçe planlayıcı için standart proje erişimi gerekli.',403);
+    if(!this.can('read')||!ryzevoFeature(this.repo.workspace(this.scope.subject,...this.args())?.project.productPack,'budget'))throw new MarketingStoreError('Bütçe planlayıcı için standart proje erişimi gerekli.',403);
     if(!this.can(permission))throw new MarketingStoreError('Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
   private currency(){const plan=this.db.prepare("SELECT currency FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider='meta' ORDER BY updated_at DESC LIMIT 1").get(...this.args()) as {currency:string}|undefined;

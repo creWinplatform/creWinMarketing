@@ -33,7 +33,8 @@ export function coachStarterDraft(item: Pick<CoachContentItem, 'id' | 'channel' 
 
 export function seedCoachFirstWeek(db: Database.Database, scope: MarketingScope): { drafts: number } {
   const coach = new GrowthCoach(db, scope), { brief } = coach.approved();
-  if (!brief || !coach.can('content.write')) return { drafts: 0 };
+  // The Crewin workspace already has its own content library and history; no starter drafts are added to the platform's.
+  if (!brief || !coach.can('content.write') || coach.crewin()) return { drafts: 0 };
   // Earliest plan items first, spread over different topics and channels; repeats only when the plan has no others.
   const open = new CoachContentPlan(db, scope).seedStarter().filter(item => item.channel !== 'email'), items: typeof open = [];
   const topic = (item: (typeof open)[number]) => item.title.replace(/^[^:]{1,40}:\s*/, '');
