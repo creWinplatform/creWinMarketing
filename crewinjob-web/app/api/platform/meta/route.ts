@@ -5,21 +5,23 @@ import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ProjectMetaOAuth, META_BROWSER_COOKIE, META_SELECTION_COOKIE } from '@/lib/platform/meta-oauth';
 import { metaConfiguration } from '@/lib/platform/meta-client';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
-import { hasSameRequestOrigin } from '@/lib/platform/request-origin';
+import { hasSameRequestOrigin, callbackOnPanel } from '@/lib/platform/request-origin';
 import { readAuthenticationJson } from '@/lib/platform/request-json';
 export const dynamic = 'force-dynamic';
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: { 'Cache-Control': 'private, no-store' } });
 export async function GET(request: NextRequest) {
   const access = await getRyzevoAccess('connections.manage');
   if (!access) return json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, 403);
-  let configured = false;
-  try { metaConfiguration(); configured = true; } catch {}
+  let configured = false, callback = '';
+  try { callback = metaConfiguration().redirectUri; configured = true; } catch {}
+  // originOk: the connection can finish only when this panel is opened from the callback's address.
+  const origin = configured ? callbackOnPanel(request, callback) : {};
   const cookie = request.cookies.get(META_SELECTION_COOKIE)?.value;
-  if (!cookie) return json({ configured, selection: null });
+  if (!cookie) return json({ configured, ...origin, selection: null });
   try {
     const oauth = new ProjectMetaOAuth(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId }, credentialEncryptionKey());
-    return json({ configured, selection: await oauth.list(cookie, request.nextUrl.searchParams.get('more') === 'true') });
-  } catch (error) { return json({ configured, selection: null, error: error instanceof MarketingStoreError ? error.message : 'Meta sayfaları alınamadı.' }, error instanceof MarketingStoreError ? error.status : 400); }
+    return json({ configured, ...origin, selection: await oauth.list(cookie, request.nextUrl.searchParams.get('more') === 'true') });
+  } catch (error) { return json({ configured, ...origin, selection: null, error: error instanceof MarketingStoreError ? error.message : 'Meta sayfaları alınamadı.' }, error instanceof MarketingStoreError ? error.status : 400); }
 }
 export async function POST(request: NextRequest) {
   if (!hasSameRequestOrigin(request)) return json({ error: 'İstek kaynağı geçersiz.' }, 403);

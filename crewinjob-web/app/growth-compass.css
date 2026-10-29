@@ -124,3 +124,4 @@
 .setup-verify{border-top:1px solid var(--studio-border);padding-top:10px}.setup-verify p{margin:0;font-size:12px;line-height:1.7}
 .setup-copy{min-height:32px}
 .setup-copy-failed{font-size:11px;color:#b9800f}
+.setup-probe-detail{flex-basis:100%;margin:0;font-size:12px;line-height:1.6;color:var(--studio-muted)}

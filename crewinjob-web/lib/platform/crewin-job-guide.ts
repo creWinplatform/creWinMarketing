@@ -25,6 +25,9 @@ export type CrewinGuideDeps = {
   posts: () => Promise<unknown>;
   // The platform database: Ryzevo's features in the Crewin workspace (coach, SEO automation, AI visibility, inbox, reports).
   db?: Database.Database;
+  // The setup guide's verdict for this panel's address (lib/platform/server-setup.ts): a setting that is present but wrong,
+  // e.g. a callback on another address, blocks its step as well. Without it, presence alone decides.
+  setup?: { id: string; state: string; problems: LocalizedText[] }[];
 };
 export type CrewinStats = { seafarers?: { newThisWeek?: number; fillRateBuckets?: { zero?: number; low?: number } }; jobs?: { newThisWeek?: number | null } };
 
@@ -234,9 +237,14 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
 
   // 9–12. Ryzevo features in the Crewin workspace, read from the platform tables.
   if (db) {
-    const grounded = Boolean(env.PLATFORM_GEMINI_API_KEY && /gemini-(?:2|[3-9])/.test(env.PLATFORM_GEMINI_MODEL || ''));
-    const google = Boolean(env.PLATFORM_GOOGLE_CLIENT_ID && env.PLATFORM_GOOGLE_CLIENT_SECRET && env.PLATFORM_GOOGLE_REDIRECT_URI);
-    const meta = Boolean(env.PLATFORM_META_APP_ID && env.PLATFORM_META_APP_SECRET && env.PLATFORM_META_REDIRECT_URI && env.PLATFORM_META_GRAPH_VERSION);
+    const verdict = (id: string) => deps.setup?.find(item => item.id === id);
+    const ready = (id: string, present: boolean) => { const item = verdict(id); return item ? item.state === 'ready' : present; };
+    // Present but wrong: the guide's first problem, so the step says exactly what to fix.
+    const blocked = (id: string, missingText: LocalizedText) => { const item = verdict(id); return item && item.state !== 'missing' && item.problems[0]
+      ? l(`Sunucu ayarı hatalı: ${item.problems[0].tr} Kurulum rehberi nasıl düzeltileceğini gösteriyor.`, `Server setting needs a fix: ${item.problems[0].en} The setup guide shows how to fix it.`) : missingText; };
+    const grounded = ready('gemini', Boolean(env.PLATFORM_GEMINI_API_KEY && /gemini-(?:2|[3-9])/.test(env.PLATFORM_GEMINI_MODEL || '')));
+    const google = ready('google', Boolean(env.PLATFORM_GOOGLE_CLIENT_ID && env.PLATFORM_GOOGLE_CLIENT_SECRET && env.PLATFORM_GOOGLE_REDIRECT_URI));
+    const meta = ready('meta', Boolean(env.PLATFORM_META_APP_ID && env.PLATFORM_META_APP_SECRET && env.PLATFORM_META_REDIRECT_URI && env.PLATFORM_META_GRAPH_VERSION));
     const coach = (() => { try { return db.prepare('SELECT draft_json,brief_json FROM platform_growth_coach WHERE organization_id=? AND project_id=?').get(...CREWIN) as { draft_json: string | null; brief_json: string | null } | undefined; } catch { return undefined; } })();
     const review = rows('SELECT COUNT(*) n FROM platform_coach_reviews WHERE organization_id=? AND project_id=? AND updated_at>=?', new Date(now - WEEK).toISOString());
     jobs.push({ id: 'crewin_growth', title: l('Büyüme stratejisi çıkar ve haftalık uygula', 'Build a growth strategy and follow it weekly'), outcome: l('Crewin için onaylı bir strateji briefi (ideal kullanıcı, öncelikli kanallar, 30 günlük plan) ve her hafta işlenen eylem listesi.', 'An approved strategy brief for Crewin (ideal user, priority channels, a 30-day plan) and an action list worked through every week.'),
@@ -259,7 +267,7 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
         step('llms', l('llms.txt dosyasını yayınlayın', 'Publish llms.txt'), l('“Otomatik tarama” ekranındaki llms.txt taslağını düzenleyip crewinjob.com’un köküne koydurun.', 'Edit the llms.txt draft on the “Automatic scan” screen and have it placed at crewinjob.com’s root.'), scanned && finding('llms.txt bulunamadı') === 0, 'seo&view=ops'),
         step('questions', l('Kullanıcılarınızın sorularını yazın', 'Write your users’ questions'), l('SEO & Blog → “AI görünürlüğü”nde markayı bilmeden sorulacak birkaç soru ekleyin (ör. “Gemi adamları için en iyi iş ilanı sitesi hangisi?”).', 'In SEO & Blog → “AI visibility”, add a few questions asked without knowing the brand (e.g. “Which is the best job site for seafarers?”).'), rows('SELECT COUNT(*) n FROM platform_ai_visibility_questions WHERE organization_id=? AND project_id=?') > 0, 'seo&view=visibility'),
         withSetup(step('ask', l('Soruları sorun ve sonucu görün', 'Ask and see the result'), l('Cevapta Crewin anıldı mı, crewinjob.com kaynak gösterildi mi, hangi rakipler geçti; haftalık takip de açılabilir.', 'Was Crewin named, was crewinjob.com cited, which competitors came up; weekly tracking can be turned on too.'), rows("SELECT COUNT(*) n FROM platform_ai_visibility_checks WHERE organization_id=? AND project_id=? AND status='ok'") > 0, 'seo&view=visibility',
-          grounded ? null : SERVER('Google aramalı AI modeli (PLATFORM_GEMINI_API_KEY ve gemini-2 veya üstü PLATFORM_GEMINI_MODEL)', 'the search-grounded AI model (PLATFORM_GEMINI_API_KEY and a gemini-2 or later PLATFORM_GEMINI_MODEL)')), 'gemini'),
+          grounded ? null : blocked('gemini', SERVER('Google aramalı AI modeli (PLATFORM_GEMINI_API_KEY ve gemini-2 veya üstü PLATFORM_GEMINI_MODEL)', 'the search-grounded AI model (PLATFORM_GEMINI_API_KEY and a gemini-2 or later PLATFORM_GEMINI_MODEL)'))), 'gemini'),
       ] });
 
     const open = rows("SELECT COUNT(*) n FROM platform_seo_findings WHERE organization_id=? AND project_id=? AND state='open'");
@@ -269,7 +277,7 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
       badge: open ? { count: open, label: l('açık SEO bulgusu', 'open SEO finding(s)') } : null,
       steps: [
         withSetup(step('connect', l('Search Console’u Ryzevo’ya bağlayın', 'Connect Search Console to Ryzevo'), l('Proje ayarları → Bağlantılar → “Google hesabı bağla”da Search Console’u seçip crewinjob.com mülkünü yazın; Google’ın kendi ekranında izin verirsiniz.', 'In Project settings → Connections → “Connect Google account”, choose Search Console and enter the crewinjob.com property; you approve on Google’s own screen.'), rows("SELECT COUNT(*) n FROM platform_connections WHERE organization_id=? AND project_id=? AND active=1 AND provider='search_console'") > 0, 'project&settings=connections',
-          google ? null : SERVER('Google OAuth (PLATFORM_GOOGLE_CLIENT_ID, PLATFORM_GOOGLE_CLIENT_SECRET, PLATFORM_GOOGLE_REDIRECT_URI)', 'Google OAuth (PLATFORM_GOOGLE_CLIENT_ID, PLATFORM_GOOGLE_CLIENT_SECRET, PLATFORM_GOOGLE_REDIRECT_URI)')), 'google'),
+          google ? null : blocked('google', SERVER('Google OAuth (PLATFORM_GOOGLE_CLIENT_ID, PLATFORM_GOOGLE_CLIENT_SECRET, PLATFORM_GOOGLE_REDIRECT_URI)', 'Google OAuth (PLATFORM_GOOGLE_CLIENT_ID, PLATFORM_GOOGLE_CLIENT_SECRET, PLATFORM_GOOGLE_REDIRECT_URI)'))), 'google'),
         step('schedule', l('Otomatik taramayı açın', 'Turn on the automatic scan'), l('SEO & Blog → “Otomatik tarama”da haftalık veya aylık taramayı açın; yeni bulgu ve arama düşüşü Genel bakış → Dikkat gerekenler’de ve tarayıcı bildiriminde görünür.', 'In SEO & Blog → “Automatic scan”, turn on a weekly or monthly scan; new findings and search drops appear in Overview → Needs attention and as browser notifications.'), rows('SELECT COUNT(*) n FROM platform_seo_schedules WHERE organization_id=? AND project_id=?') > 0, 'seo&view=ops'),
         step('worker', l('Zamanlanmış işlerin çalıştığını doğrulayın', 'Check that scheduled jobs run'), l('Otomatik tarama, düşüş uyarısı ve haftalık AI kontrolü ancak zamanlanmış işler (worker) birkaç dakikada bir çalışınca yürür. Kurulum rehberindeki “Zamanlanmış işler” kartı bu sunucu için hazır komutu verir.', 'Automatic scans, drop alerts and the weekly AI check only run when scheduled jobs (the worker) run every few minutes. The “Scheduled jobs” card in the setup guide gives the ready command for this server.'), workerFresh, 'project&settings=operations&setup=worker', null,
           workerLast ? last(l('Son çalışma', 'Last run'), workerLast, now) : l('Henüz hiç çalışmadı', 'It has not run yet')),
@@ -283,7 +291,7 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
       badge: unread ? { count: unread, label: l('yeni mesaj/yorum', 'new message(s)/comment(s)') } : null,
       steps: [
         withSetup(step('connect', l('Meta hesabını Ryzevo’ya bağlayın', 'Connect the Meta account to Ryzevo'), l('Proje ayarları → Bağlantılar’da Meta ile bağlanıp Crewin Sayfasını ve Instagram hesabını seçin. Crewin’in paylaşımları yine Sosyal medya sekmesinden yapılır.', 'In Project settings → Connections, connect with Meta and choose the Crewin Page and Instagram account. Crewin’s posts are still made from the Social media tab.'), rows('SELECT COUNT(*) n FROM platform_social_inbox_accounts WHERE organization_id=? AND project_id=?') > 0, 'project&settings=connections',
-          meta ? null : SERVER('Meta uygulaması (PLATFORM_META_APP_ID, PLATFORM_META_APP_SECRET, PLATFORM_META_REDIRECT_URI, PLATFORM_META_GRAPH_VERSION)', 'the Meta app (PLATFORM_META_APP_ID, PLATFORM_META_APP_SECRET, PLATFORM_META_REDIRECT_URI, PLATFORM_META_GRAPH_VERSION)')), 'meta'),
+          meta ? null : blocked('meta', SERVER('Meta uygulaması (PLATFORM_META_APP_ID, PLATFORM_META_APP_SECRET, PLATFORM_META_REDIRECT_URI, PLATFORM_META_GRAPH_VERSION)', 'the Meta app (PLATFORM_META_APP_ID, PLATFORM_META_APP_SECRET, PLATFORM_META_REDIRECT_URI, PLATFORM_META_GRAPH_VERSION)'))), 'meta'),
         step('read', l('Gelen kutusunu okuyun', 'Read the inbox'), l('Kampanyalar → “Gelen kutusu”nda okumayı açın; okuma 30 dakikada bir kendiliğinden de yapılır.', 'In Campaigns → “Inbox”, turn on reading; it also runs on its own every 30 minutes.'), rows('SELECT COUNT(*) n FROM platform_social_inbox WHERE organization_id=? AND project_id=?') > 0, 'campaigns&view=inbox'),
         step('reply', l('Cevabı onaylayıp gönderin', 'Approve and send a reply'), l('Cevabı yazın veya AI önerisini düzenleyin; cevap ancak onaydan sonra gider. Mesajlarda 24 saatlik pencere kuralı vardır.', 'Write the reply or edit the AI suggestion; it goes only after approval. Messages have a 24-hour window.'), rows("SELECT COUNT(*) n FROM platform_social_inbox WHERE organization_id=? AND project_id=? AND reply_state='sent'") > 0, 'campaigns&view=inbox'),
       ] });

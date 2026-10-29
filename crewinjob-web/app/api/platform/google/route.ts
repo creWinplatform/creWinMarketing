@@ -5,15 +5,16 @@ import { ProjectGoogleOAuth, GOOGLE_BROWSER_COOKIE } from '@/lib/platform/google
 import { googleConfiguration } from '@/lib/platform/google-client';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
-import { hasSameRequestOrigin } from '@/lib/platform/request-origin';
+import { callbackOnPanel, hasSameRequestOrigin } from '@/lib/platform/request-origin';
 
 export const dynamic = 'force-dynamic';
-export async function GET() {
+export async function GET(request: NextRequest) {
   const access = await getRyzevoAccess('connections.manage');
   if (!access) return NextResponse.json({ error: 'Proje bağlantı yönetimi yetkisi gerekli.' }, { status: 403 });
-  let configured = false;
-  try { googleConfiguration(); configured = true; } catch {}
-  return NextResponse.json({ configured }, { headers: { 'Cache-Control': 'private, no-store' } });
+  let configured = false, callback = '';
+  try { callback = googleConfiguration().redirectUri; configured = true; } catch {}
+  // originOk: the connection can finish only when this panel is opened from the callback's address.
+  return NextResponse.json({ configured, ...(configured ? callbackOnPanel(request, callback) : {}) }, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 export async function POST(request: NextRequest) {
   if (!hasSameRequestOrigin(request)) return NextResponse.json({ error: 'İstek kaynağı geçersiz.' }, { status: 403 });

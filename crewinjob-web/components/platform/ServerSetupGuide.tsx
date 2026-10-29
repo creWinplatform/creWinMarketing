@@ -17,7 +17,7 @@ export default function ServerSetupGuide({ lang }: { lang: Locale }) {
   const tr = lang === 'tr', idx = tr ? 0 : 1;
   const [guide, setGuide] = useState<SetupGuide | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<SetupId | null>(() => { if (typeof window === 'undefined') return null; const value = new URLSearchParams(window.location.search).get('setup'); return ['google', 'meta', 'gemini', 'worker'].includes(value || '') ? value as SetupId : null; });
-  const [copied, setCopied] = useState(''), [probe, setProbe] = useState<ProbeResult | null>(null), [probing, setProbing] = useState(false);
+  const [copied, setCopied] = useState(''), [probes, setProbes] = useState<Partial<Record<'gemini' | 'google' | 'meta', ProbeResult>>>({}), [probing, setProbing] = useState('');
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try { const response = await fetch('/api/platform/operator?view=setup', { cache: 'no-store' }); if (!response.ok) throw new Error(); const value = await response.json() as SetupGuide; setGuide(value); setOpen(current => current ?? value.sections.find(item => item.state !== 'ready')?.id ?? null); }
@@ -37,7 +37,7 @@ export default function ServerSetupGuide({ lang }: { lang: Locale }) {
     if (!ok) { const target = document.querySelector(`[data-copy-id="${key}"]`); const range = document.createRange(); if (target) { range.selectNodeContents(target); const selection = window.getSelection(); selection?.removeAllRanges(); selection?.addRange(range); } }
     done(ok);
   };
-  const runProbe = async () => { setProbing(true); try { const response = await fetch('/api/platform/operator', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'probe', id: 'gemini' }) }); setProbe(response.ok ? await response.json() : null); } finally { setProbing(false); } };
+  const runProbe = async (id: 'gemini' | 'google' | 'meta') => { setProbing(id); try { const response = await fetch('/api/platform/operator', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'probe', id }) }); const value = response.ok ? await response.json() as ProbeResult : { id, ok: false, status: response.status, checkedAt: new Date().toISOString() }; setProbes(current => ({ ...current, [id]: value })); } finally { setProbing(''); } };
   const ready = guide?.sections.filter(item => item.state === 'ready').length || 0;
   const CopyButton = ({ id, value, label }: { id: string; value: string; label: string }) => <><button type="button" className="studio-text-button setup-copy" onClick={() => void copy(id, value)} aria-label={tr ? `${label}: kopyala` : `${label}: copy`}><Copy size={13} aria-hidden="true" />{copied === id ? (tr ? 'Kopyalandı' : 'Copied') : (tr ? 'Kopyala' : 'Copy')}</button>
     {failed === id && <span role="status" className="setup-copy-failed">{tr ? 'Tarayıcı kopyalamaya izin vermedi; metin seçildi, Ctrl+C ile kopyalayın.' : 'The browser did not allow copying; the text is selected, press Ctrl+C.'}</span>}</>;
@@ -66,8 +66,11 @@ export default function ServerSetupGuide({ lang }: { lang: Locale }) {
           {section.env && <div className="setup-env"><div className="setup-env-head"><span>{guide.local ? '.env.local' : (tr ? 'Ortam değişkenleri' : 'Environment')}</span><CopyButton id={`${section.id}-env`} value={section.env} label={tr ? 'Ayar satırları' : 'Setting lines'} /></div><pre data-copy-id={`${section.id}-env`}>{section.env}</pre></div>}
           <div className="setup-verify"><p><strong>{tr ? 'Son adım: ' : 'Last step: '}</strong>{section.verify.text[lang]}</p>
             <div className="setup-step-tools">
-              {section.verify.probe === 'gemini' && <button type="button" className="studio-secondary" disabled={probing || section.state === 'missing'} onClick={() => void runProbe()}><Activity size={14} aria-hidden="true" />{probing ? (tr ? 'Deneniyor…' : 'Checking…') : (tr ? 'Dene' : 'Check')}</button>}
-              {section.verify.probe === 'gemini' && probe && <span role="status" className={`operator-state ${probe.ok ? 'ready' : 'missing'}`}>{probe.ok ? (tr ? 'Anahtar ve model çalışıyor' : 'Key and model work') : (tr ? `Yanıt alınamadı${probe.status ? ` (HTTP ${probe.status})` : ''}` : `No valid answer${probe.status ? ` (HTTP ${probe.status})` : ''}`)}</span>}
+              {section.verify.probe && (() => { const id = section.verify.probe!, result = probes[id]; return <>
+                <button type="button" className="studio-secondary" disabled={Boolean(probing) || section.state === 'missing'} onClick={() => void runProbe(id)}><Activity size={14} aria-hidden="true" />{probing === id ? (tr ? 'Deneniyor…' : 'Checking…') : (tr ? 'Dene' : 'Check')}</button>
+                {result && <span role="status" className={`operator-state ${result.ok ? 'ready' : 'missing'}`}>{result.ok ? (id === 'gemini' ? (tr ? 'Anahtar ve model çalışıyor' : 'Key and model work') : (tr ? 'Kimlik bilgileri geçerli' : 'Credentials are valid')) : (tr ? `Doğrulanamadı${result.status ? ` (HTTP ${result.status})` : ''}` : `Not verified${result.status ? ` (HTTP ${result.status})` : ''}`)}</span>}
+                {result?.detail && <p className="setup-probe-detail">{result.detail[lang]}</p>}
+              </>; })()}
               {section.verify.href && <a className="studio-primary" href={section.verify.href}>{tr ? 'Panelde dene' : 'Try it in the panel'}<ArrowRight size={14} aria-hidden="true" /></a>}
             </div></div>
         </div>}

@@ -19,7 +19,7 @@ export type SetupSection = {
   // Lines for .env.local: secrets as placeholders, everything that can be derived filled in.
   env: string | null;
   // After the settings: where to check the result in the panel.
-  verify: { text: LocalizedText; href?: string; probe?: 'gemini' };
+  verify: { text: LocalizedText; href?: string; probe?: 'gemini' | 'google' | 'meta' };
   lastRunAt?: string | null;
 };
 export type SetupGuide = { origin: string; local: boolean; sections: SetupSection[]; generatedAt: string };

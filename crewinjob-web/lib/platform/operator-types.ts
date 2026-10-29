@@ -13,4 +13,5 @@ export type FunnelSnapshot = {
   steps: { id: FunnelStep; reached: number; stalled: number }[];
   trials: { active: number; ended: number; pilot: number };
 };
-export type ProbeResult = { id: 'gemini'; ok: boolean; status: number | null; checkedAt: string };
+// detail: what the provider's answer means, in plain words (never a setting value).
+export type ProbeResult = { id: 'gemini' | 'google' | 'meta'; ok: boolean; status: number | null; checkedAt: string; detail?: LocalizedText };

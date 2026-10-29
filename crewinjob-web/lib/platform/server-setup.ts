@@ -2,6 +2,7 @@ import 'server-only';
 import type Database from 'better-sqlite3';
 import type { LocalizedText } from './catalog';
 import type { SetupGuide, SetupSection, SetupState, SetupStep } from './server-setup-types';
+import type { ProbeResult } from './operator-types';
 
 // Server setup guide for the team running Ryzevo (the deployment administrator). For each server-side connection it says
 // what it opens, what is wrong right now, the exact steps in the provider's console, the values to register (callback
@@ -55,7 +56,7 @@ function google(env: Env, origin: string, isLocal: boolean): SetupSection {
       envFile(isLocal), restart(isLocal),
     ],
     env: `PLATFORM_GOOGLE_CLIENT_ID=<Google'daki Client ID>\nPLATFORM_GOOGLE_CLIENT_SECRET=<Google'daki Client secret>\nPLATFORM_GOOGLE_REDIRECT_URI=${callback}`,
-    verify: { text: l('Proje ayarları → Bağlantılar → “Google hesabı bağla”da Search Console’u seçip mülkü yazın (ör. sc-domain:crewinjob.com), ardından GA4 için sayısal mülk kimliğini girin. Bağlandıktan sonra “Erişimi test et”e basın.', 'In Project settings → Connections → “Connect Google account”, choose Search Console and enter the property (e.g. sc-domain:crewinjob.com), then enter the numeric GA4 property ID. After connecting, press “Test access”.'), href: '/?tab=project&settings=connections&guideProvider=search_console' } };
+    verify: { text: l('Önce “Dene” ile Client ID ve Client secret’ın Google tarafından tanındığını doğrulayın (onay ekranı açılmaz). Sonra Proje ayarları → Bağlantılar → “Google hesabı bağla”da Search Console’u seçip mülkü yazın (ör. sc-domain:crewinjob.com), ardından GA4 için sayısal mülk kimliğini girin; Google’ın ekranında kendi hesabınızla izin verin ve “Erişimi test et”e basın.', 'First use “Check” to confirm Google recognises the Client ID and Client secret (no consent screen opens). Then in Project settings → Connections → “Connect Google account”, choose Search Console and enter the property (e.g. sc-domain:crewinjob.com), then the numeric GA4 property ID; approve with your own account on Google’s screen and press “Test access”.'), href: '/?tab=project&settings=connections&guideProvider=search_console', probe: 'google' } };
 }
 
 function meta(env: Env, origin: string, isLocal: boolean): SetupSection {
@@ -74,7 +75,7 @@ function meta(env: Env, origin: string, isLocal: boolean): SetupSection {
       envFile(isLocal), restart(isLocal),
     ],
     env: `PLATFORM_META_APP_ID=<Meta'daki App ID>\nPLATFORM_META_APP_SECRET=<Meta'daki App secret>\nPLATFORM_META_REDIRECT_URI=${callback}\nPLATFORM_META_GRAPH_VERSION=${META_GRAPH_VERSION}`,
-    verify: { text: l('Proje ayarları → Bağlantılar → “Facebook / Instagram bağla”da hesap türünü seçin, “gelen kutusu izinlerini de iste” işaretli kalsın ve “Meta ile devam et”e basın; Meta ekranında Crewin Sayfasını seçin.', 'In Project settings → Connections → “Connect Facebook / Instagram”, choose the account type, keep “also request the inbox permissions” ticked and press “Continue with Meta”; choose the Crewin Page on Meta’s screen.'), href: '/?tab=project&settings=connections&guideProvider=facebook' } };
+    verify: { text: l('Önce “Dene” ile App ID ve App secret’ın Meta tarafından kabul edildiğini doğrulayın (onay ekranı açılmaz, hiçbir hesaba erişilmez). Sonra Proje ayarları → Bağlantılar → “Facebook / Instagram bağla”da hesap türünü seçin, “gelen kutusu izinlerini de iste” işaretli kalsın ve “Meta ile devam et”e basın; Meta ekranında kendi hesabınızla izin verip Crewin Sayfasını seçin.', 'First use “Check” to confirm Meta accepts the App ID and App secret (no consent screen opens, no account is accessed). Then in Project settings → Connections → “Connect Facebook / Instagram”, choose the account type, keep “also request the inbox permissions” ticked and press “Continue with Meta”; approve with your own account on Meta’s screen and choose the Crewin Page.'), href: '/?tab=project&settings=connections&guideProvider=facebook', probe: 'meta' } };
 }
 
 function gemini(env: Env, isLocal: boolean): SetupSection {
@@ -119,3 +120,39 @@ export function serverSetup(db: Database.Database, origin: string, env: Env = pr
   const isLocal = local(origin);
   return { origin, local: isLocal, generatedAt: new Date(now).toISOString(), sections: [google(env, origin, isLocal), meta(env, origin, isLocal), gemini(env, isLocal), worker(db, env, origin, isLocal, now)] };
 }
+
+// Credential checks that need no consent screen and touch no account. Google: a token request with a code that cannot be
+// valid; Google answers invalid_grant only after it has accepted the client ID and secret. Meta: an app access token
+// (client credentials) and the app's name. Secrets go only to the provider, never into the result.
+export type SetupFetch = (url: string, init: RequestInit) => Promise<{ status: number; json: () => Promise<unknown> }>;
+const defaultFetch: SetupFetch = (url, init) => fetch(url, { ...init, cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(8000) });
+const errorCode = (body: unknown) => { const value = body && typeof body === 'object' ? (body as { error?: unknown }).error : undefined; return typeof value === 'string' ? value : value && typeof value === 'object' ? String((value as { code?: unknown }).code ?? '') : ''; };
+export async function probeGoogle(env: Env = process.env, fetcher: SetupFetch = defaultFetch): Promise<ProbeResult> {
+  const checkedAt = new Date().toISOString(), base = { id: 'google' as const, checkedAt };
+  if (!env.PLATFORM_GOOGLE_CLIENT_ID || !env.PLATFORM_GOOGLE_CLIENT_SECRET || !env.PLATFORM_GOOGLE_REDIRECT_URI) return { ...base, ok: false, status: null, detail: l('Önce üç Google ayarını ekleyip sunucuyu yeniden başlatın.', 'Add the three Google settings and restart the server first.') };
+  try {
+    const response = await fetcher('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: 'ryzevo-setup-check', client_id: env.PLATFORM_GOOGLE_CLIENT_ID, client_secret: env.PLATFORM_GOOGLE_CLIENT_SECRET, redirect_uri: env.PLATFORM_GOOGLE_REDIRECT_URI }).toString() });
+    const code = errorCode(await response.json().catch(() => ({})));
+    if (code === 'invalid_grant') return { ...base, ok: true, status: response.status, detail: l('Google, Client ID ve Client secret’ı tanıdı. Dönüş adresinin kayıtlı olduğu, ilk bağlantıda Google ekranı açılınca görülür.', 'Google recognised the Client ID and Client secret. Whether the callback is registered shows when Google’s screen opens on the first connection.') };
+    if (code === 'redirect_uri_mismatch') return { ...base, ok: false, status: response.status, detail: l('Google bu dönüş adresini tanımıyor: kartta gösterilen adresi OAuth istemcisinin “Authorized redirect URIs” alanına aynen ekleyin.', 'Google does not know this callback: add the address shown on the card as is to the OAuth client’s “Authorized redirect URIs”.') };
+    if (code === 'invalid_client' || code === 'unauthorized_client') return { ...base, ok: false, status: response.status, detail: l('Google bu Client ID / Client secret çiftini tanımadı: ikisini Google Cloud → Credentials’taki “Web application” istemcisinden yeniden kopyalayın.', 'Google did not recognise this Client ID / Client secret pair: copy both again from the “Web application” client in Google Cloud → Credentials.') };
+    return { ...base, ok: false, status: response.status, detail: l(`Google beklenmeyen bir yanıt verdi${code ? ` (${code})` : ''}.`, `Google gave an unexpected answer${code ? ` (${code})` : ''}.`) };
+  } catch { return { ...base, ok: false, status: null, detail: l('Google’a ulaşılamadı; internet bağlantısını kontrol edip tekrar deneyin.', 'Could not reach Google; check the internet connection and try again.') }; }
+}
+export async function probeMeta(env: Env = process.env, fetcher: SetupFetch = defaultFetch): Promise<ProbeResult> {
+  const checkedAt = new Date().toISOString(), base = { id: 'meta' as const, checkedAt }, version = env.PLATFORM_META_GRAPH_VERSION || '';
+  if (!env.PLATFORM_META_APP_ID || !env.PLATFORM_META_APP_SECRET || !/^v\d{1,3}\.0$/.test(version)) return { ...base, ok: false, status: null, detail: l('Önce Meta ayarlarını (App ID, App secret, v25.0 biçiminde Graph sürümü) ekleyip sunucuyu yeniden başlatın.', 'Add the Meta settings (App ID, App secret, a Graph version like v25.0) and restart the server first.') };
+  if (!/^\d{5,20}$/.test(env.PLATFORM_META_APP_ID)) return { ...base, ok: false, status: null, detail: l('App ID yalnız rakamlardan oluşmalı; Meta’daki “App settings → Basic” sayfasından kopyalayın.', 'The App ID must be digits only; copy it from “App settings → Basic” in Meta.') };
+  try {
+    const token = new URL(`https://graph.facebook.com/${version}/oauth/access_token`);
+    token.search = new URLSearchParams({ client_id: env.PLATFORM_META_APP_ID, client_secret: env.PLATFORM_META_APP_SECRET, grant_type: 'client_credentials' }).toString();
+    const response = await fetcher(token.toString(), { headers: { Accept: 'application/json' } }), body = await response.json().catch(() => ({})) as { access_token?: unknown };
+    if (response.status !== 200 || typeof body.access_token !== 'string') return { ...base, ok: false, status: response.status, detail: l('Meta bu App ID / App secret çiftini kabul etmedi: ikisini “App settings → Basic”ten yeniden kopyalayın (App secret için “Show”a basın).', 'Meta did not accept this App ID / App secret pair: copy both again from “App settings → Basic” (press “Show” for the App secret).') };
+    const app = await fetcher(`https://graph.facebook.com/${version}/${env.PLATFORM_META_APP_ID}?fields=name&access_token=${encodeURIComponent(body.access_token)}`, { headers: { Accept: 'application/json' } });
+    const name = ((await app.json().catch(() => ({}))) as { name?: unknown }).name;
+    const label = typeof name === 'string' && name.trim() ? name.trim().slice(0, 80) : '';
+    return { ...base, ok: true, status: response.status, detail: l(`Meta uygulaması doğrulandı${label ? `: ${label}` : ''}. İzinlerin ve dönüş adresinin doğru olduğu, ilk bağlantıda Meta ekranı açılınca görülür.`, `Meta app verified${label ? `: ${label}` : ''}. Whether the permissions and the callback are right shows when Meta’s screen opens on the first connection.`) };
+  } catch { return { ...base, ok: false, status: null, detail: l('Meta’ya ulaşılamadı; internet bağlantısını kontrol edip tekrar deneyin.', 'Could not reach Meta; check the internet connection and try again.') }; }
+}
+

@@ -42,3 +42,22 @@ test('valid settings are ready; the worker card follows its last successful run'
   run(new Date(now-5*60_000).toISOString());guide=serverSetup(db,LOCAL,env,now);assert.equal(section(guide,'worker').state,'ready');assert.equal(section(guide,'worker').env,null,'CRON_SECRET is set: no line to add');
   run(new Date(now-3*3600_000).toISOString());guide=serverSetup(db,LOCAL,env,now);assert.equal(section(guide,'worker').state,'stale');assert.match(section(guide,'worker').problems[0].tr,/180 dakika önce/);
 }));
+
+test('“Check” for Google and Meta reads the provider’s verdict without consent, and never echoes a secret',async()=>{
+  const {probeGoogle,probeMeta}=load('server-setup.ts');
+  const reply=(status,body)=>({status,json:async()=>body}),seen=[];
+  const google=(status,body)=>async(url,init)=>{seen.push({url,body:String(init.body||'')});return reply(status,body);};
+  const env={...SECRETS,PLATFORM_GOOGLE_REDIRECT_URI:`${LOCAL}/api/platform/google/callback`,PLATFORM_META_GRAPH_VERSION:'v25.0'};
+  let result=await probeGoogle(env,google(400,{error:'invalid_grant'}));assert.equal(result.ok,true,'invalid_grant = the client was accepted');
+  assert.equal(seen[0].url,'https://oauth2.googleapis.com/token');assert.match(seen[0].body,/code=ryzevo-setup-check/,'a code that cannot be valid: no token is ever issued');
+  assert.equal((await probeGoogle(env,google(401,{error:'invalid_client'}))).ok,false);assert.match((await probeGoogle(env,google(401,{error:'invalid_client'}))).detail.tr,/tanımadı/);
+  assert.match((await probeGoogle(env,google(400,{error:'redirect_uri_mismatch'}))).detail.tr,/Authorized redirect URIs/);
+  assert.equal((await probeGoogle({},google(400,{error:'invalid_grant'}))).ok,false,'nothing is sent without settings');
+  assert.equal((await probeGoogle(env,async()=>{throw new Error('offline');})).ok,false);
+  const meta=(...replies)=>{let i=0;return async url=>{seen.push({url});return replies[i++];};};
+  result=await probeMeta(env,meta(reply(200,{access_token:'app|token'}),reply(200,{name:'Ryzevo QA'})));
+  assert.equal(result.ok,true);assert.match(result.detail.tr,/Ryzevo QA/);
+  assert.equal((await probeMeta(env,meta(reply(400,{error:{code:1,message:'Error validating client secret.'}})))).ok,false);
+  assert.equal((await probeMeta({...env,PLATFORM_META_APP_ID:'not-digits'},meta())).ok,false,'a malformed App ID is named before any request');
+  for(const value of Object.values(SECRETS))assert.ok(!JSON.stringify(result).includes(value),'a secret leaked into a check result');
+});

@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { Locale } from '@/lib/platform/catalog';
 import MetaConnection from './MetaConnection';
+import CallbackOriginNotice from './CallbackOriginNotice';
 import XConnection from './XConnection';
 import LinkedInOrganizationConnection from './LinkedInOrganizationConnection';
 import { ConnectionGuidePanel, ProviderGuideButton } from './GrowthCompass';
@@ -20,7 +21,7 @@ export default function ProjectConnections({ lang, crewin = false }: { lang: Loc
   const [allowed, setAllowed] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [provider, setProvider] = useState('email');
-  const [googleConfigured, setGoogleConfigured] = useState(false);
+  const [googleConfigured, setGoogleConfigured] = useState(false), [googleOrigin, setGoogleOrigin] = useState('');
   const [googleProvider, setGoogleProvider] = useState('ga4');
   const [oauthResult, setOauthResult] = useState('');
   const [linkedinConfigured, setLinkedinConfigured] = useState(false);
@@ -37,7 +38,7 @@ export default function ProjectConnections({ lang, crewin = false }: { lang: Loc
       const jobResponse = await fetch(`/api/marketing/automation${store}`, { cache: 'no-store' });
       if (jobResponse.ok) setJobs((await jobResponse.json()).items.filter((job:Job & {jobType?:string})=>job.jobType!=='product.sync'));
       const googleResponse = await fetch('/api/platform/google', { cache: 'no-store' });
-      if (googleResponse.ok) setGoogleConfigured((await googleResponse.json()).configured);
+      if (googleResponse.ok) { const google = await googleResponse.json() as { configured: boolean; callbackOrigin?: string; originOk?: boolean }; setGoogleConfigured(google.configured); setGoogleOrigin(google.configured && google.originOk === false ? google.callbackOrigin || '' : ''); }
       // LinkedIn is not connected here in the Crewin workspace, so its server setting is not read.
       if (!crewin) { const socialResponse = await fetch('/api/platform/social', { cache: 'no-store' }); if (socialResponse.ok) setLinkedinConfigured((await socialResponse.json()).linkedinConfigured); }
     } catch (reason) { setError(reason instanceof Error && reason.message ? reason.message : failed); }
@@ -139,7 +140,7 @@ export default function ProjectConnections({ lang, crewin = false }: { lang: Loc
         <label className="publication-toggle"><input type="checkbox" name="publishing" />{tr ? 'LinkedIn kişisel hesabımda yayın izni de iste' : 'Also request publishing access to my LinkedIn personal account'}</label>
         <button disabled={busy} className="self-end studio-primary disabled:opacity-50">{tr ? 'LinkedIn ile bağlan' : 'Connect with LinkedIn'}</button>
       </form> : <p className="mt-2 text-sm text-amber-600 dark:text-amber-300">{tr ? 'LinkedIn OAuth henüz sunucuda yapılandırılmadı.' : 'LinkedIn OAuth is not configured on the server yet.'}</p>}</details>}
-      <details open={['ga4','search_console'].includes(requestedProvider)||undefined}><summary className="cursor-pointer text-sm font-medium">{tr ? 'Google hesabı bağla' : 'Connect Google account'}</summary><ProviderGuideButton lang={lang} id={googleProvider==='search_console'?'search_console':'ga4'}/>{googleConfigured ? <form onSubmit={connectGoogle} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <details open={['ga4','search_console'].includes(requestedProvider)||undefined}><summary className="cursor-pointer text-sm font-medium">{tr ? 'Google hesabı bağla' : 'Connect Google account'}</summary><ProviderGuideButton lang={lang} id={googleProvider==='search_console'?'search_console':'ga4'}/>{googleConfigured && googleOrigin ? <CallbackOriginNotice lang={lang} provider="Google" callbackOrigin={googleOrigin} setupHref={crewin ? '/?tab=project&settings=operations&setup=google' : undefined}/> : googleConfigured ? <form onSubmit={connectGoogle} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs">{tr ? 'Google servisi' : 'Google service'}<select name="provider" value={googleProvider} onChange={event => setGoogleProvider(event.target.value)} className={input}><option value="ga4">Google Analytics</option><option value="search_console">Search Console</option></select></label>
         <label className="text-xs">{googleProvider === 'ga4' ? (tr ? 'GA4 mülk kimliği' : 'GA4 property ID') : (tr ? 'Search Console mülkü' : 'Search Console property')}<input name="resource" required maxLength={160} pattern={googleProvider === 'ga4' ? '[0-9]{1,20}' : undefined} placeholder={googleProvider === 'ga4' ? '123456789' : 'sc-domain:example.com'} className={input} /></label>
         <label className="text-xs">{tr ? 'Hesap adı' : 'Account name'}<input name="accountName" required maxLength={160} className={input} /></label>

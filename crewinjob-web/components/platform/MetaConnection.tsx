@@ -4,11 +4,13 @@ import type { Locale } from '@/lib/platform/catalog';
 import { ProviderGuideButton } from './GrowthCompass';
 import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
+import CallbackOriginNotice from './CallbackOriginNotice';
 type Selection = { target: string; publishing?: boolean; items: { id: string; name: string; instagramId: string | null; instagramUsername: string | null }[]; hasMore: boolean; limitReached: boolean };
 // inboxDefault: the inbox permission box starts ticked (the Crewin workspace connects Meta only for the inbox).
 export default function MetaConnection({ lang, onSaved, requestedProvider, inboxDefault = false, setupHref }: { lang: Locale; onSaved: () => Promise<void>; requestedProvider?:string; inboxDefault?: boolean; setupHref?: string }) {
   const tr = lang === 'tr';
   const failed = tr ? 'İstek tamamlanamadı.' : 'Request failed.';
+  const [metaOrigin, setMetaOrigin] = useState('');
   const [configured, setConfigured] = useState<boolean | null>(null), [selection, setSelection] = useState<Selection | null>(null), [pageId, setPageId] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
   const [target, setTarget] = useState('facebook');
@@ -17,7 +19,7 @@ export default function MetaConnection({ lang, onSaved, requestedProvider, inbox
     try {
       const response = await fetch(`/api/platform/meta${more ? '?more=true' : ''}`, { cache: 'no-store', signal: AbortSignal.timeout(16000) });
       const data = await response.json();
-      setConfigured(data.configured || false);
+      setConfigured(data.configured || false); setMetaOrigin(data.configured && data.originOk === false ? data.callbackOrigin || '' : '');
       if (!response.ok) throw new Error(data.error || failed);
       setSelection(data.selection); return true;
     } catch (reason) { setError(reason instanceof Error && reason.message ? reason.message : failed); return false; }
@@ -76,7 +78,7 @@ export default function MetaConnection({ lang, onSaved, requestedProvider, inbox
     </section> : null}
     <details open={['facebook','instagram'].includes(requestedProvider||'')||undefined}><summary className="cursor-pointer text-sm font-medium">{tr ? 'Facebook / Instagram bağla' : 'Connect Facebook / Instagram'}</summary>
       <ProviderGuideButton lang={lang} id={target==='instagram'?'instagram':'facebook'}/>
-      {configured === null ? <p role="status" className="mt-2 text-sm text-slate-500">{tr ? 'Meta bağlantısı kontrol ediliyor…' : 'Checking Meta connection…'}</p> : configured ? <form onSubmit={start} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {configured === null ? <p role="status" className="mt-2 text-sm text-slate-500">{tr ? 'Meta bağlantısı kontrol ediliyor…' : 'Checking Meta connection…'}</p> : configured && metaOrigin ? <CallbackOriginNotice lang={lang} provider="Meta" callbackOrigin={metaOrigin} setupHref={setupHref}/> : configured ? <form onSubmit={start} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs">{tr ? 'Hesap türü' : 'Account type'}<select name="target" value={target} onChange={event => setTarget(event.target.value)} className={input}><option value="facebook">Facebook</option><option value="instagram">{tr ? 'Instagram işletme hesabı' : 'Instagram business account'}</option></select></label>
         <button disabled={busy} className="self-end studio-primary disabled:opacity-50">{tr ? 'Meta ile devam et' : 'Continue with Meta'}</button>
         <label key={target} className="flex items-start gap-2 text-sm sm:col-span-2"><input type="checkbox" name="publishing" className="mt-1"/>{target==='instagram'?(tr?'Instagram görsel gönderileri için yayın izni de iste':'Also request permission to publish Instagram images'):(tr ? 'Sayfa gönderileri için yayın izni de iste' : 'Also request permission to publish Page posts')}</label>

@@ -94,6 +94,10 @@ test('the Crewin job guide adds the Ryzevo jobs, read from the platform tables',
     assert.equal(job('crewin_results').steps.at(-1).id,'monthly');
     assert.equal(job('crewin_search').steps[0].setupHref,'/?tab=project&settings=operations&setup=google','a step waiting for Google opens the setup guide card');
     assert.equal(job('crewin_inbox').steps[0].setupHref,'/?tab=project&settings=operations&setup=meta');
+    // Present but wrong for this panel's address: the step stays locked and says what the setup guide found.
+    const wrong=await crewinJobGuide({...deps,env:{PLATFORM_GOOGLE_CLIENT_ID:'x',PLATFORM_GOOGLE_CLIENT_SECRET:'y',PLATFORM_GOOGLE_REDIRECT_URI:'http://localhost:3000/api/platform/google/callback'},setup:[{id:'google',state:'invalid',problems:[{tr:'PLATFORM_GOOGLE_REDIRECT_URI bu panelin adresiyle eşleşmiyor.',en:'PLATFORM_GOOGLE_REDIRECT_URI does not match this panel.'}]}]});
+    const connect=wrong.jobs.find(item=>item.id==='crewin_search').steps[0];assert.equal(connect.state,'blocked');assert.match(connect.reason.tr,/Sunucu ayarı hatalı: .*eşleşmiyor/);assert.ok(connect.setupHref);
+    const right=await crewinJobGuide({...deps,setup:[{id:'google',state:'ready',problems:[]}]});assert.equal(right.jobs.find(item=>item.id==='crewin_search').steps[0].state,'todo','a valid setting opens the step');
     const worker=job('crewin_search').steps.find(step=>step.id==='worker');assert.equal(worker.state,'todo');assert.match(worker.evidence.tr,/hiç çalışmadı/);
     f.db.prepare("INSERT INTO platform_worker_observations(component,run_id,first_observed_at,started_at,finished_at,outcome,checked,failed,last_success_at,consecutive_failures) VALUES('platform-worker','r',?,?,?,'completed',0,0,?,0)").run(...Array(4).fill(new Date().toISOString()));
     resetCrewinGuideCache();assert.equal((await crewinJobGuide({...deps,now:Date.now()})).jobs.find(item=>item.id==='crewin_search').steps.find(step=>step.id==='worker').state,'done','a recent worker run ticks it');

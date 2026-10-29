@@ -7,13 +7,15 @@ import { getPlatformAccess } from '@/lib/platform/workspace-server';
 import { agentDir, agentModule, fetchAllData } from '@/lib/agent-bridge';
 import { getToken, twitterOAuth1Creds } from '@/lib/social-tokens';
 import { coachRoute } from '../coach/shared';
+import { serverSetup } from '@/lib/platform/server-setup';
+import { panelOrigin } from '@/lib/platform/request-origin';
 export const dynamic='force-dynamic';
 export const fetchCache='force-no-store';
 
 const platformGuide=coachRoute(async scope=>jobGuide(platformDatabase(),scope));
 const SOCIAL={instagram:'Instagram',facebook:'Facebook',linkedin:'LinkedIn',twitter:'X',tiktok:'TikTok'} as const;
 // Crewin's workspace (the single legacy account): the same guide, read from its JSON stores and the Crewin backend.
-function crewinGuide(){
+function crewinGuide(origin:string){
   const api=()=>agentModule('modules/api.js');
   return crewinJobGuide({
     webData:path.join(process.cwd(),'data'),agentRoot:agentDir(),now:Date.now(),env:process.env,
@@ -25,6 +27,7 @@ function crewinGuide(){
     campaigns:()=>api().marketingCampaignV2Get('GetAll',{skipCount:0,maxResultCount:100}),
     posts:()=>api().marketingPostHistoryGet('GetAll',{skipCount:0,maxResultCount:20}),
     db:platformDatabase(),
+    setup:serverSetup(platformDatabase(),origin).sections.map(({id,state,problems})=>({id,state,problems})),
   });
 }
 
@@ -33,7 +36,7 @@ export async function GET(request:NextRequest){
   const access=await getPlatformAccess();
   if(access?.identity.mode==='legacy'){
     const headers={'Cache-Control':'private, no-store'};
-    try{return NextResponse.json(await crewinGuide(),{headers});}
+    try{return NextResponse.json(await crewinGuide(panelOrigin(request)),{headers});}
     catch{return NextResponse.json({error:'İş rehberi şu anda yüklenemedi; araçları menüden kullanabilirsiniz.'},{status:500,headers});}
   }
   return platformGuide(request);

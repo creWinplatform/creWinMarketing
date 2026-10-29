@@ -119,3 +119,15 @@ The workspace still opens with the single Crewin login. Team accounts are a sepa
 **New job-guide step:** the Google tracking job has "Check that scheduled jobs run". It is done when the worker succeeded in the last 30 minutes.
 
 **Tests:** `test/platform-server-setup.test.cjs` covers the missing, invalid and ready states; that no value leaks; local vs live commands; and the worker freshness check.
+
+### Checks and address match (29 October 2026)
+
+- **Credential checks:** the Google and Meta cards have a "Check" button, like Gemini (`probeGoogle`, `probeMeta` in `lib/platform/server-setup.ts`). Neither opens a consent screen or touches an account. Secrets go only to the provider and never into the result.
+  - **Google:** a token request with a code that cannot be valid. `invalid_grant` means Google accepted the Client ID and secret; `invalid_client` means it did not; `redirect_uri_mismatch` means the callback is not registered.
+  - **Meta:** an app access token (client credentials), then the app's name.
+- **Panel address:**
+  - `panelOrigin` and `callbackOnPanel` live in `lib/platform/request-origin.ts`.
+  - `GET /api/platform/google` and `GET /api/platform/meta` return `callbackOrigin` and `originOk`.
+  - When the panel is open from another address than the registered callback, Connections shows a notice with a link to the registered address instead of a form that would fail.
+- **Job guide:** the Crewin job guide uses the setup guide's verdict for this address. A setting that is present but wrong also blocks its step, and the step quotes the problem.
+- **What the guide cannot do:** create the Google or Meta apps, or give consent on their screens. Both need the account owner. Everything up to that point can be checked here.
