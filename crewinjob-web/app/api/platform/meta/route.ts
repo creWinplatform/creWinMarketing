@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     if (input.action !== 'start') throw new MarketingStoreError('Geçerli Meta işlemi gerekli.');
     const configuration = metaConfiguration();
     if (request.headers.get('origin') !== new URL(configuration.redirectUri).origin) throw new MarketingStoreError('Panel adresi Meta dönüş adresiyle eşleşmiyor.');
-    const result = oauth.start(input.target, input.publishing);
+    const result = oauth.start(input.target, input.publishing, input.inbox === undefined ? false : input.inbox);
     const response = json({ authorizationUrl: result.authorizationUrl });
     response.cookies.set(META_BROWSER_COOKIE, result.browser, { httpOnly: true, sameSite: 'lax', secure: new URL(configuration.redirectUri).protocol === 'https:', path: '/api/platform/meta/callback', maxAge: 600 });
     response.cookies.set(META_SELECTION_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: new URL(configuration.redirectUri).protocol === 'https:', path: '/api/platform/meta', maxAge: 0 });

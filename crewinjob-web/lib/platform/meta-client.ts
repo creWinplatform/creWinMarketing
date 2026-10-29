@@ -16,7 +16,8 @@ export function metaClient() {
   return {
     appId: configuration.clientId,
     graphVersion: configuration.graphVersion,
-    authorizationUrl: (state: string, target: string, publishing = false) => client.authorizeURL({ redirect_uri: configuration.redirectUri, scope: target === 'instagram' ? `pages_show_list,pages_read_engagement,instagram_basic${publishing ? ',instagram_content_publish' : ''}` : `pages_show_list,pages_read_engagement${publishing ? ',pages_manage_posts' : ''}`, state }),
+    // inbox: the comment and message permissions the social inbox reads and replies with.
+    authorizationUrl: (state: string, target: string, publishing = false, inbox = false) => client.authorizeURL({ redirect_uri: configuration.redirectUri, scope: target === 'instagram' ? `pages_show_list,pages_read_engagement,instagram_basic${publishing ? ',instagram_content_publish' : ''}${inbox ? ',pages_manage_metadata,instagram_manage_comments,instagram_manage_messages' : ''}` : `pages_show_list,pages_read_engagement${publishing ? ',pages_manage_posts' : ''}${inbox ? ',pages_read_user_content,pages_messaging,pages_manage_metadata' : ''}`, state }),
     exchange: async (code: string) => {
       const short = await client.getToken({ code, redirect_uri: configuration.redirectUri });
       if (typeof short.token.access_token !== 'string' || !short.token.access_token) throw new Error('Invalid Meta token.');

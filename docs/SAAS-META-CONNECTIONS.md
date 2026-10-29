@@ -78,3 +78,15 @@ contract verification remains mandatory before claiming operational readiness.
 References: [Pages API](https://developers.facebook.com/docs/pages-api/getting-started),
 [Instagram with Facebook Login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/get-started),
 [Meta's Instagram sample](https://github.com/fbsamples/reels_publishing_apis/blob/main/insta_reels_publishing_api_sample/README.md).
+
+## Inbox permissions (29 October 2026)
+
+The connection form has an "Also request … comment and message permissions for the inbox" box. When it is ticked, Meta is asked for extra permissions on top of the basic ones:
+
+- Facebook Page: `pages_read_user_content`, `pages_messaging`, `pages_manage_metadata`.
+- Instagram: `pages_manage_metadata`, `instagram_manage_comments`, `instagram_manage_messages`.
+
+Without them, the social inbox cannot read or answer comments and messages. The box starts ticked in the Crewin workspace, which connects Meta only for the inbox.
+
+In development mode, the app's role holders can grant these permissions. Public use needs Meta app review.
+

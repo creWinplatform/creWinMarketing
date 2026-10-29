@@ -1355,4 +1355,5 @@ export const MESSAGES_EN: Record<string, string> = {
   "İlan yayınlandı": "Job posting published",
   "Blog yayınlandı": "Blog post published",
   "Crewin çalışma alanında Ryzevo bağlantıları yalnız Google ve Meta ile kurulur.": "In the Crewin workspace, Ryzevo connections are made only with Google and Meta.",
+  "Geçerli gelen kutusu izni seçimi gerekli.": "A valid inbox permission choice is required.",
 };

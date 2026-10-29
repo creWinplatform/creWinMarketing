@@ -71,6 +71,7 @@ The workspace still opens with the single Crewin login. Team accounts are a sepa
 - Compass screen: the Crewin job guide fills this role. The compass store stays reachable because an approved brief seeds it.
 
 ## Limits
+- The Meta connection asks for the inbox permissions when its inbox box is ticked (ticked by default in Crewin); see `SAAS-META-CONNECTIONS.md`.
 - Google and Meta must be connected again through Ryzevo OAuth. Crewin's env tokens and service account are not copied. The `PLATFORM_GOOGLE_*` and `PLATFORM_META_*` settings must be set.
 - `legacy-admin` has no verified email, so the coach digest and alert emails are skipped. Web push works.
 

@@ -14,12 +14,13 @@ const numericId = (value: unknown): value is string => typeof value === 'string'
 export class ProjectMetaOAuth {
   private requests: OAuthRequests;
   constructor(private db: Database.Database, private scope: MarketingScope, private key: string, private clientFactory = metaClient, private read = readSocialJson) { this.requests = new OAuthRequests(db, scope, key); }
-  start(target: string, publishing = false) {
+  start(target: string, publishing = false, inbox = false) {
     new ProjectMarketingStore(this.db, this.scope).connections();
     if (!['facebook', 'instagram'].includes(target)) throw new MarketingStoreError('Facebook veya Instagram seçin.');
     if (typeof publishing !== 'boolean') throw new MarketingStoreError('Geçerli yayın izni seçimi gerekli.');
+    if (typeof inbox !== 'boolean') throw new MarketingStoreError('Geçerli gelen kutusu izni seçimi gerekli.');
     const client = this.clientFactory(), { state, browser } = this.requests.create('meta', target, target, { publishing });
-    return { browser, authorizationUrl: client.authorizationUrl(state, target, publishing) };
+    return { browser, authorizationUrl: client.authorizationUrl(state, target, publishing, inbox) };
   }
   async complete(state: string, browser: string, code: string) {
     if (!code || code.length > 4096) throw new MarketingStoreError('Yetkilendirme kodu geçersiz.');

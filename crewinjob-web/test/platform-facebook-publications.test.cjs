@@ -106,9 +106,13 @@ test('Facebook adapter classifies known rejection and unknown outcomes, bounds r
 test('Meta OAuth is read-only by default; explicit Facebook opt-in persists encrypted user grant only after Page selection',()=>withFixture(async f=>{
  const {metaClient}=load('meta-client.ts'),{ProjectMetaOAuth}=load('meta-oauth.ts'),client=metaClient();
  assert.ok(!new URL(client.authorizationUrl('state','facebook')).searchParams.get('scope').includes('pages_manage_posts'));assert.ok(new URL(client.authorizationUrl('state','facebook',true)).searchParams.get('scope').includes('pages_manage_posts'));assert.ok(!new URL(client.authorizationUrl('state','instagram',true)).searchParams.get('scope').includes('pages_manage_posts'));
+  // The inbox permissions are asked only when the team ticks them, per account type.
+  const scopes=(target,inbox)=>new URL(client.authorizationUrl('state',target,false,inbox)).searchParams.get('scope').split(',');
+  assert.ok(!scopes('facebook',false).includes('pages_messaging'));assert.deepEqual(['pages_read_user_content','pages_messaging','pages_manage_metadata'].filter(item=>!scopes('facebook',true).includes(item)),[]);
+  assert.deepEqual(['instagram_manage_comments','instagram_manage_messages','pages_manage_metadata'].filter(item=>!scopes('instagram',true).includes(item)),[]);assert.ok(!scopes('instagram',true).includes('pages_messaging'));
  const factory=()=>({appId:'12345',graphVersion:'v25.0',authorizationUrl:(state)=>`https://www.facebook.com/?state=${state}`,exchange:async()=>({accessToken:grant.userAccessToken,expiresAt:Date.now()+3600000})});
  const oauth=new ProjectMetaOAuth(f.db,f.scope,KEY,factory,async()=>({data:[{id:'100',name:'Fixture Page',access_token:'private-page-token'}]}));
- assert.ok(oauth.start('instagram',true).authorizationUrl);assert.throws(()=>oauth.start('facebook','true'));
+ assert.ok(oauth.start('instagram',true).authorizationUrl);assert.throws(()=>oauth.start('facebook','true'));assert.throws(()=>oauth.start('facebook',false,'yes'));
  for(const publishing of [false,true]){
   const start=oauth.start('facebook',publishing),cookie=await oauth.complete(new URL(start.authorizationUrl).searchParams.get('state'),start.browser,'code'),selection=await oauth.list(cookie);
   assert.equal(selection.publishing,publishing);assert.doesNotMatch(JSON.stringify(selection),/private-|userAccessToken|appId/);const connection=await oauth.select(cookie,'100');
