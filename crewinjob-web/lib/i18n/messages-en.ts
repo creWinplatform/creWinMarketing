@@ -911,6 +911,7 @@ export const MESSAGES_EN: Record<string, string> = {
   "Listedeki hiçbir numara için geçerli WhatsApp izni yok; gönderim yapılmadı.": "None of the numbers in the list has a valid WhatsApp consent; nothing was sent.",
   "Listedeki numaraların hiçbirine gönderilemedi (izin, çıkış veya İYS kontrolü); gönderim yapılmadı.": "None of the numbers in the list could get the message (consent, opt-out or IYS check); nothing was sent.",
   "İYS bu numaraya gönderime izin vermiyor; mesaj gönderilmedi.": "IYS does not allow sending to this number; nothing was sent.",
+  "İYS bu adrese ticari e-posta gönderimine izin vermiyor; gönderilmedi.": "IYS does not allow commercial email to this address; nothing was sent.",
   "İYS’de sorgulanacak +90 numara girin.": "Enter the +90 numbers to check in IYS.",
   "Türk numaraları İYS’ye bildirilir: izin nasıl alındı, seçin.": "Turkish numbers are reported to IYS: choose how the consent was obtained.",
   "WhatsApp yapılandırılmamış.": "WhatsApp isn't configured.",

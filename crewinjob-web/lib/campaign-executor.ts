@@ -75,7 +75,11 @@ interface EmailRecipient {
   email: string;
   userId?: number | null;
   unsubscribeUrl?: string | null;
+  nationality?: string | null; // İYS: TR ya da bilinmeyen uyrukta İYS onayı aranır
 }
+
+// Şirket ve prospect kitleleri: tacir muafiyeti, e-postada İYS aranmaz (lib/crewin-iys-email.ts)
+const BUSINESS_AUDIENCES = ['maritime_businesses', 'company_prospects'];
 
 async function loadEmailRecipients(campaign: UnifiedCampaign) {
   const unique = new Map<string, EmailRecipient>();
@@ -83,7 +87,7 @@ async function loadEmailRecipients(campaign: UnifiedCampaign) {
   // Şirket kitlesi için seafarer profil sorgusunu çalıştırma; boş filtreler
   // backend'de geniş bir aday kitlesine dönüşebilir. CRM endpoint'i gelene
   // kadar yalnızca panelde açıkça verilen şirket adresleri kullanılır.
-  if (['maritime_businesses', 'company_prospects'].includes(campaign.audience.audienceType || '')) {
+  if (BUSINESS_AUDIENCES.includes(campaign.audience.audienceType || '')) {
     const items = Array.from(unique.values()).slice(0, 500);
     return { items, totalCount: items.length, hasMore: false };
   }
@@ -104,6 +108,7 @@ async function loadEmailRecipients(campaign: UnifiedCampaign) {
       email,
       userId: typeof item.userId === 'number' ? item.userId : null,
       unsubscribeUrl: typeof item.unsubscribeUrl === 'string' ? item.unsubscribeUrl : null,
+      nationality: typeof item.nationality === 'string' ? item.nationality : null,
     });
   }
   const totalCount = Number(result.totalCount || items.length) + (campaign.audience.manualEmails?.length || 0);
@@ -155,12 +160,16 @@ async function runDelivery(campaign: UnifiedCampaign, delivery: CampaignDelivery
       ctaPath: ctaPathFor(campaign),
       // Backend unsubscribe linki olmayan (prospect/şirket/manuel) adreslere mailto ile çıkma bağlantısı
       allowMailtoUnsubscribe: true,
+      business: BUSINESS_AUDIENCES.includes(campaign.audience.audienceType || ''),
     });
     const failed = Number(data.failed || 0);
     const deferred = audience.hasMore ? Math.max(0, audience.totalCount - recipients.length) : 0;
-    if (failed >= recipients.length) throw new Error(String(data.error || 'E-posta gönderimi başarısız'));
-    const notes = [failed ? `${failed} alıcıya gönderilemedi` : '', deferred ? `${deferred} alıcı 500 kişilik senkron gönderim sınırının dışında kaldı` : ''].filter(Boolean);
-    return { status: 'succeeded', sentCount: Number(data.sent ?? recipients.length - failed), failedCount: failed + deferred, error: notes.join(' · ') || undefined };
+    const iys = (data.iys || {}) as { mode?: string; skipped?: number; wouldSkip?: number };
+    const iysSkipped = Number(iys.skipped || 0);
+    if (failed && failed >= recipients.length) throw new Error(String(data.error || 'E-posta gönderimi başarısız'));
+    const notes = [failed ? `${failed} alıcıya gönderilemedi` : '', deferred ? `${deferred} alıcı 500 kişilik senkron gönderim sınırının dışında kaldı` : '',
+      iysSkipped ? `${iysSkipped} alıcı İYS onayı olmadığı için atlandı` : '', iys.mode === 'measure' && iys.wouldSkip ? `İYS ölçümü: zorunlu olsaydı ${iys.wouldSkip} alıcı atlanacaktı` : ''].filter(Boolean);
+    return { status: 'succeeded', sentCount: Number(data.sent ?? recipients.length - failed), failedCount: failed + deferred + iysSkipped, error: notes.join(' · ') || undefined };
   }
 
   if (channel === 'whatsapp') {

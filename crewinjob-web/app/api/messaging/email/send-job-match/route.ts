@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { agentModule } from '@/lib/agent-bridge';
 import { listUnsubscribeTarget, openPixelTag, runTrackingTasks, safeUnsubscribeUrl } from '@/lib/tracking-signature';
 import { legacySuppressed } from '@/lib/legacy-unsubscribe';
+import { crewinEmailGate } from '@/lib/crewin-iys-email';
+import { platformDatabase } from '@/lib/platform/database';
+import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -71,7 +74,12 @@ export async function POST(request: NextRequest) {
     // Addresses that unsubscribed through the panel's own link are skipped too.
     const suppressed = legacySuppressed(recipients.map(r => r.email));
     recipients = recipients.filter(r => !suppressed.has(String(r.email).trim().toLowerCase()));
-    if (!recipients.length) return NextResponse.json({ sent: 0, failed: 0, errors: [], results: [], suppressed: suppressed.size });
+    // İYS (lib/crewin-iys-email.ts): zorunlu modda onaysız alıcı atlanır; ölçüm modunda "zorunlu olsaydı" sayısı döner.
+    const gate = await crewinEmailGate(platformDatabase(), credentialEncryptionKey(), recipients.map(r => ({ email: String(r.email), nationality: r.nationality })));
+    if (gate.block) return NextResponse.json({ error: gate.block }, { status: 409 });
+    const iys = { mode: gate.mode, skipped: gate.skipped.length, wouldSkip: gate.counts.total, reasons: gate.counts.reasons, queued: gate.counts.queued };
+    recipients = recipients.filter(r => gate.allowed.has(String(r.email).trim().toLowerCase()));
+    if (!recipients.length) return NextResponse.json({ sent: 0, failed: 0, errors: [], results: [], suppressed: suppressed.size, iys });
     const missingUnsubscribe = recipients.filter(r => !safeUnsubscribeUrl(r.unsubscribeUrl)).length;
     if (missingUnsubscribe > 0) {
       return NextResponse.json({ error: `Unsubscribe bağlantısı olmayan alıcılar için marketing e-postası gönderilemez (${missingUnsubscribe} alıcı).` }, { status: 400 });
@@ -118,7 +126,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, iys });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Bilinmeyen hata';
     return NextResponse.json({ error: message }, { status: 500 });

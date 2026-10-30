@@ -31,6 +31,8 @@ export type IysView = {
   outbox: { queued: number; sent: number; failed: number; overdue: number; nextDue: string | null };
   statuses: Record<IysChannel, { ONAY: number; RET: number }>;
   attention: IysOutboxItem[];
+  // Crewin workspace only: its email gate's mode and the addresses waiting for an İYS check (lib/crewin-iys-email.ts).
+  crewinEmail?: { mode: 'measure' | 'enforce'; by: string | null; at: string | null; pending: number };
 };
 
 // Three business days after `from`, ending at 23:59:59 Istanbul time. Weekends are skipped; public holidays are not

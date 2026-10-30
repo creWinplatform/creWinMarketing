@@ -39,6 +39,13 @@ const WA_OPT_OUT_SOURCES = {
   team:  { labelTr: 'panelden',    labelEn: 'from the panel' },
   meta:  { labelTr: 'Meta bildirdi', labelEn: 'reported by Meta' },
 } as const;
+// ── E-postada İYS (lib/crewin-iys-email.ts): parça parça gönderimlerin İYS özetleri toplanır ─────
+type IysSendSummary = { mode: 'measure' | 'enforce'; skipped: number; wouldSkip: number; queued: number };
+const addIys = (acc: IysSendSummary | undefined, value: unknown): IysSendSummary | undefined => {
+  const item = value as Partial<IysSendSummary> | undefined;
+  if (!item || (item.mode !== 'measure' && item.mode !== 'enforce')) return acc;
+  return { mode: item.mode, skipped: (acc?.skipped || 0) + Number(item.skipped || 0), wouldSkip: (acc?.wouldSkip || 0) + Number(item.wouldSkip || 0), queued: (acc?.queued || 0) + Number(item.queued || 0) };
+};
 const WA_SKIPS: Record<WaSkipReason, { labelTr: string; labelEn: string }> = {
   no_consent: { labelTr: 'izin yok',  labelEn: 'no consent' },
   opted_out:  { labelTr: 'çıkmış',    labelEn: 'opted out' },
@@ -202,7 +209,7 @@ export default function MessagingTab({ stats }: Props) {
   const [emailRecipients, setEmailRecipients] = useState(''); // manuel yapıştırma (fallback)
   const [recipientDetails,setRecipientDetails]= useState<EmailRecipient[]>([]); // segmentten yüklenen — doluluk + son güncelleme
   const [minStaleDays,    setMinStaleDays]    = useState(0); // sadece X günden uzun süredir güncellenmeyenleri hedefle
-  const [emailSendResult, setEmailSendResult] = useState<{ sent?: number; failed?: number; success?: boolean; error?: string } | null>(null);
+  const [emailSendResult, setEmailSendResult] = useState<{ sent?: number; failed?: number; success?: boolean; error?: string; iys?: IysSendSummary } | null>(null);
   const [emailSendLoading,setEmailSendLoading]= useState(false);
   const [emailSendProgress, setEmailSendProgress] = useState<{ done: number; total: number } | null>(null);
   const [segmentLoading,  setSegmentLoading]  = useState(false);
@@ -224,7 +231,7 @@ export default function MessagingTab({ stats }: Props) {
   const [jobMatchSegLoading,  setJobMatchSegLoading]  = useState(false);
   const [jobMatchSegProgress, setJobMatchSegProgress] = useState<{ loaded: number; total: number | null } | null>(null);
   const [jobMatchSegError,    setJobMatchSegError]    = useState('');
-  const [jobMatchSendResult,  setJobMatchSendResult]  = useState<{ sent?: number; failed?: number; success?: boolean; error?: string } | null>(null);
+  const [jobMatchSendResult,  setJobMatchSendResult]  = useState<{ sent?: number; failed?: number; success?: boolean; error?: string; iys?: IysSendSummary } | null>(null);
   const [jobMatchSendLoading, setJobMatchSendLoading] = useState(false);
 
   const bucketCount = stats?.seafarers?.fillRateBuckets?.[emailBucket] ?? 0;
@@ -258,8 +265,9 @@ export default function MessagingTab({ stats }: Props) {
 
   // Gönderilecek nihai e-posta listesi: segmentten yüklendiyse işaretli+görünür satırlar (userId + backend'in
   // ürettiği unsubscribeUrl ile), aksi halde manuel textarea (userId/unsubscribeUrl yok, event/unsub atlanır)
-  const effectiveRecipients: { email: string; userId?: number | null; unsubscribeUrl?: string | null }[] = recipientDetails.length > 0
-    ? visibleRecipients.filter(r => r.include).map(r => ({ email: r.email, userId: r.userId, unsubscribeUrl: r.unsubscribeUrl }))
+  // nationality: İYS'nin TR ya da bilinmeyen uyruklu alıcıları ayırt etmesi için gönderime taşınır
+  const effectiveRecipients: { email: string; userId?: number | null; unsubscribeUrl?: string | null; nationality?: string | null }[] = recipientDetails.length > 0
+    ? visibleRecipients.filter(r => r.include).map(r => ({ email: r.email, userId: r.userId, unsubscribeUrl: r.unsubscribeUrl, nationality: r.nationality ?? null }))
     : emailRecipients.split('\n').map(s => s.trim()).filter(Boolean).map(email => ({ email }));
 
   const generateEmail = async () => {
@@ -411,7 +419,7 @@ export default function MessagingTab({ stats }: Props) {
     const included = jobMatchRecipients.filter(r => r.include);
     const chunks: EmailRecipient[][] = [];
     for (let i = 0; i < included.length; i += CHUNK) chunks.push(included.slice(i, i + CHUNK));
-    let totalSent = 0, totalFailed = 0;
+    let totalSent = 0, totalFailed = 0, iys: IysSendSummary | undefined;
     try {
       for (const chunk of chunks) {
         const recipients = chunk.map(r => ({
@@ -430,8 +438,9 @@ export default function MessagingTab({ stats }: Props) {
         if (data.error) throw new Error(data.error);
         totalSent   += data.sent   ?? 0;
         totalFailed += data.failed ?? 0;
+        iys = addIys(iys, data.iys);
       }
-      const result = { sent: totalSent, failed: totalFailed };
+      const result = { sent: totalSent, failed: totalFailed, iys };
       setJobMatchSendResult(result);
       logActivity('email_sent', `${lang === 'tr' ? 'İş eşleşme maili gönderildi' : 'Job match email sent'} (${jobMatchBucket})`, `${totalSent} sent`);
     } catch (e: unknown) {
@@ -448,7 +457,7 @@ export default function MessagingTab({ stats }: Props) {
     setEmailSendLoading(true);
     setEmailSendResult(null);
     setEmailSendProgress({ done: 0, total: recipients.length });
-    let totalSent = 0, totalFailed = 0;
+    let totalSent = 0, totalFailed = 0, iys: IysSendSummary | undefined;
     try {
       for (let i = 0; i < recipients.length; i += CHUNK) {
         const chunk = recipients.slice(i, i + CHUNK);
@@ -466,12 +475,13 @@ export default function MessagingTab({ stats }: Props) {
         }
         totalSent   += data.sent   ?? 0;
         totalFailed += data.failed ?? 0;
+        iys = addIys(iys, data.iys);
         setEmailSendProgress({ done: Math.min(i + CHUNK, recipients.length), total: recipients.length });
       }
-      setEmailSendResult({ sent: totalSent, failed: totalFailed });
+      setEmailSendResult({ sent: totalSent, failed: totalFailed, iys });
       logActivity('email_sent', `${lang === 'tr' ? 'E-posta kampanyası gönderildi' : 'Email campaign sent'} (${emailBucket})`, emailSubject);
     } catch (e: unknown) {
-      setEmailSendResult({ sent: totalSent, failed: totalFailed, error: e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred' });
+      setEmailSendResult({ sent: totalSent, failed: totalFailed, iys, error: e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred' });
     } finally {
       setEmailSendLoading(false);
       setEmailSendProgress(null);
@@ -481,11 +491,11 @@ export default function MessagingTab({ stats }: Props) {
   // ── Dil bazlı toplu gönderim — her dil grubuna ayrı AI emaili üret + gönder ────
   const sendByLanguageBatch = async () => {
     // Alıcıları nationality → dile göre grupla
-    const groups: Partial<Record<EmailLang, { email: string; userId?: number | null; unsubscribeUrl?: string | null }[]>> = {};
+    const groups: Partial<Record<EmailLang, { email: string; userId?: number | null; unsubscribeUrl?: string | null; nationality?: string | null }[]>> = {};
     for (const r of visibleRecipients.filter(r => r.include)) {
       const l: EmailLang = langFromNationality(r.nationality) ?? 'en';
       if (!groups[l]) groups[l] = [];
-      groups[l]!.push({ email: r.email, userId: r.userId, unsubscribeUrl: r.unsubscribeUrl });
+      groups[l]!.push({ email: r.email, userId: r.userId, unsubscribeUrl: r.unsubscribeUrl, nationality: r.nationality ?? null });
     }
     if (Object.keys(groups).length === 0) return;
 
@@ -495,7 +505,7 @@ export default function MessagingTab({ stats }: Props) {
     setBatchLoading(true);
     setEmailSendResult(null);
 
-    let totalSent = 0, totalFailed = 0;
+    let totalSent = 0, totalFailed = 0, iys: IysSendSummary | undefined;
 
     for (const [groupLang, groupRecipients] of Object.entries(groups)) {
       const l = groupLang as EmailLang;
@@ -535,6 +545,7 @@ export default function MessagingTab({ stats }: Props) {
           if (data.error) throw new Error(data.error);
           groupSent   += data.sent   ?? 0;
           groupFailed += data.failed ?? 0;
+          iys = addIys(iys, data.iys);
         }
         totalSent   += groupSent;
         totalFailed += groupFailed;
@@ -545,7 +556,7 @@ export default function MessagingTab({ stats }: Props) {
     }
 
     setBatchLoading(false);
-    setEmailSendResult({ sent: totalSent, failed: totalFailed });
+    setEmailSendResult({ sent: totalSent, failed: totalFailed, iys });
     logActivity('email_sent', `${lang === 'tr' ? 'Dil bazlı toplu e-posta gönderildi' : 'Language-based batch email sent'} (${emailBucket})`, `${totalSent} sent`);
   };
 
@@ -1736,6 +1747,7 @@ export default function MessagingTab({ stats }: Props) {
                     </div>
                   </div>
                 )}
+                <IysEmailLine iys={emailSendResult.iys} lang={lang} locale={locale} />
               </div>
             )}
           </div>
@@ -1817,6 +1829,7 @@ export default function MessagingTab({ stats }: Props) {
                     </div>
                   </div>
                 )}
+                <IysEmailLine iys={jobMatchSendResult.iys} lang={lang} locale={locale} />
               </div>
             )}
           </div>
@@ -1957,6 +1970,18 @@ export default function MessagingTab({ stats }: Props) {
 }
 
 const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
+
+// What İYS did (enforce) or would have done (measure) in an email send.
+function IysEmailLine({ iys, lang, locale }: { iys?: IysSendSummary; lang: string; locale: string }) {
+  if (!iys) return null;
+  const tr = lang === 'tr', n = (value: number) => value.toLocaleString(locale);
+  const text = iys.mode === 'enforce'
+    ? (iys.skipped ? (tr ? `İYS: ${n(iys.skipped)} alıcı İYS onayı olmadığı için atlandı.` : `IYS: ${n(iys.skipped)} recipient(s) were skipped without an IYS consent.`) : (tr ? 'İYS: tüm alıcılar kontrolden geçti.' : 'IYS: every recipient passed the check.'))
+    : iys.wouldSkip
+      ? (tr ? `İYS ölçümü: zorunlu olsaydı ${n(iys.wouldSkip)} alıcı atlanacaktı; ${n(iys.queued)} alıcı İYS’de sorgulanmak üzere sıraya alındı.` : `IYS measurement: if enforced, ${n(iys.wouldSkip)} recipient(s) would have been skipped; ${n(iys.queued)} queued for an IYS check.`)
+      : (tr ? 'İYS ölçümü: bu gönderimde İYS’nin durduracağı alıcı yok.' : 'IYS measurement: IYS would stop no one in this send.');
+  return <p className="text-xs mt-2 text-amber-700 dark:text-amber-300">{text}</p>;
+}
 
 // One WhatsApp consent record: masked number, state, and the consent (date · evidence) or the opt-out (date · source).
 function WaConsentLine({ item, lang, locale }: { item: WaConsentView; lang: string; locale: string }) {

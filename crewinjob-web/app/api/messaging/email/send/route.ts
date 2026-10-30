@@ -10,6 +10,9 @@ import {
 } from '@/lib/tracking-signature';
 import { publicAppUrl } from '@/lib/internal-fetch';
 import { legacySuppressed, legacyUnsubscribeUrl } from '@/lib/legacy-unsubscribe';
+import { crewinEmailGate, type CrewinEmailGateResult } from '@/lib/crewin-iys-email';
+import { platformDatabase } from '@/lib/platform/database';
+import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -39,7 +42,11 @@ interface RecipientRef {
   email:           string;
   userId?:         number | null;
   unsubscribeUrl?: string | null; // backend'in GetSeafarersByFillBucket ile döndürdüğü opak token'lı link
+  nationality?:    string | null; // İYS: TR ya da bilinmeyen uyrukta İYS onayı aranır
 }
+
+// İYS'nin bu gönderimdeki payı: zorunlu modda atlananlar, ölçüm modunda "zorunlu olsaydı" sayıları (lib/crewin-iys-email.ts)
+const iysView = (gate: CrewinEmailGateResult) => ({ mode: gate.mode, skipped: gate.skipped.length, wouldSkip: gate.counts.total, reasons: gate.counts.reasons, queued: gate.counts.queued });
 
 interface SendBody {
   mode:        'single' | 'broadcast';
@@ -53,6 +60,8 @@ interface SendBody {
   // Backend unsubscribe linki olmayan alıcılar (prospect/şirket/manuel adres) için mailto ile
   // "yanıtla-çık" bağlantısı kullanılsın mı? Yalnızca kampanya yürütücüsü açar.
   allowMailtoUnsubscribe?: boolean;
+  // Şirket ve prospect kitleleri (yalnız kampanya yürütücüsü): tacir muafiyeti, İYS aranmaz.
+  business?: boolean;
 }
 
 // The panel's own one-click link needs a real public address; never a localhost default in production.
@@ -111,6 +120,9 @@ export async function POST(request: NextRequest) {
       if (legacySuppressed([to]).size) {
         return NextResponse.json({ error: 'Bu adres abonelikten çıktı; pazarlama e-postası gönderilmez.' }, { status: 409 });
       }
+      const gate = await crewinEmailGate(platformDatabase(), credentialEncryptionKey(), [{ email: to, business: body.business === true }]);
+      if (gate.block) return NextResponse.json({ error: gate.block }, { status: 409 });
+      if (gate.skipped.length) return NextResponse.json({ error: 'İYS bu adrese ticari e-posta gönderimine izin vermiyor; gönderilmedi.', iys: iysView(gate) }, { status: 409 });
       const unsubscribeUrl = unsubscribeFor(ref);
       if (needsUnsubscribe && !unsubscribeUrl) {
         return NextResponse.json({ error: 'Unsubscribe bağlantısı olmayan alıcılar için marketing e-postası gönderilemez.' }, { status: 400 });
@@ -122,7 +134,7 @@ export async function POST(request: NextRequest) {
         undefined,
         listUnsubscribeTarget(unsubscribeUrl),
       );
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, iys: iysView(gate) });
     }
 
     if (mode === 'broadcast') {
@@ -136,8 +148,12 @@ export async function POST(request: NextRequest) {
       const all = recipients.map(normalizeRecipient);
       // Addresses that unsubscribed through the panel's own link are skipped, whatever the list says.
       const suppressed = legacySuppressed(all.map(r => r.email));
-      const refs = all.filter(r => !suppressed.has(r.email.trim().toLowerCase()));
-      if (!refs.length) return NextResponse.json({ sent: 0, failed: 0, errors: [], results: [], suppressed: suppressed.size });
+      const unsuppressed = all.filter(r => !suppressed.has(r.email.trim().toLowerCase()));
+      // İYS: zorunlu modda onaysız alıcı atlanır; ölçüm modunda herkese gider ve "zorunlu olsaydı" sayısı döner.
+      const gate = await crewinEmailGate(platformDatabase(), credentialEncryptionKey(), unsuppressed.map(r => ({ email: r.email, nationality: r.nationality, business: body.business === true })));
+      if (gate.block) return NextResponse.json({ error: gate.block }, { status: 409 });
+      const refs = unsuppressed.filter(r => gate.allowed.has(r.email.trim().toLowerCase()));
+      if (!refs.length) return NextResponse.json({ sent: 0, failed: 0, errors: [], results: [], suppressed: suppressed.size, iys: iysView(gate) });
       if (needsUnsubscribe && refs.some(recipient => !unsubscribeFor(recipient))) {
         return NextResponse.json({ error: 'Unsubscribe bağlantısı olmayan alıcılar için marketing e-postası gönderilemez.' }, { status: 400 });
       }
@@ -179,7 +195,7 @@ export async function POST(request: NextRequest) {
         void runTrackingTasks(tasks, EVENT_CONCURRENCY);
       }
 
-      return NextResponse.json({ ...result, suppressed: suppressed.size });
+      return NextResponse.json({ ...result, suppressed: suppressed.size, iys: iysView(gate) });
     }
 
     return NextResponse.json({ error: `Geçersiz mod: ${mode}` }, { status: 400 });

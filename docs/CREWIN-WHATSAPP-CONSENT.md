@@ -49,8 +49,31 @@ Crewin, Ryzevo projeleriyle aynı İYS beyanını ve bağlantısını kendi proj
   - Çıkışlar (panel, STOP yanıtı, Meta 131050) RET olarak kuyruğa girer ve göndermeyi hemen durdurur.
   - Worker kuyruğu yükler ve İYS'nin değişiklik akışını okur; Crewin için ayrıca bir şey gerekmez.
 - **Sorgu:** WhatsApp izinleri bölümündeki "İYS'de sorgula" yazılan +90 numaraları sorar. Proje ayarlarındaki sorgu, İYS'nin daha önce bilgi verdiği numaraları yeniden sorar (en çok 50).
-- **Henüz yok (2. aşama):** Crewin e-postası İYS'ye bakmıyor. Alıcılar backend'den geliyor; izin kayıt anında orada toplanıyor (`docs/CREWIN-BACKEND-REQUESTS.md` madde 6). Şirket ve prospect e-postaları için tacir muafiyeti kararı da o aşamada.
 - **Hukuki teyit:** WhatsApp'ın MESAJ sayılması, 3 iş günü kuralı ve "+90 dışı numaralara İYS uygulanmaz" kararı. Ryzevo projeleri bugün bütün numaralara İYS uyguluyor.
+
+## İYS (2. aşama: e-posta)
+Kod: `lib/crewin-iys-email.ts`; şema değişikliği yok.
+- **Kapsam:**
+  - Re-aktivasyon, iş eşleşme ve kampanya e-postaları (`/api/messaging/email/send`, `/send-job-match`) ticari ileti sayılır.
+  - İYS onayı, uyruğu TR olan ya da uyruğu bilinmeyen alıcılardan aranır.
+  - Şirket ve prospect kitleleri (`maritime_businesses`, `company_prospects`) tacir muafiyetiyle dışarıda kalır. Abonelikten çıkış listesi ve çıkış bağlantısı onlar için de zorunlu.
+- **Ölçüm modu (varsayılan):**
+  - E-postalar gider.
+  - Her gönderim sonucu "İYS zorunlu olsaydı kaç alıcı atlanacaktı" bilgisini nedenleriyle verir.
+- **Zorunlu mod:**
+  - İYS onayı olmayan, reddetmiş ya da durumu eski alıcı atlanır.
+  - Beyan yoksa e-posta gönderimi hiç başlamaz.
+- **Mod değişikliği:** Proje ayarları → Gönderim izinleri (İYS) → Crewin e-postası. Yalnız `connections.manage` yetkisi olanlar değiştirebilir; kim ve ne zaman kaydedilir (`data/crewin-iys-email.json`).
+- **Bekleyen sorgular:**
+  - Durumu bilinmeyen alıcılar şifreli olarak `data/crewin-iys-email-pending.json` dosyasına girer (en çok 50 bin).
+  - Worker, "Türkiye" beyanı yapılmış ve İYS bağlıysa her çalışmada en çok 50 adres sorgular.
+  - Durumu bilinen alıcıları değişiklik akışı güncel tutar.
+- **Kampanyalar:** atlanan alıcılar ve ölçüm sonucu teslimat notuna yazılır.
+- **ONAY ve RET bildirimi:**
+  - Kayıttaki e-posta izinlerini ve backend çıkışlarını İYS'ye bildirmek backend'in işi (`docs/CREWIN-BACKEND-REQUESTS.md` madde 6).
+  - Panelin kendi çıkış bağlantısı (prospect, şirket, elle girilen adres) adresi değil yalnız tek yönlü anahtarı taşıdığı için İYS'ye bildirilemez; yerel olarak her zaman uygulanır.
+- **Zorunlu moda geçmeden önce:** ölçüm çoğunlukla "İYS onayı yok" gösteriyorsa önce backend'in kayıttaki izinleri İYS'ye yüklemesi gerekir. 3 iş gününden eski izinler API ile yüklenemiyor; hukuk danışmanıyla görüşün.
+- **Hukuki teyit:** tacir muafiyeti, uyruğun "Türkiye'deki alıcı" ölçütü olarak kullanılması, iş eşleşme e-postalarının ticari ileti sayılması.
 
 ## Testler
 İYS kısmı: `test/crewin-iys.test.cjs` (sahte İYS taşıyıcısı). `test/legacy-whatsapp-consent.test.cjs`, `npm run test:platform` ile birlikte çalışır (tek başına: `npm run test:legacy:whatsapp`). Geçici dosya ve sahte gönderici kullanır; ağa çıkmaz. Kapsadıkları:

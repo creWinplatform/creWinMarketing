@@ -86,11 +86,12 @@ Ayrıntı repo kökündeki `BACKEND-StartResearch-kaynak-fix.md` dosyasında. Ö
 
 ## 6. E-posta için İYS (Crewin İYS'inin 2. aşaması, 30 Ekim 2026)
 
-- **Bugün:** Crewin, İYS beyanını ve bağlantısını panelde yapar (Proje ayarları → Gönderim izinleri). WhatsApp gönderimi +90 numaralar için İYS'ye bakar (`docs/CREWIN-WHATSAPP-CONSENT.md`). E-posta henüz bakmaz.
-  - Sebep: alıcılar arka uçtan geliyor (`GetCampaignRecipients`, `GetSeafarersByFillBucket`), pazarlama izni kayıt anında arka uçta toplanıyor.
-  - Panel, yüzlerce alıcının İYS durumunu tek tek, 24 saatte bir sorgulayamaz.
+- **Bugün:** Crewin, İYS beyanını ve bağlantısını panelde yapar (Proje ayarları → Gönderim izinleri). WhatsApp gönderimi +90 numaralar için İYS'ye bakar (`docs/CREWIN-WHATSAPP-CONSENT.md`).
+  - E-posta kapısı da panelde var: uyruğu TR olan ya da bilinmeyen alıcılar için, önce ölçüm modunda. Panel, durumu bilinmeyen adresleri worker ile 50'şer sorgular.
+  - Ama izinleri İYS'ye yüklemek panelin elinde değil: pazarlama izni kayıt anında arka uçta toplanıyor.
+- **`GetCampaignRecipients` için:** alıcılarda `nationality` alanı da dönsün. Dönmezse panel o alıcıyı "uyruğu bilinmeyen" sayar ve İYS onayı arar.
 - **Arka uçtan beklenen:**
   - Kayıt ve profil ekranında alınan e-posta pazarlama iznini (tarih, kaynak: `HS_WEB` / `HS_MOBIL` …) ve geri çekilmesini 3 iş günü içinde İYS'ye bildirmek. Ya da bunları panele bir uç noktayla vermek; o zaman panel kendi kuyruğuyla bildirir.
   - Kendi çıkış bağlantılarında (`ProcessUnsubscribe`) RET bildirimini de aynı yoldan yapmak.
   - Alıcı listelerinde her adres için İYS durumunu (ONAY/RET ve kontrol zamanı) döndürmek. Panel kapıyı buna göre uygular.
-- **O aşamada karar gerekecek:** şirket ve prospect e-postalarında tacir (şirket) muafiyeti kullanılsın mı? Ryzevo kullanmıyor; Crewin'in B2B duyuruları bu karara bağlı.
+- **Karar (30 Ekim 2026):** şirket ve prospect e-postalarında tacir muafiyeti kullanılır; hukuk teyidi bekleniyor.

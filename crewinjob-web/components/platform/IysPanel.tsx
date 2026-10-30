@@ -16,7 +16,8 @@ export default function IysPanel({ lang, crewin = false }: { lang: Locale; crewi
   const [view, setView] = useState<IysView | null>(null), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [scope, setScope] = useState<'tr' | 'none' | ''>(''), [form, setForm] = useState({ username: '', password: '', iysCode: '', brandCode: '', environment: 'production' });
   const mounted = useRef(false);
-  const apply = (value: IysView) => { setView(value); setScope(value.scope || ''); };
+  // The status check answers with a view without Crewin's email mode; the last known one is kept.
+  const apply = (value: IysView) => { setView(old => value.crewinEmail || !old?.crewinEmail ? value : { ...value, crewinEmail: old.crewinEmail }); setScope(value.scope || ''); };
   useEffect(() => {
     mounted.current = true; const controller = new AbortController();
     projectRequest<IysView>('/api/platform/iys', { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) }).then(value => { if (mounted.current) apply(value); })
@@ -39,15 +40,29 @@ export default function IysPanel({ lang, crewin = false }: { lang: Locale; crewi
       ? 'Türkiye’deki alıcılara ticari e-posta ve WhatsApp mesajı göndermek için alıcının İYS’de onayı olmalı; yeni izinler ve çıkışlar 3 iş günü içinde İYS’ye bildirilir. Ryzevo bunu gönderim akışının içinde yapar: onayı olmayan alıcıya canlı ileti gitmez.'
       : 'Commercial email and WhatsApp messages to recipients in Turkey need the recipient’s consent in IYS; new consents and opt-outs are reported to IYS within 3 business days. Ryzevo does this inside the send flow: no live message goes to a recipient without consent.'}</p>
     {crewin && <p className="studio-note"><strong>Crewin:</strong> {tr
-      ? 'İYS yalnız WA & Telegram → WA Bildirim Gönder ve kampanyaların WhatsApp gönderiminde, yalnız +90 numaralar için denetlenir. Orada kaydedilen WhatsApp izinleri ve çıkışlar İYS’ye bildirilir. Crewin e-postası henüz İYS’ye bakmıyor; bu, backend ile birlikte ikinci aşamada gelecek.'
-      : 'IYS is checked only for WhatsApp sends from WA & Telegram → Send WA notification and campaigns, and only for +90 numbers. WhatsApp consents and opt-outs recorded there are reported to IYS. Crewin email does not check IYS yet; that comes in a second step with the backend.'}</p>}
+      ? 'WhatsApp’ta İYS yalnız +90 numaralar için denetlenir; orada kaydedilen izinler ve çıkışlar İYS’ye bildirilir. E-postada (re-aktivasyon, iş eşleşme, kampanya) İYS uyruğu TR olan ya da bilinmeyen alıcılardan aranır; şirket ve prospect kitleleri tacir muafiyetiyle dışarıda kalır. Kayıttaki e-posta izinlerini İYS’ye bildirmek Crewin backend’inin işidir.'
+      : 'On WhatsApp, IYS is checked only for +90 numbers; consents and opt-outs recorded there are reported to IYS. On email (reactivation, job match, campaigns), IYS is required for recipients whose nationality is TR or unknown; company and prospect audiences are left out under the merchant exemption. Reporting the email consents given at sign-up to IYS is the Crewin backend’s job.'}</p>}
+    {crewin && view.crewinEmail && <div className="iys-connection">
+      <p><strong>{tr ? 'Crewin e-postası' : 'Crewin email'}</strong> · {view.crewinEmail.mode === 'enforce'
+        ? (tr ? 'Zorunlu: İYS onayı olmayan alıcıya ticari e-posta gitmez.' : 'Enforced: no commercial email goes to a recipient without IYS consent.')
+        : (tr ? 'Ölçüm: e-postalar gider; her gönderim, İYS zorunlu olsaydı kaç alıcının atlanacağını gösterir.' : 'Measuring: emails still go; each send shows how many recipients IYS would have stopped.')}
+        {view.crewinEmail.at ? ` · ${view.crewinEmail.by || '—'} · ${time(view.crewinEmail.at)}` : ''}</p>
+      <p className="studio-note">{tr ? `İYS’de sorgulanmayı bekleyen adres: ${n(view.crewinEmail.pending)}. Worker her çalışmada en çok 50 adres sorgular; durumu bilinen alıcıları değişiklik akışı güncel tutar.` : `Addresses waiting for an IYS check: ${n(view.crewinEmail.pending)}. The worker checks up to 50 per run; the change feed keeps known recipients current.`}</p>
+      {view.canManage && <button type="button" className="studio-secondary" disabled={busy} onClick={() => {
+        const next = view.crewinEmail?.mode === 'enforce' ? 'measure' : 'enforce';
+        if (next === 'enforce' && !window.confirm(tr ? 'Zorunlu moda geçilsin mi? İYS onayı görünmeyen (uyruğu TR ya da bilinmeyen) alıcılara ticari e-posta gitmez.' : 'Switch to enforce? Recipients (nationality TR or unknown) without an IYS consent get no commercial email.')) return;
+        void act<IysView>({ action: 'crewin_email_mode', mode: next }, () => next === 'enforce' ? (tr ? 'Crewin e-postası artık İYS’ye uyuyor.' : 'Crewin email now follows IYS.') : (tr ? 'Crewin e-postası ölçüm moduna döndü.' : 'Crewin email is back in measure mode.'));
+      }}>{view.crewinEmail.mode === 'enforce' ? (tr ? 'Ölçüm moduna dön' : 'Back to measuring') : (tr ? 'Zorunlu moda geç' : 'Switch to enforce')}</button>}
+    </div>}
     {error && <p role="alert" className="studio-error"><Msg text={error} /></p>}{notice && <p role="status" className="studio-success"><Msg text={notice} /></p>}
     <fieldset className="iys-declare" disabled={busy || !view.canManage}><legend>{tr ? 'Türkiye’deki alıcılara ticari ileti gönderiyor musunuz?' : 'Do you send commercial messages to recipients in Turkey?'}</legend>
       <label><input type="radio" name="iys-scope" checked={scope === 'tr'} onChange={() => setScope('tr')} />{tr ? 'Evet: İYS kontrolü zorunlu' : 'Yes: IYS checks are required'}</label>
       <label><input type="radio" name="iys-scope" checked={scope === 'none'} onChange={() => setScope('none')} />{tr ? 'Hayır: Türkiye’deki alıcılara ticari ileti göndermiyoruz' : 'No: we send no commercial messages to recipients in Turkey'}</label>
       {view.canManage && <button type="button" className="studio-secondary" disabled={!scope || scope === view.scope} onClick={() => void act<IysView>({ action: 'declare', scope }, () => tr ? 'Beyan kaydedildi.' : 'Declaration saved.')}>{tr ? 'Beyanı kaydet' : 'Save declaration'}</button>}
       <p className="studio-note">{view.scope ? (tr ? `Kayıtlı beyan: ${view.scope === 'tr' ? 'Evet' : 'Hayır'} · ${view.declaredBy || '—'} · ${time(view.declaredAt)}.${view.scope === 'none' ? ' “Hayır” beyanı sizin sorumluluğunuzdadır.' : ''}` : `Recorded: ${view.scope === 'tr' ? 'Yes' : 'No'} · ${view.declaredBy || '—'} · ${time(view.declaredAt)}.${view.scope === 'none' ? ' A “No” is your own statement.' : ''}`)
-        : (tr ? 'Beyan yapılana kadar canlı e-posta ve WhatsApp gönderimi kapalıdır; provalar çalışır.' : 'Until you declare, live email and WhatsApp sending stays off; rehearsals still work.')}</p>
+        : crewin
+          ? (tr ? 'Beyan yapılana kadar Crewin WhatsApp gönderimi kapalıdır; e-posta ölçüm modunda gider, zorunlu modda o da durur.' : 'Until you declare, Crewin WhatsApp sending stays off; email still goes in measure mode and stops in enforce mode.')
+          : (tr ? 'Beyan yapılana kadar canlı e-posta ve WhatsApp gönderimi kapalıdır; provalar çalışır.' : 'Until you declare, live email and WhatsApp sending stays off; rehearsals still work.')}</p>
     </fieldset>
     {view.scope === 'tr' && <>
       {view.connection ? <div className="iys-connection">
