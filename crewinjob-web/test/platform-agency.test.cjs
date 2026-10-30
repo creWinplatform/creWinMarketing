@@ -12,7 +12,8 @@ function fixture(){
  const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);repo.bootstrapLegacy('admin');
  const create=name=>repo.provision('legacy-admin',{organizationName:name,projectName:name,website:`https://${name}.example`,username:name,password:'fixture-password-123'});
  const agency=create('agency'),client=create('client'),pilot=create('pilot');
- for(const w of [agency,client])db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(w.userId,iso(Date.now()),iso(Date.now()+14*DAY),w.organizationId,w.projectId);
+ // One clock reading: a trial must last exactly 14 days, so its start and end may not fall a millisecond apart.
+ const now=Date.now();for(const w of [agency,client])db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(w.userId,iso(now),iso(now+14*DAY),w.organizationId,w.projectId);
  db.prepare('INSERT INTO platform_account_emails VALUES(?,?,?)').run(agency.userId,'owner@agency.example',iso(Date.now()));
  const scope=w=>({subject:w.userId,organizationId:w.organizationId,projectId:w.projectId}),home=scope(agency);
  // A running agency package without going through PayTR (the purchase itself is covered by its own test).
@@ -96,7 +97,7 @@ test('the contract email names the agency package and the sales terms list its p
 test('migration 61 is additive and repeatable',async()=>{
  const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'agency-')),'fixture.sqlite');
  let db=openPlatformDatabase(file);const seed=new PlatformRepository(db);seed.bootstrapLegacy('admin');const kept=['pilot-row','trial-row'].map(name=>seed.provision('legacy-admin',{organizationName:name,projectName:name,website:'https://kept.example',username:name,password:'fixture-password-123'}));
- db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE project_id=?").run(kept[1].userId,iso(Date.now()),iso(Date.now()+14*DAY),kept[1].projectId);const rows=JSON.stringify(db.prepare('SELECT * FROM platform_project_entitlements ORDER BY project_id').all());
+ const start=Date.now();db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE project_id=?").run(kept[1].userId,iso(start),iso(start+14*DAY),kept[1].projectId);const rows=JSON.stringify(db.prepare('SELECT * FROM platform_project_entitlements ORDER BY project_id').all());
  require('./schema-fixture.cjs').removeAgencySchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_agency_links'").get().n,0);db.close();
  db=openPlatformDatabase(file);assert.equal(JSON.stringify(db.prepare('SELECT * FROM platform_project_entitlements ORDER BY project_id').all()),rows,'pilot and trial rows survive the rebuild');assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,64);assert.ok(db.prepare("SELECT name FROM pragma_table_info('platform_project_subscriptions')").all().some(item=>item.name==='package'));assert.equal(db.pragma('foreign_key_check').length,0);
  assert.throws(()=>db.prepare("INSERT INTO platform_project_subscriptions(order_id,organization_id,project_id,plan_id,cadence,starts_at,ends_at,grace_ends_at,created_at,package) VALUES('x','o','p','launch','monthly','a','b','c','d','agency')").run(),'the agency marker only goes with Growth');db.close();
