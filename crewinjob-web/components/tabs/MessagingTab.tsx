@@ -17,6 +17,29 @@ interface Props {
   stats?: StatsResponse;
 }
 
+// ── WhatsApp izinleri (lib/legacy-whatsapp-consent.ts) ──────────────────────────
+type WaSkipReason = 'no_consent' | 'opted_out' | 'invalid';
+type WaConsentState = 'consented' | 'opted_out' | 'none' | 'invalid';
+interface WaConsentView { hint: string; state: WaConsentState; consentAt?: string; evidence?: string; optedOutAt?: string; optOutSource?: 'reply' | 'team' | 'meta' }
+interface WaConsentSummary { consented: number; optedOut: number; recent: WaConsentView[]; ready: boolean; hook: boolean }
+interface WaConsentOutcome { action: 'consent' | 'opt_out' | 'check'; error?: string; added?: number; renewed?: number; existing?: number; optedOut?: number; already?: number; items?: WaConsentView[] }
+const WA_STATES: Record<WaConsentState, { labelTr: string; labelEn: string; color: string }> = {
+  consented: { labelTr: 'İzinli',          labelEn: 'Consented',      color: 'text-green-700 dark:text-green-300' },
+  opted_out: { labelTr: 'Çıktı',           labelEn: 'Opted out',      color: 'text-red-700 dark:text-red-300' },
+  none:      { labelTr: 'İzin yok',        labelEn: 'No consent',     color: 'text-amber-700 dark:text-amber-300' },
+  invalid:   { labelTr: 'Geçersiz numara', labelEn: 'Invalid number', color: 'text-amber-700 dark:text-amber-300' },
+};
+const WA_OPT_OUT_SOURCES = {
+  reply: { labelTr: 'STOP yanıtı', labelEn: 'STOP reply' },
+  team:  { labelTr: 'panelden',    labelEn: 'from the panel' },
+  meta:  { labelTr: 'Meta bildirdi', labelEn: 'reported by Meta' },
+} as const;
+const WA_SKIPS: Record<WaSkipReason, { labelTr: string; labelEn: string }> = {
+  no_consent: { labelTr: 'izin yok',  labelEn: 'no consent' },
+  opted_out:  { labelTr: 'çıkmış',    labelEn: 'opted out' },
+  invalid:    { labelTr: 'geçersiz',  labelEn: 'invalid' },
+};
+
 // ── E-posta re-aktivasyon ────────────────────────────────────────────────────
 const EMAIL_BUCKETS = [
   { value: 'zero', labelTr: '🚫 Hiç Başlamamış (%0)',   labelEn: '🚫 Never started (0%)',   color: 'bg-red-500' },
@@ -526,13 +549,49 @@ export default function MessagingTab({ stats }: Props) {
   const [msgChatIds,   setMsgChatIds]   = useState('');
   const [msgMode,      setMsgMode]      = useState<'single'|'broadcast'|'channel'>('channel');
   const [sendLoading,  setSendLoading]  = useState(false);
-  const [sendResult,   setSendResult]   = useState<{ sent?: number; failed?: number; success?: boolean; error?: string } | null>(null);
+  const [sendResult,   setSendResult]   = useState<{ sent?: number; failed?: number; success?: boolean; error?: string; skipped?: Partial<Record<WaSkipReason, number>>; skippedNumbers?: { hint: string; reason: WaSkipReason }[]; optedOutByMeta?: number } | null>(null);
 
   // ── WA/TG/Email config status ───────────────────────────────────────────────
   const [msgConfig, setMsgConfig] = useState<{ whatsapp: { configured: boolean }; telegram: { configured: boolean }; email: { configured: boolean } } | null>(null);
   useEffect(() => {
     fetch('/api/messaging/config').then(r => r.json()).then(setMsgConfig).catch(() => null);
   }, []);
+
+  // ── WhatsApp izinleri: yalnız izni kayıtlı, çıkış yapmamış numaralara gönderilir ─────────────
+  const [waConsent,         setWaConsent]         = useState<WaConsentSummary | null>(null);
+  const [waConsentNumbers,  setWaConsentNumbers]  = useState('');
+  const [waConsentEvidence, setWaConsentEvidence] = useState('');
+  const [waConsentDate,     setWaConsentDate]     = useState('');
+  const [waConsentBusy,     setWaConsentBusy]     = useState(false);
+  const [waConsentOutcome,  setWaConsentOutcome]  = useState<WaConsentOutcome | null>(null);
+  const [waToday,           setWaToday]           = useState('');
+  const waConsentId = useId();
+  const loadWaConsent = () => fetch('/api/messaging/whatsapp/consents').then(r => r.ok ? r.json() : null).then(data => { if (data) setWaConsent(data); }).catch(() => null);
+  useEffect(() => {
+    if (subTab !== 'notify_wa') return;
+    const now = new Date();
+    setWaToday(new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10));
+    loadWaConsent();
+  }, [subTab]);
+  const waConsentAction = async (action: WaConsentOutcome['action']) => {
+    setWaConsentBusy(true);
+    setWaConsentOutcome(null);
+    try {
+      const res = await fetch('/api/messaging/whatsapp/consents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, numbers: waConsentNumbers.split('\n').map(s => s.trim()).filter(Boolean), evidence: waConsentEvidence, consentAt: waConsentDate }),
+      });
+      const data = await res.json();
+      // STOP yanıtları ve Meta çıkışları panelin dışında da kaydedilir; özet her işlemden sonra tazelenir
+      if (data.summary) setWaConsent(data.summary); else loadWaConsent();
+      setWaConsentOutcome(res.ok ? { action, ...data } : { action, error: String(data.error || res.status) });
+    } catch (e: unknown) {
+      setWaConsentOutcome({ action, error: e instanceof Error ? e.message : lang === 'tr' ? 'Hata oluştu' : 'An error occurred' });
+    } finally {
+      setWaConsentBusy(false);
+    }
+  };
 
   // WhatsApp state
   const [waAudience,   setWaAudience]   = useState('seafarer_global');
@@ -572,6 +631,7 @@ export default function MessagingTab({ stats }: Props) {
         });
         const waData = await res.json();
         setSendResult(waData);
+        if (waData.optedOutByMeta) loadWaConsent();
         if (!waData.error) logActivity('wa_sent', `WhatsApp ${lang === 'tr' ? 'mesajı gönderildi' : 'message sent'} (${msgMode})`, `${msgText.slice(0, 60)}…`);
       } else {
         const chatIds = msgMode === 'broadcast'
@@ -917,6 +977,79 @@ export default function MessagingTab({ stats }: Props) {
                   : <>⚠️ <code>WHATSAPP_PHONE_NUMBER_ID</code> and <code>WHATSAPP_ACCESS_TOKEN</code> aren&apos;t set in <strong>.env.local</strong>.</>}
               </div>
             )}
+
+            <section aria-labelledby={`${waConsentId}-title`} className="border border-emerald-200 dark:border-emerald-800 rounded-lg p-3 flex flex-col gap-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h3 id={`${waConsentId}-title`} className="text-sm font-semibold text-slate-700 dark:text-slate-200">{lang === 'tr' ? 'WhatsApp izinleri' : 'WhatsApp consents'}</h3>
+                {waConsent && (
+                  <span className="text-xs text-slate-600 dark:text-slate-400">
+                    {waConsent.consented.toLocaleString(locale)} {lang === 'tr' ? 'izinli' : 'consented'} · {waConsent.optedOut.toLocaleString(locale)} {lang === 'tr' ? 'çıkış' : 'opted out'}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                {lang === 'tr'
+                  ? 'Mesaj yalnız izni kanıt ve tarihle kayıtlı numaralara gider. Çıkış yapan numara (STOP yanıtı, panel veya Meta) her zaman atlanır; ancak çıkıştan sonra alınmış yeni bir izinle geri gelir. Numaralar tam hâliyle saklanmaz.'
+                  : 'Messages go only to numbers whose consent is recorded with evidence and a date. An opted-out number (STOP reply, panel or Meta) is always skipped and comes back only with a consent obtained after the opt-out. Numbers are not stored in full.'}
+              </p>
+              {waConsent && (
+                <p className={`text-xs ${waConsent.hook ? 'text-green-700 dark:text-green-300' : 'text-amber-700 dark:text-amber-300'}`}>
+                  {waConsent.hook
+                    ? (lang === 'tr' ? 'STOP yanıtları Meta webhook’u ile kendiliğinden kaydediliyor.' : 'STOP replies are recorded automatically through the Meta webhook.')
+                    : (lang === 'tr' ? 'STOP webhook’u bağlı değil: STOP yazan ya da çıkmak isteyen numarayı aşağıdan “Çıkış kaydet” ile girin.' : 'The STOP webhook isn’t connected: enter a number that replied STOP or asked to leave with “Record opt-out” below.')}
+                </p>
+              )}
+              <Field label={lang === 'tr' ? 'Numaralar (her satıra bir tane)' : 'Numbers (one per line)'}>
+                <textarea value={waConsentNumbers} onChange={e => setWaConsentNumbers(e.target.value)}
+                  placeholder={'+905XXXXXXXXX\n+905XXXXXXXXX'} rows={3}
+                  className={`${selectClass} resize-none font-mono text-xs`} />
+              </Field>
+              <div className="flex flex-col gap-3">
+                <Field label={lang === 'tr' ? 'İzin kanıtı' : 'Consent evidence'}>
+                  <input type="text" value={waConsentEvidence} onChange={e => setWaConsentEvidence(e.target.value)} maxLength={160}
+                    placeholder={lang === 'tr' ? 'Form, kayıt veya belge referansı' : 'Form, record or document reference'} className={selectClass} />
+                </Field>
+                <Field label={lang === 'tr' ? 'İzin tarihi' : 'Consent date'}>
+                  <input type="date" value={waConsentDate} onChange={e => setWaConsentDate(e.target.value)} max={waToday || undefined} className={selectClass} />
+                </Field>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => waConsentAction('consent')} disabled={waConsentBusy || !waConsentNumbers.trim() || !waConsentEvidence.trim() || !waConsentDate}
+                  className="text-xs px-3 py-2 rounded-lg font-medium bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 disabled:cursor-not-allowed">
+                  {lang === 'tr' ? 'İzni kaydet' : 'Record consent'}
+                </button>
+                <button onClick={() => waConsentAction('opt_out')} disabled={waConsentBusy || !waConsentNumbers.trim()}
+                  className="text-xs px-3 py-2 rounded-lg font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {lang === 'tr' ? 'Çıkış kaydet' : 'Record opt-out'}
+                </button>
+                <button onClick={() => waConsentAction('check')} disabled={waConsentBusy || !waConsentNumbers.trim()}
+                  className="text-xs px-3 py-2 rounded-lg font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                  {lang === 'tr' ? 'Durumu sorgula' : 'Check status'}
+                </button>
+              </div>
+              {waConsentOutcome?.error && (
+                <p role="alert" className="text-xs text-red-700 dark:text-red-300"><Msg text={waConsentOutcome.error} /></p>
+              )}
+              {waConsentOutcome && !waConsentOutcome.error && (
+                <div role="status" className="text-xs text-slate-700 dark:text-slate-200">
+                  {waConsentOutcome.action === 'consent' && (
+                    <p>✓ {(waConsentOutcome.added ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'yeni izin' : 'new consents'} · {(waConsentOutcome.renewed ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'yenilendi' : 'renewed'} · {(waConsentOutcome.existing ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'zaten kayıtlı' : 'already recorded'}</p>
+                  )}
+                  {waConsentOutcome.action === 'opt_out' && (
+                    <p>✓ {(waConsentOutcome.optedOut ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'çıkış kaydedildi' : 'opt-outs recorded'} · {(waConsentOutcome.already ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'zaten çıkmıştı' : 'already opted out'}</p>
+                  )}
+                  {waConsentOutcome.action === 'check' && (
+                    <ul className="space-y-1">{(waConsentOutcome.items || []).map((item, i) => <li key={i}><WaConsentLine item={item} lang={lang} locale={locale} /></li>)}</ul>
+                  )}
+                </div>
+              )}
+              {waConsent && waConsent.recent.length > 0 && (
+                <details className="text-xs text-slate-600 dark:text-slate-400">
+                  <summary className="cursor-pointer">{lang === 'tr' ? 'Son kayıtlar' : 'Recent records'}</summary>
+                  <ul className="mt-2 space-y-1">{waConsent.recent.map((item, i) => <li key={i}><WaConsentLine item={item} lang={lang} locale={locale} /></li>)}</ul>
+                </details>
+              )}
+            </section>
 
             <Field label={lang === 'tr' ? 'Gönderim Modu' : 'Send mode'}>
               <div className="grid grid-cols-2 gap-1.5">
@@ -1666,17 +1799,19 @@ export default function MessagingTab({ stats }: Props) {
                     <>
                       <li><strong>.env.local</strong> içine <code>WHATSAPP_PHONE_NUMBER_ID</code> ve <code>WHATSAPP_ACCESS_TOKEN</code> yazın</li>
                       <li>Meta Business Manager → WhatsApp → API Setup adresinden Phone Number ID ve System User token alın</li>
+                      <li><strong>WhatsApp izinleri</strong> bölümünde her numaranın iznini kanıt ve tarihle kaydedin; çıkmak isteyenleri <strong>Çıkış kaydet</strong> ile girin</li>
                       <li>Solda alıcı numaraları ve mesaj metnini girin</li>
-                      <li><strong>"WhatsApp Gönder"</strong> butonuna tıklayın</li>
-                      <li>Sonuç buraya yansıyacak (gönderilen / hatalı sayısı)</li>
+                      <li><strong>"WhatsApp Gönder"</strong> butonuna tıklayın; izni olmayan veya çıkış yapan numaralara gönderilmez</li>
+                      <li>Sonuç buraya yansıyacak (gönderilen / hatalı / atlanan sayısı)</li>
                     </>
                   ) : (
                     <>
                       <li>Add <code>WHATSAPP_PHONE_NUMBER_ID</code> and <code>WHATSAPP_ACCESS_TOKEN</code> to <strong>.env.local</strong></li>
                       <li>Get the Phone Number ID and a System User token from Meta Business Manager → WhatsApp → API Setup</li>
+                      <li>In <strong>WhatsApp consents</strong>, record each number&apos;s consent with evidence and a date; enter people who want to leave with <strong>Record opt-out</strong></li>
                       <li>Enter recipient numbers and message text on the left</li>
-                      <li>Click the <strong>"Send WhatsApp"</strong> button</li>
-                      <li>The result appears here (sent / failed count)</li>
+                      <li>Click the <strong>"Send WhatsApp"</strong> button; numbers without consent or that opted out get nothing</li>
+                      <li>The result appears here (sent / failed / skipped count)</li>
                     </>
                   )}
                 </ol>
@@ -1744,6 +1879,22 @@ export default function MessagingTab({ stats }: Props) {
                     </div>
                   </div>
                 )}
+                {subTab === 'notify_wa' && (sendResult.skippedNumbers?.length ?? 0) > 0 && (
+                  <div className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+                    <p>
+                      {lang === 'tr' ? 'Atlanan numara' : 'Skipped numbers'}: <strong>{(sendResult.skippedNumbers?.length ?? 0).toLocaleString(locale)}</strong>
+                      {' '}({(Object.keys(WA_SKIPS) as WaSkipReason[]).filter(reason => sendResult.skipped?.[reason]).map(reason => `${sendResult.skipped?.[reason]} ${lang === 'tr' ? WA_SKIPS[reason].labelTr : WA_SKIPS[reason].labelEn}`).join(' · ')})
+                    </p>
+                    <p className="font-mono mt-1 break-words">{sendResult.skippedNumbers?.slice(0, 20).map(item => item.hint).join(', ')}{(sendResult.skippedNumbers?.length ?? 0) > 20 ? ' …' : ''}</p>
+                  </div>
+                )}
+                {subTab === 'notify_wa' && (sendResult.optedOutByMeta ?? 0) > 0 && (
+                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                    {lang === 'tr'
+                      ? `${sendResult.optedOutByMeta} numara Meta’ya göre bu işletmenin pazarlama mesajlarını durdurmuş; çıkış olarak kaydedildi.`
+                      : `${sendResult.optedOutByMeta} number(s) stopped this business’s marketing messages according to Meta; recorded as opted out.`}
+                  </p>
+                )}
               </div>
             )}
 
@@ -1763,6 +1914,19 @@ export default function MessagingTab({ stats }: Props) {
 }
 
 const selectClass = 'w-full border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2.5 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-ocean focus:border-ocean placeholder:text-slate-500 dark:placeholder:text-slate-500';
+
+// One WhatsApp consent record: masked number, state, and the consent (date · evidence) or the opt-out (date · source).
+function WaConsentLine({ item, lang, locale }: { item: WaConsentView; lang: string; locale: string }) {
+  const state = WA_STATES[item.state], tr = lang === 'tr', source = item.optOutSource ? WA_OPT_OUT_SOURCES[item.optOutSource] : null;
+  return (
+    <span className="flex flex-wrap gap-x-2">
+      <span className="font-mono">{item.hint}</span>
+      <span className={`font-medium ${state.color}`}>{tr ? state.labelTr : state.labelEn}</span>
+      {item.state === 'opted_out' && item.optedOutAt && <span>{new Date(item.optedOutAt).toLocaleDateString(locale)}{source ? ` · ${tr ? source.labelTr : source.labelEn}` : ''}</span>}
+      {item.state === 'consented' && item.consentAt && <span>{new Date(`${item.consentAt}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC' })}{item.evidence ? ` · ${item.evidence}` : ''}</span>}
+    </span>
+  );
+}
 
 // The label is tied to its control: a native input/select/textarea as the first child gets the label's htmlFor;
 // any other content (chip groups, recipient lists) becomes a group named by the label.

@@ -29,7 +29,8 @@
     "verify:backup": "node scripts/platform-verify-backup.mjs",
     "restore:drill": "node scripts/platform-restore-drill.mjs",
     "test:platform:recovery": "node --test test/platform-recovery.test.cjs",
-    "test:platform:billing": "node --test test/platform-billing.test.cjs"
+    "test:platform:billing": "node --test test/platform-billing.test.cjs",
+    "test:legacy:whatsapp": "node --test test/legacy-whatsapp-consent.test.cjs"
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "^3.1152.0",

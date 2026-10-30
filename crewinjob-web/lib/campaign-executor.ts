@@ -167,12 +167,15 @@ async function runDelivery(campaign: UnifiedCampaign, delivery: CampaignDelivery
     const numbers = campaign.audience.whatsappNumbers || [];
     if (!campaign.audience.consentConfirmed) throw new Error('WhatsApp alıcı izni onaylanmadı');
     if (!numbers.length) throw new Error('WhatsApp alıcısı eklenmedi');
+    // Rota yalnız izni kayıtlı ve çıkış yapmamış numaralara gönderir; diğerleri skipped olarak sayılır (hiçbiri izinli değilse 409 → hata)
     const data = await callApi('/api/messaging/whatsapp/send', {
       mode: 'broadcast', numbers,
       text: appendUtm(campaign.content.text, campaign, 'whatsapp', 'messaging'),
     });
     const failed = Number(data.failed || 0);
-    return { status: 'succeeded', sentCount: Math.max(0, numbers.length - failed), failedCount: failed, error: failed ? `${failed} alıcıya gönderilemedi` : undefined };
+    const skipped = Object.values((data.skipped || {}) as Record<string, unknown>).reduce<number>((sum, count) => sum + Number(count || 0), 0);
+    const notes = [failed ? `${failed} alıcıya gönderilemedi` : '', skipped ? `${skipped} numara izin kaydı olmadığı veya çıkış yaptığı için atlandı` : ''].filter(Boolean);
+    return { status: 'succeeded', sentCount: Number(data.sent || 0), failedCount: failed + skipped, error: notes.join(' · ') || undefined };
   }
 
   if (channel === 'telegram') {

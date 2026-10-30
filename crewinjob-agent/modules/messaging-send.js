@@ -39,7 +39,8 @@ const WA_GRAPH_VERSION = () => process.env.META_GRAPH_VERSION      || 'v25.0';
  * Tek bir telefon numarasına WhatsApp text mesajı gönderir.
  * @param {string} to  — Alıcı numarası E.164 formatında (+905XXXXXXXXX)
  * @param {string} text — Gönderilecek metin
- * @returns {{ success: boolean, messageId?: string, error?: string }}
+ * @returns {{ success: boolean, messageId?: string, error?: string, code?: number }}
+ *   code: Meta hata kodu (ör. 131050 = kişi bu işletmenin pazarlama mesajlarını durdurdu; panel çıkış olarak kaydeder)
  */
 async function sendWhatsAppMessage(to, text) {
   const phoneId = WA_PHONE_ID();
@@ -73,7 +74,7 @@ async function sendWhatsAppMessage(to, text) {
     const json = await res.json().catch(() => null);
     if (!res.ok) {
       const msg = json?.error?.message || `${res.status} ${res.statusText}`;
-      return { success: false, error: msg };
+      return { success: false, error: msg, code: json?.error?.code };
     }
     const messageId = json?.messages?.[0]?.id;
     return { success: true, messageId };
@@ -86,12 +87,13 @@ async function sendWhatsAppMessage(to, text) {
  * Birden fazla numaraya toplu WhatsApp mesajı gönderir (rate-limit için 200ms aralık).
  * @param {string[]} numbers — E.164 formatında numara listesi
  * @param {string} text      — Mesaj metni
- * @returns {{ sent: number, failed: number, errors: string[] }}
+ * @returns {{ sent: number, failed: number, errors: string[], results: { to: string, success: boolean, code?: number }[] }}
  */
 async function broadcastWhatsApp(numbers, text) {
   let sent = 0;
   let failed = 0;
   const errors = [];
+  const results = []; // numara bazında sonuç: panel 131050 alan numarayı çıkış olarak kaydeder
 
   for (const num of numbers) {
     const result = await sendWhatsAppMessage(num, text);
@@ -101,11 +103,12 @@ async function broadcastWhatsApp(numbers, text) {
       failed++;
       errors.push(`${num}: ${result.error}`);
     }
+    results.push({ to: num, success: result.success, ...(result.code !== undefined && { code: result.code }) });
     // Meta rate limit: saniyede ~80 mesaj — 200ms boşluk yeterli
     await new Promise(r => setTimeout(r, 200));
   }
 
-  return { sent, failed, errors };
+  return { sent, failed, errors, results };
 }
 
 /**
@@ -153,7 +156,7 @@ async function sendWhatsAppTemplate(to, templateName, langCode, components = [])
     const json = await res.json().catch(() => null);
     if (!res.ok) {
       const msg = json?.error?.message || `${res.status} ${res.statusText}`;
-      return { success: false, error: msg };
+      return { success: false, error: msg, code: json?.error?.code };
     }
     return { success: true, messageId: json?.messages?.[0]?.id };
   } catch (err) {

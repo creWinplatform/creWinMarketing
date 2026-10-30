@@ -189,18 +189,21 @@ function crewinEmail(env: Env, isLocal: boolean): SetupSection {
     env: 'SMTP_HOST=<ör. email-smtp.eu-west-1.amazonaws.com>\nSMTP_PORT=587\nSMTP_USER=<SMTP kullanıcı adı>\nSMTP_PASSWORD=<SMTP şifresi>\nSMTP_FROM_EMAIL=<ör. info@crewinjob.com>\nSMTP_FROM_NAME=CrewinJob',
     verify: { text: l('WA & Telegram → E-posta Re-aktivasyon’da önce kendinize tek bir deneme gönderin.', 'In WA & Telegram → Email re-activation, first send one test to yourself.'), href: '/?tab=messaging&view=notify_email' } };
 }
-function crewinWhatsApp(env: Env, isLocal: boolean): SetupSection {
+function crewinWhatsApp(env: Env, origin: string, isLocal: boolean): SetupSection {
   const absent = missing(env, ['WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_ACCESS_TOKEN']);
+  // STOP replies reach the panel's own webhook; Meta cannot call this machine, so a local guide shows a placeholder domain.
+  const hook = `${isLocal ? 'https://<alan-adınız>' : origin}/api/messaging/whatsapp/hook`;
   return { id: 'crewin-whatsapp', group: 'crewin', title: l('WhatsApp gönderimi (Crewin)', 'WhatsApp sending (Crewin)'), state: state(absent, []),
-    unlocks: [l('WA & Telegram → WA Bildirim Gönder', 'WA & Telegram → Send WA notification')],
+    unlocks: [l('WA & Telegram → WA Bildirim Gönder (yalnız izni kayıtlı numaralara)', 'WA & Telegram → Send WA notification (only to numbers with a recorded consent)')],
     problems: missingText(absent),
     steps: [
       { text: l('Meta uygulamanıza WhatsApp ürününü ekleyin, işletme numarasını doğrulayın; “API Setup” sayfasındaki Phone number ID’yi alın.', 'Add the WhatsApp product to your Meta app and verify the business number; take the Phone number ID from the “API Setup” page.'), link: { href: 'https://developers.facebook.com/apps/', label: l('Meta uygulamaları', 'Meta apps') } },
       { text: l('İşletme ayarlarında whatsapp_business_messaging izinli kalıcı bir sistem kullanıcısı erişim anahtarı oluşturun (geçici anahtar 24 saatte biter). En az bir onaylı mesaj şablonu olmalı.', 'In business settings, create a permanent system-user access token with whatsapp_business_messaging (a temporary token ends in 24 hours). At least one approved message template is needed.'), link: { href: 'https://business.facebook.com/settings/system-users', label: l('Sistem kullanıcıları', 'System users') } },
+      { text: l('İsteğe bağlı, STOP yanıtlarının kendiliğinden kaydı için: Meta uygulamasında WhatsApp → Configuration → Webhook’a aşağıdaki adresi ve WHATSAPP_WEBHOOK_VERIFY_TOKEN değerini girin, “messages” ve “user_preferences” alanlarına abone olun; App secret’ı WHATSAPP_APP_SECRET olarak ekleyin. Uygulamanın webhook’u başka bir yerde kullanılıyorsa bunu atlayın ve çıkışları panelden kaydedin.', 'Optional, to record STOP replies on their own: in the Meta app, enter the address below and the WHATSAPP_WEBHOOK_VERIFY_TOKEN value under WhatsApp → Configuration → Webhook, subscribe to the “messages” and “user_preferences” fields, and add the App secret as WHATSAPP_APP_SECRET. If the app’s webhook is used elsewhere, skip this and record opt-outs in the panel.'), copy: { label: l('Webhook adresi', 'Webhook address'), value: hook } },
       envFile(isLocal), restart(isLocal),
     ],
-    env: 'WHATSAPP_PHONE_NUMBER_ID=<Phone number ID>\nWHATSAPP_ACCESS_TOKEN=<kalıcı sistem kullanıcısı anahtarı>',
-    verify: { text: l('WA & Telegram → WA Bildirim Gönder’de kendi numaranıza tek bir şablon mesajı gönderin. Meta her mesajı ücretlendirir.', 'In WA & Telegram → Send WA notification, send one template message to your own number. Meta bills each message.'), href: '/?tab=messaging&view=notify_wa' } };
+    env: 'WHATSAPP_PHONE_NUMBER_ID=<Phone number ID>\nWHATSAPP_ACCESS_TOKEN=<kalıcı sistem kullanıcısı anahtarı>\n# İsteğe bağlı, STOP yanıtları için:\nWHATSAPP_APP_SECRET=<Meta uygulamasının App secret değeri>\nWHATSAPP_WEBHOOK_VERIFY_TOKEN=<kendi rastgele değeriniz, 16–200 karakter: A-Z a-z 0-9 _ ->',
+    verify: { text: l('WA & Telegram → WA Bildirim Gönder’de önce “WhatsApp izinleri”nde kendi numaranızın iznini kaydedin, sonra ona tek bir mesaj gönderin. Meta her mesajı ücretlendirir.', 'In WA & Telegram → Send WA notification, first record your own number’s consent under “WhatsApp consents”, then send it one message. Meta bills each message.'), href: '/?tab=messaging&view=notify_wa' } };
 }
 function crewinTelegram(env: Env, agentEnv: Env, isLocal: boolean): SetupSection {
   const bot = missing(env, ['TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHANNEL_ID']), session = missing(agentEnv, ['TG_API_ID', 'TG_API_HASH', 'TG_SESSION']), absent = [...bot, ...session];
@@ -318,7 +321,7 @@ export function serverSetup(db: Database.Database, origin: string, env: Env = pr
   return { origin, local: isLocal, generatedAt: new Date(now).toISOString(), sections: [
     google(env, origin, isLocal), meta(env, origin, isLocal), gemini(env, isLocal), worker(db, env, origin, isLocal, now),
     adminPassword(env, isLocal), authSecret(env, isLocal), encryptionKey(env, keyFile, isLocal), plaintextSecrets(env, extra.files || []),
-    crewinEmail(env, isLocal), crewinWhatsApp(env, isLocal), crewinTelegram(env, extra.agentEnv || {}, isLocal), crewinAnalytics(env, isLocal),
+    crewinEmail(env, isLocal), crewinWhatsApp(env, origin, isLocal), crewinTelegram(env, extra.agentEnv || {}, isLocal), crewinAnalytics(env, isLocal),
     publicAddress(env, origin, isLocal), sesFeedback(env, origin, isLocal), accountEmail(env, isLocal),
     push(env, isLocal), switches(env),
   ] };
