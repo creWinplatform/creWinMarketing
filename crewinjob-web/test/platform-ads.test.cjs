@@ -40,7 +40,9 @@ test('plans stay inside the caps, need an end date and are approved on their exa
   item=ads(f,g,editor).savePlan({...plan({name:'Spring traffic v2'}),id:item.id,expectedRevision:item.revision}).plans[0];assert.equal(item.state,'draft','an edit clears the approval');assert.equal(item.approved,false);
 }));
 test('creating puts a PAUSED campaign and ad set on Meta; starting needs the switch, acknowledgement and the monthly cap',coachRun(async f=>{
-  const g=graph();await ready(f,g);let item=ads(f,g).savePlan(plan()).plans[0];item=ads(f,g).approve({id:item.id,expectedRevision:item.revision}).plans[0];
+  // The monthly cap counts this month's days only, so this test's plans start today: on a month's last day a plan
+  // starting tomorrow would have no days in the month.
+  const g=graph();await ready(f,g);let item=ads(f,g).savePlan(plan({startDate:day(0)})).plans[0];item=ads(f,g).approve({id:item.id,expectedRevision:item.revision}).plans[0];
   item=(await ads(f,g).create({id:item.id})).plans[0];assert.equal(item.state,'created');assert.ok(item.providerCampaignId);
   const created=g.calls.filter(call=>call.method==='POST');assert.deepEqual(plain(created.map(call=>call.params.status)),['PAUSED','PAUSED']);assert.equal(created[1].params.daily_budget,'2000');assert.equal(created[1].params.optimization_goal,'LINK_CLICKS');assert.equal(created[0].params.special_ad_categories,'[]');
   process.env.PLATFORM_ADS_ENABLED='0';
@@ -50,9 +52,10 @@ test('creating puts a PAUSED campaign and ad set on Meta; starting needs the swi
     await assert.rejects(ads(f,g).start({id:item.id}),/açık onay/);
     const editor=f.member('editor');await assert.rejects(ads(f,g,editor).start({id:item.id,acknowledged:true}),error=>error.status===403);
     item=(await ads(f,g).start({id:item.id,acknowledged:true})).plans[0];assert.equal(item.state,'active');
-    // A second plan that would push this month's planned spend over the cap cannot start.
-    const planned=ads(f,g).read().plannedActiveMinor;assert.ok(planned>=2000);ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:planned+2000,expectedRevision:1});
-    let second=ads(f,g).savePlan(plan({name:'Second',dailyBudgetMinor:2500,endDate:day(1)})).plans.find(row=>row.name==='Second');second=ads(f,g).approve({id:second.id,expectedRevision:second.revision}).plans.find(row=>row.id===second.id);
+    // A second plan that would push this month's planned spend over the cap cannot start. The cap stays at least the
+    // daily cap, and the second plan's one day today is one unit more than the room left under it, on any date.
+    const planned=ads(f,g).read().plannedActiveMinor;assert.ok(planned>=2000);const cap=Math.max(planned+2000,5000);ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:cap,expectedRevision:1});
+    let second=ads(f,g).savePlan(plan({name:'Second',dailyBudgetMinor:cap-planned+1,startDate:day(0),endDate:day(0)})).plans.find(row=>row.name==='Second');second=ads(f,g).approve({id:second.id,expectedRevision:second.revision}).plans.find(row=>row.id===second.id);
     second=(await ads(f,g).create({id:second.id})).plans.find(row=>row.id===second.id);
     await assert.rejects(ads(f,g).start({id:second.id,acknowledged:true}),/aylık tavanı/);
     // Any writer can pause; Meta's reported spend is stored as reported.
