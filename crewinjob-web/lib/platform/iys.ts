@@ -2,6 +2,7 @@ import 'server-only';
 import { createHmac, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import { PlatformRepository } from './repository';
+import { ryzevoFeature } from './ryzevo-features';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { emailAddress, emailIdentity, maskEmail } from './email-safety';
@@ -84,7 +85,7 @@ export class ProjectIys {
   private project() { return this.repo.workspace(this.scope.subject, ...args(this.scope))?.project; }
   private can(permission: 'read' | 'connections.manage' | 'recipients.manage') { return this.repo.can(this.scope.subject, ...args(this.scope), permission); }
   private authorize(manage = false) {
-    if (!this.can('read') || this.project()?.productPack !== 'standard' || manage && !this.can('connections.manage')) throw new MarketingStoreError('İYS ayarlarına erişim reddedildi.', 403);
+    if (!this.can('read') || !ryzevoFeature(this.project()?.productPack, 'iys') || manage && !this.can('connections.manage')) throw new MarketingStoreError('İYS ayarlarına erişim reddedildi.', 403);
   }
   private ensure(now = new Date().toISOString()) { this.db.prepare("INSERT OR IGNORE INTO platform_iys_settings(organization_id,project_id,pull_state,updated_at) VALUES(?,?,'idle',?)").run(...args(this.scope), now); }
   view(): IysView {

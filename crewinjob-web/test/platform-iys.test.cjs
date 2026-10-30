@@ -40,7 +40,9 @@ test('declaration gates live sends: missing blocks, "no" passes, "yes" needs a c
   const viewer=f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'iys-viewer',password:'fixture-password-123',role:'viewer'});
   assert.throws(()=>new ProjectIys(f.db,{...f.scope,subject:viewer.userId},KEY).declare({scope:'none'}),error=>error.status===403);
   assert.equal(new ProjectIys(f.db,{...f.scope,subject:viewer.userId},KEY).view().scope,'tr','viewers can read the declaration');
-  assert.throws(()=>new ProjectIys(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'},KEY).view(),error=>error.status===403);
+  // Crewin has its own declaration for its WhatsApp sender (test/crewin-iys.test.cjs); a project's declaration is not Crewin's.
+  assert.equal(new ProjectIys(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'},KEY).view().scope,null);
+  assert.throws(()=>new ProjectIys(f.db,{subject:f.a.userId,organizationId:'crewin',projectId:'crewinjob'},KEY).view(),error=>error.status===403,'only Crewin’s own account');
  }finally{f.db.close();}
 });
 

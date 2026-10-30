@@ -4,7 +4,7 @@
 
 ## Decisions
 - **Duty:** İYS is mandatory for a project that declares "we send commercial messages to recipients in Turkey". Without a declaration, live email and WhatsApp stay closed; rehearsals work. A "no" is recorded with who and when.
-- **Scope:** Ryzevo projects only. Crewin's own email and WhatsApp tools do not check İYS (a later, separately approved step). Since 30 October, Crewin's WhatsApp sends need a consent recorded in the panel (`docs/CREWIN-WHATSAPP-CONSENT.md`).
+- **Scope:** Ryzevo projects, and Crewin's own WhatsApp sender. Crewin declares and connects on its own project; its gate applies only to Turkish (+90) numbers, and its email does not check İYS yet (`docs/CREWIN-WHATSAPP-CONSENT.md`).
 - **Recipients:** treated as individuals (BIREYSEL); the merchant (tacir) exemption is not used.
 - **Channels:** email is EPOSTA; WhatsApp is MESAJ.
 - **Deadline:** three business days. Weekends are skipped; public holidays are not counted as days off, so the deadline is never later than the legal one.
@@ -71,7 +71,8 @@
   - the tacir exemption;
   - SMS;
   - a public-holiday calendar;
-  - İYS for Crewin's legacy senders. Its WhatsApp route has had its own consent and opt-out list since 30 October (`docs/CREWIN-WHATSAPP-CONSENT.md`).
+  - İYS for Crewin's email (a second step with the Crewin backend). Crewin's WhatsApp is covered.
+  - Turkish numbers only: Crewin applies the gate to +90 numbers; Ryzevo projects still apply it to every number.
 
 ## Tests
 `test/platform-iys.test.cjs` uses a fake İYS transport, with no network. It covers:

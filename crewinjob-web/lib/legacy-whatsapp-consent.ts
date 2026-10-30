@@ -5,11 +5,15 @@
 // panel (team), from a STOP reply or WhatsApp's own "stop marketing" choice on the signed webhook (reply), and from
 // Meta refusing a message with 131050 (meta). As in Ryzevo projects, an opted-out number comes back only with a
 // consent obtained after the opt-out day.
+// İYS (lib/crewin-iys.ts) comes on top when the routes pass it: no live send before Crewin's declaration, a Turkish
+// (+90) number also needs İYS's consent, and consents and opt-outs of Turkish numbers are queued for İYS.
 import 'server-only';
 import path from 'path';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readJson, withFileLock, writeJsonAtomic } from './json-store';
 import { WHATSAPP_STOP_WORDS } from './platform/whatsapp-types';
+import { IYS_SOURCES, type IysGateReason, type IysSource } from './platform/iys-types';
+import type { CrewinIys, CrewinIysReport } from './crewin-iys';
 
 export const LEGACY_WHATSAPP_FILE = path.join(process.cwd(), 'data', 'whatsapp-consents.json');
 export const LEGACY_WHATSAPP_LIMITS = { numbers: 500, check: 50, recent: 10, entries: 100000, evidence: 160 } as const;
@@ -23,7 +27,8 @@ const FREE_TEXT_NOTICE = 'Serbest metin yalnızca son 24 saat içinde size yazm�
 
 export type OptOutSource = 'reply' | 'team' | 'meta';
 export type ConsentState = 'consented' | 'opted_out' | 'none' | 'invalid';
-export type SkipReason = 'invalid' | 'no_consent' | 'opted_out';
+export type SkipReason = 'invalid' | 'no_consent' | 'opted_out' | 'iys';
+export type Skipped = { hint: string; reason: SkipReason; iys?: IysGateReason };
 type Entry = {
   hint: string;
   consentAt?: string;  // YYYY-MM-DD: when the person gave consent
@@ -81,9 +86,9 @@ function phoneList(raw: unknown): string[] {
 }
 
 /** Splits numbers into those that may get a message (normalised, once each) and those skipped with the reason. */
-export function legacyWhatsAppGate(numbers: unknown[], file = LEGACY_WHATSAPP_FILE): { allowed: string[]; skipped: { hint: string; reason: SkipReason }[] } {
+export function legacyWhatsAppGate(numbers: unknown[], file = LEGACY_WHATSAPP_FILE): { allowed: string[]; skipped: Skipped[] } {
   const value = secret(), list = value ? readStore(file) : {}, seen = new Set<string>();
-  const allowed: string[] = [], skipped: { hint: string; reason: SkipReason }[] = [];
+  const allowed: string[] = [], skipped: Skipped[] = [];
   for (const raw of numbers) {
     const phone = normalizeWhatsAppNumber(raw);
     if (!phone) { skipped.push({ hint: hint(String(raw ?? '').trim()), reason: 'invalid' }); continue; }
@@ -96,8 +101,22 @@ export function legacyWhatsAppGate(numbers: unknown[], file = LEGACY_WHATSAPP_FI
   return { allowed, skipped };
 }
 
-/** Records consent for up to 500 numbers. A number that opted out needs a consent obtained after the opt-out day. */
-export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evidence?: unknown; consentAt?: unknown }, actor: string, file = LEGACY_WHATSAPP_FILE) {
+/** İYS's register is for Turkish numbers: only these are checked in İYS and reported to it. */
+export const isTurkishNumber = (phone: string) => /^\+90\d{10}$/.test(phone);
+// What happened on the İYS side: queued for İYS, too old to report (its İYS status must be queried) or not queued.
+type IysTally = { queued: number; tooOld: number; failed: number };
+function reportToIys(iys: CrewinIys, phones: string[], report: (phone: string) => CrewinIysReport): IysTally {
+  const tally: IysTally = { queued: 0, tooOld: 0, failed: 0 };
+  for (const phone of phones.filter(isTurkishNumber)) {
+    try { const result = report(phone); if (result === 'queued') tally.queued++; else if (result === 'too_old') tally.tooOld++; else if (result === 'invalid') tally.failed++; }
+    catch { tally.failed++; }
+  }
+  return tally;
+}
+
+/** Records consent for up to 500 numbers. A number that opted out needs a consent obtained after the opt-out day.
+ *  After a "Turkey" İYS declaration, consents of Turkish numbers also need their İYS source and are queued for İYS. */
+export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evidence?: unknown; consentAt?: unknown; source?: unknown }, actor: string, file = LEGACY_WHATSAPP_FILE, iys?: CrewinIys) {
   const value = requireSecret();
   const evidence = typeof raw.evidence === 'string' ? raw.evidence.replace(/\s+/g, ' ').trim().slice(0, LEGACY_WHATSAPP_LIMITS.evidence) : '';
   if (!evidence) throw new LegacyWhatsAppError('İzin kanıtı (form, kayıt veya belge referansı) gerekli.');
@@ -105,7 +124,10 @@ export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evid
   if (!/^\d{4}-\d{2}-\d{2}$/.test(consentAt) || Number.isNaN(day) || new Date(day).toISOString().slice(0, 10) !== consentAt || consentAt > turkishDay(new Date()))
     throw new LegacyWhatsAppError('Geçerli bir izin tarihi girin; gelecek tarih olamaz.');
   const phones = phoneList(raw.numbers);
-  return withFileLock(file, () => {
+  const source = typeof raw.source === 'string' && (IYS_SOURCES as readonly string[]).includes(raw.source) ? raw.source as IysSource : null;
+  if (iys?.scope() === 'tr' && !source && phones.some(isTurkishNumber)) throw new LegacyWhatsAppError('Türk numaraları İYS’ye bildirilir: izin nasıl alındı, seçin.');
+  const fresh: string[] = [];
+  const result = await withFileLock(file, () => {
     const list = readStore(file), now = new Date().toISOString();
     const blocked = phones.filter(phone => { const out = list[keyOf(phone, value)]?.optedOutAt; return out && consentAt <= turkishDay(new Date(out)); });
     if (blocked.length) throw new LegacyWhatsAppError(`${blocked.length} numara daha önce WhatsApp mesajlarından çıktı; yeniden eklemek için çıkıştan sonraki bir tarihte alınmış izin gerekir.`, 409);
@@ -116,31 +138,37 @@ export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evid
       if (!entry && size++ >= LEGACY_WHATSAPP_LIMITS.entries) throw new LegacyWhatsAppError('WhatsApp izin listesi dolu.', 507);
       if (entry?.optedOutAt) renewed++; else added++;
       list[key] = { hint: hint(phone), consentAt, evidence, consentBy: actor, recordedAt: now };
+      fresh.push(phone);
     }
     if (added || renewed) writeJsonAtomic(file, list);
     return { added, renewed, existing };
   });
+  // Only new consents go to İYS; one already on record was reported (or queried) when it was recorded.
+  return iys ? { ...result, iys: reportToIys(iys, fresh, phone => iys.report(phone, 'ONAY', source, consentAt, actor)) } : result;
 }
 
+const OPT_OUT_ACTORS: Record<OptOutSource, string> = { team: 'panel', reply: 'whatsapp-webhook', meta: 'whatsapp-send' };
 /** Records opt-outs. The first opt-out time is kept; the consent details stay for the record. An opt-out is never
- *  refused for space: only consents count towards the list limit. */
-export async function recordLegacyWhatsAppOptOut(numbers: unknown, source: OptOutSource, file = LEGACY_WHATSAPP_FILE) {
+ *  refused for space: only consents count towards the list limit. New opt-outs of Turkish numbers are queued for İYS. */
+export async function recordLegacyWhatsAppOptOut(numbers: unknown, source: OptOutSource, file = LEGACY_WHATSAPP_FILE, iys?: CrewinIys, actor = OPT_OUT_ACTORS[source]) {
   // The panel refuses a list with a bad number; webhook and Meta numbers are machine-made, so a bad one is just ignored.
   const phones = source === 'team' ? phoneList(numbers) : [...new Set((Array.isArray(numbers) ? numbers : []).map(normalizeWhatsAppNumber).filter((phone): phone is string => Boolean(phone)))];
   if (!phones.length) return { optedOut: 0, already: 0 };
-  const value = requireSecret();
-  return withFileLock(file, () => {
+  const value = requireSecret(), fresh: string[] = [];
+  const result = await withFileLock(file, () => {
     const list = readStore(file), now = new Date().toISOString();
     let optedOut = 0, already = 0;
     for (const phone of phones) {
       const key = keyOf(phone, value), entry = list[key];
       if (entry?.optedOutAt) { already++; continue; }
       list[key] = { ...(entry || { hint: hint(phone) }), optedOutAt: now, optOutSource: source };
-      optedOut++;
+      optedOut++; fresh.push(phone);
     }
     if (optedOut) writeJsonAtomic(file, list);
     return { optedOut, already };
   });
+  const today = new Date().toISOString();
+  return iys ? { ...result, iys: reportToIys(iys, fresh, phone => iys.report(phone, 'RET', null, today, actor)) } : result;
 }
 
 /** What the record says about each of up to 50 numbers. */
@@ -200,7 +228,7 @@ export function verifyLegacyWhatsAppHook(query: URLSearchParams): string | null 
  * "stop marketing messages" choice record a reply opt-out; a message Meta refused with 131050 records a meta opt-out.
  * Nothing else is kept: no message text, no sender, no delivery state.
  */
-export async function receiveLegacyWhatsAppHook(body: Uint8Array, signature: string | null, file = LEGACY_WHATSAPP_FILE): Promise<{ optOuts: number }> {
+export async function receiveLegacyWhatsAppHook(body: Uint8Array, signature: string | null, file = LEGACY_WHATSAPP_FILE, iys?: CrewinIys): Promise<{ optOuts: number }> {
   const appSecret = hookSecret(), phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
   if (!appSecret || !verifyToken() || !phoneNumberId) throw new LegacyWhatsAppError('WhatsApp bildirimleri bu sunucuda yapılandırılmadı.', 503);
   const expected = Buffer.from(`sha256=${createHmac('sha256', appSecret).update(body).digest('hex')}`), given = Buffer.from(signature || '');
@@ -228,7 +256,7 @@ export async function receiveLegacyWhatsAppHook(body: Uint8Array, signature: str
       if (from && preference.category === 'marketing_messages' && preference.value === 'stop') replies.push(from);
     }
   }
-  const optOuts = (await recordLegacyWhatsAppOptOut(replies, 'reply', file)).optedOut + (await recordLegacyWhatsAppOptOut(refused, 'meta', file)).optedOut;
+  const optOuts = (await recordLegacyWhatsAppOptOut(replies, 'reply', file, iys)).optedOut + (await recordLegacyWhatsAppOptOut(refused, 'meta', file, iys)).optedOut;
   return { optOuts };
 }
 
@@ -244,42 +272,55 @@ const SKIP_ERRORS: Record<SkipReason, string> = {
   invalid: 'Numaraları ülke koduyla, uluslararası biçimde girin (ör. +905321234567).',
   no_consent: 'Bu numara için kayıtlı WhatsApp izni yok; mesaj gönderilmedi.',
   opted_out: 'Bu numara WhatsApp mesajlarından çıktı; mesaj gönderilmedi.',
+  iys: 'İYS bu numaraya gönderime izin vermiyor; mesaj gönderilmedi.',
 };
-function skipCounts(skipped: { reason: SkipReason }[]): Record<SkipReason, number> {
-  const out: Record<SkipReason, number> = { invalid: 0, no_consent: 0, opted_out: 0 };
-  for (const item of skipped) out[item.reason]++;
+function skipCounts(skipped: { reason: SkipReason }[], withIys: boolean): Partial<Record<SkipReason, number>> {
+  const out: Partial<Record<SkipReason, number>> = { invalid: 0, no_consent: 0, opted_out: 0, ...(withIys ? { iys: 0 } : {}) };
+  for (const item of skipped) out[item.reason] = (out[item.reason] || 0) + 1;
   return out;
 }
 
-/** The legacy /api/messaging/whatsapp/send logic: every mode sends only to numbers with consent and no opt-out. */
-export async function sendLegacyWhatsApp(raw: unknown, sender: LegacyWhatsAppSender, file = LEGACY_WHATSAPP_FILE): Promise<{ status: number; body: Record<string, unknown> }> {
+/** The legacy /api/messaging/whatsapp/send logic: every mode sends only to numbers with consent and no opt-out. With
+ *  İYS (always from the route): nothing goes before Crewin's declaration, and a Turkish number also needs İYS. */
+export async function sendLegacyWhatsApp(raw: unknown, sender: LegacyWhatsAppSender, file = LEGACY_WHATSAPP_FILE, iys?: CrewinIys): Promise<{ status: number; body: Record<string, unknown> }> {
   const body = object(raw) || {};
   const { mode, to, numbers, text, templateName, langCode, components } = body;
+  const gate = (list: unknown[]) => {
+    const { allowed, skipped } = legacyWhatsAppGate(list, file);
+    if (!iys) return { allowed, skipped };
+    const pass: string[] = [];
+    for (const phone of allowed) { const reason = iys.gate(phone); if (reason) skipped.push({ hint: hint(phone), reason: 'iys', iys: reason }); else pass.push(phone); }
+    return { allowed: pass, skipped };
+  };
+  const blocked = () => { const message = iys?.block(); return message ? { status: 409, body: { error: message } } : null; };
   if (mode === 'single' || mode === 'template') {
     if (mode === 'single' && (typeof to !== 'string' || !to || typeof text !== 'string' || !text)) return { status: 400, body: { error: '"to" and "text" are required.' } };
     if (mode === 'template' && (typeof to !== 'string' || !to || typeof templateName !== 'string' || !templateName || typeof langCode !== 'string' || !langCode)) {
       return { status: 400, body: { error: '"to", "templateName" and "langCode" are required.' } };
     }
     if (!secret()) return { status: 503, body: { error: 'WhatsApp izin kaydı için sunucuda TRACKING_SECRET veya AUTH_SECRET gerekli.' } };
-    const { allowed, skipped } = legacyWhatsAppGate([to], file);
-    if (!allowed.length) return { status: skipped[0].reason === 'invalid' ? 400 : 409, body: { error: SKIP_ERRORS[skipped[0].reason], skipped: skipCounts(skipped), skippedNumbers: skipped } };
+    const stop = blocked(); if (stop) return stop;
+    const { allowed, skipped } = gate([to]);
+    if (!allowed.length) return { status: skipped[0].reason === 'invalid' ? 400 : 409, body: { error: SKIP_ERRORS[skipped[0].reason], skipped: skipCounts(skipped, Boolean(iys)), skippedNumbers: skipped } };
     const result = mode === 'single'
       ? await sender.sendWhatsAppMessage(allowed[0], text as string)
       : await sender.sendWhatsAppTemplate(allowed[0], templateName as string, langCode as string, Array.isArray(components) ? components : []);
-    const optedOutByMeta = !result.success && result.code === MARKETING_STOPPED ? (await recordLegacyWhatsAppOptOut(allowed, 'meta', file)).optedOut : 0;
+    const optedOutByMeta = !result.success && result.code === MARKETING_STOPPED ? (await recordLegacyWhatsAppOptOut(allowed, 'meta', file, iys)).optedOut : 0;
     return { status: 200, body: { ...result, ...(optedOutByMeta ? { optedOutByMeta } : {}), ...(mode === 'single' ? { notice: FREE_TEXT_NOTICE } : {}) } };
   }
   if (mode === 'broadcast') {
     if (!Array.isArray(numbers) || numbers.length === 0 || typeof text !== 'string' || !text) return { status: 400, body: { error: '"numbers" and "text" are required.' } };
     if (numbers.length > LEGACY_WHATSAPP_LIMITS.numbers) return { status: 400, body: { error: 'Max 500 numbers per request.' } };
     if (!secret()) return { status: 503, body: { error: 'WhatsApp izin kaydı için sunucuda TRACKING_SECRET veya AUTH_SECRET gerekli.' } };
-    const { allowed, skipped } = legacyWhatsAppGate(numbers, file), counts = skipCounts(skipped);
+    const stop = blocked(); if (stop) return stop;
+    const { allowed, skipped } = gate(numbers), counts = skipCounts(skipped, Boolean(iys));
     if (!allowed.length) {
-      return { status: 409, body: { error: 'Listedeki hiçbir numara için geçerli WhatsApp izni yok; gönderim yapılmadı.', sent: 0, failed: 0, errors: [], skipped: counts, skippedNumbers: skipped } };
+      const error = counts.iys ? 'Listedeki numaraların hiçbirine gönderilemedi (izin, çıkış veya İYS kontrolü); gönderim yapılmadı.' : 'Listedeki hiçbir numara için geçerli WhatsApp izni yok; gönderim yapılmadı.';
+      return { status: 409, body: { error, sent: 0, failed: 0, errors: [], skipped: counts, skippedNumbers: skipped } };
     }
     const { results, ...result } = await sender.broadcastWhatsApp(allowed, text);
     const refused = (results || []).filter(item => !item.success && item.code === MARKETING_STOPPED).map(item => item.to);
-    const optedOutByMeta = refused.length ? (await recordLegacyWhatsAppOptOut(refused, 'meta', file)).optedOut : 0;
+    const optedOutByMeta = refused.length ? (await recordLegacyWhatsAppOptOut(refused, 'meta', file, iys)).optedOut : 0;
     return { status: 200, body: { ...result, skipped: counts, skippedNumbers: skipped, ...(optedOutByMeta ? { optedOutByMeta } : {}), notice: FREE_TEXT_NOTICE } };
   }
   return { status: 400, body: { error: `Invalid mode: ${String(mode)}` } };

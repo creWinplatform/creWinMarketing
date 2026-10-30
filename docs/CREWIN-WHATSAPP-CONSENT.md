@@ -39,23 +39,21 @@ Eski Crewin panelinin WhatsApp gönderimi (`/api/messaging/whatsapp/send`) önce
   - `user_preferences` olayının alan adları Meta'nın güncel belgesine göre yazıldı (`wa_id`, `category: marketing_messages`, `value: stop`); canlıya çıkmadan bir test olayıyla doğrulayın.
   - `wa_id` her zaman telefon numarası olmayabilir; numara olmayan kimlik yok sayılır.
 
-## İYS notu (öneri)
-Crewin de ileride Ryzevo'daki İYS beyanını ve kapısını (`docs/SAAS-IYS.md`) almalı. Bu, ayrı ve ayrıca onaylanacak bir adım olur.
-- **Neden:**
-  - Crewin, Türkiye'deki alıcılara e-posta ve WhatsApp ile ticari ileti gönderiyor.
-  - Canlıya çıkış listesinde "İYS kaydı ve ticari ileti izinleri" maddesi zaten var.
-- **Bu değişikliğin hazırladığı zemin:**
-  - Tüm WhatsApp gönderimi tek kapıdan geçer; İYS kontrolü oraya eklenir.
-  - Çıkışlar RET olarak bildirilebilir.
-  - İzinlerin tarihi ve kanıtı tutulur.
-- **O adımda ayrıca gerekecekler:**
-  - "izin nasıl alındı" sorusu (HS_* kaynağı);
-  - ONAY yüklemek için numaranın şifreli saklanması;
-  - e-posta tarafına da aynı kapı;
-  - hukuki teyit (WhatsApp'ın MESAJ sayılması, 3 iş günü kuralı).
+## İYS (1. aşama: WhatsApp)
+Crewin, Ryzevo projeleriyle aynı İYS beyanını ve bağlantısını kendi projesinde (`crewin/crewinjob`) kullanır: Proje ayarları → Gönderim izinleri (İYS). Kod: `lib/crewin-iys.ts`; şema değişikliği yok.
+- **Beyan yoksa** WhatsApp gönderimi hiç başlamaz (409). "Hayır" beyanında İYS denetimi yapılmaz.
+- **"Türkiye" beyanında:**
+  - Kapı yalnız +90 numaralara uygulanır (sahibin kararı). Diğer numaralar yalnız yerel izin ve çıkış listesine tabidir.
+  - +90 numara İYS onayı ister (`iysGate`): onay yoksa, ret varsa, durum 24 saatten eskiyse ya da İYS bağlı değilse atlanır. Sonuçta `skipped.iys` ve nedeni yer alır.
+  - İzin kaydında +90 numaralar için "İzin nasıl alındı?" (HS_* kaynağı) zorunludur. Yeni izinler ONAY olarak kuyruğa girer; 3 iş gününden eskiler giremez, onları "İYS'de sorgula" ile sorgulayın.
+  - Çıkışlar (panel, STOP yanıtı, Meta 131050) RET olarak kuyruğa girer ve göndermeyi hemen durdurur.
+  - Worker kuyruğu yükler ve İYS'nin değişiklik akışını okur; Crewin için ayrıca bir şey gerekmez.
+- **Sorgu:** WhatsApp izinleri bölümündeki "İYS'de sorgula" yazılan +90 numaraları sorar. Proje ayarlarındaki sorgu, İYS'nin daha önce bilgi verdiği numaraları yeniden sorar (en çok 50).
+- **Henüz yok (2. aşama):** Crewin e-postası İYS'ye bakmıyor. Alıcılar backend'den geliyor; izin kayıt anında orada toplanıyor (`docs/CREWIN-BACKEND-REQUESTS.md` madde 6). Şirket ve prospect e-postaları için tacir muafiyeti kararı da o aşamada.
+- **Hukuki teyit:** WhatsApp'ın MESAJ sayılması, 3 iş günü kuralı ve "+90 dışı numaralara İYS uygulanmaz" kararı. Ryzevo projeleri bugün bütün numaralara İYS uyguluyor.
 
 ## Testler
-`test/legacy-whatsapp-consent.test.cjs`, `npm run test:platform` ile birlikte çalışır (tek başına: `npm run test:legacy:whatsapp`). Geçici dosya ve sahte gönderici kullanır; ağa çıkmaz. Kapsadıkları:
+İYS kısmı: `test/crewin-iys.test.cjs` (sahte İYS taşıyıcısı). `test/legacy-whatsapp-consent.test.cjs`, `npm run test:platform` ile birlikte çalışır (tek başına: `npm run test:legacy:whatsapp`). Geçici dosya ve sahte gönderici kullanır; ağa çıkmaz. Kapsadıkları:
 - numara biçimleri;
 - kanıt ve tarih kuralları;
 - kapının üç modu;

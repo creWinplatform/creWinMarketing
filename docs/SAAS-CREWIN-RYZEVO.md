@@ -24,7 +24,7 @@ The workspace still opens with the single Crewin login. Team accounts are a sepa
   - Every other route keeps its platform-only check.
 - **Features:** `ryzevoFeature(pack, feature)` (`lib/platform/ryzevo-features.ts`) is the single rule.
   - Standard projects get everything.
-  - Crewin gets: coach, compass_api, brand, seo_ops, ai_visibility, alerts, push, approvals, measurements, monthly_report, budget, inbox, connections_google, connections_meta.
+  - Crewin gets: coach, compass_api, brand, seo_ops, ai_visibility, alerts, push, approvals, measurements, monthly_report, budget, inbox, connections_google, connections_meta, iys (for Crewin's own WhatsApp sender, `docs/CREWIN-WHATSAPP-CONSENT.md`).
   - The stores of these features, and their worker steps, use it instead of `productPack==='standard'`.
 - **Connections:** `marketing-routes.ts` `context()` still returns null for legacy sessions, so the Crewin tabs keep their data sources.
   - Only Project settings → Connections asks for the Ryzevo store explicitly (`?store=ryzevo`). There, Crewin can list, verify and revoke its Google and Meta connections.
@@ -55,7 +55,8 @@ The workspace still opens with the single Crewin login. Team accounts are a sepa
   - there is no social publication queue for Crewin.
 - **Project settings:**
   - Connections: Google (GA4, Search Console) and Meta only, with a note saying the Crewin tools keep their own accounts;
-  - Brand voice & competitors.
+  - Brand voice & competitors;
+  - Sending consents (İYS): Crewin's declaration and İYS connection, used by its WhatsApp sender (+90 numbers).
 - **Job guide:**
   - four new jobs: growth strategy, appear in ChatGPT and Gemini, automatic tracking on Google, answer comments and messages;
   - a monthly-report step in the results job;

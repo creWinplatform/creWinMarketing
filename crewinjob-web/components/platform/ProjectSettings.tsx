@@ -33,7 +33,9 @@ export default function ProjectSettings({
   // The Crewin workspace's single account gets Ryzevo's Google and Meta connections and the brand studio (ryzevoFeature);
   // product data and plan stay with standard projects.
   const crewin = project.productPack === 'crewin' && workspace.accessMode === 'legacy_single_account',
-    brandOpen = (workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'brand'));
+    brandOpen = (workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'brand')),
+    // Crewin declares and connects İYS for its own WhatsApp sender.
+    iysOpen = (workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'iys'));
   const canConnections =
       (workspace.accessMode === 'platform_account' || crewin) &&
       workspace.permissions?.includes('connections.manage'),
@@ -54,14 +56,14 @@ export default function ProjectSettings({
     else if (canConnections && project.productPack==='standard' && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
     else if(brandOpen&&requested==='brand')setSection('brand');
-    else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='iys')setSection('iys');
+    else if(iysOpen&&requested==='iys')setSection('iys');
     else if (canOperate && requested === 'operations') setSection('operations');
     else if (
       requested === 'team' &&
       (canTeam || workspace.accessMode === 'platform_account')
     )
       setSection('team');
-  }, [canConnections, canTeam, canOperate, brandOpen, workspace.accessMode, project.productPack]);
+  }, [canConnections, canTeam, canOperate, brandOpen, iysOpen, workspace.accessMode, project.productPack]);
   return (
     <section className="min-w-0">
       <header className="studio-page-heading">
@@ -113,7 +115,7 @@ export default function ProjectSettings({
           },
           {
             id:'iys',Icon:ShieldCheck,label:tr?'Gönderim izinleri (İYS)':'Sending consents (IYS)',
-            visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
+            visible:iysOpen,
           },
           {
             id:'plan',Icon:Gauge,label:tr?'Plan & kullanım':'Plan & usage',
@@ -260,7 +262,7 @@ export default function ProjectSettings({
         </div>
       )}
       {section === 'data' && canConnections && project.productPack==='standard' && <ProductDataSources key={project.id} lang={lang} />}
-      {section==='iys'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<div className="mt-6"><IysPanel key={'iys-'+project.id} lang={lang}/></div>}
+      {section==='iys'&&iysOpen&&<div className="mt-6"><IysPanel key={'iys-'+project.id} lang={lang} crewin={crewin}/></div>}
       {section==='brand'&&brandOpen&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<AgencyLinksPanel key={'agency-links-'+project.id} lang={lang}/>}

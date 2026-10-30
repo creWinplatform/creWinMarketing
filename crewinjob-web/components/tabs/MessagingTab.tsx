@@ -8,6 +8,7 @@ import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
 import { translateMessage } from '@/lib/i18n/messages';
 import Msg from '@/components/Msg';
+import { IYS_REASON_LABELS, IYS_SOURCE_LABELS, IYS_SOURCES, type IysGateReason } from '@/lib/platform/iys-types';
 import type { StatsResponse } from '@/lib/types';
 import { urlView } from '@/lib/url-view';
 
@@ -18,11 +19,15 @@ interface Props {
 }
 
 // ── WhatsApp izinleri (lib/legacy-whatsapp-consent.ts) ──────────────────────────
-type WaSkipReason = 'no_consent' | 'opted_out' | 'invalid';
+type WaSkipReason = 'no_consent' | 'opted_out' | 'invalid' | 'iys';
 type WaConsentState = 'consented' | 'opted_out' | 'none' | 'invalid';
 interface WaConsentView { hint: string; state: WaConsentState; consentAt?: string; evidence?: string; optedOutAt?: string; optOutSource?: 'reply' | 'team' | 'meta' }
-interface WaConsentSummary { consented: number; optedOut: number; recent: WaConsentView[]; ready: boolean; hook: boolean }
-interface WaConsentOutcome { action: 'consent' | 'opt_out' | 'check'; error?: string; added?: number; renewed?: number; existing?: number; optedOut?: number; already?: number; items?: WaConsentView[] }
+// iys: Crewin's İYS declaration (Project settings → Sending consents); null when it could not be read.
+interface WaConsentSummary { consented: number; optedOut: number; recent: WaConsentView[]; ready: boolean; hook: boolean; iys: { scope: 'tr' | 'none' | null; connected: boolean } | null }
+interface WaConsentOutcome {
+  action: 'consent' | 'opt_out' | 'check' | 'iys_check'; error?: string; added?: number; renewed?: number; existing?: number; optedOut?: number; already?: number; items?: WaConsentView[];
+  iys?: { queued: number; tooOld: number; failed: number }; checked?: number; onay?: number; ret?: number; none?: number;
+}
 const WA_STATES: Record<WaConsentState, { labelTr: string; labelEn: string; color: string }> = {
   consented: { labelTr: 'İzinli',          labelEn: 'Consented',      color: 'text-green-700 dark:text-green-300' },
   opted_out: { labelTr: 'Çıktı',           labelEn: 'Opted out',      color: 'text-red-700 dark:text-red-300' },
@@ -38,6 +43,7 @@ const WA_SKIPS: Record<WaSkipReason, { labelTr: string; labelEn: string }> = {
   no_consent: { labelTr: 'izin yok',  labelEn: 'no consent' },
   opted_out:  { labelTr: 'çıkmış',    labelEn: 'opted out' },
   invalid:    { labelTr: 'geçersiz',  labelEn: 'invalid' },
+  iys:        { labelTr: 'İYS',       labelEn: 'IYS' },
 };
 
 // ── E-posta re-aktivasyon ────────────────────────────────────────────────────
@@ -551,7 +557,7 @@ export default function MessagingTab({ stats }: Props) {
   // WhatsApp'ta kanal modu yok: başlangıçtaki (ya da TG sekmesinden kalan) 'channel' tekli gönderim sayılır
   const waMode: 'single' | 'broadcast' = msgMode === 'broadcast' ? 'broadcast' : 'single';
   const [sendLoading,  setSendLoading]  = useState(false);
-  const [sendResult,   setSendResult]   = useState<{ sent?: number; failed?: number; success?: boolean; error?: string; skipped?: Partial<Record<WaSkipReason, number>>; skippedNumbers?: { hint: string; reason: WaSkipReason }[]; optedOutByMeta?: number } | null>(null);
+  const [sendResult,   setSendResult]   = useState<{ sent?: number; failed?: number; success?: boolean; error?: string; skipped?: Partial<Record<WaSkipReason, number>>; skippedNumbers?: { hint: string; reason: WaSkipReason; iys?: IysGateReason }[]; optedOutByMeta?: number } | null>(null);
 
   // ── WA/TG/Email config status ───────────────────────────────────────────────
   const [msgConfig, setMsgConfig] = useState<{ whatsapp: { configured: boolean }; telegram: { configured: boolean }; email: { configured: boolean } } | null>(null);
@@ -564,6 +570,7 @@ export default function MessagingTab({ stats }: Props) {
   const [waConsentNumbers,  setWaConsentNumbers]  = useState('');
   const [waConsentEvidence, setWaConsentEvidence] = useState('');
   const [waConsentDate,     setWaConsentDate]     = useState('');
+  const [waConsentSource,   setWaConsentSource]   = useState(''); // İYS: izin nasıl alındı (HS_*)
   const [waConsentBusy,     setWaConsentBusy]     = useState(false);
   const [waConsentOutcome,  setWaConsentOutcome]  = useState<WaConsentOutcome | null>(null);
   const [waToday,           setWaToday]           = useState('');
@@ -582,7 +589,7 @@ export default function MessagingTab({ stats }: Props) {
       const res = await fetch('/api/messaging/whatsapp/consents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, numbers: waConsentNumbers.split('\n').map(s => s.trim()).filter(Boolean), evidence: waConsentEvidence, consentAt: waConsentDate }),
+        body: JSON.stringify({ action, numbers: waConsentNumbers.split('\n').map(s => s.trim()).filter(Boolean), evidence: waConsentEvidence, consentAt: waConsentDate, source: waConsentSource || undefined }),
       });
       const data = await res.json();
       // STOP yanıtları ve Meta çıkışları panelin dışında da kaydedilir; özet her işlemden sonra tazelenir
@@ -1001,6 +1008,18 @@ export default function MessagingTab({ stats }: Props) {
                     : (lang === 'tr' ? 'STOP webhook’u bağlı değil: STOP yazan ya da çıkmak isteyen numarayı aşağıdan “Çıkış kaydet” ile girin.' : 'The STOP webhook isn’t connected: enter a number that replied STOP or asked to leave with “Record opt-out” below.')}
                 </p>
               )}
+              {waConsent?.iys && (
+                <p className={`text-xs ${!waConsent.iys.scope || (waConsent.iys.scope === 'tr' && !waConsent.iys.connected) ? 'text-amber-700 dark:text-amber-300' : 'text-slate-600 dark:text-slate-400'}`}>
+                  {!waConsent.iys.scope
+                    ? (lang === 'tr' ? 'İYS beyanı yapılmadı: beyan yapılana kadar WhatsApp gönderimi kapalı.' : 'No IYS declaration yet: WhatsApp sending stays off until you declare.')
+                    : waConsent.iys.scope === 'none'
+                      ? (lang === 'tr' ? 'İYS beyanı: Türkiye’deki alıcılara ticari ileti gönderilmiyor; İYS denetimi yapılmaz.' : 'IYS declaration: no commercial messages to recipients in Turkey; no IYS check is made.')
+                      : waConsent.iys.connected
+                        ? (lang === 'tr' ? 'İYS açık: +90 numaralara yalnız İYS onayı varken gönderilir; buradaki izinler ve çıkışlar İYS’ye bildirilir.' : 'IYS is on: +90 numbers get messages only with an IYS consent; consents and opt-outs recorded here are reported to IYS.')
+                        : (lang === 'tr' ? 'İYS beyanı “Türkiye” ama İYS bağlı değil: +90 numaralara gönderilmez.' : 'The IYS declaration is “Turkey” but IYS isn’t connected: +90 numbers get nothing.')}
+                  {' '}<a href="/?tab=project&settings=iys" className="underline">{lang === 'tr' ? 'Gönderim izinleri (İYS)' : 'Sending consents (IYS)'}</a>
+                </p>
+              )}
               <Field label={lang === 'tr' ? 'Numaralar (her satıra bir tane)' : 'Numbers (one per line)'}>
                 <textarea value={waConsentNumbers} onChange={e => setWaConsentNumbers(e.target.value)}
                   placeholder={'+905XXXXXXXXX\n+905XXXXXXXXX'} rows={3}
@@ -1014,6 +1033,14 @@ export default function MessagingTab({ stats }: Props) {
                 <Field label={lang === 'tr' ? 'İzin tarihi' : 'Consent date'}>
                   <input type="date" value={waConsentDate} onChange={e => setWaConsentDate(e.target.value)} max={waToday || undefined} className={selectClass} />
                 </Field>
+                {waConsent?.iys?.scope === 'tr' && (
+                  <Field label={lang === 'tr' ? 'İzin nasıl alındı? (İYS, +90 numaralar için)' : 'How was consent obtained? (IYS, for +90 numbers)'}>
+                    <select value={waConsentSource} onChange={e => setWaConsentSource(e.target.value)} className={selectClass}>
+                      <option value="">{lang === 'tr' ? 'Seçin' : 'Choose'}</option>
+                      {IYS_SOURCES.map(source => <option key={source} value={source}>{IYS_SOURCE_LABELS[source][lang === 'tr' ? 0 : 1]}</option>)}
+                    </select>
+                  </Field>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button onClick={() => waConsentAction('consent')} disabled={waConsentBusy || !waConsentNumbers.trim() || !waConsentEvidence.trim() || !waConsentDate}
@@ -1028,6 +1055,12 @@ export default function MessagingTab({ stats }: Props) {
                   className="text-xs px-3 py-2 rounded-lg font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">
                   {lang === 'tr' ? 'Durumu sorgula' : 'Check status'}
                 </button>
+                {waConsent?.iys?.scope === 'tr' && waConsent.iys.connected && (
+                  <button onClick={() => waConsentAction('iys_check')} disabled={waConsentBusy || !waConsentNumbers.trim()}
+                    className="text-xs px-3 py-2 rounded-lg font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {lang === 'tr' ? 'İYS’de sorgula' : 'Check in IYS'}
+                  </button>
+                )}
               </div>
               {waConsentOutcome?.error && (
                 <p role="alert" className="text-xs text-red-700 dark:text-red-300"><Msg text={waConsentOutcome.error} /></p>
@@ -1042,6 +1075,14 @@ export default function MessagingTab({ stats }: Props) {
                   )}
                   {waConsentOutcome.action === 'check' && (
                     <ul className="space-y-1">{(waConsentOutcome.items || []).map((item, i) => <li key={i}><WaConsentLine item={item} lang={lang} locale={locale} /></li>)}</ul>
+                  )}
+                  {waConsentOutcome.iys && (waConsentOutcome.iys.queued + waConsentOutcome.iys.tooOld + waConsentOutcome.iys.failed) > 0 && (
+                    <p className="mt-1">İYS: {waConsentOutcome.iys.queued.toLocaleString(locale)} {lang === 'tr' ? 'bildirilecek' : 'to report'}
+                      {waConsentOutcome.iys.tooOld > 0 && <> · {waConsentOutcome.iys.tooOld.toLocaleString(locale)} {lang === 'tr' ? '3 iş gününden eski (İYS’de sorgulayın)' : 'older than 3 business days (check them in IYS)'}</>}
+                      {waConsentOutcome.iys.failed > 0 && <> · {waConsentOutcome.iys.failed.toLocaleString(locale)} {lang === 'tr' ? 'kuyruğa alınamadı' : 'could not be queued'}</>}</p>
+                  )}
+                  {waConsentOutcome.action === 'iys_check' && (
+                    <p>İYS: {(waConsentOutcome.checked ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'sorgulandı' : 'checked'} · {(waConsentOutcome.onay ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'onay' : 'consent'} · {(waConsentOutcome.ret ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'ret' : 'rejected'} · {(waConsentOutcome.none ?? 0).toLocaleString(locale)} {lang === 'tr' ? 'kaydı yok' : 'no record'}</p>
                   )}
                 </div>
               )}
@@ -1887,7 +1928,7 @@ export default function MessagingTab({ stats }: Props) {
                       {lang === 'tr' ? 'Atlanan numara' : 'Skipped numbers'}: <strong>{(sendResult.skippedNumbers?.length ?? 0).toLocaleString(locale)}</strong>
                       {' '}({(Object.keys(WA_SKIPS) as WaSkipReason[]).filter(reason => sendResult.skipped?.[reason]).map(reason => `${sendResult.skipped?.[reason]} ${lang === 'tr' ? WA_SKIPS[reason].labelTr : WA_SKIPS[reason].labelEn}`).join(' · ')})
                     </p>
-                    <p className="font-mono mt-1 break-words">{sendResult.skippedNumbers?.slice(0, 20).map(item => item.hint).join(', ')}{(sendResult.skippedNumbers?.length ?? 0) > 20 ? ' …' : ''}</p>
+                    <p className="font-mono mt-1 break-words">{sendResult.skippedNumbers?.slice(0, 20).map(item => item.iys ? `${item.hint} (${IYS_REASON_LABELS[item.iys][lang === 'tr' ? 0 : 1]})` : item.hint).join(', ')}{(sendResult.skippedNumbers?.length ?? 0) > 20 ? ' …' : ''}</p>
                   </div>
                 )}
                 {subTab === 'notify_wa' && (sendResult.optedOutByMeta ?? 0) > 0 && (

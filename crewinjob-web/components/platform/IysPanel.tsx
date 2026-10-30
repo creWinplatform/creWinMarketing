@@ -10,7 +10,8 @@ import Msg from '@/components/Msg';
 type QueryResult = { checked: number; onay: number; ret: number; none: number; view: IysView };
 // Sending consents (İYS): the project's declaration, its İYS API user, what İYS reported for the recipients a live
 // send could reach, and the consents and opt-outs waiting to be reported within three business days.
-export default function IysPanel({ lang }: { lang: Locale }) {
+// crewin: the Crewin workspace, where only its own WhatsApp sender checks İYS (lib/crewin-iys.ts).
+export default function IysPanel({ lang, crewin = false }: { lang: Locale; crewin?: boolean }) {
   const tr = lang === 'tr', locale = localeTag(lang);
   const [view, setView] = useState<IysView | null>(null), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [scope, setScope] = useState<'tr' | 'none' | ''>(''), [form, setForm] = useState({ username: '', password: '', iysCode: '', brandCode: '', environment: 'production' });
@@ -37,6 +38,9 @@ export default function IysPanel({ lang }: { lang: Locale }) {
     <p className="studio-note">{tr
       ? 'Türkiye’deki alıcılara ticari e-posta ve WhatsApp mesajı göndermek için alıcının İYS’de onayı olmalı; yeni izinler ve çıkışlar 3 iş günü içinde İYS’ye bildirilir. Ryzevo bunu gönderim akışının içinde yapar: onayı olmayan alıcıya canlı ileti gitmez.'
       : 'Commercial email and WhatsApp messages to recipients in Turkey need the recipient’s consent in IYS; new consents and opt-outs are reported to IYS within 3 business days. Ryzevo does this inside the send flow: no live message goes to a recipient without consent.'}</p>
+    {crewin && <p className="studio-note"><strong>Crewin:</strong> {tr
+      ? 'İYS yalnız WA & Telegram → WA Bildirim Gönder ve kampanyaların WhatsApp gönderiminde, yalnız +90 numaralar için denetlenir. Orada kaydedilen WhatsApp izinleri ve çıkışlar İYS’ye bildirilir. Crewin e-postası henüz İYS’ye bakmıyor; bu, backend ile birlikte ikinci aşamada gelecek.'
+      : 'IYS is checked only for WhatsApp sends from WA & Telegram → Send WA notification and campaigns, and only for +90 numbers. WhatsApp consents and opt-outs recorded there are reported to IYS. Crewin email does not check IYS yet; that comes in a second step with the backend.'}</p>}
     {error && <p role="alert" className="studio-error"><Msg text={error} /></p>}{notice && <p role="status" className="studio-success"><Msg text={notice} /></p>}
     <fieldset className="iys-declare" disabled={busy || !view.canManage}><legend>{tr ? 'Türkiye’deki alıcılara ticari ileti gönderiyor musunuz?' : 'Do you send commercial messages to recipients in Turkey?'}</legend>
       <label><input type="radio" name="iys-scope" checked={scope === 'tr'} onChange={() => setScope('tr')} />{tr ? 'Evet: İYS kontrolü zorunlu' : 'Yes: IYS checks are required'}</label>
@@ -65,7 +69,9 @@ export default function IysPanel({ lang }: { lang: Locale }) {
           <div><dt>{tr ? 'Bildirilecek' : 'To report'}</dt><dd>{n(view.outbox.queued)}</dd></div><div><dt>{tr ? 'Bildirildi' : 'Reported'}</dt><dd>{n(view.outbox.sent)}</dd></div><div><dt>{tr ? 'Gönderilemedi' : 'Failed'}</dt><dd>{n(view.outbox.failed)}</dd></div></dl>
         {view.outbox.nextDue && <p className="studio-note">{tr ? `En yakın bildirim son tarihi: ${time(view.outbox.nextDue)}${view.outbox.overdue ? ` · ${n(view.outbox.overdue)} kaydın süresi geçti` : ''}` : `Next reporting deadline: ${time(view.outbox.nextDue)}${view.outbox.overdue ? ` · ${n(view.outbox.overdue)} record(s) are overdue` : ''}`}</p>}
         <button type="button" className="studio-secondary" disabled={busy} onClick={() => void act<QueryResult>({ action: 'query' }, value => tr ? `${n(value.checked)} alıcı İYS’de sorgulandı: ${n(value.onay)} onay, ${n(value.ret)} ret, ${n(value.none)} kaydı yok.` : `${n(value.checked)} recipient(s) checked in IYS: ${n(value.onay)} consented, ${n(value.ret)} rejected, ${n(value.none)} without a record.`, value => value.view)}><RefreshCw size={14} />{tr ? 'Alıcıların İYS durumunu sorgula' : 'Check recipients in IYS'}</button>
-        <p className="studio-note">{tr ? 'Pilot listesindeki e-posta adresleri ve WhatsApp kişileri sorgulanır (her seferde en çok 50, en eski önce). Alıcıya hiçbir şey gönderilmez.' : 'The pilot list’s email addresses and the WhatsApp contacts are checked (up to 50 at a time, oldest first). Nothing is sent to the recipients.'}</p>
+        <p className="studio-note">{crewin
+          ? (tr ? 'İYS’nin daha önce bilgi verdiği Crewin WhatsApp numaraları yeniden sorgulanır (her seferde en çok 50, en eski önce). Yeni numaraları WhatsApp izinleri bölümünden sorgulayın. Alıcıya hiçbir şey gönderilmez.' : 'Crewin WhatsApp numbers IYS already reported on are checked again (up to 50 at a time, oldest first). Check new numbers from the WhatsApp consents section. Nothing is sent to the recipients.')
+          : (tr ? 'Pilot listesindeki e-posta adresleri ve WhatsApp kişileri sorgulanır (her seferde en çok 50, en eski önce). Alıcıya hiçbir şey gönderilmez.' : 'The pilot list’s email addresses and the WhatsApp contacts are checked (up to 50 at a time, oldest first). Nothing is sent to the recipients.')}</p>
       </div>}
       {view.attention.length > 0 && <div className="iys-attention"><h3>{tr ? 'İlgilenmeniz gerekenler' : 'Needs attention'}</h3><ul>{view.attention.map(item => <li key={item.id}>
         <span className="coach-state">{item.channel === 'EPOSTA' ? (tr ? 'E-posta' : 'Email') : 'WhatsApp'} · {item.status === 'ONAY' ? (tr ? 'onay' : 'consent') : (tr ? 'ret' : 'opt-out')}</span>

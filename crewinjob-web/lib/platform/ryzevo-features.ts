@@ -3,9 +3,10 @@ import type { ProductPack } from './catalog';
 // tools wherever it has one (campaigns, content library, calendar, prospects, ads, automations, messaging, social
 // publishing), so it gets only the Ryzevo features it has no counterpart for. Everything else stays standard-only.
 export type RyzevoFeature = 'coach' | 'compass_api' | 'brand' | 'seo_ops' | 'ai_visibility' | 'alerts' | 'push' | 'approvals'
-  | 'measurements' | 'monthly_report' | 'budget' | 'inbox' | 'connections_google' | 'connections_meta';
+  | 'measurements' | 'monthly_report' | 'budget' | 'inbox' | 'connections_google' | 'connections_meta' | 'iys';
+// iys: the declaration and İYS connection; Crewin's own WhatsApp sender applies the gate (lib/crewin-iys.ts).
 export const CREWIN_RYZEVO_FEATURES: readonly RyzevoFeature[] = ['coach', 'compass_api', 'brand', 'seo_ops', 'ai_visibility', 'alerts', 'push', 'approvals',
-  'measurements', 'monthly_report', 'budget', 'inbox', 'connections_google', 'connections_meta'];
+  'measurements', 'monthly_report', 'budget', 'inbox', 'connections_google', 'connections_meta', 'iys'];
 export function ryzevoFeature(pack: ProductPack | string | null | undefined, feature: RyzevoFeature): boolean {
   return pack === 'standard' || (pack === 'crewin' && CREWIN_RYZEVO_FEATURES.includes(feature));
 }

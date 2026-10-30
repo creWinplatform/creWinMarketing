@@ -83,3 +83,14 @@ Ayrıntı repo kökündeki `BACKEND-StartResearch-kaynak-fix.md` dosyasında. Ö
 
 **Panelde (aynı gün):** `isDomainValid` yeniden kullanılıyor; doğrulama nedeni (`reason`) lead detayında görünüyor; kaynaklarda doğrulanmayan alan adlarına "elle kontrol et" rozeti eklendi; "Havuzdaki e-postaları doğrula" düğmesi 50'şerli gruplarla `updateProspects: true` gönderiyor. Panelin kendi DNS/MX kontrolü yedek olarak duruyor. Havuzdaki 58 lead doğrulandı: 33 `role_based`, 23 `unverifiable` (22'si zaten reddedilmişti; kalan Unix Line incelemede), 2 `verified`; onaylı 10 lead'in hepsi e-posta alıyor.
 
+
+## 6. E-posta için İYS (Crewin İYS'inin 2. aşaması, 30 Ekim 2026)
+
+- **Bugün:** Crewin, İYS beyanını ve bağlantısını panelde yapar (Proje ayarları → Gönderim izinleri). WhatsApp gönderimi +90 numaralar için İYS'ye bakar (`docs/CREWIN-WHATSAPP-CONSENT.md`). E-posta henüz bakmaz.
+  - Sebep: alıcılar arka uçtan geliyor (`GetCampaignRecipients`, `GetSeafarersByFillBucket`), pazarlama izni kayıt anında arka uçta toplanıyor.
+  - Panel, yüzlerce alıcının İYS durumunu tek tek, 24 saatte bir sorgulayamaz.
+- **Arka uçtan beklenen:**
+  - Kayıt ve profil ekranında alınan e-posta pazarlama iznini (tarih, kaynak: `HS_WEB` / `HS_MOBIL` …) ve geri çekilmesini 3 iş günü içinde İYS'ye bildirmek. Ya da bunları panele bir uç noktayla vermek; o zaman panel kendi kuyruğuyla bildirir.
+  - Kendi çıkış bağlantılarında (`ProcessUnsubscribe`) RET bildirimini de aynı yoldan yapmak.
+  - Alıcı listelerinde her adres için İYS durumunu (ONAY/RET ve kontrol zamanı) döndürmek. Panel kapıyı buna göre uygular.
+- **O aşamada karar gerekecek:** şirket ve prospect e-postalarında tacir (şirket) muafiyeti kullanılsın mı? Ryzevo kullanmıyor; Crewin'in B2B duyuruları bu karara bağlı.
