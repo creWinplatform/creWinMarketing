@@ -131,3 +131,28 @@ The workspace still opens with the single Crewin login. Team accounts are a sepa
   - When the panel is open from another address than the registered callback, Connections shows a notice with a link to the registered address instead of a form that would fail.
 - **Job guide:** the Crewin job guide uses the setup guide's verdict for this address. A setting that is present but wrong also blocks its step, and the step quotes the problem.
 - **What the guide cannot do:** create the Google or Meta apps, or give consent on their screens. Both need the account owner. Everything up to that point can be checked here.
+
+### Every server setting in the guide (29 October 2026)
+
+The setup guide now covers all server settings, grouped by purpose:
+
+| Group | Cards |
+|---|---|
+| Connections | Google, Meta, Gemini, scheduled jobs |
+| Security | administrator password (length), session secret (length), encryption key (in the environment, not only in the key file), passwords left in plain text in tool settings files next to the project |
+| Crewin tabs | SMTP, WhatsApp, Telegram (bot token and channel; API ID, hash and session from the agent's .env), Analytics service account (GA4, Search Console) |
+| Going live | public address, SES bounce/complaint topic, account emails |
+| Notifications | web push (VAPID) |
+| Yours to turn on | social publishing, email pilots, WhatsApp, ads, alert emails, public signup, PayTR. Each shows its current state, what turning it on changes and what it needs. |
+
+**Plain-text password check:** it reports only file names, setting names and counts. It finds both a current setting value pasted into a file and password-looking text that matches no current value, such as an old password in a `curl -u` or JSON login body.
+
+**On this machine:** going-live cards show "On live" and are not counted in the progress line. Opened from a live address, they show their real state.
+
+**Generate:** a password, a 64-character hex secret and a VAPID key pair are made in the browser with Web Crypto. They are never sent to the server and are gone on reload.
+
+**Go-live checklist** (`lib/platform/go-live-checklist.ts`, `GET/POST /api/platform/operator?view=checklist`):
+- **Items:** legal texts, IYS, Meta app review, Google verification, live server and HTTPS, backups with a restore test, SPF/DKIM/DMARC.
+- **Records:** ticking stores who and when in `go-live-checklist.json` next to the database (no migration). The system does not check these items itself.
+
+**Job guide links:** Crewin job-guide steps waiting for SMTP/WhatsApp, the Telegram session or GA4 now link to their cards.

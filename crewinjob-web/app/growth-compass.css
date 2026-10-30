@@ -133,3 +133,12 @@
 .crewin-overview-actions{display:grid;gap:12px;margin:0 0 24px}
 .team-alerts-unavailable{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
 .studio-overview>.job-guide-highlights{margin:0 0 16px}
+.setup-group{display:grid;gap:8px;margin-top:6px}.setup-group>h4{display:flex;align-items:center;gap:6px;margin:6px 0 0;font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:var(--studio-muted)}
+.setup-card.off{border-left:3px solid var(--studio-border)}.setup-card.off .setup-head>svg{color:var(--studio-muted)}
+.setup-generated{border-color:color-mix(in srgb,var(--studio-accent) 45%,transparent)}
+.go-live-checklist ul{margin:0;padding:0;list-style:none;display:grid;gap:2px}
+.go-live-checklist li{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:6px 12px;padding:10px 0;border-bottom:1px solid var(--studio-border)}
+.go-live-checklist label{display:flex;gap:10px;align-items:flex-start;flex:1;min-width:0;cursor:pointer}
+.go-live-checklist input{margin-top:3px;width:16px;height:16px;flex:none}
+.go-live-checklist label>span{display:grid;gap:2px}.go-live-checklist strong{font-size:13px}.go-live-checklist small{font-size:12px;line-height:1.6;color:var(--studio-muted)}
+.go-live-checklist li.done strong{color:var(--studio-muted);text-decoration:line-through}.go-live-checklist .go-live-done{color:var(--rz-good,#3e7d2c)}

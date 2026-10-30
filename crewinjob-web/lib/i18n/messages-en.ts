@@ -1357,4 +1357,5 @@ export const MESSAGES_EN: Record<string, string> = {
   "Crewin çalışma alanında Ryzevo bağlantıları yalnız Google ve Meta ile kurulur.": "In the Crewin workspace, Ryzevo connections are made only with Google and Meta.",
   "Geçerli gelen kutusu izni seçimi gerekli.": "A valid inbox permission choice is required.",
   "Sunucu zamanında yanıt vermedi. Biraz sonra yeniden deneyin.": "The server did not answer in time. Try again in a moment.",
+  "Geçersiz kontrol listesi öğesi.": "Unknown checklist item.",
 };
