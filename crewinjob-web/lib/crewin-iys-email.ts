@@ -49,6 +49,13 @@ export async function setCrewinEmailMode(mode: unknown, actor: string, file = fi
 }
 export const crewinPendingCount = (file = files.pending) => Object.keys(readJson<Pending>(file, {})).length;
 
+// Company and prospect audiences: the merchant (tacir) exemption.
+export const BUSINESS_AUDIENCES: readonly string[] = ['maritime_businesses', 'company_prospects'];
+/** The backend's own Dispatch does not pass this gate. In enforce mode a campaign to individuals goes through the
+ *  panel's gated send instead, until the backend applies the same rule (docs/CREWIN-BACKEND-IYS.md item 6). */
+export const crewinDispatchAllowed = (audienceType: string | null | undefined, file = files.mode) =>
+  crewinEmailMode(file).mode !== 'enforce' || BUSINESS_AUDIENCES.includes(audienceType || '');
+
 /** İYS applies to individuals whose nationality is Turkish or unknown; companies use the merchant exemption. */
 export const iysAppliesToEmail = (recipient: EmailRecipientRef) =>
   !recipient.business && (!recipient.nationality || !recipient.nationality.trim() || recipient.nationality.trim().toUpperCase() === 'TR');

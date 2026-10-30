@@ -85,6 +85,18 @@ test('the worker asks İYS about up to 50 queued addresses once Crewin is connec
  }finally{f.db.close();}
 });
 
+test('the backend Dispatch stays open for company audiences and in measure mode; enforce mode sends individuals through the panel',async()=>{
+ const p=paths();
+ for(const type of ['seafarers',undefined,'maritime_businesses','company_prospects'])assert.equal(e.crewinDispatchAllowed(type,p.mode),true,'measure: '+type);
+ await e.setCrewinEmailMode('enforce','legacy-admin',p.mode);
+ assert.equal(e.crewinDispatchAllowed('seafarers',p.mode),false);assert.equal(e.crewinDispatchAllowed(undefined,p.mode),false);
+ assert.equal(e.crewinDispatchAllowed('maritime_businesses',p.mode),true);assert.equal(e.crewinDispatchAllowed('company_prospects',p.mode),true);
+ const dispatch=fs.readFileSync(path.join(__dirname,'..','lib/campaign-dispatch.ts'),'utf8');
+ assert.match(dispatch,/canUseBackendDispatch[\s\S]*return crewinDispatchAllowed\(campaign\.audience\.audienceType\)/,'launch and run-due fall back to the gated send');
+ assert.match(dispatch,/createCampaignDispatch[\s\S]*crewinDispatchAllowed[\s\S]*iys_enforce/,'a direct dispatch is refused with a reason');
+ assert.match(dispatch,/action === 'retry' && !crewinDispatchAllowed/,'a retry is a new send');
+});
+
 test('every legacy email path goes through the gate; company campaigns use the merchant exemption',()=>{
  const read=file=>fs.readFileSync(path.join(__dirname,'..',file),'utf8');
  for(const file of ['app/api/messaging/email/send/route.ts','app/api/messaging/email/send-job-match/route.ts'])assert.match(read(file),/crewinEmailGate\(platformDatabase\(\), credentialEncryptionKey\(\)/,file);

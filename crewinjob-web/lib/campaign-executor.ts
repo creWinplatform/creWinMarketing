@@ -11,6 +11,7 @@ import {
 import type { AdPlatform, CreateCampaignRequest } from '@/lib/ads-types';
 import { agentModule } from '@/lib/agent-bridge';
 import { extractPostId } from '@/lib/post-history';
+import { BUSINESS_AUDIENCES } from '@/lib/crewin-iys-email';
 
 type JsonObject = Record<string, unknown>;
 
@@ -78,8 +79,7 @@ interface EmailRecipient {
   nationality?: string | null; // İYS: TR ya da bilinmeyen uyrukta İYS onayı aranır
 }
 
-// Şirket ve prospect kitleleri: tacir muafiyeti, e-postada İYS aranmaz (lib/crewin-iys-email.ts)
-const BUSINESS_AUDIENCES = ['maritime_businesses', 'company_prospects'];
+// Şirket ve prospect kitleleri (BUSINESS_AUDIENCES): tacir muafiyeti, e-postada İYS aranmaz (lib/crewin-iys-email.ts)
 
 async function loadEmailRecipients(campaign: UnifiedCampaign) {
   const unique = new Map<string, EmailRecipient>();

@@ -912,6 +912,7 @@ export const MESSAGES_EN: Record<string, string> = {
   "Listedeki numaraların hiçbirine gönderilemedi (izin, çıkış veya İYS kontrolü); gönderim yapılmadı.": "None of the numbers in the list could get the message (consent, opt-out or IYS check); nothing was sent.",
   "İYS bu numaraya gönderime izin vermiyor; mesaj gönderilmedi.": "IYS does not allow sending to this number; nothing was sent.",
   "İYS bu adrese ticari e-posta gönderimine izin vermiyor; gönderilmedi.": "IYS does not allow commercial email to this address; nothing was sent.",
+  "Zorunlu İYS modunda bireysel kitlelere backend gönderimi kapalı; kampanyayı başlatın, panel İYS kontrolüyle gönderir.": "In IYS enforce mode, backend sending to individual audiences is off; launch the campaign and the panel sends it with the IYS check.",
   "İYS’de sorgulanacak +90 numara girin.": "Enter the +90 numbers to check in IYS.",
   "Türk numaraları İYS’ye bildirilir: izin nasıl alındı, seçin.": "Turkish numbers are reported to IYS: choose how the consent was obtained.",
   "WhatsApp yapılandırılmamış.": "WhatsApp isn't configured.",
