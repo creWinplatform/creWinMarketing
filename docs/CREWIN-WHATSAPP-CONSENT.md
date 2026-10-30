@@ -70,9 +70,14 @@ Kod: `lib/crewin-iys-email.ts`; şema değişikliği yok.
   - Durumu bilinen alıcıları değişiklik akışı güncel tutar.
 - **Kampanyalar:** atlanan alıcılar ve ölçüm sonucu teslimat notuna yazılır.
 - **ONAY ve RET bildirimi:**
-  - Kayıttaki e-posta izinlerini ve backend çıkışlarını İYS'ye bildirmek backend'in işi (`docs/CREWIN-BACKEND-REQUESTS.md` madde 6).
+  - Kayıttaki e-posta izinleri ve backend çıkışları İYS'ye panelin kuyruğuyla bildirilecek. Bunun için backend izin değişikliklerini bir uçtan verecek (`docs/CREWIN-BACKEND-IYS.md`); o uç hazır olana kadar bu izinler bildirilemiyor.
   - Panelin kendi çıkış bağlantısı (prospect, şirket, elle girilen adres) adresi değil yalnız tek yönlü anahtarı taşıdığı için İYS'ye bildirilemez; yerel olarak her zaman uygulanır.
-- **Zorunlu moda geçmeden önce:** ölçüm çoğunlukla "İYS onayı yok" gösteriyorsa önce backend'in kayıttaki izinleri İYS'ye yüklemesi gerekir. 3 iş gününden eski izinler API ile yüklenemiyor; hukuk danışmanıyla görüşün.
+- **Backend Dispatch:** e-posta tek kanallı ve backend şablonu olan kampanyalar normalde backend'in Dispatch'iyle gider (`lib/campaign-dispatch.ts`). Bu gönderimler İYS kapısından geçmez.
+  - **Ölçüm modu:** Dispatch aynen çalışır; bu gönderimler ölçüme girmez (kampanya ekranında not var).
+  - **Zorunlu mod:** bireysel kitlelerin kampanyaları Dispatch yerine panelin İYS kontrollü gönderimine düşer (`crewinDispatchAllowed`). Doğrudan Dispatch ve yeniden deneme `iys_enforce` hatasıyla reddedilir. Panel tek seferde en çok 500 alıcıya gönderir; fazlası teslimat notunda yazar.
+  - Şirket ve prospect kitleleri tacir muafiyetinde olduğu için Dispatch'le gitmeye devam eder.
+  - Backend aynı kuralı uygulayınca (`docs/CREWIN-BACKEND-IYS.md` madde 6) bu yönlendirme kaldırılabilir.
+- **Zorunlu moda geçmeden önce:** ölçüm çoğunlukla "İYS onayı yok" gösteriyorsa önce mevcut kullanıcılardan izin yenilemesi gerekir (backend, uygulama içinde). 3 iş gününden eski izinler API ile yüklenemiyor.
 - **Hukuki teyit:** tacir muafiyeti, uyruğun "Türkiye'deki alıcı" ölçütü olarak kullanılması, iş eşleşme e-postalarının ticari ileti sayılması.
 
 ## Testler

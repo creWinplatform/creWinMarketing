@@ -84,14 +84,15 @@ Ayrıntı repo kökündeki `BACKEND-StartResearch-kaynak-fix.md` dosyasında. Ö
 **Panelde (aynı gün):** `isDomainValid` yeniden kullanılıyor; doğrulama nedeni (`reason`) lead detayında görünüyor; kaynaklarda doğrulanmayan alan adlarına "elle kontrol et" rozeti eklendi; "Havuzdaki e-postaları doğrula" düğmesi 50'şerli gruplarla `updateProspects: true` gönderiyor. Panelin kendi DNS/MX kontrolü yedek olarak duruyor. Havuzdaki 58 lead doğrulandı: 33 `role_based`, 23 `unverifiable` (22'si zaten reddedilmişti; kalan Unix Line incelemede), 2 `verified`; onaylı 10 lead'in hepsi e-posta alıyor.
 
 
-## 6. E-posta için İYS (Crewin İYS'inin 2. aşaması, 30 Ekim 2026)
+## 6. İYS: pazarlama izinleri ve backend gönderimi (30 Ekim 2026)
 
-- **Bugün:** Crewin, İYS beyanını ve bağlantısını panelde yapar (Proje ayarları → Gönderim izinleri). WhatsApp gönderimi +90 numaralar için İYS'ye bakar (`docs/CREWIN-WHATSAPP-CONSENT.md`).
-  - E-posta kapısı da panelde var: uyruğu TR olan ya da bilinmeyen alıcılar için, önce ölçüm modunda. Panel, durumu bilinmeyen adresleri worker ile 50'şer sorgular.
-  - Ama izinleri İYS'ye yüklemek panelin elinde değil: pazarlama izni kayıt anında arka uçta toplanıyor.
-- **`GetCampaignRecipients` için:** alıcılarda `nationality` alanı da dönsün. Dönmezse panel o alıcıyı "uyruğu bilinmeyen" sayar ve İYS onayı arar.
-- **Arka uçtan beklenen:**
-  - Kayıt ve profil ekranında alınan e-posta pazarlama iznini (tarih, kaynak: `HS_WEB` / `HS_MOBIL` …) ve geri çekilmesini 3 iş günü içinde İYS'ye bildirmek. Ya da bunları panele bir uç noktayla vermek; o zaman panel kendi kuyruğuyla bildirir.
-  - Kendi çıkış bağlantılarında (`ProcessUnsubscribe`) RET bildirimini de aynı yoldan yapmak.
-  - Alıcı listelerinde her adres için İYS durumunu (ONAY/RET ve kontrol zamanı) döndürmek. Panel kapıyı buna göre uygular.
+Ayrıntılı istek: **`docs/CREWIN-BACKEND-IYS.md`**. Özet:
+- Panel İYS beyanını, bağlantısını, WhatsApp ve e-posta kapısını yapıyor; İYS'ye bildirimi de panelin kuyruğu yapıyor. Backend'in İYS'ye doğrudan bağlanması gerekmez.
+- **Backend'den beklenen:**
+  - tarihli ve kaynaklı izin kaydı (kayıt, profil, çıkış, şikâyet);
+  - eski kullanıcılar için uygulama içinde izin yenileme;
+  - `GetMarketingConsentChanges` ucu (imleçli izin değişiklikleri);
+  - alıcı listelerinde `nationality` ve `marketingConsent`;
+  - Dispatch'in izinsiz bireysel alıcıları atlaması;
+  - hukuk için tek seferlik sayı raporu.
 - **Karar (30 Ekim 2026):** şirket ve prospect e-postalarında tacir muafiyeti kullanılır; hukuk teyidi bekleniyor.

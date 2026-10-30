@@ -71,7 +71,8 @@
   - the tacir exemption;
   - SMS;
   - a public-holiday calendar;
-  - Reporting Crewin's email consents (ONAY) and backend opt-outs (RET) to İYS: the Crewin backend's job (`docs/CREWIN-BACKEND-REQUESTS.md` item 6).
+  - Reporting Crewin's sign-up email consents (ONAY) and backend opt-outs (RET): the panel's queue will report them once the backend exposes consent changes (`docs/CREWIN-BACKEND-IYS.md`).
+  - Crewin campaigns sent by the backend's own Dispatch are not measured. In enforce mode the panel sends individual audiences itself, through the gate, until the backend applies the same rule.
   - Turkish recipients only: Crewin applies its gates to +90 numbers and to TR or unknown nationalities; Ryzevo projects still apply them to every recipient.
 
 ## Tests
