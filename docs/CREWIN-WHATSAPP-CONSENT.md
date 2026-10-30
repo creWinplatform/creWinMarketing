@@ -55,7 +55,7 @@ Crewin de ileride Ryzevo'daki İYS beyanını ve kapısını (`docs/SAAS-IYS.md`
   - hukuki teyit (WhatsApp'ın MESAJ sayılması, 3 iş günü kuralı).
 
 ## Testler
-`npm run test:legacy:whatsapp` (`test/legacy-whatsapp-consent.test.cjs`). Geçici dosya ve sahte gönderici kullanır; ağa çıkmaz. Kapsadıkları:
+`test/legacy-whatsapp-consent.test.cjs`, `npm run test:platform` ile birlikte çalışır (tek başına: `npm run test:legacy:whatsapp`). Geçici dosya ve sahte gönderici kullanır; ağa çıkmaz. Kapsadıkları:
 - numara biçimleri;
 - kanıt ve tarih kuralları;
 - kapının üç modu;
