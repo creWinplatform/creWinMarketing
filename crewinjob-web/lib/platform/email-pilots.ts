@@ -15,6 +15,9 @@ import {EMAIL_QUEUE_LIMITS,type EmailPilotJob,type EmailPilotWorkspace,type Pilo
 import {SesProvider} from './ses-provider';
 import {newUnsubscribeToken,publicEmailOrigin} from './email-safety';
 import {preparePilotMail} from './email-delivery';
+import {ProjectAttribution} from './attribution';
+import {iysGate,iysSendBlock} from './iys';
+import {linkTag} from './link-tracking';
 
 export type JobRow={id:string;actor_id:string;connection_id:string;revision:string;status:EmailPilotJob['status'];attempts:number;lease_token:string|null;lease_until:string|null;created_at:string;updated_at:string;campaign_id:string;campaign_name:string;review_id:number;encrypted_snapshot:string;outcome:EmailPilotJob['outcome'];mode:'rehearsal'|'send'};
 export type Snapshot={version:1;digest:string;reviewId:number;connectionId:string;bindingRevision:string;maxRecipients:number;domain:string|null;maskedSender:string|null;subject:string;text:string;ctaUrl:string;html:string;recipients:EligibleEmailRecipient[];sesRevision?:number;publicOrigin?:string;sourceId?:string};
@@ -46,7 +49,8 @@ export class EmailPilotQueue {
   list(campaignId:string,mode:'rehearsal'|'send'='rehearsal'):EmailPilotWorkspace{
     this.authorize();if(typeof campaignId!=='string'||!campaignId||campaignId.length>120)throw new MarketingStoreError('Kampanya kimliği gerekli.');
     const rows=this.db.prepare(`${query} AND p.campaign_id=? AND p.mode=? ORDER BY j.created_at DESC,j.id DESC LIMIT 10`).all(...this.args(),campaignId,mode) as JobRow[];
-    return {jobs:rows.map(row=>this.describe(row)),sendingEnabled:mode==='send'&&new SesProvider(this.db,this.scope,this.key).state().ready};
+    const results=mode==='send'&&rows.length?new ProjectAttribution(this.db,this.scope).forTag(linkTag(this.scope,'campaign',campaignId),'email'):null;
+    return {jobs:rows.map(row=>this.describe(row)),sendingEnabled:mode==='send'&&new SesProvider(this.db,this.scope,this.key).state().ready,...(results?{results}:{})};
   }
   get(id:string){this.authorize();return this.describe(this.row(id));}
   private eligible(campaignId:string,subject=this.scope.subject){
@@ -66,6 +70,7 @@ export class EmailPilotQueue {
   enqueue(input:{campaignId:string;expectedDigest:string;expectedReviewId:number;idempotencyKey:string;acknowledged:boolean;sendAcknowledged?:boolean},mode:'rehearsal'|'send'='rehearsal',onlyEmailKeys?:ReadonlySet<string>){
     this.authorize(true);
     assertProjectWork(this.db,this.scope);if(mode==='send')assertProjectDelivery(this.db,this.scope);
+    const iys=mode==='send'?iysSendBlock(this.db,this.scope):null;if(iys)throw new MarketingStoreError(iys,409);
     if(input.acknowledged!==true||typeof input.idempotencyKey!=='string'||!/^[a-zA-Z0-9_-]{8,100}$/.test(input.idempotencyKey)||typeof input.expectedDigest!=='string'||!/^[a-f0-9]{64}$/.test(input.expectedDigest)||!Number.isSafeInteger(input.expectedReviewId))throw new MarketingStoreError('Prova onayı, içerik sürümü ve işlem anahtarı gerekli.');
     return this.db.transaction(()=>{
       this.authorize(true);const key=`email.${mode==='send'?'pilot_send':'rehearsal'}:${input.idempotencyKey}`;
@@ -121,7 +126,8 @@ export class EmailPilotQueue {
       assertProjectWork(this.db,scope);if(job.mode==='send')assertProjectDelivery(this.db,scope);
       const review=new CampaignReviews(this.db,scope,this.key).get(job.campaign_id),sender=emailSenderReadiness(this.db,scope);
       if(review.approval!=='approved'||review.history[0]?.id!==snapshot.reviewId||review.digest!==snapshot.digest||sender.connectionId!==snapshot.connectionId||sender.bindingRevision!==snapshot.bindingRevision||sender.maxRecipients!==snapshot.maxRecipients||!['pending','expired','verified'].includes(sender.ownership))return 'changed';
-      return this.eligible(job.campaign_id,job.actor_id).some(item=>item.emailKey===recipient.emailKey&&item.contactKey===recipient.contactKey)?null:'recipient_ineligible';
+      if(!this.eligible(job.campaign_id,job.actor_id).some(item=>item.emailKey===recipient.emailKey&&item.contactKey===recipient.contactKey))return 'recipient_ineligible';
+      return job.mode==='send'?iysGate(this.db,this.scope,'EPOSTA',recipient.emailKey):null;
     }catch{return 'changed';}
   }
   private holder(id:string,lease:string){return Boolean(this.db.prepare("SELECT 1 FROM platform_jobs WHERE id=? AND organization_id=? AND project_id=? AND job_type='email.rehearsal' AND status='running' AND lease_token=? AND lease_until>?").get(id,...this.args(),lease,new Date().toISOString()));}

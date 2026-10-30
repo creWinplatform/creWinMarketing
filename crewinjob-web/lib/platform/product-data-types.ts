@@ -14,6 +14,8 @@ export type ProductPreview = {
   total:number; valid:number; errors:{row:number; field:string}[];
   samples:{externalId:string; attributes:Record<string,string|number|boolean>; observedAt:string; consentStatus:'unknown'}[];
   canActivate:boolean;
+  // Signed webhooks only: events carrying a first-touch tag, and malformed tags that would be dropped.
+  attribution?:{found:number; ignored:number};
 };
 export const PRODUCT_SOURCE_LIMITS = { sources:5, pageRecords:200, batchPages:3, records:10000, attributes:12, responseBytes:524288, previewsPerDay:50, syncsPerDay:100 } as const;
 

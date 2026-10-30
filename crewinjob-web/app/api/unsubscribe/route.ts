@@ -5,6 +5,8 @@ import { isRyzevoUnsubscribe,processRyzevoUnsubscribe } from '@/lib/platform/ema
 import { isLegacyUnsubscribe, processLegacyUnsubscribe } from '@/lib/legacy-unsubscribe';
 import { readBoundedBodyBytes } from '@/lib/platform/request-json';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
+import { queueIysUnsubscribe } from '@/lib/platform/email-recipients';
+import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 const privateHeaders={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
 
 export const dynamic = 'force-dynamic';
@@ -42,7 +44,8 @@ export async function POST(request: NextRequest) {
         const form=new URLSearchParams(new TextDecoder().decode(await readBoundedBodyBytes(request,256)));
         if(form.get('List-Unsubscribe')!=='One-Click')return NextResponse.json({error:INVALID_LINK},{status:400,headers:privateHeaders});
       }
-      return NextResponse.json(processRyzevoUnsubscribe(platformDatabase(),token,action==='inspect'),{headers:privateHeaders});
+      const db=platformDatabase();
+      return NextResponse.json(processRyzevoUnsubscribe(db,token,action==='inspect',item=>{queueIysUnsubscribe(db,item.scope,credentialEncryptionKey(),item.sourceId,item.entityKey,item.emailKey);}),{headers:privateHeaders});
     }
 
     // The legacy panel's own links (prospects, companies, manual addresses) are handled here, not by the backend.

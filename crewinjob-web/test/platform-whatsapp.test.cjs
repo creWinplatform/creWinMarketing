@@ -20,7 +20,9 @@ const fakeGraph=(overrides={})=>{const calls=[];const graph=async(method,path,to
     {name:'giris_kodu',language:'tr',status:'APPROVED',category:'AUTHENTICATION',components:[{type:'BODY',text:'{{1}}'}]}]}};
   if(path==='1234567890/messages')return {status:200,payload:{messages:[{id:`wamid.${calls.length}FixtureOnly`}]}};
   return {status:404,payload:{}};};return {calls,graph};};
-const setup=async(f,graph)=>{const wa=new ProjectWhatsApp(f.db,f.scope,KEY,graph);await wa.connect({phoneNumberId:'1234567890',wabaId:'9988776655',accessToken:TOKEN});await wa.refreshTemplates();
+const {ProjectIys}=load('iys.ts');
+// Live batches need an İYS declaration; these fixtures declare none.
+const setup=async(f,graph)=>{new ProjectIys(f.db,f.scope,KEY).declare({scope:'none'});const wa=new ProjectWhatsApp(f.db,f.scope,KEY,graph);await wa.connect({phoneNumberId:'1234567890',wabaId:'9988776655',accessToken:TOKEN});await wa.refreshTemplates();
   wa.addContacts({phones:'+90 532 111 22 33\n+905321112234, 00905321112235',evidence:'QA form 2026-10',consentAt:'2026-10-01',acknowledged:true});return wa;};
 const draft=(wa,patch={})=>{const s=wa.read();return wa.saveBatch({name:'Yeni dönem',templateName:'kampanya_duyuru',templateLanguage:'tr',params:['STCW kursu','3 Kasım'],contactIds:s.contacts.map(c=>c.id),...patch});};
 const run=fn=>coachRun(async f=>{const saved={...process.env};try{process.env.PLATFORM_WHATSAPP_SEND_ENABLED='0';await fn(f);}finally{process.env.PLATFORM_WHATSAPP_SEND_ENABLED=saved.PLATFORM_WHATSAPP_SEND_ENABLED;}});
@@ -127,7 +129,7 @@ test('a queued batch stops when its approver loses the approval right',run(async
 test('schema47 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'whatsapp-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeWhatsAppSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,46);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,64);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,67);assert.ok(db.prepare("SELECT 1 FROM sqlite_master WHERE name='platform_whatsapp_messages'").get());db.close();
 }));
 test('image-header and URL-button templates: the batch carries a public https link and the button ending, both approved and sent',run(async f=>{
   const {graph,calls}=fakeGraph(),wa=await setup(f,graph);process.env.PLATFORM_WHATSAPP_SEND_ENABLED='1';

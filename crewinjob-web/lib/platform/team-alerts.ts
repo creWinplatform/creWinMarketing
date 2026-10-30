@@ -13,6 +13,7 @@ import { webPushConfiguration } from './web-push-config';
 import { searchDropped } from './seo-operations-types';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
 import { ryzevoFeature } from './ryzevo-features';
+import { iysAttention } from './iys';
 
 type Lang = 'tr' | 'en';
 type Scope = { subject: string; organizationId: string; projectId: string };
@@ -77,6 +78,12 @@ export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()
     const watch = db.prepare("SELECT w.clicks,w.previous_clicks,w.current_to,w.checked_at FROM platform_seo_search_watch w JOIN platform_connections c ON c.id=w.connection_id AND c.active=1 WHERE w.organization_id=? AND w.project_id=? AND w.status='ready' AND w.checked_at>=?").get(...args(scope), iso(now - 8 * DAY)) as { clicks: number | null; previous_clicks: number | null; current_to: string; checked_at: string } | undefined;
     if (watch && searchDropped(watch.clicks, watch.previous_clicks)) alerts.push({ kind: 'search_drop', severity: 'warning', count: 1, at: watch.checked_at, href: '/?tab=seo', keys: [`search:${watch.current_to}`], clicks: { current: watch.clicks!, previous: watch.previous_clicks! } });
   }
+  // İYS: consents and opt-outs must reach İYS within three business days; shown to those who manage connections or recipients.
+  if (can('connections.manage') || can('recipients.manage')) {
+    const iys = iysAttention(db, scope, now);
+    if (iys?.items.length) alerts.push({ kind: 'iys_deadline', severity: iys.items.some(item => item.state === 'failed' || Date.parse(item.due_at) <= now) ? 'urgent' : 'warning', count: iys.items.length, at: iys.items[0].due_at, href: '/?tab=project&settings=iys', keys: iys.items.map(item => `iys:${item.id}:${item.state}`) });
+    if (iys?.stale) alerts.push({ kind: 'iys_sync', severity: 'warning', count: 1, at: iys.pulledAt, href: '/?tab=project&settings=iys', keys: [`iys-sync:${iys.pulledAt || 'never'}`] });
+  }
   // Invitations to other projects belong to the person, not this project; they are accepted in the portfolio.
   const invites = receivedInvites(db, scope.subject);
   if (invites.length) alerts.push({ kind: 'invite_pending', severity: 'warning', count: invites.length, at: [...invites].sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))[0].expiresAt, href: '/portfolio', keys: invites.map(item => `invite:${item.id}`) });
@@ -96,6 +103,8 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
         : alert.phase === 'trial_ending' ? (tr ? `Deneme süresi ${time(alert.at)} tarihinde bitiyor.` : `The trial ends at ${time(alert.at)}.`)
         : (tr ? `Ücretli dönem ${time(alert.at)} tarihinde bitiyor. Yenileme otomatik değildir.` : `The paid period ends at ${time(alert.at)}. Renewal is not automatic.`);
       case 'ad_error': return tr ? `${n(alert.count)} reklam planında sağlayıcı hatası var. Harcamanın durumunu reklam hesabından kontrol edin.` : `${n(alert.count)} ad plan(s) have a provider error. Check the spend status in the ad account.`;
+      case 'iys_deadline': return tr ? `${n(alert.count)} izin veya ret kaydının İYS bildirim süresi doluyor ya da gönderilemedi (ilk son tarih: ${time(alert.at)}).` : `${n(alert.count)} consent or opt-out record(s) are close to their IYS deadline or could not be sent (first deadline: ${time(alert.at)}).`;
+      case 'iys_sync': return tr ? 'İYS değişiklikleri 6 saattir okunamadı; okunana kadar durumu eski alıcılara canlı gönderim yapılmaz.' : 'IYS changes have not been read for 6 hours; until they are, live messages skip recipients with an old status.';
       case 'invite_pending': return tr ? `${n(alert.count)} proje daveti kabulünüzü bekliyor (ilk bitiş: ${time(alert.at)}).` : `${n(alert.count)} project invitation(s) are waiting for you (first expires ${time(alert.at)}).`;
       case 'seo_findings': return tr ? `Planlı site taramasında ${n(alert.count)} yeni veya yeniden görülen SEO bulgusu var.` : `The scheduled site scan found ${n(alert.count)} new or returning SEO finding(s).`;
       case 'search_drop': return tr ? `Google aramadan gelen tıklamalar son 7 günde önceki haftaya göre düştü (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).` : `Clicks from Google search fell in the last 7 days compared with the week before (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).`;

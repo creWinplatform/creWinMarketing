@@ -25,7 +25,7 @@ export function linkTrackingEnabled(db: Database.Database, scope: Scope) {
 const URL_PATTERN = /https?:\/\/[^\s<>"'`]+/g;
 // Adds utm_source/utm_medium/utm_campaign to links on the project's own site (and its subdomains). Links elsewhere and
 // links that already carry any utm_ parameter are left exactly as written.
-export function tagOwnLinks(text: string, website: string, platform: string, tag: string) {
+export function tagOwnLinks(text: string, website: string, platform: string, tag: string, medium = 'social') {
   const source = LINK_SOURCES[platform];
   let host = '';
   try { host = new URL(website).hostname.toLowerCase().replace(/^www\./, ''); } catch { host = ''; }
@@ -37,7 +37,7 @@ export function tagOwnLinks(text: string, website: string, platform: string, tag
     try { url = new URL(raw); } catch { return match; }
     const name = url.hostname.toLowerCase();
     if (name !== host && !name.endsWith(`.${host}`) || url.username || url.password || [...url.searchParams.keys()].some(key => key.toLowerCase().startsWith('utm_'))) return match;
-    url.searchParams.set('utm_source', source); url.searchParams.set('utm_medium', 'social'); url.searchParams.set('utm_campaign', tag);
+    url.searchParams.set('utm_source', source); url.searchParams.set('utm_medium', medium); url.searchParams.set('utm_campaign', tag);
     tagged++; return url.toString() + trail;
   });
   return { text: output, tagged };

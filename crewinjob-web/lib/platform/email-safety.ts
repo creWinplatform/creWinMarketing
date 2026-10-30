@@ -35,6 +35,7 @@ export function recordEmailOptOut(db:Database.Database,scope:EmailScope,key:stri
   const mapping=db.prepare('SELECT field FROM platform_email_mappings WHERE source_id=? AND source_version=? AND organization_id=? AND project_id=?').get(sourceId,version,...args(scope)) as {field:string}|undefined;
   const email=mapping?emailAddress(attributes[mapping.field]):null;
   if(email)blockEmail(db,scope,emailIdentity(scope,key,'email',[email]),maskEmail(email),'reported_opt_out');
+  return email;
 }
 export function publicEmailOrigin(value=process.env.PLATFORM_PUBLIC_ORIGIN||''){
   try{const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password&&url.pathname==='/'&&!url.search&&!url.hash?url.origin:null;}catch{return null;}
@@ -45,7 +46,8 @@ export function newUnsubscribeToken(db:Database.Database,scope:EmailScope,input:
   return {path:`/unsubscribe?token=${encodeURIComponent(token)}`,expiresAt:new Date(Date.now()+30*86400000).toISOString()};
 }
 export const isRyzevoUnsubscribe=(token:string)=>/^rzv/i.test(token);
-export function processRyzevoUnsubscribe(db:Database.Database,token:string,inspect=false){
+// afterBlock: runs in the same transaction when a link is used for the first time (the İYS opt-out is queued there).
+export function processRyzevoUnsubscribe(db:Database.Database,token:string,inspect=false,afterBlock?:(input:{scope:EmailScope;sourceId:string;entityKey:string;emailKey:string})=>void){
   if(!/^rzv1_[A-Za-z0-9_-]{43}$/.test(token))throw new MarketingStoreError('Bağlantı geçersiz veya süresi dolmuş.',400);
   const hash=createHash('sha256').update(token).digest('hex');
   return db.transaction(()=>{
@@ -54,6 +56,7 @@ export function processRyzevoUnsubscribe(db:Database.Database,token:string,inspe
     if(!inspect&&!row.used_at){
       const scope={organizationId:row.organization_id,projectId:row.project_id};
       blockEntity(db,scope,row.source_id,row.entity_key);blockEmail(db,scope,row.email_key,row.masked_email,'unsubscribe');
+      afterBlock?.({scope,sourceId:row.source_id,entityKey:row.entity_key,emailKey:row.email_key});
       db.prepare('UPDATE platform_email_unsubscribe SET used_at=? WHERE token_hash=?').run(new Date().toISOString(),hash);
     }
     return {projectName:row.name,unsubscribed:Boolean(row.used_at)||!inspect};

@@ -147,7 +147,7 @@ test('plan ids and week keys are stable',run(()=>{
 }));
 test('schema31 is additive and coach data survives reopening',run(async f=>{
   await f.approved();const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-migration-')),'fixture.sqlite');
-  await f.db.backup(file);let db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,64);assert.ok(new GrowthCoach(db,f.scope).read().brief);db.close();
+  await f.db.backup(file);let db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,67);assert.ok(new GrowthCoach(db,f.scope).read().brief);db.close();
   db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeCoachSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,30);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,64);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach').get().n,0);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,67);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_growth_coach').get().n,0);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

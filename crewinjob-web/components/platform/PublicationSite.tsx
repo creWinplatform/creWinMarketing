@@ -17,5 +17,6 @@ export default function PublicationSite({item,tr}:{item:Publication;tr:boolean})
       :site.status==='pending'?(tr?'Ölçüm bekleniyor. Google Analytics verisi bir gün gecikmeli okunur.':'Waiting for measurement. Google Analytics data is read a day later.')
       :site.status==='failed'?(tr?'Google Analytics sonucu okunamadı.':'The Google Analytics result could not be read.')
       :(tr?'Sonuçları görmek için yukarıda bir Google Analytics mülkü seçin.':'Choose a Google Analytics property above to see results.')}</p>}
+    {item.results&&<p className="studio-note publication-results"><strong>{tr?'Bu paylaşımla ilk kez gelenler (son 90 gün): ':'First came through this post (last 90 days): '}</strong>{item.results.stages.map((stage,index)=>`${n(item.results!.counts[index]??0)} ${tr?stage.tr:stage.en}`).join(' · ')}</p>}
   </section>;
 }

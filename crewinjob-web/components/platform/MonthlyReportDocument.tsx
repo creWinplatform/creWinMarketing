@@ -1,8 +1,8 @@
 'use client';
 import { ExternalLink } from 'lucide-react';
-import type { MonthlyReportFacts } from '@/lib/platform/monthly-report-types';
+import type { MonthlyReportFacts, MonthlyResults } from '@/lib/platform/monthly-report-types';
 
-const CHANNELS:Record<string,string>={linkedin:'LinkedIn',facebook:'Facebook',instagram:'Instagram',twitter:'X',telegram:'Telegram',social:'Sosyal / Social'};
+const CHANNELS:Record<string,string>={linkedin:'LinkedIn',facebook:'Facebook',instagram:'Instagram',twitter:'X',x:'X',telegram:'Telegram',email:'E-posta / Email',social:'Sosyal / Social'};
 const SOURCES:Record<string,[string,string]>={manual:['Manuel kayıt','Manual record'],ga4:['Google Analytics','Google Analytics'],search_console:['Search Console','Search Console'],product_event:['Ürün olayları','Product events']};
 const PROVIDERS:Record<string,string>={meta:'Meta',google:'Google Ads',linkedin:'LinkedIn'};
 
@@ -39,6 +39,7 @@ export default function MonthlyReportDocument({facts,note,approvedAt,draft}:{fac
         {facts.site&&<p className="monthly-report-muted">{tr?`Siteye gelen oturumlar, bu ayın paylaşımlarındaki etiketli bağlantılardan gelenlerdir; Google Analytics ${day(facts.site.from)}–${day(facts.site.to)} dönemi için bildirdi (son okuma ${date(facts.site.checkedAt)}).${facts.site.state==='partial'?' Google Analytics eksik veya örneklenmiş veri bildirdi.':''}`:`Site sessions arrived through tagged links in this month’s posts, as Google Analytics reported them for ${day(facts.site.from)}–${day(facts.site.to)} (last read ${date(facts.site.checkedAt)}).${facts.site.state==='partial'?' Google Analytics reported thresholded or sampled data.':''}`}</p>}
       </>:<p>{tr?'Bu ay yayınlanan paylaşım yok.':'No posts were published this month.'}</p>}
     </section>
+    {facts.results&&<ReportResults results={facts.results} tr={tr} n={n} channel={channel}/>}
     {facts.inbox&&<section><h2>{tr?'Yorumlar ve mesajlar':'Comments and messages'}</h2>
       <p>{tr?`${n(facts.inbox.received)} yeni kayıt (${n(facts.inbox.comments)} yorum, ${n(facts.inbox.messages)} mesaj) · ${n(facts.inbox.replied)} cevaplandı · ${n(facts.inbox.messagesInWindow)} mesaj 24 saat içinde cevaplandı · ${n(facts.inbox.open)} açık · ${n(facts.inbox.dismissed)} kapatıldı.`:`${n(facts.inbox.received)} new (${n(facts.inbox.comments)} comments, ${n(facts.inbox.messages)} messages) · ${n(facts.inbox.replied)} answered · ${n(facts.inbox.messagesInWindow)} messages answered within 24 hours · ${n(facts.inbox.open)} open · ${n(facts.inbox.dismissed)} dismissed.`}</p></section>}
     {facts.email&&<section><h2>{tr?'E-posta':'Email'}</h2>
@@ -54,4 +55,17 @@ export default function MonthlyReportDocument({facts,note,approvedAt,draft}:{fac
       <p>{tr?`${n(facts.work.drafts)} içerik taslağı · ${n(facts.work.coachActionsDone)} koç eylemi tamamlandı · ${n(facts.work.contentPlanApproved)} içerik planı maddesi onaylandı · ${n(facts.work.tasksCompleted)} iş tamamlandı.`:`${n(facts.work.drafts)} content draft(s) · ${n(facts.work.coachActionsDone)} coach action(s) done · ${n(facts.work.contentPlanApproved)} content plan item(s) approved · ${n(facts.work.tasksCompleted)} task(s) completed.`}</p></section>
     <footer className="monthly-report-muted">{tr?'Sayılar ekibin Ryzevo kayıtlarından ve sağlayıcıların bildirdiği verilerden alınmıştır. Aynı dönemde olmaları neden-sonuç kanıtı değildir; tahmin veya ROI hesaplanmaz. Rapor kişisel veri ve müşteri mesajı içermez.':'Figures come from the team’s Ryzevo records and provider-reported data. Appearing in the same period is not proof of cause; no estimates or ROI are calculated. The report contains no personal data or customer messages.'}</footer>
   </article>;
+}
+
+// People who arrived through the month's tagged posts and emails and then reached each goal stage (first touch).
+function ReportResults({results,tr,n,channel}:{results:MonthlyResults;tr:boolean;n:(value:number)=>string;channel:(key:string)=>string}){
+  const label=(stage:{tr:string;en:string})=>tr?stage.tr:stage.en,coverage=results.coverage,first=results.stages[0];
+  const money=(value:number|null)=>{if(value===null||!results.value)return '—';try{return new Intl.NumberFormat(tr?'tr-TR':'en-GB',{style:'currency',currency:results.value.currency}).format(value);}catch{return `${n(value)} ${results.value.currency}`;}};
+  return <section><h2>{tr?'Paylaşım ve e-postalardan gelenler':'People who came from posts and emails'}</h2>
+    {coverage&&first&&coverage.entities>0&&<p>{tr?`Bu ay “${label(first)}” aşamasına ulaşan ${n(coverage.entities)} kişiden ${n(coverage.touched)} kişinin ilk geliş kaynağı biliniyor; ${n(coverage.ryzevo)} kişi Ryzevo’nun etiketlediği bir paylaşım veya e-postadan geldi.`:`This month “${label(first)}” was reached by ${n(coverage.entities)} people; ${n(coverage.touched)} of them have a known first source and ${n(coverage.ryzevo)} came through a post or email Ryzevo tagged.`}</p>}
+    {results.items.length?<div className="studio-table-scroll" tabIndex={0} role="region" aria-label={tr?'Kişi getiren işler':'Work that brought people'}><table className="studio-table"><thead><tr><th scope="col">{tr?'Paylaşım / e-posta':'Post / email'}</th><th scope="col">{tr?'Kanal':'Channel'}</th>{results.stages.map((stage,index)=><th scope="col" key={index}>{label(stage)}</th>)}{results.value&&<th scope="col">{tr?'Tutar':'Amount'}</th>}</tr></thead>
+      <tbody>{results.items.map((item,index)=><tr key={index}><td>{item.title||(tr?'Adsız':'Untitled')}</td><td>{item.sources.map(channel).join(', ')||'—'}</td>{item.counts.map((count,stage)=><td key={stage}>{n(count)}</td>)}{results.value&&<td>{money(item.value)}</td>}</tr>)}</tbody></table></div>
+    :<p>{tr?'Bu ay etiketli bir paylaşım veya e-postadan gelip bir hedef aşamasına ulaşan kişi görülmedi.':'Nobody who came through a tagged post or email reached a goal stage this month.'}</p>}
+    <p className="monthly-report-muted">{tr?'Kişiler ilk geldikleri etiketli bağlantıya göre sayılır (ilk temas, 90 gün) ve ekibin kendi ürün olaylarından gelir. Bu bir gözlemdir, neden-sonuç kanıtı değildir.':'People are counted by the tagged link they first came through (first touch, 90 days), from the team’s own product events. This is an observation, not proof of cause.'}</p>
+  </section>;
 }

@@ -70,6 +70,6 @@ test('portfolio figures are read with the person’s rights in each project',()=
 test('migration 60 is additive and repeatable',async()=>{
  const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'member-invites-')),'fixture.sqlite');
  let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeMemberInviteSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_member_invites'").get().n,0);db.close();
- db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,64);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_member_invites'").get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+ db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,67);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_member_invites'").get().n,1);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=60').get().n,1);db.close();
 });

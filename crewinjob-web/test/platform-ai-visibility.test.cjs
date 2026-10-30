@@ -69,7 +69,7 @@ test('migration 64 is additive and repeatable',async()=>{
   for(const suffix of ['','-wal','-shm'])try{require('node:fs').unlinkSync(file+suffix);}catch{}
   let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAiVisibilitySchema(db);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name LIKE 'platform_ai_visibility_%'").get().n,0);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,64);
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,67);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name LIKE 'platform_ai_visibility_%'").get().n,3);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
   db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=64').get().n,1);db.close();
   for(const suffix of ['','-wal','-shm'])try{require('node:fs').unlinkSync(file+suffix);}catch{}

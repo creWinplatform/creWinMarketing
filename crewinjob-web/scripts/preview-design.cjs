@@ -281,6 +281,40 @@ if(process.argv.includes('--pilot-queue')){
   const reviews=new CampaignReviews(db,scope,encryptionKey),checked=reviews.check('cmp_review_fixture',reviews.get('cmp_review_fixture').digest);
   reviews.decide('cmp_review_fixture',{decision:'approved',expectedDigest:checked.digest,expectedReviewId:null,note:'Disposable queue QA fixture; no message sent.'});
 }
+if(process.argv.includes('--attribution')){
+  // Attribution QA: an app source with signup, meeting and payment events, two tagged posts, one tagged email and a few
+  // people who arrived through them (plus an untagged and a non-Ryzevo signup). Signed in-process; nothing leaves.
+  const {ProductWebhooks,authenticateProductWebhook}=load('product-webhooks.ts'),{ProjectMeasurements}=load('measurements.ts'),{ProjectMarketingStore}=load('marketing-store.ts'),{ProjectAttribution}=load('attribution.ts'),{linkTag}=load('link-tracking.ts');
+  const scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId},hooks=new ProductWebhooks(db,scope),secret=randomBytes(32).toString('hex'),store=new ProjectMarketingStore(db,scope);
+  const names=['demo.booked','payment.succeeded','user.signed_up'],at=(days,minutes=0)=>new Date(Date.now()-days*86400000-minutes*60000).toISOString();
+  const source=hooks.save({name:'Uygulama olayları',secret,config:{entityType:'user',attributes:[{key:'amount',type:'number'}],eventNames:names}},encryptionKey);
+  hooks.preview(source.id,{sourceVersion:source.version,events:[{id:'qa-preview',entityId:'qa',eventName:'user.signed_up',occurredAt:at(0,5),attributes:{amount:0}}]});hooks.state(source.id,source.version,'activate');
+  store.saveContent({id:'qa-guide',platform:'linkedin',language:'tr',content:'Kurulum rehberi: https://example.com/rehber',headline:'Kurulum rehberi',prompt:'',timestamp:Date.now()},true);
+  store.saveContent({id:'qa-case',platform:'facebook',language:'tr',content:'Müşteri hikâyesi: https://example.com/hikaye',headline:'Müşteri hikâyesi',prompt:'',timestamp:Date.now()},true);
+  store.saveCampaign({id:'qa-welcome',name:'Hoş geldin e-postası',status:'draft',updatedAt:new Date().toISOString(),content:{subject:'Hoş geldiniz',text:'Başlamak için:',ctaUrl:'https://example.com/basla'},channels:{email:true,social:[],whatsapp:false,telegram:false,paidAds:[]}},true);
+  const measure=new ProjectMeasurements(db,scope,encryptionKey);
+  ['user.signed_up','demo.booked','payment.succeeded'].forEach((eventName,stageIndex)=>measure.save({goalId:'demo',stageIndex,connectionId:source.id,metric:'unique_entities',eventName,enabled:false,expectedVersion:0}));
+  new ProjectAttribution(db,scope).saveSettings({valueConnectionId:source.id,valueEvent:'payment.succeeded',valueKey:'amount',currency:'TRY'});
+  const guide=linkTag(scope,'content','qa-guide'),story=linkTag(scope,'content','qa-case'),mail=linkTag(scope,'campaign','qa-welcome');
+  const people=[[guide,'linkedin','social',3],[guide,'linkedin','social',2],[guide,'linkedin','social',1],[guide,'facebook','social',2],[story,'facebook','social',1],[mail,'email','email',2],[mail,'email','email',1],['google-ads-kasim','google','cpc',2],[null,null,null,1]];
+  // With --coach --coach-brief: two drafts opened from the approved plan, posted with their tagged link (disposable rows
+  // standing in for accepted LinkedIn posts), so the coach's track record has something to show.
+  if(process.argv.includes('--coach-brief')){
+    const {GrowthCoach,coachPlanId}=load('coach.ts'),{encryptCredentials}=load('credential-envelope.ts'),brief=new GrowthCoach(db,scope).approved().brief,now=new Date().toISOString();
+    db.prepare("INSERT OR IGNORE INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,active,updated_at) VALUES('qa-attribution-social',?,?,'social','linkedin:qa','QA LinkedIn · not real',?,1,?)").run(fixture.organizationId,fixture.projectId,encryptCredentials({accessToken:'qa-not-real'},encryptionKey,fixture.organizationId,fixture.projectId,'qa-attribution-social'),now);
+    (brief?.plan||[]).slice(0,2).forEach((item,i)=>{const id=`qa-coach-${i}`,job=`qa-coach-job-${i}`,posted=at(20-i*10);
+      store.saveContent({id,platform:'linkedin',language:'tr',content:`${item.title}: https://example.com/koc-${i}`,headline:item.title,prompt:'',timestamp:Date.now(),coachRef:`plan:${coachPlanId(item)}`},true);
+      db.prepare("INSERT INTO platform_jobs(id,organization_id,project_id,actor_id,connection_id,revision,idempotency_key,status,created_at,updated_at,job_type) VALUES(?,?,?,?,'qa-attribution-social','r',?,'completed',?,?,'social.publish')").run(job,fixture.organizationId,fixture.projectId,fixture.userId,job,posted,posted);
+      db.prepare("INSERT INTO platform_social_publications(job_id,organization_id,project_id,source_kind,source_id,source_digest,body_digest,encrypted_snapshot,mode,state,scheduled_at,submitted_at,timezone,configuration_revision,link_tag) VALUES(?,?,?,'content',?,'qa','qa',?,'publish','accepted',?,?,'Europe/Istanbul','qa',?)").run(job,fixture.organizationId,fixture.projectId,id,encryptCredentials({title:item.title,text:`${item.title}: https://example.com/koc-${i}?utm_source=linkedin&utm_medium=social&utm_campaign=${linkTag(scope,'content',id)}`,accountName:'QA LinkedIn · not real',accountId:'qa',platform:'linkedin'},encryptionKey,fixture.organizationId,fixture.projectId,`publication:${job}`),posted,posted,linkTag(scope,'content',id));
+      for(let k=0;k<2-i;k++)people.push([linkTag(scope,'content',id),'linkedin','social',5+k]);});
+  }
+  const events=[];people.forEach(([campaign,src,medium,days],i)=>{const entityId=`qa-person-${i+1}`;events.push({id:`signup-${i+1}`,entityId,eventName:'user.signed_up',occurredAt:at(days),attributes:{amount:0},...(campaign?{attribution:{campaign,source:src,medium,touchedAt:at(days,30)}}:{})});
+    if(i%2===0)events.push({id:`demo-${i+1}`,entityId,eventName:'demo.booked',occurredAt:at(days,-120),attributes:{amount:0}});
+    if(i===0||i===3||i===5)events.push({id:`pay-${i+1}`,entityId,eventName:'payment.succeeded',occurredAt:at(0,30+i),attributes:{amount:[1490,790,290][[0,3,5].indexOf(i)]}});});
+  for(let i=0;i<events.length;i+=20){const bytes=Buffer.from(JSON.stringify({sourceVersion:source.version,events:events.slice(i,i+20)})),timestamp=String(Math.floor(Date.now()/1000));
+    authenticateProductWebhook(db,source.id,new Headers({'X-Ryzevo-Timestamp':timestamp,'X-Ryzevo-Signature':'v1='+createHmac('sha256',Buffer.from(secret,'hex')).update(`${timestamp}.${source.id}.`).update(bytes).digest('hex')}),encryptionKey)(bytes);}
+  console.log(`Attribution QA: ${people.length} people, ${events.length} signed events, two tagged posts and one tagged email; Analytics shows which work brought them.`);
+}
 if(process.argv.includes('--measurements')){
   const {ProjectMeasurements}=load('measurements.ts'),{defaultMeasurementPeriod}=load('measurement-types.ts');
   const scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId},measurements=new ProjectMeasurements(db,scope,encryptionKey),source=measurements.sources().find(item=>item.provider==='product_webhook');

@@ -9,10 +9,13 @@ import { PRODUCT_SOURCE_LIMITS, type ProductPreview } from './product-data-types
 import { normalizeProductRecords, productTimestamp, writeProductRecords, type ProductRecord } from './product-records';
 import { normalizeWebhookConfig, WEBHOOK_LIMITS, type WebhookConfig, type WebhookEventSample, type WebhookSource } from './product-webhook-types';
 import { recordEmailOptOut } from './email-safety';
+import { queueIysConsent } from './iys';
+import { normalizeAttribution, recordAttribution } from './attribution';
+import type { AttributionTouch } from './attribution-types';
 
 type Row={connection_id:string;organization_id:string;project_id:string;version:number;config_json:string;enabled:number;paused:number;preview_at:string|null;preview_revision:string|null;last_synced_at:string|null;webhook_actor_id:string|null;account_name:string;active:number;encrypted_credentials:string;integration_id:string};
 type Consent={channel:'email';status:'opted_in'|'opted_out';evidenceRef:string;recordedAt:string};
-type Event={id:string;eventName:string;record:ProductRecord;consent:Consent|null;digest:string};
+type Event={id:string;eventName:string;record:ProductRecord;consent:Consent|null;touch:AttributionTouch|null;ignoredTouch:boolean;digest:string};
 const dayMs=86400000,mask=(id:string)=>`...${id.slice(-4)}`;
 const query=`SELECT s.*,c.account_name,c.active,c.encrypted_credentials,c.integration_id FROM platform_product_sources s JOIN platform_connections c ON c.id=s.connection_id AND c.organization_id=s.organization_id AND c.project_id=s.project_id JOIN platform_projects p ON p.id=s.project_id AND p.organization_id=s.organization_id WHERE c.provider='product_webhook' AND p.product_pack='standard'`;
 const revision=(row:Row)=>createHash('sha256').update(JSON.stringify([row.version,row.config_json,row.encrypted_credentials])).digest('hex');
@@ -45,10 +48,13 @@ function parseEvents(payload:unknown,row:Row,retentionDays:number=WEBHOOK_LIMITS
         if(Date.parse(recordedAt)>Date.parse(record.observedAt)||Date.parse(recordedAt)<Date.parse(record.observedAt)-30*dayMs)throw new Error();
         consent={channel:'email',status:claim.status,evidenceRef:claim.evidenceRef,recordedAt};
       }
-      const digest=createHash('sha256').update(JSON.stringify([input.id,input.eventName,record,consent])).digest('hex');
+      // The first tagged link the person arrived through. A malformed one is dropped, never the event; events without it
+      // keep the digest they always had.
+      const {touch,invalid}=normalizeAttribution(input.attribution,record.observedAt);
+      const digest=createHash('sha256').update(JSON.stringify(touch?[input.id,input.eventName,record,consent,touch]:[input.id,input.eventName,record,consent])).digest('hex');
       const prior=unique.get(input.id);
       if(prior){if(prior.digest!==digest)throw new ProductWebhookError('event_conflict','Aynı olay kimliğinin içeriği değiştirilemez.',409);duplicates++;}
-      else unique.set(input.id,{id:input.id,eventName:input.eventName,record,consent,digest});
+      else unique.set(input.id,{id:input.id,eventName:input.eventName,record,consent,touch,ignoredTouch:invalid,digest});
     }catch(error){if(error instanceof ProductWebhookError)throw error;throw new ProductWebhookError('event_schema',`Olay ${index+1}: kimlik, olay adı, tarih, özellik türü veya izin kanıtı geçersiz.`);}
   }
   return {events:[...unique.values()],duplicates};
@@ -94,18 +100,21 @@ export function authenticateProductWebhook(db:Database.Database,id:string,header
       const receivedAt=new Date().toISOString(),scope={subject:fresh.webhook_actor_id!,organizationId:fresh.organization_id,projectId:fresh.project_id};
       // Ordered source timestamps protect the projection from out-of-order deliveries.
       const ordered=[...pending].sort((a,b)=>a.record.observedAt.localeCompare(b.record.observedAt));
-      const written=writeProductRecords(db,scope,id,fresh.version,normalizeWebhookConfig(JSON.parse(fresh.config_json)).entityType,ordered.map(event=>event.record),receivedAt);
+      const entityType=normalizeWebhookConfig(JSON.parse(fresh.config_json)).entityType;
+      const written=writeProductRecords(db,scope,id,fresh.version,entityType,ordered.map(event=>event.record),receivedAt);
+      let touched=0;
       for(const event of pending){
-        if(event.consent?.status==='opted_out')recordEmailOptOut(db,scope,key,id,fresh.version,event.record.externalId,event.record.attributes);
+        if(event.consent?.status==='opted_out'){const email=recordEmailOptOut(db,scope,key,id,fresh.version,event.record.externalId,event.record.attributes);if(email)queueIysConsent(db,scope,key,{channel:'EPOSTA',recipient:email,status:'RET',source:'HS_WEB',consentDate:event.consent.recordedAt,actor:scope.subject});}
         db.prepare('INSERT INTO platform_product_events VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,event.id,fresh.version,...args,event.record.externalId,event.eventName,JSON.stringify(event.record.attributes),event.consent?JSON.stringify(event.consent):null,event.record.observedAt,receivedAt);
         db.prepare('INSERT INTO platform_product_event_receipts VALUES(?,?,?,?,?,?)').run(id,event.id,...args,event.digest,receivedAt);
+        if(recordAttribution(db,scope,key,{connectionId:id,entityType,eventId:event.id,eventName:event.eventName,externalId:event.record.externalId,observedAt:event.record.observedAt,attributes:event.record.attributes,touch:event.touch},receivedAt))touched++;
       }
       if(pending.length){
         db.prepare("INSERT INTO platform_usage VALUES(?,?,?,'product_events',?) ON CONFLICT(organization_id,project_id,period,resource) DO UPDATE SET count=count+excluded.count").run(...args,period,pending.length);
         db.prepare('UPDATE platform_product_sources SET last_synced_at=? WHERE connection_id=?').run(receivedAt,id);
         db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(scope.subject,...args,'source.events',receivedAt);
       }
-      return {accepted:pending.length,duplicates,recordsUpdated:written,receivedAt};
+      return {accepted:pending.length,duplicates,recordsUpdated:written,receivedAt,attribution:{recorded:touched,ignored:pending.filter(event=>event.ignoredTouch).length}};
     })();
   };
 }
@@ -156,7 +165,7 @@ export class ProductWebhooks {
     this.db.prepare('UPDATE platform_product_sources SET preview_at=NULL,preview_revision=NULL WHERE connection_id=?').run(id);
     const {events}=parseEvents(payload,row);
     this.db.prepare('UPDATE platform_product_sources SET preview_at=?,preview_revision=? WHERE connection_id=?').run(new Date().toISOString(),revision(row),id);
-    return {total:events.length,valid:events.length,errors:[],samples:events.slice(0,5).map(event=>({...event.record,externalId:mask(event.record.externalId),consentStatus:'unknown'})),canActivate:true};
+    return {total:events.length,valid:events.length,errors:[],samples:events.slice(0,5).map(event=>({...event.record,externalId:mask(event.record.externalId),consentStatus:'unknown'})),canActivate:true,attribution:{found:events.filter(event=>event.touch).length,ignored:events.filter(event=>event.ignoredTouch).length}};
   }
   state(id:string,version:number,action:'activate'|'pause'|'revoke'){
     this.authorize();return this.db.transaction(()=>{

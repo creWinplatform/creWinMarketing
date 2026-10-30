@@ -27,7 +27,10 @@ export function coachStarterRefresh(brief:CoachBrief,facts:CoachRefreshFacts,ans
   const leader=facts.leader?.dimension==='channel'?(facts.leader.key==='blog'?'seo':facts.leader.key) as CoachChannel:null;
   if(leader&&channels.length>1&&channels[0].id!==leader&&channels.some(item=>item.id===leader)){
     channels=[channels.find(item=>item.id===leader)!,...channels.filter(item=>item.id!==leader)];
-    reasons.push({title:t(`${name(leader)} öne alındı`,`${name(leader)} moved to the front`),why:t(`Gözlenen yayın başına en yüksek ortalama etkileşim bu kanalda: ${facts.leader!.average} (${facts.leader!.observed} yayın). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`,`This channel has the highest observed average engagement per publication: ${facts.leader!.average} (${facts.leader!.observed} publications). This is an observation, not proof of cause.`)});
+    const stage=facts.leader!.basis==='results'?facts.leader!.stage:null;
+    reasons.push({title:t(`${name(leader)} öne alındı`,`${name(leader)} moved to the front`),why:stage
+      ?t(`Ölçülen iş başına “${stage.tr}” aşamasına ulaşan kişi bu kanalda en yüksek: ${facts.leader!.average} (${facts.leader!.observed} ölçülen iş). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`,`This channel brought the most people to “${stage.en}” per measured item: ${facts.leader!.average} (${facts.leader!.observed} measured items). This is an observation, not proof of cause.`)
+      :t(`Gözlenen yayın başına en yüksek ortalama etkileşim bu kanalda: ${facts.leader!.average} (${facts.leader!.observed} yayın). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`,`This channel has the highest observed average engagement per publication: ${facts.leader!.average} (${facts.leader!.observed} publications). This is an observation, not proof of cause.`)});
   }
   // Without an engagement leader, the channel whose tagged links brought clearly the most site visits moves to the front:
   // at least two channels with posts, two posts in the leading one and more sessions than the next.
@@ -107,7 +110,7 @@ export class CoachRenewal{
     return {from,to,planWeek:week||1,plan,drafts,
       publications:this.count("SELECT COUNT(*) n FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state='accepted' AND j.updated_at>=?",from),
       emailRecipients:this.count("SELECT COUNT(*) n FROM platform_email_pilot_recipients r JOIN platform_email_pilots p ON p.job_id=r.job_id JOIN platform_jobs j ON j.id=p.job_id WHERE r.organization_id=? AND r.project_id=? AND p.mode='send' AND r.state IN ('accepted','delivered','bounced','complained') AND j.created_at>=?",from),
-      measurements,leader:leader?{dimension:leader.dimension,key:leader.key,average:leader.average,observed:leader.observed}:null,site};
+      measurements,leader:leader?{dimension:leader.dimension,key:leader.key,average:leader.average,observed:leader.observed,basis:leader.basis,stage:leader.stage}:null,site};
   }
   // Due when the 30-day plan has reached its last week, or a new month started at least two weeks after approval.
   private due(){const {brief,approvedAt,week}=this.coach.approved();if(!brief||!approvedAt)return false;const month=this.month(),approvedMonth=coachMonthKey(new Date(approvedAt),0,this.coach.timeZone());

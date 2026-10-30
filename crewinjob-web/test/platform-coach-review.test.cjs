@@ -72,5 +72,5 @@ test('schema34 is additive and repeatable',coachRun(async f=>{
   await f.approve();review(f).generate();
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'coach-review-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeReviewSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,33);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,64);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_reviews').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,67);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_coach_reviews').get().n,0);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));

@@ -19,7 +19,7 @@ export const REVIEW_CHECK_LABELS:Record<string,[string,string]>={
   segment:['Sabit kitle sürümü','Pinned audience version'],audience:['Güncel ve eşleşen kitle','Fresh matching audience'],
   approval:['Geçerli içerik onayı','Current content approval'],smtp:['Seçili gönderenin SMTP erişimi','Selected sender SMTP access'],
   sender_domain:['Gönderen alan adı sahipliği','Sender domain ownership'],sender_auth:['SES kimliği ve DKIM','SES identity and DKIM'],pilot:['Proje pilot listesi ve alıcı sınırı','Project pilot allowlist and recipient cap'],
-  consent:['Alıcı eşleştirmesi, izin ve suppression','Recipient mapping, consent and suppression'],
+  consent:['Alıcı eşleştirmesi, izin ve suppression','Recipient mapping, consent and suppression'],iys:['İYS beyanı ve bağlantısı','IYS declaration and connection'],
   unsubscribe:['Projeye bağlı abonelikten çıkma','Project-bound unsubscribe'],
   dispatch:['Kontrollü gönderim worker akışı','Controlled dispatch worker'],
 };
@@ -40,5 +40,6 @@ export const REVIEW_CHECK_HINTS:Record<string,[string,string]>={
   smtp:['Gönderen ve pilot bölümünden SMTP bağlantısını seçin, ardından Bağlantılar alanında erişimini test edin.','Select a sender in Sender & pilot, then test SMTP access in Connections.'],
   sender_domain:['Gönderen ve pilot bölümündeki TXT kaydını DNS alanınıza ekleyip kontrol edin.','Publish the TXT record from Sender & pilot in your DNS, then check it.'],
   sender_auth:['Gönderen ve pilot bölümündeki SES kimlik kontrolünü tamamlayın. Alıcı tarafındaki SPF/DKIM sonucu ayrıca doğrulanır.','Complete the SES identity check in Sender & pilot. Receiver-side SPF/DKIM results require separate verification.'],
+  iys:['Proje ayarları → Gönderim izinleri (İYS) bölümünde Türkiye’deki alıcılara ticari ileti gönderip göndermediğinizi beyan edin; gönderiyorsanız İYS’yi bağlayın. Gönderimde her alıcının İYS onayı ayrıca kontrol edilir.','In Project settings → Sending consents (IYS), state whether you send commercial messages to recipients in Turkey; if you do, connect IYS. Each recipient’s IYS consent is checked again when sending.'],
   pilot:['İzinli alıcıların test adreslerini proje pilot listesine ekleyip ön kontrolü yenileyin.','Add consented test recipients to the project pilot allowlist, then rerun preflight.'],
 };

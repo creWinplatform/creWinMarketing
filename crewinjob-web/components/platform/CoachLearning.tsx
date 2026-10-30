@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { CalendarRange, History, Lightbulb, Link2, Mail, ShieldCheck } from 'lucide-react';
+import { CalendarRange, ClipboardCheck, History, Lightbulb, Link2, Mail, ShieldCheck } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import type { CoachLearningGroup, CoachLearningSnapshot } from '@/lib/platform/coach-types';
+import type { CoachLearningGroup, CoachLearningSnapshot, CoachTrackItem } from '@/lib/platform/coach-types';
 import { briefChangeLines } from './coach-changes';
 import Msg from '@/components/Msg';
 
@@ -24,8 +24,8 @@ export default function CoachLearning({workspace,lang}:{workspace:WorkspaceConte
   const theme=(key:string)=>({'@weekly':tr?'Haftalık eylem':'Weekly action','@content':tr?'İçerik planı':'Content plan','@seo':tr?'SEO konusu':'SEO topic'} as Record<string,string>)[key]||key;
   if(error)return <p className="studio-error" role="alert"><Msg text={error}/></p>;
   if(!data||!data.hasBrief&&!data.drafts.length&&!data.versions.length)return null;
-  const table=(title:string,rows:CoachLearningGroup[],format:(key:string)=>string)=><div className="studio-table-scroll"><table className="coach-keywords coach-learning-table"><caption className="sr-only">{title}</caption><thead><tr><th>{title}</th><th>{tr?'Taslak':'Drafts'}</th><th>{tr?'Kabul edilen yayın':'Accepted publications'}</th><th>{tr?'Etkileşim verisi olan':'With engagement data'}</th><th>{tr?'Etkileşim':'Interactions'}</th></tr></thead>
-    <tbody>{rows.map(row=><tr key={row.key}><td>{format(row.key)}</td><td data-label={tr?'Taslak':'Drafts'}>{n(row.drafts)}</td><td data-label={tr?'Kabul edilen yayın':'Accepted'}>{n(row.published)}</td><td data-label={tr?'Veri olan':'With data'}>{n(row.observed)}</td><td data-label={tr?'Etkileşim':'Interactions'}>{row.observed?n(row.interactions):(tr?'Veri yok':'No data')}</td></tr>)}</tbody></table></div>;
+  const table=(title:string,rows:CoachLearningGroup[],format:(key:string)=>string)=><div className="studio-table-scroll"><table className="coach-keywords coach-learning-table"><caption className="sr-only">{title}</caption><thead><tr><th>{title}</th><th>{tr?'Taslak':'Drafts'}</th><th>{tr?'Kabul edilen yayın':'Accepted publications'}</th><th>{tr?'Etkileşim verisi olan':'With engagement data'}</th><th>{tr?'Etkileşim':'Interactions'}</th>{data.results&&<><th>{tr?'Ölçülen iş':'Measured items'}</th><th>{data.results.stages[0][lang]}</th></>}</tr></thead>
+    <tbody>{rows.map(row=><tr key={row.key}><td>{format(row.key)}</td><td data-label={tr?'Taslak':'Drafts'}>{n(row.drafts)}</td><td data-label={tr?'Kabul edilen yayın':'Accepted'}>{n(row.published)}</td><td data-label={tr?'Veri olan':'With data'}>{n(row.observed)}</td><td data-label={tr?'Etkileşim':'Interactions'}>{row.observed?n(row.interactions):(tr?'Veri yok':'No data')}</td>{data.results&&<><td data-label={tr?'Ölçülen iş':'Measured'}>{n(row.measured)}</td><td data-label={data.results.stages[0][lang]}>{row.measured&&row.results?n(row.results[0]):'—'}</td></>}</tr>)}</tbody></table></div>;
   const outcomes=data.outcomes,row=outcomes.rows[Math.min(outcome,Math.max(0,outcomes.rows.length-1))],site=data.site;
   // Visits through tagged links, per channel and the posts that brought the most; arrivals, not credited causes.
   const siteVisits=site&&<section className="coach-learning-site" aria-labelledby="coach-site-title">
@@ -53,8 +53,11 @@ export default function CoachLearning({workspace,lang}:{workspace:WorkspaceConte
   return <section className="studio-band mt-6 coach-learning" aria-labelledby="coach-learning-title">
     <div className="studio-section-title"><h2 id="coach-learning-title"><Lightbulb size={16}/>{tr?'Büyüme koçu: ne öğrendik':'Growth coach: what we learned'}</h2></div>
     <p className="studio-note">{tr?'Koçtan açılan taslaklar, kabul edilen yayınları ve sağlayıcının bildirdiği etkileşim. Etkileşim; beğeni, yorum, paylaşım, tıklama, kaydetme ve alıntıların toplamıdır. Gösterim ve erişim ayrı tutulur.':'Drafts opened from the coach, their accepted publications and the engagement providers reported. Interactions are likes, comments, shares, clicks, bookmarks and quotes added up; impressions and reach are kept apart.'}</p>
-    {data.leader?<p className="coach-note" role="status"><Lightbulb size={14}/>{tr?`Gözlenen en yüksek etkileşim: ${data.leader.dimension==='channel'?channel(data.leader.label):theme(data.leader.label)} — gözlenen yayın başına ortalama ${n(data.leader.average)} etkileşim (${n(data.leader.observed)} yayın). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`:`Highest observed engagement: ${data.leader.dimension==='channel'?channel(data.leader.label):theme(data.leader.label)} — an average of ${n(data.leader.average)} interactions per observed publication (${n(data.leader.observed)} publications). This is an observation, not proof of cause.`}</p>
+    {data.leader?.basis==='results'&&data.leader.stage?<p className="coach-note" role="status"><Lightbulb size={14}/>{tr?`Koçun işleri arasında en çok kişi getiren: ${data.leader.dimension==='channel'?channel(data.leader.label):theme(data.leader.label)} — ölçülen iş başına ortalama ${n(data.leader.average)} kişi “${data.leader.stage.tr}” aşamasına ulaştı (${n(data.leader.observed)} ölçülen iş). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`:`Coach work that brought the most people: ${data.leader.dimension==='channel'?channel(data.leader.label):theme(data.leader.label)} — an average of ${n(data.leader.average)} people per measured item reached “${data.leader.stage.en}” (${n(data.leader.observed)} measured items). This is an observation, not proof of cause.`}</p>
+    :data.leader?<p className="coach-note" role="status"><Lightbulb size={14}/>{tr?`Gözlenen en yüksek etkileşim: ${data.leader.dimension==='channel'?channel(data.leader.label):theme(data.leader.label)} — gözlenen yayın başına ortalama ${n(data.leader.average)} etkileşim (${n(data.leader.observed)} yayın). Bu bir gözlemdir, neden-sonuç kanıtı değildir.`:`Highest observed engagement: ${data.leader.dimension==='channel'?channel(data.leader.label):theme(data.leader.label)} — an average of ${n(data.leader.average)} interactions per observed publication (${n(data.leader.observed)} publications). This is an observation, not proof of cause.`}</p>
       :<p className="coach-muted">{tr?'Bir kanalı veya temayı öne çıkarmak için en az iki grupta sağlayıcı etkileşim verisi ve öndeki grupta en az iki yayın gerekir. Şimdilik yeterli veri yok.':'Naming a channel or theme needs provider engagement data in at least two groups and two publications in the leading one. There isn’t enough data yet.'}</p>}
+    {data.track?<CoachTrackRecord data={data} tr={tr} lang={lang} n={n} date={date} channel={channel}/>
+      :data.drafts.length>0&&<p className="coach-muted">{tr?'Koçun karnesi için ürün olaylarınızda kaynak etiketini gönderin: Analitik → “Hangi iş müşteri getirdi”. Öneriler, getirdikleri gerçek kayıt ve ödemelerle burada değerlendirilir.':'For the coach’s track record, send the source tag with your product events: Analytics → “Which work brought customers”. Suggestions are then checked against the signups and payments they brought.'}</p>}
     {data.drafts.length===0?<div className="studio-empty"><p>{tr?'Henüz koçtan açılmış bir taslak yok. Koç eylemlerinden, içerik planından veya SEO brieflerinden oluşturulan taslaklar ve kampanyalar burada izlenir.':'No drafts have been opened from the coach yet. Drafts and campaigns created from coach actions, the content plan or SEO briefs are tracked here.'}</p></div>:<>
       <div className="coach-review-grid coach-learning-grid">
         <section><h3>{tr?'Kanala göre':'By channel'}</h3>{table(tr?'Kanal':'Channel',data.byChannel,channel)}</section>
@@ -74,5 +77,25 @@ export default function CoachLearning({workspace,lang}:{workspace:WorkspaceConte
         {data.changes&&<><p className="coach-muted">{tr?'Son sürümde değişenler:':'Changed in the latest version:'}</p><ul>{briefChangeLines(data.changes,tr).map((line,index)=><li key={index}>{line}</li>)}</ul></>}</section>
     </div>
     <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Yalnız kayıtlı yayınlar ve sağlayıcı verisi kullanılır; tahmin, neden-sonuç iddiası veya ROI yoktur.':'Only recorded publications and provider data are used; no estimates, causal claims or ROI.'}</p>
+  </section>;
+}
+
+const KINDS:Record<CoachTrackItem['kind'],[string,string]>={plan:['Haftalık eylem','Weekly action'],setup:['Hazırlık','Setup'],content:['İçerik planı','Content plan'],seo:['SEO konusu','SEO topic']};
+// The coach's track record: each suggestion that was used, what it was expected to move and what was observed after it.
+function CoachTrackRecord({data,tr,lang,n,date,channel}:{data:CoachLearningSnapshot;tr:boolean;lang:Locale;n:(value:number)=>string;date:(value:string)=>string;channel:(key:string)=>string}){
+  const track=data.track!,stages=data.results!.stages,label=(index:number)=>stages[index]?.[lang]||'';
+  const people=(counts:number[])=>counts.map((count,index)=>`${n(count)} ${label(index)}`).join(' · ');
+  const state=(item:CoachTrackItem)=>item.state==='waiting'?(tr?'Ölçülüyor (ilk 14 gün)':'Measuring (first 14 days)'):item.state==='no_link'?(tr?'Ölçülemiyor: sitenize etiketli bağlantı yok':'Not measurable: no tagged link to your site'):people(item.counts)+(item.sessions!==null?(tr?` · ${n(item.sessions)} oturum`:` · ${n(item.sessions)} sessions`):'');
+  return <section className="coach-track" aria-labelledby="coach-track-title">
+    <h3 id="coach-track-title"><ClipboardCheck size={14}/> {tr?'Koçun karnesi · son 90 gün':'The coach’s track record · last 90 days'}</h3>
+    <p>{tr?`Koçun ${n(track.used)} önerisi taslağa döndü; ${n(track.published)} tanesi yayınlandı veya gönderildi ve ${n(track.withResults)} tanesi en az bir kişiyi “${label(0)}” aşamasına getirdi. Toplam: ${people(track.people)}.`:`${n(track.used)} coach suggestion(s) became drafts; ${n(track.published)} were published or sent and ${n(track.withResults)} brought at least one person to “${label(0)}”. In total: ${people(track.people)}.`}</p>
+    {track.baseline&&<p className="coach-muted">{tr?`Karşılaştırma: koç dışındaki ${n(track.baseline.items)} etiketli işte iş başına ortalama ${n(track.baseline.average)} kişi “${label(0)}” aşamasına ulaştı.`:`For comparison: ${n(track.baseline.items)} tagged item(s) not suggested by the coach brought an average of ${n(track.baseline.average)} people per item to “${label(0)}”.`}</p>}
+    {track.items.length?<ol className="coach-track-list">{track.items.map(item=><li key={item.ref}>
+      <span className="coach-state">{KINDS[item.kind]?.[tr?0:1]||item.kind}</span>
+      <span><strong>{item.title}</strong><span className="coach-muted"> · {item.channels.map(channel).join(', ')}{item.firstPublishedAt?` · ${date(item.firstPublishedAt)}`:''}</span></span>
+      <span className="coach-muted">{item.expected?(tr?`Beklenen: ${item.expected.goal[lang]} · ${item.expected.stage[lang]}`:`Expected: ${item.expected.goal[lang]} · ${item.expected.stage[lang]}`):(tr?'Beklenen aşama belirtilmedi':'No expected stage')}</span>
+      <span>{state(item)}</span>
+    </li>)}</ol>:<p className="coach-muted">{tr?'Henüz yayınlanmış veya gönderilmiş bir koç önerisi yok.':'No coach suggestion has been published or sent yet.'}</p>}
+    <p className="coach-muted">{tr?'Kişiler, ilk geldikleri etiketli bağlantıya göre ekibin ürün olaylarından sayılır (ilk temas, 90 gün). Bu bir gözlemdir; önerinin sonucu yarattığının kanıtı değildir.':'People are counted from the team’s product events by the tagged link they first came through (first touch, 90 days). This is an observation, not proof that the suggestion caused the result.'}</p>
   </section>;
 }

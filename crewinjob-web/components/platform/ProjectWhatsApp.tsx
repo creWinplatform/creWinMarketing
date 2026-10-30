@@ -6,6 +6,7 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import { WHATSAPP_LIMITS, type WhatsAppBatchView, type WhatsAppDelivery, type WhatsAppMessageState, type WhatsAppSnapshot } from '@/lib/platform/whatsapp-types';
 import Msg from '@/components/Msg';
+import { IYS_SOURCES, IYS_SOURCE_LABELS } from '@/lib/platform/iys-types';
 
 const BATCH:Record<WhatsAppBatchView['state'],[string,string]>={draft:['Taslak','Draft'],approved:['Onaylı','Approved'],queued:['Kuyrukta','Queued'],done:['Tamamlandı','Done'],cancelled:['İptal edildi','Cancelled']};
 const MESSAGE:Record<WhatsAppMessageState,[string,string]>={pending:['bekliyor','pending'],submitting:['gönderiliyor','sending'],accepted:['WhatsApp kabul etti','accepted by WhatsApp'],rejected:['reddedildi','rejected'],uncertain:['belirsiz','uncertain'],skipped:['atlandı','skipped'],rehearsed:['prova edildi','rehearsed']};
@@ -17,7 +18,7 @@ const today=()=>new Date().toISOString().slice(0,10);
 export default function ProjectWhatsApp({lang}:{lang:Locale}){
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
   const [data,setData]=useState<WhatsAppSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState('');
-  const [account,setAccount]=useState({phoneNumberId:'',wabaId:'',accessToken:''}),[contact,setContact]=useState({phones:'',evidence:'',consentAt:today(),acknowledged:false});
+  const [account,setAccount]=useState({phoneNumberId:'',wabaId:'',accessToken:''}),[contact,setContact]=useState({phones:'',evidence:'',consentAt:today(),iysSource:'',acknowledged:false});
   const [batch,setBatch]=useState<{name:string;template:string;params:string[];contactIds:string[];overrides:Record<string,string[]>;headerLink:string;buttonParam:string}|null>(null),[ack,setAck]=useState<Record<string,boolean>>({});
   const [secret,setSecret]=useState(''),[verify,setVerify]=useState('');
   const load=useCallback(()=>{projectRequest<WhatsAppSnapshot>('/api/platform/whatsapp').then(setData).catch(reason=>setError(reason.message));},[]);
@@ -30,7 +31,7 @@ export default function ProjectWhatsApp({lang}:{lang:Locale}){
   const media=(format:string)=>format==='IMAGE'?(tr?'görsel':'image'):format==='VIDEO'?(tr?'video':'video'):format==='DOCUMENT'?(tr?'belge':'document'):'';
   const sendable=data.contacts.filter(item=>!item.optedOut),template=batch?data.templates.find(item=>`${item.name}|${item.language}`===batch.template):undefined;
   const connect=async(event:FormEvent)=>{event.preventDefault();if(await post('connect',{action:'connect',...account},tr?'WhatsApp numarası bağlandı. Şimdi şablonları çekin.':'WhatsApp number connected. Now fetch the templates.'))setAccount({phoneNumberId:'',wabaId:'',accessToken:''});};
-  const addContacts=async(event:FormEvent)=>{event.preventDefault();if(await post('contacts',{action:'addContacts',...contact},tr?'Kişiler eklendi; aynı numara ikinci kez eklenmez.':'Contacts added; the same number is never added twice.'))setContact({phones:'',evidence:'',consentAt:today(),acknowledged:false});};
+  const addContacts=async(event:FormEvent)=>{event.preventDefault();if(await post('contacts',{action:'addContacts',...contact},tr?'Kişiler eklendi; aynı numara ikinci kez eklenmez.':'Contacts added; the same number is never added twice.'))setContact({phones:'',evidence:'',consentAt:today(),iysSource:'',acknowledged:false});};
   const saveBatch=async(event:FormEvent)=>{event.preventDefault();if(!batch||!template)return;if(await post('batch',{action:'save',name:batch.name,templateName:template.name,templateLanguage:template.language,params:batch.params,contactIds:batch.contactIds,extras:{...(template.headerFormat!=='NONE'&&template.headerFormat!=='TEXT'?{headerLink:batch.headerLink.trim()}:{}),...(template.buttonUrl?{buttonParam:batch.buttonParam.trim()}:{})},overrides:Object.fromEntries(Object.entries(batch.overrides).filter(([id])=>batch.contactIds.includes(id)))},tr?'Taslak kaydedildi. Gönderim için onay gerekir.':'Draft saved. Sending needs approval.'))setBatch(null);};
   const counts=(item:WhatsAppBatchView)=>[...Object.entries(item.counts).filter(([,n])=>n).map(([state,n])=>`${n} ${MESSAGE[state as WhatsAppMessageState][idx]}`),...Object.entries(item.delivery).filter(([,n])=>n).map(([state,n])=>`${n} ${DELIVERY[state as WhatsAppDelivery][idx]}`)].join(' · ');
   const setupHooks=async()=>{if(busy)return;setBusy('hooks');setError('');setNotice('');
@@ -69,7 +70,8 @@ export default function ProjectWhatsApp({lang}:{lang:Locale}){
       {data.can.contacts&&<form className="whatsapp-contacts" onSubmit={event=>void addContacts(event)}>
         <label>{tr?'Numaralar (ülke koduyla, her satıra bir tane)':'Numbers (with country code, one per line)'}<textarea rows={3} value={contact.phones} placeholder="+905321234567" onChange={event=>setContact(old=>({...old,phones:event.target.value}))}/></label>
         <div className="ads-form-row"><label>{tr?'İzin kanıtı (form, kayıt veya belge referansı)':'Consent evidence (form, record or document reference)'}<input maxLength={160} value={contact.evidence} onChange={event=>setContact(old=>({...old,evidence:event.target.value}))}/></label>
-          <label>{tr?'İzin tarihi':'Consent date'}<input type="date" max={today()} value={contact.consentAt} onChange={event=>setContact(old=>({...old,consentAt:event.target.value}))}/></label></div>
+          <label>{tr?'İzin tarihi':'Consent date'}<input type="date" max={today()} value={contact.consentAt} onChange={event=>setContact(old=>({...old,consentAt:event.target.value}))}/></label>
+          <label>{tr?'İzin nasıl alındı? (İYS)':'How was consent obtained? (IYS)'}<select value={contact.iysSource} onChange={event=>setContact(old=>({...old,iysSource:event.target.value}))}><option value="">{tr?'Seçin (Türkiye’ye gönderiyorsanız gerekli)':'Choose (required if you send to Turkey)'}</option>{IYS_SOURCES.map(source=><option key={source} value={source}>{IYS_SOURCE_LABELS[source][tr?0:1]}</option>)}</select></label></div>
         <label className="automation-choice"><input type="checkbox" checked={contact.acknowledged} onChange={event=>setContact(old=>({...old,acknowledged:event.target.checked}))}/>{tr?'Bu kişilerin her biri, bu işletmeden WhatsApp ile pazarlama mesajı almayı açıkça kabul etti.':'Each of these people explicitly agreed to receive marketing messages on WhatsApp from this business.'}</label>
         <button type="submit" className="studio-secondary" disabled={Boolean(busy)||!contact.phones.trim()||!contact.evidence.trim()||!contact.acknowledged}><Plus size={14}/>{tr?'Kişileri ekle':'Add contacts'}</button>
       </form>}

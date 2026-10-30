@@ -30,7 +30,8 @@ export type CoachAnswers={
   /** Missing only in answers saved before the budget question existed (treated as no ad budget). */
   budget?:typeof COACH_BUDGETS[number];
 };
-export type CoachPlanItem={week:number;title:string;why:string;how:string;minutes:number;tool:CoachTool;channel:CoachChannel|null};
+// goalId/stage: the goal stage the action is expected to move (optional; the learning view checks it against real results).
+export type CoachPlanItem={week:number;title:string;why:string;how:string;minutes:number;tool:CoachTool;channel:CoachChannel|null;goalId?:string|null;stage?:number|null};
 export type CoachBrief={
   language:'tr'|'en';
   icp:{summary:string;pains:string[]};
@@ -61,13 +62,13 @@ export const coachDraftChannel=(channel:CoachChannel|null)=>channel==='seo'?'blo
 export const COACH_PREFILL_KEY='ryzevo.coach.prefill';
 // Phase 2 · monthly content plan: AI or rule-based suggestions; each item is approved by a person before use.
 export type CoachContentItem={
-  id:string;month:string;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string|null;plannedFor:string;
+  id:string;month:string;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string|null;stageIndex:number|null;plannedFor:string;
   state:'suggested'|'approved'|'dismissed';source:'ai'|'template'|'human';revision:number;taskId:string|null;approvedAt:string|null;assignment:CoachAssignment|null;
   prefill:{brief:string;channel:string;name:string;ref:string}|null;
 };
 export type CoachContentSnapshot={
   month:string;months:string[];today:string;items:CoachContentItem[];hasBrief:boolean;language:'tr'|'en'|null;briefChannels:CoachChannel[];
-  goals:{id:string;label:LocalizedText}[];aiConfigured:boolean;canWrite:boolean;
+  goals:{id:string;label:LocalizedText;stages:LocalizedText[]}[];aiConfigured:boolean;canWrite:boolean;
 };
 // Phase 2 · SEO for non-experts. Numbers only ever come from a Search Console snapshot; suggestions carry none.
 export const SEO_INTENTS=['informational','commercial','transactional','navigational'] as const;
@@ -91,6 +92,8 @@ export type CoachReviewFacts={
   content:{drafts:number;draftsByChannel:Record<string,number>;campaigns:number;publications:number;planApproved:number};
   seo:{audits:number;briefsApproved:number};
   rose:{goal:LocalizedText;stage:LocalizedText;from:number;to:number}[];
+  // People who first came through a tagged post or email in the last 28 days and reached the learning stage, by channel.
+  results?:{stage:LocalizedText;byChannel:Record<string,number>}|null;
 };
 export type CoachAdjustment={id:string;kind:'add'|'move'|'note';title:LocalizedText;why:LocalizedText;item:CoachPlanItem|null;actionId:string|null;toWeek:number|null;state:'proposed'|'accepted'|'rejected'};
 export type CoachReview={id:string;week:string;createdAt:string;revision:number;hasData:boolean;facts:CoachReviewFacts;adjustments:CoachAdjustment[]};
@@ -106,18 +109,29 @@ export function diffBriefs(before:CoachBrief,after:CoachBrief):CoachBriefChanges
     planAdded:[...next.keys()].filter(key=>!old.has(key)).length,planRemoved:[...old.keys()].filter(key=>!next.has(key)).length,planMoved:[...next].filter(([key,week])=>old.has(key)&&old.get(key)!==week).length};
 }
 export type CoachEngagement={observed:number;totals:Record<string,number>;interactions:number};
-export type CoachLearningGroup={key:string;label:string;drafts:number;published:number}&CoachEngagement;
+// measured: published items with a tagged link; results: people per goal stage who first came through them (90 days).
+export type CoachLearningGroup={key:string;label:string;drafts:number;published:number;measured:number;results:number[]|null}&CoachEngagement;
 export type CoachLearningSnapshot={
   drafts:{id:string;title:string;channel:string;source:'plan'|'setup'|'content'|'seo';theme:string;createdAt:string;published:number;rehearsed:number;engagement:CoachEngagement}[];
   byChannel:CoachLearningGroup[];byTheme:CoachLearningGroup[];
-  leader:{dimension:'channel'|'theme';key:string;label:string;average:number;observed:number}|null;
+  // basis 'results': people per measured item at the learning stage; 'engagement': interactions per observed publication.
+  leader:{dimension:'channel'|'theme';key:string;label:string;average:number;observed:number;basis:'engagement'|'results';stage:LocalizedText|null}|null;
   measurements:{goal:LocalizedText;stage:LocalizedText;source:string;first:number;firstAt:string;last:number;lastAt:string;entries:number}[];
   versions:{revision:number;kind:CoachBriefKind;approvedAt:string;channels:CoachChannel[];planItems:number}[];
   changes:CoachBriefChanges|null;hasBrief:boolean;
   outcomes:CoachOutcomes;email:CoachEmailResults;
   // GA4 sessions and key events that arrived through tagged own-site links in accepted posts (null until a property is read).
   site:SiteSummary|null;
+  // Goal stages mapped to product events, and the coach's track record against them (null until results can be read).
+  results:{stages:LocalizedText[];days:number}|null;
+  track:CoachTrack|null;
 };
+// What each used coach suggestion was expected to move and what was observed. Observations, not credited causes.
+export type CoachTrackItem={ref:string;kind:'plan'|'setup'|'content'|'seo';title:string;channels:string[];firstPublishedAt:string|null;
+  expected:{goal:LocalizedText;stage:LocalizedText}|null;state:'waiting'|'measured'|'no_link'|'not_published';counts:number[];sessions:number|null};
+export type CoachTrack={items:CoachTrackItem[];used:number;published:number;withResults:number;people:number[];
+  // Non-coach tagged items in the same 90 days, for comparison (shown with at least two such items).
+  baseline:{items:number;average:number}|null};
 // Phase 4 · outcomes next to coach work, week by week. A reading is shown only in the week it belongs to (manual: the day it
 // was recorded; automatic: the last day of the measured period). Manual and automatic sources stay on separate rows.
 export type CoachOutcomeCell={value:number;at:string;from:string|null}|null;
@@ -143,7 +157,8 @@ export type CoachRefreshFacts={
   plan:{title:string;channel:CoachChannel|null;tool:CoachTool;week:number;state:'done'|'skipped'|'open'}[];
   drafts:Record<string,number>;publications:number;emailRecipients:number;
   measurements:{goal:LocalizedText;stage:LocalizedText;source:string;first:number;last:number;entries:number}[];
-  leader:{dimension:'channel'|'theme';key:string;average:number;observed:number}|null;
+  // basis 'results': people per measured item who first came through it and reached `stage`; 'engagement': interactions.
+  leader:{dimension:'channel'|'theme';key:string;average:number;observed:number;basis?:'engagement'|'results';stage?:LocalizedText|null}|null;
   // Visits to the site through tagged links, per channel (absent in renewals proposed before link results existed).
   site?:{from:string;to:string;partial:boolean;byChannel:{channel:CoachChannel;posts:number;sessions:number;keyEvents:number}[]}|null;
 };

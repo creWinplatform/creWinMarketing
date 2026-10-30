@@ -147,9 +147,9 @@ test('offline recovery authenticates the encrypted push address',()=>close(async
   try{
    await f.db.backup(file);const {inspectSnapshot}=await import('../scripts/lib/platform-recovery.mjs');
    const others=f.db.prepare("SELECT COUNT(*) n FROM platform_connections WHERE encrypted_credentials<>''").get().n+f.db.prepare("SELECT COUNT(*) n FROM platform_product_sources WHERE encrypted_checkpoint IS NOT NULL").get().n;
-   const report=inspectSnapshot(file,KEY,64);assert.equal(report.credentialCheck,'authenticated');assert.ok(report.encryptedRecords>=others+1);
+   const report=inspectSnapshot(file,KEY,67);assert.equal(report.credentialCheck,'authenticated');assert.ok(report.encryptedRecords>=others+1);
    const copy=new (require('better-sqlite3'))(file);try{copy.exec("DELETE FROM platform_push_notices; UPDATE platform_push_subscriptions SET id='push_moved'");}finally{copy.close();}
-   assert.throws(()=>inspectSnapshot(file,KEY,64),/credential_authentication_failed/,'an address moved to another row does not authenticate');
+   assert.throws(()=>inspectSnapshot(file,KEY,67),/credential_authentication_failed/,'an address moved to another row does not authenticate');
   }finally{fs.rmSync(folder,{recursive:true,force:true});}
  });
 }));
@@ -159,7 +159,7 @@ test('migration 62 is additive and repeatable',async()=>{
  for(const suffix of ['','-wal','-shm'])try{require('node:fs').unlinkSync(file+suffix);}catch{}
  let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeLaunchExtrasSchema(db);
  assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name IN ('platform_user_preferences','platform_push_subscriptions','platform_push_notices')").get().n,0);db.close();
- db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,64);
+ db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,67);
  assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name IN ('platform_user_preferences','platform_push_subscriptions','platform_push_notices')").get().n,3);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=62').get().n,1);db.close();
  for(const suffix of ['','-wal','-shm'])try{require('node:fs').unlinkSync(file+suffix);}catch{}

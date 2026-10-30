@@ -1361,6 +1361,79 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_ai_visibility_settings_due ON platform_ai_visibility_settings(next_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(64,datetime('now'));
   `))();
+  // Schema 65: first-touch attribution. The first tagged link a person arrived through (reported by the team's own product
+  // events) and a pseudonymous trail of their later events, kept after the raw events are pruned. No id or attribute value.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=65').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_attribution_touches (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, entity_key TEXT NOT NULL CHECK(length(entity_key)=64),
+      campaign TEXT NOT NULL CHECK(length(campaign) BETWEEN 1 AND 100), source TEXT CHECK(source IS NULL OR length(source) BETWEEN 1 AND 64),
+      medium TEXT CHECK(medium IS NULL OR length(medium) BETWEEN 1 AND 64), touched_at TEXT NOT NULL,
+      connection_id TEXT NOT NULL, event_id TEXT NOT NULL, recorded_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,entity_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_attribution_touches_campaign ON platform_attribution_touches(organization_id,project_id,campaign);
+    CREATE TABLE platform_attribution_events (
+      connection_id TEXT NOT NULL, event_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      entity_key TEXT NOT NULL CHECK(length(entity_key)=64), event_name TEXT NOT NULL, occurred_at TEXT NOT NULL, value REAL, received_at TEXT NOT NULL,
+      PRIMARY KEY(connection_id,event_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_attribution_events_stage ON platform_attribution_events(organization_id,project_id,event_name,occurred_at);
+    CREATE INDEX platform_attribution_events_entity ON platform_attribution_events(organization_id,project_id,entity_key);
+    CREATE TABLE platform_attribution_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      value_connection_id TEXT, value_event TEXT, value_key TEXT,
+      currency TEXT CHECK(currency IS NULL OR (length(currency)=3 AND currency GLOB '[A-Z][A-Z][A-Z]')),
+      updated_by TEXT NOT NULL REFERENCES platform_users(id), updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(65,datetime('now'));
+  `))();
+  // Schema 66: the goal stage a coach content plan item is expected to move (the learning view checks it against results).
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=66').get())db.transaction(()=>db.exec(`
+    ALTER TABLE platform_coach_content_items ADD COLUMN stage_index INTEGER CHECK(stage_index IS NULL OR stage_index BETWEEN 0 AND 7);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(66,datetime('now'));
+  `))();
+  // Schema 67: İYS. The project's declaration and change-feed state, the consent status İYS reported per recipient and
+  // channel, the consents and opt-outs waiting to be reported, and WhatsApp numbers that opted out before being removed.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=67').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_iys_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, scope TEXT CHECK(scope IS NULL OR scope IN ('tr','none')),
+      declared_by TEXT REFERENCES platform_users(id), declared_at TEXT, connection_id TEXT,
+      pull_state TEXT NOT NULL DEFAULT 'idle' CHECK(pull_state IN ('idle','ok','failed')), pull_error TEXT, pulled_at TEXT, pull_cursor TEXT, next_pull_at TEXT, lease_until TEXT,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_iys_settings_due ON platform_iys_settings(next_pull_at);
+    CREATE TABLE platform_iys_recipients (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('EPOSTA','MESAJ')),
+      recipient_key TEXT NOT NULL CHECK(length(recipient_key)=64), encrypted_recipient TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ONAY','RET')), consent_date TEXT, source TEXT,
+      origin TEXT NOT NULL CHECK(origin IN ('query','pull','upload')), checked_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,channel,recipient_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_iys_outbox (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('EPOSTA','MESAJ')),
+      recipient_key TEXT NOT NULL CHECK(length(recipient_key)=64), encrypted_recipient TEXT, masked TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ONAY','RET')), source TEXT NOT NULL, consent_date TEXT NOT NULL, due_at TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','sent','failed')), attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),
+      last_error TEXT, transaction_id TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_iys_outbox_due ON platform_iys_outbox(state,due_at);
+    CREATE INDEX platform_iys_outbox_recipient ON platform_iys_outbox(organization_id,project_id,channel,recipient_key);
+    CREATE TABLE platform_whatsapp_suppressions (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, phone_hash TEXT NOT NULL CHECK(length(phone_hash)=64),
+      reason TEXT NOT NULL CHECK(reason IN ('team','reply')), created_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,phone_hash),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(67,datetime('now'));
+  `))();
   return db;
 }
 

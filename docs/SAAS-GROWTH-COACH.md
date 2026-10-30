@@ -428,3 +428,43 @@ nothing is sent, spent or published by the coach.
 - The monthly content plan and renewal "one more draft" stay on studio channels.
 
 **Tests:** `test/platform-coach-channels.test.cjs`. No schema change.
+
+# Phase 5: learning from results and the track record (30 October 2026)
+
+Same rules: AI suggests, people approve; observations, never credited causes; counts only, no percentages from the AI.
+
+**What changed.** The learning loop now reads the people the coach's own work brought, from first-touch attribution (`SAAS-ATTRIBUTION.md`), instead of only social engagement.
+- **Source:** `ProjectAttribution.tagCounts(from,to)`. The tags are the drafts' and campaigns' own link tags (`linkTag`); the window is the last 90 days.
+- **Learning stage:** the first goal stage mapped to a product event (usually signup). Without such a mapping, the engagement rule is unchanged.
+- **Groups** (`byChannel`, `byTheme`) gain `measured` and `results`.
+  - `measured` counts published items whose accepted post carried the item's tag, or sent emails that linked to the project's own site.
+  - `results` gives people per stage.
+- **Leader:** chosen on results first, with the same thresholds: at least two groups with measured items, two measured items in the top group, and a strictly higher average. `basis` says `results` or `engagement`, and `stage` names the learning stage.
+
+**Track record (`track`, Analytics → "Growth coach: what we learned" → "The coach's track record").**
+- **One row per used suggestion** (the `coachRef` of its drafts and campaigns):
+  - title (a plan action that moved or was renewed is found in older brief versions);
+  - channels and first publication;
+  - the expected goal stage;
+  - the state: measuring (first 14 days, nobody yet), measured (people per stage, GA4 sessions), not measurable (no tagged link) or not published.
+- **Summary:** suggestions used, published or sent, and with at least one person at the learning stage, plus people per stage.
+- **Comparison:** the average for tagged items the coach did not suggest in the same 90 days, shown with at least two such items.
+
+**Expected stage (schema 66).**
+- **Content plan items:** `stage_index` (`platform_coach_content_items`). It is kept only for a stage of the item's goal; otherwise null.
+- **Brief plan actions:** optional `goalId` and `stage` in the brief JSON. `normalizeCoachBrief(raw,source,goals)` keeps both only for a known goal stage. Actions without a target keep their old shape, so their ids and digests do not change.
+- **AI prompts** (diagnosis, content plan) list the goals with their stages and may fill the target. Editors offer "Which stage should it move?".
+
+**Weekly review and renewal.**
+- **Weekly review:** `facts.results` holds people by coach channel in the last 28 days. The repeat proposal picks the brief channel that brought the most people and says how many, with the not-proof-of-cause note. Without results, the drafts rule is unchanged.
+- **Renewal:** a results-based leader moves its channel to the front with a reason that names the stage and the count.
+
+**Crewin:** no product events, so `results` and `track` are null and the engagement view stays as it was.
+
+**Tests:** `test/platform-coach-results.test.cjs` covers:
+- results by channel and theme, and the results leader;
+- track record states, totals and the comparison;
+- no person id in the view;
+- the weekly review proposal and the renewal reason;
+- target validation in briefs and content items;
+- Crewin.

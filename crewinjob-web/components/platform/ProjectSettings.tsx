@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity } from 'lucide-react';
+import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { localeTag } from '@/lib/i18n/shared';
 import TeamAdministration from './TeamAdministration';
@@ -9,6 +9,7 @@ import ProjectConnections from './ProjectConnections';
 import ProjectProfileEditor from './ProjectProfileEditor';
 import AccountSettings from './AccountSettings';
 import CoachBrandStudio from './CoachBrandStudio';
+import IysPanel from './IysPanel';
 import { ryzevoFeature } from '@/lib/platform/ryzevo-features';
 const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
 const ProjectPlan=dynamic(()=>import('./ProjectPlan'));
@@ -53,6 +54,7 @@ export default function ProjectSettings({
     else if (canConnections && project.productPack==='standard' && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
     else if(brandOpen&&requested==='brand')setSection('brand');
+    else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='iys')setSection('iys');
     else if (canOperate && requested === 'operations') setSection('operations');
     else if (
       requested === 'team' &&
@@ -108,6 +110,10 @@ export default function ProjectSettings({
           {
             id:'brand',Icon:Palette,label:tr?'Marka dili & rakipler':'Brand voice & competitors',
             visible:brandOpen,
+          },
+          {
+            id:'iys',Icon:ShieldCheck,label:tr?'Gönderim izinleri (İYS)':'Sending consents (IYS)',
+            visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
           },
           {
             id:'plan',Icon:Gauge,label:tr?'Plan & kullanım':'Plan & usage',
@@ -254,6 +260,7 @@ export default function ProjectSettings({
         </div>
       )}
       {section === 'data' && canConnections && project.productPack==='standard' && <ProductDataSources key={project.id} lang={lang} />}
+      {section==='iys'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<div className="mt-6"><IysPanel key={'iys-'+project.id} lang={lang}/></div>}
       {section==='brand'&&brandOpen&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<AgencyLinksPanel key={'agency-links-'+project.id} lang={lang}/>}

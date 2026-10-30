@@ -14,6 +14,7 @@ import { localeTag } from '@/lib/i18n/shared';
 import AutomaticMeasurements from './AutomaticMeasurements';
 import CoachLearning from './CoachLearning';
 import MonthlyReportPanel from './MonthlyReportPanel';
+import AttributionResults from './AttributionResults';
 import BudgetPlanner from './BudgetPlanner';
 import Msg from '@/components/Msg';
 export default function ProjectReports({
@@ -114,6 +115,7 @@ export default function ProjectReports({
         </div>
       </header>
       {workspace.project.productPack === 'standard' && <MonthlyReportPanel lang={lang} />}
+      {workspace.project.productPack === 'standard' && <AttributionResults lang={lang} />}
       {workspace.project.productPack === 'standard' && <CoachLearning workspace={workspace} lang={lang} />}
       <div className="product-data-modes" role="tablist" aria-label={tr ? 'Ölçüm kaynağı' : 'Measurement source'} onKeyDown={event => { if (['ArrowLeft','ArrowRight'].includes(event.key)) { event.preventDefault(); const next = mode === 'automatic' ? 'manual' : 'automatic'; setMode(next); (event.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next === 'automatic' ? 0 : 1]).focus(); } }}>
         <button role="tab" aria-selected={mode === 'automatic'} onClick={() => setMode('automatic')}>{tr ? 'Otomatik ölçümler' : 'Automatic measurements'}</button>

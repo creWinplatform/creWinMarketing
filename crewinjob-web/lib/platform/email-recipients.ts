@@ -7,6 +7,8 @@ import type {SegmentEntity} from './segment-engine';
 import {encryptCredentials} from './credential-envelope';
 import {emailAddress,emailIdentity,maskEmail,safetyRevision,bumpSafety,blockEmail,blockEntity,recordEmailOptOut,newUnsubscribeToken} from './email-safety';
 import type {EmailMapping,RecipientContact,RecipientWorkspace,EmailEligibility} from './email-recipient-types';
+import {iysScope,queueIysConsent} from './iys';
+import {IYS_SOURCES,type IysSource} from './iys-types';
 
 type RecordRow={external_id:string;attributes_json:string};
 type ConsentRow={id:number;decision:RecipientContact['consent'];actor_id:string};
@@ -71,7 +73,7 @@ export class EmailRecipients {
     for(const row of this.records(sourceId,source.version)){const identity=this.identity(mapping,row.external_id,JSON.parse(row.attributes_json));if(identity.contactKey===contactKey)return {source,mapping,row,identity,contact:this.contact(mapping,row)};}
     throw new MarketingStoreError('Alıcı verisi değişti. Listeyi yenileyin.',409);
   }
-  review(input:{sourceId:string;contactKey:string;expectedDecisionId:number|null;decision:'reviewed'|'withdrawn';evidenceRef:string;recordedAt:string;note:string;acknowledged:boolean}){
+  review(input:{sourceId:string;contactKey:string;expectedDecisionId:number|null;decision:'reviewed'|'withdrawn';evidenceRef:string;recordedAt:string;note:string;acknowledged:boolean;iysSource?:unknown}){
     this.authorize();this.consume('recipient_review',100);
     return this.db.transaction(()=>{
       const item=this.selected(input.sourceId,input.contactKey);
@@ -82,10 +84,14 @@ export class EmailRecipients {
       if(input.decision==='reviewed'&&(item.contact.blocked||typeof input.evidenceRef!=='string'||!/^[a-zA-Z0-9][a-zA-Z0-9_.:/-]{0,199}$/.test(input.evidenceRef)||!Number.isFinite(recordedAt)||recordedAt>Date.now()||recordedAt<Date.UTC(1970,0)))throw new MarketingStoreError('Engellenmemiş alıcı, kanıt referansı ve geçmiş izin tarihi gerekli.');
       const count=(this.db.prepare('SELECT COUNT(*) AS n FROM platform_email_consents WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n;
       if(count>=20000)throw new MarketingStoreError('İzin geçmişi sınırına ulaşıldı.',429);
+      // A project that sends to Turkey reports each consent to İYS, so it has to say how the consent was obtained.
+      const iysSource=typeof input.iysSource==='string'&&(IYS_SOURCES as readonly string[]).includes(input.iysSource)?input.iysSource as IysSource:null;
+      if(input.decision==='reviewed'&&iysScope(this.db,this.scope)==='tr'&&!iysSource)throw new MarketingStoreError('İYS için iznin nasıl alındığını seçin.');
       const envelope=encryptCredentials({evidenceRef:input.evidenceRef||'',recordedAt:input.recordedAt||'',note:input.note.trim()},this.key,...this.args(),input.contactKey);
       this.db.prepare('INSERT INTO platform_email_consents(organization_id,project_id,contact_key,decision,encrypted_evidence,actor_id,created_at) VALUES(?,?,?,?,?,?,?)').run(...this.args(),input.contactKey,input.decision,envelope,this.scope.subject,new Date().toISOString());
       if(input.decision==='withdrawn'){blockEntity(this.db,this.scope,item.source.id,item.identity.entityKey);blockEmail(this.db,this.scope,item.identity.emailKey,maskEmail(item.identity.email),'consent_withdrawn');}
-      bumpSafety(this.db,this.scope);this.audit(`recipient.consent.${input.decision}`);return {saved:true};
+      const iys=queueIysConsent(this.db,this.scope,this.key,{channel:'EPOSTA',recipient:item.identity.email,status:input.decision==='reviewed'?'ONAY':'RET',source:iysSource,consentDate:input.decision==='reviewed'?input.recordedAt:new Date().toISOString(),actor:this.scope.subject});
+      bumpSafety(this.db,this.scope);this.audit(`recipient.consent.${input.decision}`);return {saved:true,iys};
     })();
   }
   suppress(input:{email:string;acknowledged:boolean}){
@@ -117,4 +123,23 @@ export class EmailRecipients {
   private page(value:number){if(!Number.isSafeInteger(value)||value<1||value>1000)throw new MarketingStoreError('Geçersiz sayfa.');}
   private consume(resource:string,max:number){this.db.transaction(()=>{const day=new Date().toISOString().slice(0,10),used=this.db.prepare('SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource=?').get(...this.args(),day,resource) as {count:number}|undefined;if((used?.count||0)>=max)throw new MarketingStoreError('Günlük alıcı işlemi sınırına ulaşıldı.',429);this.db.prepare('INSERT INTO platform_usage VALUES(?,?,?,?,1) ON CONFLICT(organization_id,project_id,period,resource) DO UPDATE SET count=count+1').run(...this.args(),day,resource);})();}
   private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
+}
+
+// After an unsubscribe: finds the address behind the link in the mapped source and queues the opt-out for İYS. When the
+// record is gone, the opt-out is still recorded for a person to report.
+export function queueIysUnsubscribe(db:Database.Database,scope:{organizationId:string;projectId:string},key:string,sourceId:string,entityKey:string,emailKey:string){
+  const mapping=db.prepare('SELECT source_id AS sourceId,source_version AS sourceVersion,field,revision FROM platform_email_mappings WHERE source_id=? AND organization_id=? AND project_id=?').get(sourceId,scope.organizationId,scope.projectId) as EmailMapping|undefined;
+  const rows=mapping?db.prepare('SELECT external_id,attributes_json FROM platform_product_records WHERE connection_id=? AND version=? AND organization_id=? AND project_id=? LIMIT 10001').all(sourceId,mapping.sourceVersion,scope.organizationId,scope.projectId) as RecordRow[]:[];
+  const row=rows.find(item=>emailIdentity(scope,key,'entity',[sourceId,item.external_id])===entityKey),email=row&&mapping?emailAddress((JSON.parse(row.attributes_json) as Record<string,unknown>)[mapping.field]):null;
+  return queueIysConsent(db,scope,key,{channel:'EPOSTA',recipient:email,recipientKey:emailKey,status:'RET',source:'HS_WEB',consentDate:new Date().toISOString(),actor:'unsubscribe'});
+}
+// The addresses a live pilot could reach (allowlisted and found in a mapped source), for an İYS status query.
+export function allowlistedEmails(db:Database.Database,scope:{organizationId:string;projectId:string},key:string){
+  const allowed=new Set((db.prepare('SELECT email_key FROM platform_email_pilot_allowlist WHERE organization_id=? AND project_id=? AND active=1').all(scope.organizationId,scope.projectId) as {email_key:string}[]).map(row=>row.email_key)),found=new Set<string>();
+  if(!allowed.size)return [];
+  for(const mapping of db.prepare('SELECT source_id AS sourceId,source_version AS sourceVersion,field,revision FROM platform_email_mappings WHERE organization_id=? AND project_id=?').all(scope.organizationId,scope.projectId) as EmailMapping[])
+    for(const row of db.prepare('SELECT attributes_json FROM platform_product_records WHERE connection_id=? AND version=? AND organization_id=? AND project_id=? LIMIT 10001').all(mapping.sourceId,mapping.sourceVersion,scope.organizationId,scope.projectId) as {attributes_json:string}[]){
+      const email=emailAddress((JSON.parse(row.attributes_json) as Record<string,unknown>)[mapping.field]);if(email&&allowed.has(emailIdentity(scope,key,'email',[email])))found.add(email);
+    }
+  return [...found];
 }

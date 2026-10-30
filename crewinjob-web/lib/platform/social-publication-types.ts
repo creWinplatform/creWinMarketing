@@ -1,4 +1,5 @@
 import type { PublicationSiteResult } from './link-tracking-types';
+import type { AttributionTagResult } from './attribution-types';
 export type PublicationSource = { story?: boolean; kind: 'content' | 'campaign'; id: string; platform: string; title: string; text: string; digest: string; eligible: boolean; imagePreview?: string; imagePreviews?: string[]; format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number }; weightedLength?: number; trackedLinks?: number };
 export type PublicationTarget = { id: string; name: string; platform: string; accountId: string; accountType?:'person'|'organization'; revision: string; configured: boolean; ready: boolean; checkedAt: string | null; expiresAt?: string | null };
 export type Publication = {
@@ -11,6 +12,8 @@ export type Publication = {
   images?: {width:number;height:number;bytes:number;previewUrl:string}[];
   format?: 'text'|'image'|'carousel'|'reel'|'story'|'video'; video?: { url: string; format: 'reel'|'story'|'feed'; bytes?: number };
   engagement?: PublicationEngagement; site?: PublicationSiteResult;
+  // People who arrived through this post's tagged link and then reached each goal stage (the team's product events).
+  results?: AttributionTagResult;
 };
 export type EngagementCounts = Partial<Record<'likes'|'comments'|'shares'|'impressions'|'clicks'|'reach'|'bookmarks'|'quotes',number>>;
 export type PublicationEngagement = { status:'not_requested'|'refreshing'|'ready'|'unavailable'|'unsupported'; counts:EngagementCounts; observedAt:string|null; attemptedAt:string|null };

@@ -8,7 +8,7 @@ import { COACH_CONTENT_CHANNELS, COACH_PREFILL_KEY, type CoachChannel, type Coac
 import Msg from '@/components/Msg';
 import CoachAssign from './CoachAssign';
 
-type Form={id:string|null;revision:number;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string;plannedFor:string};
+type Form={id:string|null;revision:number;channel:CoachChannel;theme:string;title:string;angle:string;goalId:string;stageIndex:string;plannedFor:string};
 const channelNames:Record<CoachChannel,[string,string]>={linkedin:['LinkedIn','LinkedIn'],instagram:['Instagram','Instagram'],facebook:['Facebook','Facebook'],twitter:['X','X'],email:['E-posta','Email'],seo:['Blog (SEO)','Blog (SEO)'],whatsapp:['WhatsApp','WhatsApp'],ads:['Ücretli reklam','Paid ads']};
 const stateNames={suggested:['Öneri','Suggestion'],approved:['Onaylı','Approved'],dismissed:['Çıkarıldı','Dismissed']} as const;
 const sourceNames={ai:['AI önerisi','AI suggestion'],template:['Başlangıç şablonu','Starter template'],human:['Ekip ekledi','Added by the team']} as const;
@@ -31,7 +31,7 @@ export default function CoachContentPlan({workspace,lang}:{workspace:WorkspaceCo
     void run('generate',{action:'generate',mode,month},tr?'Öneriler hazır. Her maddeyi inceleyip onaylayın.':'Suggestions are ready. Review and approve each item.');
   };
   const save=async(event:FormEvent)=>{
-    event.preventDefault();if(!form)return;const body={channel:form.channel,theme:form.theme,title:form.title,angle:form.angle,goalId:form.goalId||null,plannedFor:form.plannedFor};
+    event.preventDefault();if(!form)return;const body={channel:form.channel,theme:form.theme,title:form.title,angle:form.angle,goalId:form.goalId||null,stageIndex:form.goalId&&form.stageIndex!==''?Number(form.stageIndex):null,plannedFor:form.plannedFor};
     if(await run('form',form.id?{action:'update',id:form.id,expectedRevision:form.revision,...body}:{action:'add',month,...body},form.id?(tr?'Madde güncellendi. Değişen madde yeniden onay bekler.':'Item updated. A changed item needs approval again.'):(tr?'Madde eklendi; onaylandığında kullanılabilir.':'Item added; it can be used once approved.')))setForm(null);
   };
   // Email items open a campaign draft (audience, consent and approval live there); everything else opens the content studio.
@@ -40,7 +40,7 @@ export default function CoachContentPlan({workspace,lang}:{workspace:WorkspaceCo
   const date=(value:string)=>new Date(`${value}T12:00:00Z`).toLocaleDateString(locale,{weekday:'short',day:'numeric',month:'short',timeZone:'UTC'});
   const monthLabel=(value:string)=>new Date(`${value}-15T12:00:00Z`).toLocaleDateString(locale,{month:'long',year:'numeric',timeZone:'UTC'});
   const lastDay=(value:string)=>{const [year,index]=value.split('-').map(Number);return `${value}-${String(new Date(Date.UTC(year,index,0)).getUTCDate()).padStart(2,'0')}`;};
-  const blank=():Form=>({id:null,revision:0,channel:data?.briefChannels[0]||'linkedin',theme:'',title:'',angle:'',goalId:data?.goals[0]?.id||'',plannedFor:data?.today.startsWith(month+'-')?data.today:`${month}-01`});
+  const blank=():Form=>({id:null,revision:0,channel:data?.briefChannels[0]||'linkedin',theme:'',title:'',angle:'',goalId:data?.goals[0]?.id||'',stageIndex:'',plannedFor:data?.today.startsWith(month+'-')?data.today:`${month}-01`});
   const goalLabel=(id:string|null)=>data?.goals.find(goal=>goal.id===id)?.label[lang];
   const open=data?.items.filter(item=>item.state!=='dismissed')||[],dismissed=data?.items.filter(item=>item.state==='dismissed')||[];
   const channels=[...new Set<CoachChannel>([...(data?.briefChannels||[]),...open.map(item=>item.channel)])];
@@ -49,7 +49,8 @@ export default function CoachContentPlan({workspace,lang}:{workspace:WorkspaceCo
     <label>{tr?'Kanal':'Channel'}<select value={form.channel} onChange={event=>setForm({...form,channel:event.target.value as CoachChannel})}>{COACH_CONTENT_CHANNELS.map(id=><option key={id} value={id}>{channelNames[id][idx]}</option>)}</select></label>
     <label>{tr?'Tarih':'Date'}<input type="date" required min={`${month}-01`} max={lastDay(month)} value={form.plannedFor} onChange={event=>setForm({...form,plannedFor:event.target.value})}/></label>
     <label>{tr?'Tema':'Theme'}<input required maxLength={60} value={form.theme} onChange={event=>setForm({...form,theme:event.target.value})}/></label>
-    <label>{tr?'Hedef':'Goal'}<select value={form.goalId} onChange={event=>setForm({...form,goalId:event.target.value})}><option value="">{tr?'Hedefe bağlı değil':'Not linked to a goal'}</option>{data?.goals.map(goal=><option key={goal.id} value={goal.id}>{goal.label[lang]}</option>)}</select></label>
+    <label>{tr?'Hedef':'Goal'}<select value={form.goalId} onChange={event=>setForm({...form,goalId:event.target.value,stageIndex:''})}><option value="">{tr?'Hedefe bağlı değil':'Not linked to a goal'}</option>{data?.goals.map(goal=><option key={goal.id} value={goal.id}>{goal.label[lang]}</option>)}</select></label>
+    {form.goalId&&<label>{tr?'Hangi aşamayı ilerletmeli?':'Which stage should it move?'}<select value={form.stageIndex} onChange={event=>setForm({...form,stageIndex:event.target.value})}><option value="">{tr?'Belirtilmedi':'Not set'}</option>{data?.goals.find(goal=>goal.id===form.goalId)?.stages.map((stage,index)=><option key={index} value={String(index)}>{stage[lang]}</option>)}</select></label>}
     <label className="studio-form-full">{tr?'Başlık':'Title'}<input required maxLength={140} value={form.title} onChange={event=>setForm({...form,title:event.target.value})}/></label>
     <label className="studio-form-full">{tr?'Kısa açı':'Short angle'}<textarea required maxLength={400} rows={3} value={form.angle} onChange={event=>setForm({...form,angle:event.target.value})}/></label>
     <div className="studio-form-full coach-footer-buttons"><button type="button" className="studio-text-button" onClick={()=>setForm(null)}><X size={14}/>{tr?'Vazgeç':'Cancel'}</button><button className="studio-primary" disabled={Boolean(busy)}>{busy==='form'?(tr?'Kaydediliyor…':'Saving…'):(tr?'Kaydet':'Save')}</button></div>
@@ -59,12 +60,12 @@ export default function CoachContentPlan({workspace,lang}:{workspace:WorkspaceCo
     {form?.id===item.id?editor:<>
       <div className="coach-action-meta"><time dateTime={item.plannedFor}>{date(item.plannedFor)}</time><span className="studio-badge">{item.theme}</span><span className={`coach-state ${item.state==='approved'?'done':''}`}>{stateNames[item.state][idx]}</span><span>{sourceNames[item.source][idx]}</span></div>
       <h4>{item.title}</h4><p>{item.angle}</p>
-      {item.goalId&&<p className="coach-muted">{tr?'Hedef: ':'Goal: '}{goalLabel(item.goalId)||item.goalId}</p>}
+      {item.goalId&&<p className="coach-muted">{tr?'Hedef: ':'Goal: '}{goalLabel(item.goalId)||item.goalId}{item.stageIndex!==null&&data?.goals.find(goal=>goal.id===item.goalId)?.stages[item.stageIndex]?` · ${data.goals.find(goal=>goal.id===item.goalId)!.stages[item.stageIndex!][lang]}`:''}</p>}
       {item.state!=='dismissed'&&<CoachAssign kind="content" itemId={item.id} assignment={item.assignment} lang={lang} onSaved={()=>load(month)}/>}
       {data?.canWrite&&<div className="coach-action-buttons">
         {item.state==='suggested'&&<><button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={()=>void run(item.id,{action:'decide',id:item.id,expectedRevision:item.revision,decision:'approve'})}><Check size={15}/>{tr?'Onayla':'Approve'}</button><button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void run(item.id,{action:'decide',id:item.id,expectedRevision:item.revision,decision:'dismiss'})}><X size={15}/>{tr?'Çıkar':'Dismiss'}</button></>}
         {item.state==='approved'&&<><a className="studio-secondary" href={`/?tab=${studio(item)}`} onClick={()=>handoff(item)}>{item.channel==='email'?tr?'Kampanya taslağı oluştur':'Create a campaign draft':tr?'Taslak oluştur':'Create a draft'}<ArrowRight size={15}/></a>{item.taskId?<a className="studio-text-button" href="/?tab=calendar"><CalendarPlus size={15}/>{tr?'Takvimde':'In Calendar'}</a>:<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void run(item.id,{action:'schedule',id:item.id})}><CalendarPlus size={15}/>{tr?'Takvime ekle':'Add to Calendar'}</button>}</>}
-        <button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>setForm({id:item.id,revision:item.revision,channel:item.channel,theme:item.theme,title:item.title,angle:item.angle,goalId:item.goalId||'',plannedFor:item.plannedFor})}><Pencil size={14}/>{tr?'Düzenle':'Edit'}</button>
+        <button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>setForm({id:item.id,revision:item.revision,channel:item.channel,theme:item.theme,title:item.title,angle:item.angle,goalId:item.goalId||'',stageIndex:item.stageIndex===null?'':String(item.stageIndex),plannedFor:item.plannedFor})}><Pencil size={14}/>{tr?'Düzenle':'Edit'}</button>
       </div>}
     </>}
   </li>;

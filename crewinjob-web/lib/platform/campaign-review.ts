@@ -13,6 +13,8 @@ import {safetyRevision,publicEmailOrigin} from './email-safety';
 import type {SegmentEntity} from './segment-engine';
 import {emailSenderReadiness,emailPilotCounts} from './email-sender';
 import {SesProvider} from './ses-provider';
+import {linkTag,linkTrackingEnabled,tagOwnLinks} from './link-tracking';
+import {iysSendBlock} from './iys';
 
 type Receipt={content_digest:string;data_revision:string;counts_json:string;checked_at:string};
 type Review={id:number;content_digest:string;data_revision:string;decision:ReviewDecision;note:string;actor_id:string;created_at:string};
@@ -25,10 +27,17 @@ export class CampaignReviews {
     const repo=this.repo();
     if(!repo.can(this.scope.subject,...this.args(),permission)||repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('Standart proje inceleme erişimi gerekli.',403);
   }
+  // Links to the project's own site carry the campaign's tag (utm_medium=email), so GA4 and the team's signup events can
+  // tell which email a visitor came from. The tagged text is what the review shows, what its digest covers and what is
+  // sent; a campaign without such links keeps the digest it had.
   private campaign(id:string){
     if(typeof id!=='string'||!id||id.length>120)throw new MarketingStoreError('Geçerli kampanya kimliği gerekli.');
     const campaign=new ProjectMarketingStore(this.db,this.scope).campaign(id);
-    if(!campaign)throw new MarketingStoreError('Kampanya bulunamadı.',404);return campaign;
+    if(!campaign)throw new MarketingStoreError('Kampanya bulunamadı.',404);
+    const website=this.repo().workspace(this.scope.subject,...this.args())?.project.website||'';
+    if(!website||!linkTrackingEnabled(this.db,this.scope))return campaign;
+    const tag=linkTag(this.scope,'campaign',campaign.id),text=tagOwnLinks(campaign.content.text||'',website,'email',tag,'email'),cta=tagOwnLinks(campaign.content.ctaUrl||'',website,'email',tag,'email');
+    return text.tagged||cta.tagged?{...campaign,content:{...campaign.content,text:text.tagged?text.text:campaign.content.text,ctaUrl:cta.tagged?cta.text:campaign.content.ctaUrl}}:campaign;
   }
   private context(campaign:UnifiedCampaign){
     const profile=this.repo().workspace(this.scope.subject,...this.args())!.project,project={...profile,language:profile.language||'tr' as const},sender=emailSenderReadiness(this.db,this.scope);
@@ -71,7 +80,7 @@ export class CampaignReviews {
     checks.push({code:'smtp',state:sender.smtpReady?'pass':'pending'},{code:'sender_domain',state:sender.ownership==='verified'?'pass':'blocked'},{code:'sender_auth',state:ses?.verified?'pass':'blocked'},
       {code:'consent',state:fresh&&counts?.eligibility?.mappingReady&&counts.eligibility.eligible>0?'pass':'blocked'},
       {code:'pilot',state:fresh&&counts?.pilot?.planned>0?'pass':'blocked'},
-      {code:'unsubscribe',state:publicEmailOrigin()?'pass':'blocked'},{code:'dispatch',state:ses?.ready?'pending':'blocked'});
+      {code:'unsubscribe',state:publicEmailOrigin()?'pass':'blocked'},{code:'iys',state:iysSendBlock(this.db,this.scope)?'blocked':'pass'},{code:'dispatch',state:ses?.ready?'pending':'blocked'});
     return {campaignId:id,name:campaign.name,digest,timezone:project.timezone,language:project.language,canCheck:this.repo().can(this.scope.subject,...this.args(),'content.write'),canApprove:this.repo().can(this.scope.subject,...this.args(),'campaign.approve'),approval,
       checks,html:renderCampaignEmailPreview(campaign,project.name,project.language),subject:campaign.content.subject||'',text:campaign.content.text,ctaUrl:campaign.content.ctaUrl||'',
       audience:counts?{matched:counts.matched,unknown:counts.unknown,total:counts.total,computedAt:receipt!.checked_at,fresh}:null,

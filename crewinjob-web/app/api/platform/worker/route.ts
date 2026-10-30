@@ -4,6 +4,8 @@ import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ConnectionJobs,settleUnauthorizedConnectionJob } from '@/lib/platform/connection-jobs';
 import { pruneProductEvents } from '@/lib/platform/product-webhooks';
+import { pruneAttribution } from '@/lib/platform/attribution';
+import { deliverIysOutbox, pullIysChanges } from '@/lib/platform/iys';
 import { pruneEmailTokens } from '@/lib/platform/email-safety';
 import { runEmailPilotJob } from '@/lib/platform/email-pilots';
 import { EmailSendJobs } from '@/lib/platform/email-send-jobs';
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
 
 async function runTick(db: ReturnType<typeof platformDatabase>) {
   const startedAt = Date.now();
-  const pruned = pruneProductEvents(db);
+  const pruned = { ...pruneProductEvents(db), attribution: pruneAttribution(db) };
   const expiredEmailTokens = pruneEmailTokens(db);
   const scheduledMeasurements = scheduleMeasurements(db, credentialEncryptionKey());
   const identity=new PlatformIdentity(db,credentialEncryptionKey());
@@ -105,5 +107,8 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
   // Phone notifications carry no data: a fixed notice that something new needs the person, at most every 30 minutes.
   const pushes=Date.now()-startedAt<25000?await deliverDuePushes(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes };
+  // İYS: consents and opt-outs are reported a few per tick; the change feed is read every 30 minutes per project.
+  const iysOutbox=Date.now()-startedAt<20000?await deliverIysOutbox(db,credentialEncryptionKey()).catch(()=>({sent:0,failed:0})):{sent:0,failed:0};
+  const iysChanges=Date.now()-startedAt<20000?await pullIysChanges(db,credentialEncryptionKey()).catch(()=>({projects:0,changes:0})):{projects:0,changes:0};
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges };
 }

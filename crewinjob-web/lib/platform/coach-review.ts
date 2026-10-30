@@ -7,6 +7,10 @@ import { MarketingStoreError } from './errors';
 import { GrowthCoach,coachChannelName,coachChoice,coachPlanId,coachWeekKey,zonedDateKey,zonedInstant,zonedShiftDays } from './coach';
 import type { CoachAdjustment,CoachBrief,CoachChannel,CoachPlanItem,CoachReview,CoachReviewFacts,CoachReviewMeasurement,CoachReviewSnapshot } from './coach-types';
 import { crewinPublishedBetween,draftsByPlatform,isCrewinProject } from './coach-activity';
+import { ProjectAttribution } from './attribution';
+
+// utm_source of a tagged link → the coach channel it belongs to.
+const RESULT_CHANNELS:Record<string,CoachChannel>={linkedin:'linkedin',facebook:'facebook',x:'twitter',email:'email'};
 
 type Row={id:string;week:string;facts_json:string;adjustments_json:string;revision:number;created_at:string};
 const l=(tr:string,en:string):LocalizedText=>({tr,en});
@@ -43,7 +47,17 @@ export class CoachWeeklyReview{
         publications:isCrewinProject(this.db,this.args())?crewinPublishedBetween(from,to):this.count("SELECT COUNT(*) n FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state='accepted' AND j.updated_at>=? AND j.updated_at<=?",from,to),
         planApproved:this.count('SELECT COUNT(*) n FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND approved_at>=? AND approved_at<=?',from,to)},
       seo:{audits:this.count("SELECT COUNT(*) n FROM platform_audit WHERE organization_id=? AND project_id=? AND operation GLOB 'seo.audit.completed:*' AND operation NOT GLOB '*:clean' AND created_at>=? AND created_at<=?",from,to),briefsApproved:audits('coach.seo.brief.approve')},
-      rose:activity?measurements.filter(item=>item.previous!==null&&item.latest>item.previous).map(item=>({goal:item.goal,stage:item.stage,from:item.previous!,to:item.latest})):[]};
+      rose:activity?measurements.filter(item=>item.previous!==null&&item.latest>item.previous).map(item=>({goal:item.goal,stage:item.stage,from:item.previous!,to:item.latest})):[],
+      results:this.results(now)};
+  }
+  // People who first came through a tagged post or email in the last 28 days and reached the first mapped goal stage, by
+  // coach channel. Null without product results (and always for Crewin, which has no product events).
+  private results(now:Date):CoachReviewFacts['results']{
+    const counts=new ProjectAttribution(this.db,this.scope).tagCounts(new Date(now.getTime()-28*DAY).toISOString(),new Date(now.getTime()+1000).toISOString());
+    if(!counts.stages.length)return null;
+    const byChannel:Record<string,number>={};
+    for(const [key,values] of counts.byTagSource){const channel=RESULT_CHANNELS[key.split('\n')[1]];if(channel&&values[0]>0)byChannel[channel]=(byChannel[channel]||0)+values[0];}
+    return {stage:counts.stages[0].label,byChannel};
   }
   // Rule-based proposals; each names the fact it comes from. Nothing changes until an approver accepts it.
   private proposals(facts:CoachReviewFacts,brief:CoachBrief,planWeek:number):CoachAdjustment[]{
@@ -57,7 +71,11 @@ export class CoachWeeklyReview{
     const approvedAt=this.coach.approved().approvedAt,settled=Boolean(approvedAt&&Date.now()-Date.parse(approvedAt)>5*DAY);
     if((facts.actions.skipped>=2||settled&&facts.actions.done===0&&facts.actions.open>=3)&&open.length>1&&next>current){const item=open[0];list.push({id:`move:${coachPlanId(item)}`,kind:'move',title:l(`“${item.title}” eylemini ${next}. haftaya taşı`,`Move “${item.title}” to week ${next}`),why:facts.actions.skipped>=2?l(`Bu hafta ${facts.actions.skipped} eylem atlandı; en uzun eylemi ertelemek haftayı hafifletir.`,`${facts.actions.skipped} actions were skipped this week; deferring the longest one lightens the week.`):l('Bu hafta tamamlanan eylem yok; daha az eylemle başlamak kolaylaştırabilir.','No action was completed this week; starting with fewer actions can help.'),item:null,actionId:coachPlanId(item),toWeek:next,state:'proposed'});}
     const channel=brief.channels.map(item=>item.id).filter(id=>(facts.content.draftsByChannel[id==='seo'?'blog':id]||0)>0).sort((a,b)=>(facts.content.draftsByChannel[b==='seo'?'blog':b]||0)-(facts.content.draftsByChannel[a==='seo'?'blog':a]||0))[0] as CoachChannel|undefined;
-    if(channel){const name=(lang:'tr'|'en')=>coachChannelName(channel,lang),count=facts.content.draftsByChannel[channel==='seo'?'blog':channel];
+    // Product results first: the brief channel whose tagged work brought the most people to the first mapped stage.
+    const people=facts.results?.byChannel||{},winner=brief.channels.map(item=>item.id).filter(id=>(people[id]||0)>0).sort((a,b)=>(people[b]||0)-(people[a]||0))[0] as CoachChannel|undefined;
+    if(winner&&facts.results){const name=(lang:'tr'|'en')=>coachChannelName(winner,lang),count=people[winner],stage=facts.results.stage;
+      add(`repeat:${winner}`,l(`${name('tr')} için bir taslak daha planla`,`Plan one more ${name('en')} draft`),l(`Son 28 günde ${name('tr')} üzerinden ilk kez gelen ${count} kişi “${stage.tr}” aşamasına ulaştı. Bu bir gözlemdir, neden-sonuç kanıtı değildir.`,`In the last 28 days, ${count} people who first came through ${name('en')} reached “${stage.en}”. This is an observation, not proof of cause.`),{title:l(`${name('tr')} için bir taslak daha hazırlayın`,`Draft one more ${name('en')} piece`),why:lang==='tr'?'Bu kanaldan gelen kişiler hedef aşamanıza ulaştı; aynı konuyu farklı bir açıdan sürdürün.':'People from this channel reached your goal stage; continue the topic from a different angle.',how:lang==='tr'?'İçerik stüdyosunda bu kanaldaki son taslağı açın ve bir müşteri sorusuna odaklanan yeni bir versiyon yazın.':'Open the latest draft for this channel in the content studio and write a new version focused on one customer question.',minutes:30,tool:winner==='email'?'campaigns':'library',channel:winner,goalId:null,stage:null});}
+    else if(channel){const name=(lang:'tr'|'en')=>coachChannelName(channel,lang),count=facts.content.draftsByChannel[channel==='seo'?'blog':channel];
       add(`repeat:${channel}`,l(`${name('tr')} için bir taslak daha planla`,`Plan one more ${name('en')} draft`),l(`Bu hafta ${count} ${name('tr')} taslağı oluşturuldu; ritmi korumak yeniden başlamaktan kolaydır.${facts.rose.length?' Bazı ölçümler aynı dönemde arttı; bu bir neden-sonuç kanıtı değildir.':''}`,`${count} ${name('en')} draft(s) were created this week; keeping the rhythm is easier than restarting.${facts.rose.length?' Some measurements rose in the same period; this is not proof of cause.':''}`),{title:l(`${name('tr')} için bir taslak daha hazırlayın`,`Draft one more ${name('en')} piece`),why:lang==='tr'?'Geçen hafta bu kanalda taslak hazırladınız; aynı konuyu farklı bir açıdan sürdürün.':'You drafted for this channel last week; continue the topic from a different angle.',how:lang==='tr'?'İçerik stüdyosunda geçen haftaki taslağı açın ve bir müşteri sorusuna odaklanan yeni bir versiyon yazın.':'Open last week’s draft in the content studio and write a new version focused on one customer question.',minutes:30,tool:channel==='email'?'campaigns':'library',channel});}
     if(planWeek>=4)list.push({id:'renew',kind:'note',title:l('30 günlük planı yenile','Renew the 30-day plan'),why:l('Plan dönemi sona eriyor. Genel bakıştaki aylık yenileme, bu dönemin kayıtlarından güncel bir brief önerir; onaylanana kadar hiçbir şey değişmez.','The plan period is ending. The monthly renewal on the overview proposes an updated brief from this period’s records; nothing changes until it is approved.'),item:null,actionId:null,toWeek:null,state:'proposed'});
     return list.slice(0,4);

@@ -191,3 +191,10 @@ Phase 2 follow-up: [Dynamic audiences](SAAS-SEGMENTS.md) now adds typed rules,
 existing goal/stage bindings and campaign draft references. Each definition uses
 one source/version; no cross-source identity inference. Automatic metrics,
 campaign approval/dispatch, billing and public signup remain future gates.
+
+## Optional `attribution` field (30 October 2026)
+
+An event may carry `attribution: {campaign, source?, medium?, touchedAt?}`: the first tagged link its person arrived through (the snippet keeps it in the site's `ryz_touch` cookie).
+- A malformed value is dropped and counted in the response (`attribution.ignored`); the event is still accepted.
+- Events without the field keep their previous digest, so earlier retries stay duplicates.
+- Accepted events also write a pseudonymous trail used by first-touch attribution. See `SAAS-ATTRIBUTION.md`.

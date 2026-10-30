@@ -1,6 +1,8 @@
+import type { AttributionTagResult } from './attribution-types';
+import { IYS_REASON_LABELS, type IysGateReason } from './iys-types';
 export const EMAIL_QUEUE_LIMITS = { recipients: 5, jobsPerDay: 20, storedJobs: 500, leaseSeconds: 30, attempts: 3, lifetimeMinutes: 60 } as const;
 export type PilotRecipientState = 'queued' | 'checking' | 'validated' | 'skipped' | 'uncertain' | 'cancelled' | 'submitting' | 'accepted' | 'rejected' | 'delivered' | 'bounced' | 'complained';
-export type PilotReason = 'changed' | 'recipient_ineligible' | 'authority_lost' | 'expired' | 'interrupted' | 'cancelled' | 'check_failed';
+export type PilotReason = 'changed' | 'recipient_ineligible' | 'authority_lost' | 'expired' | 'interrupted' | 'cancelled' | 'check_failed' | IysGateReason;
 export type EmailPilotJob = {
   id: string; campaignId: string; campaignName: string; mode: 'rehearsal'|'send';
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -13,7 +15,8 @@ export type EmailPilotJob = {
   sendingEnabled: boolean; canManage: boolean;
   accepted?:number;delivered?:number;bounced?:number;complained?:number;
 };
-export type EmailPilotWorkspace = { jobs: EmailPilotJob[]; sendingEnabled: boolean };
+// results: people who first came through this campaign's tagged email link and reached each goal stage (send mode only).
+export type EmailPilotWorkspace = { jobs: EmailPilotJob[]; sendingEnabled: boolean; results?: AttributionTagResult };
 export const PILOT_STATE_LABELS: Record<PilotRecipientState, [string, string]> = {
   queued: ['Bekliyor', 'Queued'], checking: ['Kontrol ediliyor', 'Checking'],
   validated: ['Alıcı kontrolleri geçti', 'Recipient checks passed'], skipped: ['Atlandı', 'Skipped'],
@@ -26,4 +29,5 @@ export const PILOT_REASON_LABELS: Record<PilotReason, [string, string]> = {
   authority_lost: ['İşlem yetkisi kaldırıldı', 'Operation permission was revoked'],
   expired: ['Pilot süresi doldu', 'Pilot expired'], interrupted: ['İşlem kesildi; otomatik tekrarlanmaz', 'Interrupted; will not retry automatically'],
   cancelled: ['Kullanıcı iptal etti', 'Cancelled by user'], check_failed: ['Kontrol tamamlanamadı', 'Check could not be completed'],
+  ...IYS_REASON_LABELS,
 };

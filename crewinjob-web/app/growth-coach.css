@@ -302,3 +302,5 @@
 .whatsapp-code{font-size:12px;overflow-wrap:anywhere;word-break:break-all;background:var(--studio-surface,transparent);padding:1px 4px;border-radius:4px}
 .whatsapp-override{grid-template-columns:minmax(80px,auto) repeat(auto-fit,minmax(140px,1fr));align-items:end}
 @media (max-width:900px){.whatsapp-connect{grid-template-columns:1fr}}
+.coach-track{display:grid;gap:8px;margin:12px 0 4px}.coach-track h3{display:flex;align-items:center;gap:6px}
+.coach-track-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}.coach-track-list li{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--studio-border);border-radius:6px;font-size:12px}

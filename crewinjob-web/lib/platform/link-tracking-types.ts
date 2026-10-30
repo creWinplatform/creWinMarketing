@@ -1,8 +1,8 @@
 // Links to the project's own site in approved social posts carry utm_source/utm_medium/utm_campaign; GA4 then reports
 // the sessions and key events that arrived through each tagged link. Counts are observed arrivals, never credited causes.
 export const LINK_TAG = /^rz_[a-f0-9]{10}$/;
-// Instagram captions are not clickable, so Instagram posts are never tagged.
-export const LINK_SOURCES: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', twitter: 'x', telegram: 'telegram' };
+// Instagram captions are not clickable, so Instagram posts are never tagged. Email links carry utm_medium=email.
+export const LINK_SOURCES: Record<string, string> = { linkedin: 'linkedin', facebook: 'facebook', twitter: 'x', telegram: 'telegram', email: 'email' };
 export type LinkSyncState = 'idle' | 'refreshing' | 'ready' | 'failed' | 'blocked';
 export type LinkResultState = 'ready' | 'partial' | 'no_data';
 export type LinkTrackingView = {

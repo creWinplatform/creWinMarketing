@@ -21,5 +21,5 @@ test('provider-reported token counts are kept with the quota, never as a price, 
 test('schema50 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'ai-usage-')),'fixture.sqlite');
   await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAiUsageSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,49);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,64);db.close();
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,67);db.close();
 }));
