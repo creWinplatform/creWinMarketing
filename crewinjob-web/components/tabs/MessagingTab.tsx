@@ -548,6 +548,8 @@ export default function MessagingTab({ stats }: Props) {
   const [msgNumbers,   setMsgNumbers]   = useState('');
   const [msgChatIds,   setMsgChatIds]   = useState('');
   const [msgMode,      setMsgMode]      = useState<'single'|'broadcast'|'channel'>('channel');
+  // WhatsApp'ta kanal modu yok: başlangıçtaki (ya da TG sekmesinden kalan) 'channel' tekli gönderim sayılır
+  const waMode: 'single' | 'broadcast' = msgMode === 'broadcast' ? 'broadcast' : 'single';
   const [sendLoading,  setSendLoading]  = useState(false);
   const [sendResult,   setSendResult]   = useState<{ sent?: number; failed?: number; success?: boolean; error?: string; skipped?: Partial<Record<WaSkipReason, number>>; skippedNumbers?: { hint: string; reason: WaSkipReason }[]; optedOutByMeta?: number } | null>(null);
 
@@ -620,19 +622,19 @@ export default function MessagingTab({ stats }: Props) {
     setSendResult(null);
     try {
       if (subTab === 'notify_wa') {
-        const numbers = msgMode === 'broadcast'
+        const numbers = waMode === 'broadcast'
           ? msgNumbers.split('\n').map(s => s.trim()).filter(Boolean)
           : undefined;
-        const to = msgMode === 'single' ? msgNumbers.trim() : undefined;
+        const to = waMode === 'single' ? msgNumbers.trim() : undefined;
         const res = await fetch('/api/messaging/whatsapp/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: msgMode === 'channel' ? 'single' : msgMode, to, numbers, text: msgText }),
+          body: JSON.stringify({ mode: waMode, to, numbers, text: msgText }),
         });
         const waData = await res.json();
         setSendResult(waData);
         if (waData.optedOutByMeta) loadWaConsent();
-        if (!waData.error) logActivity('wa_sent', `WhatsApp ${lang === 'tr' ? 'mesajı gönderildi' : 'message sent'} (${msgMode})`, `${msgText.slice(0, 60)}…`);
+        if (!waData.error) logActivity('wa_sent', `WhatsApp ${lang === 'tr' ? 'mesajı gönderildi' : 'message sent'} (${waMode})`, `${msgText.slice(0, 60)}…`);
       } else {
         const chatIds = msgMode === 'broadcast'
           ? msgChatIds.split('\n').map(s => s.trim()).filter(Boolean)
@@ -1054,9 +1056,9 @@ export default function MessagingTab({ stats }: Props) {
             <Field label={lang === 'tr' ? 'Gönderim Modu' : 'Send mode'}>
               <div className="grid grid-cols-2 gap-1.5">
                 {([['single', lang === 'tr' ? 'Tekli' : 'Single'], ['broadcast', lang === 'tr' ? 'Toplu' : 'Broadcast']] as const).map(([v, l]) => (
-                  <button key={v} onClick={() => setMsgMode(v)} aria-pressed={msgMode === v}
+                  <button key={v} onClick={() => setMsgMode(v)} aria-pressed={waMode === v}
                     className={`text-xs py-2 rounded-lg font-medium transition-colors ${
-                      msgMode === v ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                      waMode === v ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}>
                     {v === 'single' ? '👤 ' : '👥 '}{l}
                   </button>
