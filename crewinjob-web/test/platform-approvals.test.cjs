@@ -16,7 +16,9 @@ function setup(){
  let n=0;const inbox=(kind,hours,reply_state,text='Saved reply')=>f.db.prepare("INSERT INTO platform_social_inbox(id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,author_hash,text,received_at,created_at,state,reply_state,reply_text) VALUES(?,?,?,?,'linkedin',?,?,?,'h','Private customer words',?,?,'new',?,?)").run(`in-${++n}`,org,project,f.account.id,kind,`t${n}`,`i${n}`,iso(Date.now()-hours*HOUR),now,reply_state,text);
  inbox('message',2,'draft');inbox('comment',72,'draft');inbox('message',30,'draft');inbox('message',3,'sending');inbox('message',3,'draft','');
  f.member=role=>({...f.scope,subject:f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:`approvals-${role}`,password:'fixture-password-123',role}).userId});
- f.kinds=scope=>plain(approvalQueue(f.db,scope).map(item=>`${item.kind}:${item.count}`)).sort();
+ // Last month's report shows up in the first ten days of any month (the fixture has records from the last 72 hours);
+ // it has its own test below, so these counts leave it out and do not depend on the date.
+ f.kinds=scope=>plain(approvalQueue(f.db,scope).filter(item=>item.kind!=='monthly_report').map(item=>`${item.kind}:${item.count}`)).sort();
  return f;
 }
 const close=async work=>{const f=setup();try{await work(f);}finally{f.db.close();}};
