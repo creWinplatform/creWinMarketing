@@ -3,6 +3,7 @@ import { agentModule } from '@/lib/agent-bridge';
 import { listUnsubscribeTarget, openPixelTag, runTrackingTasks, safeUnsubscribeUrl } from '@/lib/tracking-signature';
 import { legacySuppressed } from '@/lib/legacy-unsubscribe';
 import { crewinEmailGate } from '@/lib/crewin-iys-email';
+import { iysEnabled } from '@/lib/platform/iys-types';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
     // İYS (lib/crewin-iys-email.ts): zorunlu modda onaysız alıcı atlanır; ölçüm modunda "zorunlu olsaydı" sayısı döner.
     const gate = await crewinEmailGate(platformDatabase(), credentialEncryptionKey(), recipients.map(r => ({ email: String(r.email), nationality: r.nationality })));
     if (gate.block) return NextResponse.json({ error: gate.block }, { status: 409 });
-    const iys = { mode: gate.mode, skipped: gate.skipped.length, wouldSkip: gate.counts.total, reasons: gate.counts.reasons, queued: gate.counts.queued };
+    const iys = !iysEnabled() ? undefined : { mode: gate.mode, skipped: gate.skipped.length, wouldSkip: gate.counts.total, reasons: gate.counts.reasons, queued: gate.counts.queued };
     recipients = recipients.filter(r => gate.allowed.has(String(r.email).trim().toLowerCase()));
     if (!recipients.length) return NextResponse.json({ sent: 0, failed: 0, errors: [], results: [], suppressed: suppressed.size, iys });
     const missingUnsubscribe = recipients.filter(r => !safeUnsubscribeUrl(r.unsubscribeUrl)).length;

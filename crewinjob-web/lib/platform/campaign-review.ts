@@ -15,6 +15,7 @@ import {emailSenderReadiness,emailPilotCounts} from './email-sender';
 import {SesProvider} from './ses-provider';
 import {linkTag,linkTrackingEnabled,tagOwnLinks} from './link-tracking';
 import {iysSendBlock} from './iys';
+import {iysEnabled} from './iys-types';
 
 type Receipt={content_digest:string;data_revision:string;counts_json:string;checked_at:string};
 type Review={id:number;content_digest:string;data_revision:string;decision:ReviewDecision;note:string;actor_id:string;created_at:string};
@@ -80,7 +81,7 @@ export class CampaignReviews {
     checks.push({code:'smtp',state:sender.smtpReady?'pass':'pending'},{code:'sender_domain',state:sender.ownership==='verified'?'pass':'blocked'},{code:'sender_auth',state:ses?.verified?'pass':'blocked'},
       {code:'consent',state:fresh&&counts?.eligibility?.mappingReady&&counts.eligibility.eligible>0?'pass':'blocked'},
       {code:'pilot',state:fresh&&counts?.pilot?.planned>0?'pass':'blocked'},
-      {code:'unsubscribe',state:publicEmailOrigin()?'pass':'blocked'},{code:'iys',state:iysSendBlock(this.db,this.scope)?'blocked':'pass'},{code:'dispatch',state:ses?.ready?'pending':'blocked'});
+      {code:'unsubscribe',state:publicEmailOrigin()?'pass':'blocked'},...(iysEnabled()?[{code:'iys',state:iysSendBlock(this.db,this.scope)?'blocked' as const:'pass' as const}]:[]),{code:'dispatch',state:ses?.ready?'pending':'blocked'});
     return {campaignId:id,name:campaign.name,digest,timezone:project.timezone,language:project.language,canCheck:this.repo().can(this.scope.subject,...this.args(),'content.write'),canApprove:this.repo().can(this.scope.subject,...this.args(),'campaign.approve'),approval,
       checks,html:renderCampaignEmailPreview(campaign,project.name,project.language),subject:campaign.content.subject||'',text:campaign.content.text,ctaUrl:campaign.content.ctaUrl||'',
       audience:counts?{matched:counts.matched,unknown:counts.unknown,total:counts.total,computedAt:receipt!.checked_at,fresh}:null,

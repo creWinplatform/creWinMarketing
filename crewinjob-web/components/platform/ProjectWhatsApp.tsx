@@ -6,7 +6,7 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import { WHATSAPP_LIMITS, type WhatsAppBatchView, type WhatsAppDelivery, type WhatsAppMessageState, type WhatsAppSnapshot } from '@/lib/platform/whatsapp-types';
 import Msg from '@/components/Msg';
-import { IYS_SOURCES, IYS_SOURCE_LABELS } from '@/lib/platform/iys-types';
+import { IYS_SOURCES, IYS_SOURCE_LABELS, iysEnabled } from '@/lib/platform/iys-types';
 
 const BATCH:Record<WhatsAppBatchView['state'],[string,string]>={draft:['Taslak','Draft'],approved:['Onaylı','Approved'],queued:['Kuyrukta','Queued'],done:['Tamamlandı','Done'],cancelled:['İptal edildi','Cancelled']};
 const MESSAGE:Record<WhatsAppMessageState,[string,string]>={pending:['bekliyor','pending'],submitting:['gönderiliyor','sending'],accepted:['WhatsApp kabul etti','accepted by WhatsApp'],rejected:['reddedildi','rejected'],uncertain:['belirsiz','uncertain'],skipped:['atlandı','skipped'],rehearsed:['prova edildi','rehearsed']};
@@ -71,7 +71,7 @@ export default function ProjectWhatsApp({lang}:{lang:Locale}){
         <label>{tr?'Numaralar (ülke koduyla, her satıra bir tane)':'Numbers (with country code, one per line)'}<textarea rows={3} value={contact.phones} placeholder="+905321234567" onChange={event=>setContact(old=>({...old,phones:event.target.value}))}/></label>
         <div className="ads-form-row"><label>{tr?'İzin kanıtı (form, kayıt veya belge referansı)':'Consent evidence (form, record or document reference)'}<input maxLength={160} value={contact.evidence} onChange={event=>setContact(old=>({...old,evidence:event.target.value}))}/></label>
           <label>{tr?'İzin tarihi':'Consent date'}<input type="date" max={today()} value={contact.consentAt} onChange={event=>setContact(old=>({...old,consentAt:event.target.value}))}/></label>
-          <label>{tr?'İzin nasıl alındı? (İYS)':'How was consent obtained? (IYS)'}<select value={contact.iysSource} onChange={event=>setContact(old=>({...old,iysSource:event.target.value}))}><option value="">{tr?'Seçin (Türkiye’ye gönderiyorsanız gerekli)':'Choose (required if you send to Turkey)'}</option>{IYS_SOURCES.map(source=><option key={source} value={source}>{IYS_SOURCE_LABELS[source][tr?0:1]}</option>)}</select></label></div>
+          {iysEnabled()&&<label>{tr?'İzin nasıl alındı? (İYS)':'How was consent obtained? (IYS)'}<select value={contact.iysSource} onChange={event=>setContact(old=>({...old,iysSource:event.target.value}))}><option value="">{tr?'Seçin (Türkiye’ye gönderiyorsanız gerekli)':'Choose (required if you send to Turkey)'}</option>{IYS_SOURCES.map(source=><option key={source} value={source}>{IYS_SOURCE_LABELS[source][tr?0:1]}</option>)}</select></label>}</div>
         <label className="automation-choice"><input type="checkbox" checked={contact.acknowledged} onChange={event=>setContact(old=>({...old,acknowledged:event.target.checked}))}/>{tr?'Bu kişilerin her biri, bu işletmeden WhatsApp ile pazarlama mesajı almayı açıkça kabul etti.':'Each of these people explicitly agreed to receive marketing messages on WhatsApp from this business.'}</label>
         <button type="submit" className="studio-secondary" disabled={Boolean(busy)||!contact.phones.trim()||!contact.evidence.trim()||!contact.acknowledged}><Plus size={14}/>{tr?'Kişileri ekle':'Add contacts'}</button>
       </form>}

@@ -3,6 +3,7 @@ import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ProjectIys } from '@/lib/platform/iys';
+import { iysEnabled } from '@/lib/platform/iys-types';
 import { isLegacyScope } from '@/lib/platform/access';
 import { crewinKnownIysPhones } from '@/lib/crewin-iys';
 import { crewinEmailMode, crewinPendingCount, setCrewinEmailMode } from '@/lib/crewin-iys-email';
@@ -17,6 +18,7 @@ async function handle(request:NextRequest){
   const headers={'Cache-Control':'private, no-store'};
   try{
     // Ryzevo projects, and the Crewin workspace for its own WhatsApp sender (lib/crewin-iys.ts).
+    if(!iysEnabled())return NextResponse.json({error:'İYS şu an kapalı.'},{status:404,headers});
     const access=await getRyzevoAccess();if(!access)return NextResponse.json({error:'Proje oturumu gerekli.'},{status:403,headers});
     const db=platformDatabase(),key=credentialEncryptionKey(),scope={subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},service=new ProjectIys(db,scope,key);
     // Crewin also sees its email mode (measure or enforce) and the addresses waiting for an İYS check (lib/crewin-iys-email.ts).

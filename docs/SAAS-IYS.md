@@ -1,5 +1,12 @@
 # İYS in the send flow (30 October 2026)
 
+**Status (2 November 2026): switched off.** With `NEXT_PUBLIC_IYS_ENABLED` unset (`iysEnabled()` in `lib/platform/iys-types.ts`):
+- every project, Crewin included, behaves as if it declared no İYS duty: no gate, no send block, no queueing, no worker calls to İYS, no team alerts;
+- the settings tab, the consent-source selects, the review check and the job-guide step are hidden, and `/api/platform/iys` answers 404;
+- records already stored stay in their tables.
+
+Setting it to `1` and restarting turns everything below back on (a production build needs a rebuild, since the value is inlined in the browser bundle).
+
 İYS (İleti Yönetim Sistemi) is Turkey's register of commercial-message consents. Ryzevo checks it inside the email pilot and WhatsApp send flows of standard projects, so no live commercial message reaches a recipient in Turkey without a consent İYS confirms. New consents and opt-outs are reported to İYS within three business days.
 
 ## Decisions

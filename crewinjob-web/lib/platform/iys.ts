@@ -7,7 +7,7 @@ import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { emailAddress, emailIdentity, maskEmail } from './email-safety';
 import { IysClient, IysError, fetchTransport, type IysCredentials, type IysTransport } from './iys-client';
-import { IYS_LIMITS as LIMITS, IYS_SOURCES, iysDate, iysDueAt, type IysChannel, type IysGateReason, type IysScope, type IysSource, type IysStatus, type IysView } from './iys-types';
+import { IYS_LIMITS as LIMITS, IYS_SOURCES, iysDate, iysDueAt, iysEnabled, type IysChannel, type IysGateReason, type IysScope, type IysSource, type IysStatus, type IysView } from './iys-types';
 
 type Scope = { organizationId: string; projectId: string };
 type Settings = { organization_id: string; project_id: string; scope: 'tr' | 'none' | null; declared_by: string | null; declared_at: string | null; connection_id: string | null; pull_state: 'idle' | 'ok' | 'failed'; pull_error: string | null; pulled_at: string | null; pull_cursor: string | null; next_pull_at: string | null; lease_until: string | null };
@@ -35,9 +35,10 @@ function remember(db: Database.Database, scope: Scope, key: string, channel: Iys
     consent_date=excluded.consent_date,source=excluded.source,origin=excluded.origin,checked_at=excluded.checked_at`).run(...args(scope), channel, id, encryptCredentials({ recipient }, key, ...args(scope), `iys-recipient:${channel}:${id}`), status, consentDate, source, origin, now);
 }
 
-export const iysScope = (db: Database.Database, scope: Scope): IysScope => settings(db, scope)?.scope || null;
+export const iysScope = (db: Database.Database, scope: Scope): IysScope => !iysEnabled() ? 'none' : settings(db, scope)?.scope || null;
 // What a live send must respect. Null: no İYS duty (declared "no") or the recipient's consent is confirmed and fresh.
 export function iysGate(db: Database.Database, scope: Scope, channel: IysChannel, key: string): IysGateReason | null {
+  if (!iysEnabled()) return null;
   const row = settings(db, scope);
   if (!row?.scope) return 'iys_scope_missing';
   if (row.scope === 'none') return null;
@@ -51,6 +52,7 @@ export function iysGate(db: Database.Database, scope: Scope, channel: IysChannel
 }
 // Before a live send is queued: the project must have declared, and a "Turkey" project must be connected.
 export function iysSendBlock(db: Database.Database, scope: Scope) {
+  if (!iysEnabled()) return null;
   const row = settings(db, scope);
   if (!row?.scope) return 'Canlı gönderimden önce İYS beyanını yapın: Proje ayarları → Gönderim izinleri (İYS).';
   if (row.scope === 'tr' && !connection(db, scope)) return 'Türkiye’deki alıcılara gönderim için İYS bağlantısı gerekli: Proje ayarları → Gönderim izinleri (İYS).';
@@ -59,6 +61,7 @@ export function iysSendBlock(db: Database.Database, scope: Scope) {
 // Queues a consent (ONAY) or an opt-out (RET) for İYS. Only for projects that declared Turkey. A consent older than three
 // business days cannot be reported any more: it is not queued (İYS should already hold it; query its status instead).
 export function queueIysConsent(db: Database.Database, scope: Scope, key: string, input: { channel: IysChannel; recipient: string | null; recipientKey?: string; status: IysStatus; source: IysSource | null; consentDate: string; actor: string }) {
+  if (!iysEnabled()) return 'not_required' as const;
   const row = settings(db, scope);
   if (row?.scope !== 'tr') return 'not_required' as const;
   const value = input.recipient ? normalize(input.channel, input.recipient) : null, id = value ? recipientKey(scope, key, input.channel, value) : input.recipientKey;
@@ -85,6 +88,7 @@ export class ProjectIys {
   private project() { return this.repo.workspace(this.scope.subject, ...args(this.scope))?.project; }
   private can(permission: 'read' | 'connections.manage' | 'recipients.manage') { return this.repo.can(this.scope.subject, ...args(this.scope), permission); }
   private authorize(manage = false) {
+    if (!iysEnabled()) throw new MarketingStoreError('İYS şu an kapalı.', 404);
     if (!this.can('read') || !ryzevoFeature(this.project()?.productPack, 'iys') || manage && !this.can('connections.manage')) throw new MarketingStoreError('İYS ayarlarına erişim reddedildi.', 403);
   }
   private ensure(now = new Date().toISOString()) { this.db.prepare("INSERT OR IGNORE INTO platform_iys_settings(organization_id,project_id,pull_state,updated_at) VALUES(?,?,'idle',?)").run(...args(this.scope), now); }
@@ -162,6 +166,7 @@ export class ProjectIys {
 
 // Worker: uploads due consents and opt-outs, a few per tick, as the project's İYS user.
 export async function deliverIysOutbox(db: Database.Database, key: string, transport: IysTransport = fetchTransport) {
+  if (!iysEnabled()) return { sent: 0, failed: 0 };
   const rows = db.prepare("SELECT o.* FROM platform_iys_outbox o JOIN platform_iys_settings s ON s.organization_id=o.organization_id AND s.project_id=o.project_id WHERE o.state='queued' AND o.encrypted_recipient IS NOT NULL AND s.scope='tr' AND s.connection_id IS NOT NULL ORDER BY o.due_at LIMIT ?").all(LIMITS.perTick) as Outbox[];
   let sent = 0, failed = 0; const clients = new Map<string, IysClient | null>();
   for (const row of rows) {
@@ -184,6 +189,7 @@ export async function deliverIysOutbox(db: Database.Database, key: string, trans
 // Worker: reads İYS's change feed every 30 minutes per connected project, one project per tick. A recipient who rejects
 // through İYS is not sent to from then on; the status is kept apart from Ryzevo's own opt-outs.
 export async function pullIysChanges(db: Database.Database, key: string, transport: IysTransport = fetchTransport, now = Date.now()) {
+  if (!iysEnabled()) return { projects: 0, changes: 0 };
   const row = db.prepare("SELECT * FROM platform_iys_settings WHERE scope='tr' AND connection_id IS NOT NULL AND (next_pull_at IS NULL OR next_pull_at<=?) AND (lease_until IS NULL OR lease_until<=?) ORDER BY next_pull_at LIMIT 1").get(new Date(now).toISOString(), new Date(now).toISOString()) as Settings | undefined;
   if (!row) return { projects: 0, changes: 0 };
   const scope = { organizationId: row.organization_id, projectId: row.project_id }, at = new Date(now).toISOString();
@@ -206,6 +212,7 @@ export async function pullIysChanges(db: Database.Database, key: string, transpo
 }
 // For team alerts: uploads that are due within a day or failed, and a change feed that has not been read for 6 hours.
 export function iysAttention(db: Database.Database, scope: Scope, now = Date.now()) {
+  if (!iysEnabled()) return null;
   const row = settings(db, scope); if (row?.scope !== 'tr') return null;
   const items = db.prepare("SELECT id,due_at,state FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND (state='failed' OR state='queued' AND due_at<=?) ORDER BY due_at LIMIT 50").all(...args(scope), new Date(now + 24 * HOUR).toISOString()) as { id: string; due_at: string; state: string }[];
   const stale = Boolean(row.connection_id) && (row.pull_state === 'failed' || !row.pulled_at || now - Date.parse(row.pulled_at) > 6 * HOUR);

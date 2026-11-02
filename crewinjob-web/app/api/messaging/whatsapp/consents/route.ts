@@ -5,6 +5,7 @@ import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
 import { crewinIys } from '@/lib/crewin-iys';
+import { iysEnabled } from '@/lib/platform/iys-types';
 import {
   LegacyWhatsAppError,
   isTurkishNumber,
@@ -24,7 +25,7 @@ export const maxDuration = 60;
 // Yalnız eski panel oturumu kullanır; Ryzevo hesapları middleware'de eski API'lere giremez.
 // İYS (lib/crewin-iys.ts): beyan ve bağlantı durumu gösterilir; +90 izin ve çıkışları İYS'ye bildirilmek üzere kuyruğa girer.
 const iys = () => crewinIys(platformDatabase(), credentialEncryptionKey());
-const summary = () => { const service = iys(); return { ...legacyWhatsAppSummary(), iys: { scope: service.scope(), connected: service.connected() } }; };
+const summary = () => { if (!iysEnabled()) return { ...legacyWhatsAppSummary(), iys: null }; const service = iys(); return { ...legacyWhatsAppSummary(), iys: { scope: service.scope(), connected: service.connected() } }; };
 
 export async function GET() {
   try { return NextResponse.json(summary()); }

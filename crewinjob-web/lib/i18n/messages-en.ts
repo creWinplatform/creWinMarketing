@@ -1405,4 +1405,5 @@ export const MESSAGES_EN: Record<string, string> = {
   "İYS kaydı kabul etmedi ({0}).": "IYS did not accept the record ({0}).",
   "İYS durumu okunamadı ({0}).": "Could not read the IYS status ({0}).",
   "İYS değişiklikleri okunamadı ({0}).": "Could not read IYS changes ({0}).",
+  "İYS şu an kapalı.": "IYS is switched off for now.",
 };

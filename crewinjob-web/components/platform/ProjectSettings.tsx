@@ -10,6 +10,7 @@ import ProjectProfileEditor from './ProjectProfileEditor';
 import AccountSettings from './AccountSettings';
 import CoachBrandStudio from './CoachBrandStudio';
 import IysPanel from './IysPanel';
+import { iysEnabled } from '@/lib/platform/iys-types';
 import { ryzevoFeature } from '@/lib/platform/ryzevo-features';
 const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
 const ProjectPlan=dynamic(()=>import('./ProjectPlan'));
@@ -35,7 +36,7 @@ export default function ProjectSettings({
   const crewin = project.productPack === 'crewin' && workspace.accessMode === 'legacy_single_account',
     brandOpen = (workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'brand')),
     // Crewin declares and connects İYS for its own WhatsApp sender.
-    iysOpen = (workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'iys'));
+    iysOpen = iysEnabled() && ((workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'iys')));
   const canConnections =
       (workspace.accessMode === 'platform_account' || crewin) &&
       workspace.permissions?.includes('connections.manage'),

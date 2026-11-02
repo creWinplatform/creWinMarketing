@@ -12,7 +12,7 @@ import { ProjectIys, iysEmailKey, iysGate, iysScope, iysSendBlock } from './plat
 import { decryptCredentials, encryptCredentials } from './platform/credential-envelope';
 import { emailAddress } from './platform/email-safety';
 import { fetchTransport, type IysTransport } from './platform/iys-client';
-import { IYS_LIMITS, type IysGateReason } from './platform/iys-types';
+import { IYS_LIMITS, type IysGateReason, iysEnabled } from './platform/iys-types';
 import { readJson, withFileLock, writeJsonAtomic } from './json-store';
 
 export const CREWIN_IYS_EMAIL_FILE = path.join(process.cwd(), 'data', 'crewin-iys-email.json');
@@ -54,7 +54,7 @@ export const BUSINESS_AUDIENCES: readonly string[] = ['maritime_businesses', 'co
 /** The backend's own Dispatch does not pass this gate. In enforce mode a campaign to individuals goes through the
  *  panel's gated send instead, until the backend applies the same rule (docs/CREWIN-BACKEND-IYS.md item 6). */
 export const crewinDispatchAllowed = (audienceType: string | null | undefined, file = files.mode) =>
-  crewinEmailMode(file).mode !== 'enforce' || BUSINESS_AUDIENCES.includes(audienceType || '');
+  !iysEnabled() || crewinEmailMode(file).mode !== 'enforce' || BUSINESS_AUDIENCES.includes(audienceType || '');
 
 /** İYS applies to individuals whose nationality is Turkish or unknown; companies use the merchant exemption. */
 export const iysAppliesToEmail = (recipient: EmailRecipientRef) =>

@@ -1,4 +1,6 @@
 const assert=require('node:assert/strict');
+// İYS is switched off by default (NEXT_PUBLIC_IYS_ENABLED); these tests cover it switched on.
+process.env.NEXT_PUBLIC_IYS_ENABLED='1';
 const {test}=require('node:test');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {load}=require('./platform-loader.cjs');

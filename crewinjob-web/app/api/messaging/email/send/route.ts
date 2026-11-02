@@ -11,6 +11,7 @@ import {
 import { publicAppUrl } from '@/lib/internal-fetch';
 import { legacySuppressed, legacyUnsubscribeUrl } from '@/lib/legacy-unsubscribe';
 import { crewinEmailGate, type CrewinEmailGateResult } from '@/lib/crewin-iys-email';
+import { iysEnabled } from '@/lib/platform/iys-types';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 
@@ -46,7 +47,7 @@ interface RecipientRef {
 }
 
 // İYS'nin bu gönderimdeki payı: zorunlu modda atlananlar, ölçüm modunda "zorunlu olsaydı" sayıları (lib/crewin-iys-email.ts)
-const iysView = (gate: CrewinEmailGateResult) => ({ mode: gate.mode, skipped: gate.skipped.length, wouldSkip: gate.counts.total, reasons: gate.counts.reasons, queued: gate.counts.queued });
+const iysView = (gate: CrewinEmailGateResult) => !iysEnabled() ? undefined : ({ mode: gate.mode, skipped: gate.skipped.length, wouldSkip: gate.counts.total, reasons: gate.counts.reasons, queued: gate.counts.queued });
 
 interface SendBody {
   mode:        'single' | 'broadcast';

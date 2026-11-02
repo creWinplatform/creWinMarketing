@@ -1,6 +1,9 @@
 // İYS (İleti Yönetim Sistemi): Turkey's register of commercial-message consents. A project that declares it sends
 // commercial messages to recipients in Turkey may send email (EPOSTA) and WhatsApp (MESAJ) only to recipients whose
 // consent İYS confirms; new consents and opt-outs are reported to İYS within three business days.
+// Switched off for now: with NEXT_PUBLIC_IYS_ENABLED unset, no İYS check, queue or screen is active and every project
+// behaves as if it declared no İYS duty. Records already stored are kept. Set it to 1 (and restart) to turn İYS back on.
+export const iysEnabled = () => process.env.NEXT_PUBLIC_IYS_ENABLED === '1';
 export const IYS_CHANNELS = ['EPOSTA', 'MESAJ'] as const;
 export type IysChannel = typeof IYS_CHANNELS[number];
 export type IysStatus = 'ONAY' | 'RET';

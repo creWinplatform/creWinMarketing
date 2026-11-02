@@ -16,8 +16,8 @@ function fixture(options={}){
  for(const contact of recipients.list(source.id).contacts)recipients.review({sourceId:source.id,contactKey:contact.key,expectedDecisionId:null,decision:'reviewed',evidenceRef:'qa/consent',recordedAt:at,note:'Disposable fixture proof.',acknowledged:true});
  const segments=new ProductSegments(db,scope),segment=segments.save({name:'Pilot audience',definition:{sourceId:source.id,sourceVersion:1,maxAgeHours:24,goalId:'',stageIndex:null,rules:{kind:'group',op:'and',children:[{kind:'attribute',field:'completion',op:'lt',value:50}]}}});segments.preview({id:segment.id,version:1});
  const campaign={id:'pilot-campaign',name:'Pilot',status:'draft',updatedAt:new Date().toISOString(),content:{subject:'QA pilot',text:'Only a fixture.',ctaUrl:'https://example.com'},channels:{email:true,social:[],whatsapp:false,telegram:false,paidAds:[]},segmentBinding:segments.binding(segment.id,1,'')};store.saveCampaign(campaign,true);
- // Live sends need an İYS declaration; fixtures declare none unless a test asks otherwise.
- if(options.iys!==null)new ProjectIys(db,scope,KEY).declare({scope:options.iys||'none'});
+ // With İYS switched on, live sends need a declaration; fixtures declare none unless a test asks otherwise.
+ if(options.iys!==null&&process.env.NEXT_PUBLIC_IYS_ENABLED==='1')new ProjectIys(db,scope,KEY).declare({scope:options.iys||'none'});
  const queue=new EmailPilotQueue(db,scope,KEY),reviews=new CampaignReviews(db,scope,KEY);
  const approve=(who=reviews)=>{const checked=who.check(campaign.id,who.get(campaign.id).digest);return who.decide(campaign.id,{decision:'approved',expectedDigest:checked.digest,expectedReviewId:checked.history[0]?.id||null,note:'Disposable fixture; no email.'});};
  const input=(review,key='fixture-idempotency')=>({campaignId:campaign.id,expectedDigest:review.digest,expectedReviewId:review.history[0].id,idempotencyKey:key,acknowledged:true});

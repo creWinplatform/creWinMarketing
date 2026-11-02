@@ -1,4 +1,6 @@
 const assert=require('node:assert/strict');
+// İYS is switched off by default (NEXT_PUBLIC_IYS_ENABLED); these tests cover it switched on.
+process.env.NEXT_PUBLIC_IYS_ENABLED='1';
 const {test}=require('node:test');
 const {fixture,KEY}=require('./email-pilot-fixture.cjs');
 const {load}=require('./platform-loader.cjs');
@@ -146,5 +148,23 @@ test('status queries are bounded and report what İYS holds; business-day deadli
   await deliverIysOutbox(f.db,KEY,fake.transport);const failed=f.db.prepare("SELECT state,last_error FROM platform_iys_outbox WHERE state='failed'").get();
   assert.equal(failed.state,'failed','a rejection by İYS is final');assert.match(failed.last_error,/H174/);assert.ok(!failed.last_error.includes(PASSWORD));
   assert.ok(iysAttention(f.db,f.scope).items.length>=1);
+ }finally{f.db.close();}
+});
+
+test('switched off, İYS checks, queues and screens do nothing and stored records stay',async()=>{
+ const f=fixture({iys:null});try{
+  const {fake}=await connected(f);queueIysConsent(f.db,f.scope,KEY,{channel:'EPOSTA',recipient:'pilot0@example.com',status:'RET',source:'HS_WEB',consentDate:new Date().toISOString(),actor:f.scope.subject});
+  const key=iysEmailKey(f.scope,KEY,'pilot0@example.com');assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),'iys_rejected');
+  delete process.env.NEXT_PUBLIC_IYS_ENABLED;
+  try{
+   assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),null,'no gate');assert.equal(iysSendBlock(f.db,f.scope),null,'live sends are not held back');
+   assert.equal(queueIysConsent(f.db,f.scope,KEY,{channel:'EPOSTA',recipient:'pilot1@example.com',status:'RET',source:'HS_WEB',consentDate:new Date().toISOString(),actor:f.scope.subject}),'not_required');
+   assert.deepEqual(plain(await deliverIysOutbox(f.db,KEY,fake.transport)),{sent:0,failed:0});assert.equal(fake.state.requests.filter(item=>item.path.endsWith('/consents')).length,0,'nothing reaches İYS');
+   assert.equal(iysAttention(f.db,f.scope),null);assert.ok(!teamAlerts(f.db,f.scope).some(item=>item.kind.startsWith('iys')));
+   assert.throws(()=>new ProjectIys(f.db,f.scope,KEY).view(),error=>error.status===404);
+   assert.equal(f.reviews.get(f.campaign.id).checks.some(item=>item.code==='iys'),false,'no İYS check in the review');
+   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_iys_outbox').get().n,1,'stored records are kept');
+  }finally{process.env.NEXT_PUBLIC_IYS_ENABLED='1';}
+  assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),'iys_rejected','switching back on restores the gate');
  }finally{f.db.close();}
 });
