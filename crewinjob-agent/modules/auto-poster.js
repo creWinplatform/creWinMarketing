@@ -484,7 +484,7 @@ function isLikelyJobPost(text) {
           // Auto-reply kaynak mesaja
           try {
             const { replyToSource } = require('./group-broadcaster');
-            await replyToSource(msg, result.url, isTurkish);
+            await replyToSource(msg, result.url, isTurkish, [jobData?._positionName || jobData?.positionName, jobData?._shipTypeName].filter(Boolean).join(' · '));
           } catch (e) {
             log(`[pipeline] Auto-reply hatası: ${e.message}`);
           }

@@ -1376,6 +1376,7 @@ export const MESSAGES_EN: Record<string, string> = {
   "Geçersiz kontrol listesi öğesi.": "Unknown checklist item.",
   "Kaynak atfına erişim reddedildi.": "Access to source attribution was denied.",
   "Ürün olayı kaynaklarına erişim reddedildi.": "Access to product event sources was denied.",
+  "Geçersiz etiket.": "Invalid tag.",
   "Kaynak atfı okunamadı.": "Could not read source attribution.",
   "Geçersiz tutar ayarı.": "Invalid amount setting.",
   "Tutar için kaynak, olay, sayısal alan ve 3 harfli para birimi (ör. TRY) gerekli.": "An amount needs a source, an event, a numeric attribute and a 3-letter currency (e.g. TRY).",

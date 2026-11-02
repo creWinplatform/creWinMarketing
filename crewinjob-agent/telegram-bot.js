@@ -13,6 +13,12 @@ if (!TOKEN) {
 }
 
 const bot = new TelegramBot(TOKEN, { polling: true });
+
+// crewinjob.com linkleri Ryzevo kaynak etiketini taşır (panelin "Hangi iş müşteri getirdi" raporu). İlan linkleri
+// kendi ilan etiketini zaten taşır; kalanlar botun sabit etiketini alır. Kanal paylaşımları da bu bottan gider.
+const linkTags = require('./modules/link-tags');
+const sendRaw  = bot.sendMessage.bind(bot);
+bot.sendMessage = (chatId, text, opts) => sendRaw(chatId, linkTags.tagText(text, linkTags.fixedTag('bot'), { source: 'telegram', medium: 'bot' }), opts);
 console.log('✅ Telegram botu başlatıldı, polling aktif...');
 
 // ── Dil tespiti ───────────────────────────────────────────────────────────────

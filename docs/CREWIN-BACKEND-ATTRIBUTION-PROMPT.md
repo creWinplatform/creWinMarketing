@@ -12,8 +12,8 @@ Panel, kişiyi kimliğini saklamadan eşler ve rakamları yalnız toplam olarak 
 ## 1. İlk kaynak etiketini yakala
 - **Etiket:** paneldeki paylaşım ve e-posta linkleri şu parametreleri taşır:
   - `utm_campaign=rz_<10 küçük hex>` (ör. `rz_1a2b3c4d5e`)
-  - `utm_source` (`linkedin`, `facebook`, `x`, `telegram`, `whatsapp`, `email`)
-  - `utm_medium` (`social`, `organic_social`, `messaging` veya `email`)
+  - `utm_source` (`linkedin`, `facebook`, `x`, `telegram`, `whatsapp`, `instagram`, `tiktok`, `copy`, `email`)
+  - `utm_medium` (`social`, `organic_social`, `messaging`, `channel`, `group`, `bot` veya `email`)
 - **crewinjob.com'a gelişte:**
   - `utm_campaign`, `utm_source` ve `utm_medium` değerlerini oku. Yalnız `[A-Za-z0-9._:-]` karakterli değerleri al: campaign en çok 100, diğerleri en çok 64 karakter.
   - Değerleri ve geliş zamanını birinci taraf bir çerezde 90 gün tut.
@@ -134,5 +134,10 @@ request.Headers.Add("x-ryzevo-signature", signature);
 ## Panel tarafında gereken iş
 Bu metin backend'in payını anlatıyor. Panel tarafının durumu:
 1. **Crewin için açmak (yapıldı, 2 Kasım 2026):** imzalı ürün olayları (Proje ayarları → Ürün verisi, yalnız imzalı webhook) ve "Hangi iş müşteri getirdi" raporu (Analitik) Crewin çalışma alanında açık.
-2. **Crewin'in kendi linklerini etiketlemek (yapıldı):** kampanya yürütücüsü, paylaşım paneli, zamanlanmış gönderiler, Telegram ve e-posta gönderimi crewinjob.com linklerine `utm_campaign=rz_…` ekliyor. Ayrıntı ve kapsam dışı kalanlar: `docs/SAAS-ATTRIBUTION.md` → "The Crewin workspace".
+2. **Crewin'in kendi linklerini etiketlemek (yapıldı):** crewinjob.com linklerine `utm_campaign=rz_…` ekleyen araçlar:
+   - kampanya yürütücüsü;
+   - paylaşım paneli (kopyala-aç paylaşımlar ve Instagram/TikTok profil linki dahil);
+   - zamanlanmış gönderiler;
+   - Telegram, e-posta ve iş eşleştirme e-postası gönderimi;
+   - ajanın Telegram kanal, grup ve bot paylaşımları (her ilan kendi etiketini taşır). Ayrıntı ve kapsam dışı kalanlar: `docs/SAAS-ATTRIBUTION.md` → "The Crewin workspace".
 3. **Hedef aşamalarını bağlamak (kaynaklar açılınca yapılacak):** Crewin'in hedef aşamaları (Denizci aktivasyonu, CV unlock geliri) yukarıdaki olay adlarına Analitik → Otomatik ölçümler'den bağlanmalı. Tutar ayarında `company.credits_purchased` olayı, `amount` alanı ve para birimi seçilmeli.

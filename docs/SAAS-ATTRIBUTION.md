@@ -67,7 +67,9 @@ For each tagged post or email: how many people who first arrived through it went
 - **Where it shows:**
   - Project settings → Product data, with the signed-webhook panel only;
   - Analytics → "Which work brought customers", in `CrewinReportsPanel`.
-- **Crewin's own links** (`lib/platform/crewin-links.ts`): links to crewinjob.com and its subdomains get `utm_campaign=rz_…`, made by `linkTag` in the Crewin scope (`crewin` / `crewinjob`). A link that already has a `utm_` parameter is left alone.
+- **Crewin's own links** (`lib/platform/crewin-links.ts`; the browser-safe half is `crewin-link-text.ts`): links to crewinjob.com and its subdomains get `utm_campaign=rz_…`, made by `linkTag` in the Crewin scope (`crewin` / `crewinjob`).
+  - A link that already has a `utm_` parameter is left alone.
+  - Unsubscribe links are never changed.
 
   | Tool | Tag |
   |---|---|
@@ -75,18 +77,32 @@ For each tagged post or email: how many people who first arrived through it went
   | `/api/social/post` (SharePanel, scheduled posts, calendar runner) | the campaign's tag when `campaignId` is sent, otherwise one new share tag per post. Instagram and TikTok are not tagged. |
   | `/api/messaging/telegram/send` | one share tag per send: the text in HTML mode, button links always |
   | `/api/messaging/email/send` | the CTA, the HTML (links without `&`) and the text: the campaign's tag, or `crewinTag('email', subject)` |
+  | `/api/messaging/email/send-job-match` | the job links: `crewinTag('email', 'job-match:<campaign>')`, titled "İş eşleştirme e-postası" |
+  | SharePanel copy-and-open (LinkedIn quick share, X intent, "copy text", the error box's copy) | a share tag fetched when the panel opens (`GET /api/social/link-tag`), so no request sits between the click and the clipboard write. The title is registered on use (`POST`). "Copy text" uses `utm_source=copy`. |
+  | Instagram / TikTok | captions are not clickable. SharePanel shows a profile link with a fixed tag (`crewinTag('profile', platform)`), titled "Instagram profil linki" / "TikTok profil linki". |
+  | The agent's Telegram posts (`crewinjob-agent/modules/link-tags.js`) | the same formula in plain JS: |
+
+  Tags in the agent's Telegram posts:
+  - a job link (channel post, group broadcast, auto-reply to the source message, the bot's `/jobs`) gets `crewinTag('job', jobId)`, titled "İlan: <position · ship type>";
+  - every other bot link gets a fixed tag: bot replies `bot/telegram-bot`, the daily channel summary `bot/channel-summary`, group links without an id `bot/telegram-groups`;
+  - an existing `utm_source` / `utm_medium` is kept. `utm_medium` says where it was posted: `channel`, `group` or `bot`.
 
   - Sources use the standard names: `twitter` is sent as `x`.
-  - In the report, `share` tags show as posts; `campaign` and `email` tags show as campaigns.
+  - In the report, `share`, `job` and `bot` tags show as posts; `campaign` and `email` tags show as campaigns.
+  - X: a text the tag would push past 280 characters goes out as written (`tagCrewinShare`).
 - **Tag registry:** `data/crewin-link-tags.json` stores tag, kind, title (links stripped, 80 characters) and time.
   - Written synchronously when a send tags at least one link. The first title wins.
   - Holds at most 3,000 entries and 400 days.
-  - `crewinTaggedItems()` combines it with `data/campaigns.json`; a campaign's own name wins.
+  - **Agent registry:** the agent appends one line per new tag to its own `data/link-tags.jsonl`, so the two processes never rewrite one file.
+    - A job first seen without a title ("İlan #123") gets one more line once its real title is known.
+    - The panel reads the file through `CREWINJOB_AGENT_DIR`, or `../crewinjob-agent` by default, and uses the last line for each tag.
+  - `crewinTaggedItems()` merges the sources in this order: the agent's registry, the panel registry, the profile links, `data/campaigns.json`. A later source wins, so a campaign's own name wins.
 - **Legacy GA4 table:** the Analytics "UTM campaign performance" table shows the registered title next to an `rz_` tag (`campaignLabels` in `/api/analytics`).
 - **Not tagged:**
-  - SharePanel's copy-and-open shares (LinkedIn quick share, X intent): they never pass through the server;
-  - job-match emails;
-  - the agent's Telegram bot posts.
+  - Instagram and TikTok captions: only the profile link can carry a tag;
+  - TikTok's "copy script";
+  - WhatsApp template buttons;
+  - links already carrying another campaign's `utm_campaign`.
 - **Backend side:** `docs/CREWIN-BACKEND-ATTRIBUTION-PROMPT.md`.
 
 ## Limits
@@ -111,5 +127,6 @@ For each tagged post or email: how many people who first arrived through it went
 `test/platform-crewin-links.test.cjs` covers:
 - Crewin's tags;
 - which links are tagged (own site and subdomains, existing `utm_`, HTML `&`, look-alike hosts);
-- the registry (first title, pruning, campaign names);
+- the registry (first title, pruning, campaign names), unsubscribe links, the X limit and profile links;
+- that the agent computes the same tags, and its appended registry (a generic title replaced once, broken lines skipped);
 - end to end for Crewin: a signed source, goal-stage bindings, a tagged sign-up followed by an untagged later event, coverage, and no leak to other projects.

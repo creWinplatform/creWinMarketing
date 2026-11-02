@@ -3,6 +3,7 @@
 // (api.js / job-bot.js env'i yükleme anında okuduğu için bu satır onlardan ÖNCE çalışmalı)
 require('./agent-config').loadAgentConfig();
 const cron = require('node-cron');
+const linkTags = require('./link-tags');
 
 const CHANNEL  =  process.env.TELEGRAM_CHANNEL_ID   || '';
 
@@ -28,7 +29,8 @@ async function fetchLatestJobs(maxCount = 5) {
   }
 }
 
-function formatJobPost(job) {
+// medium: 'channel' (kanal paylaşımı) veya 'bot' (/jobs yanıtı). Link ilanın Ryzevo etiketini taşır (link-tags.js).
+function formatJobPost(job, medium = 'bot') {
   const id       = job.jobId ?? job.id ?? null;
   const title    = job.title    || job.positionName || 'Pozisyon Belirtilmedi';
   const company  = job.company  || job.firmName     || '';
@@ -37,8 +39,8 @@ function formatJobPost(job) {
   const duration = job.duration || job.contratTypeName || '';
   const salary   = job.salary   || '';
   const url = id
-    ? `${JOB_DETAIL_URL}${encodeURIComponent(id)}?utm_source=telegram&utm_medium=bot`
-    : 'https://crewinjob.com/?utm_source=telegram&utm_medium=bot';
+    ? linkTags.jobLink(`${JOB_DETAIL_URL}${encodeURIComponent(id)}?utm_source=telegram&utm_medium=${medium}`, id, [title, shipType].filter(Boolean).join(' · '), medium)
+    : linkTags.tagUrl(`https://crewinjob.com/?utm_source=telegram&utm_medium=${medium}`, linkTags.fixedTag(medium === 'channel' ? 'channel' : 'bot'));
 
   let text = `🚢 <b>${escapeHtml(title)}</b>\n`;
   if (company)  text += `🏢 ${escapeHtml(company)}\n`;
@@ -52,9 +54,10 @@ function formatJobPost(job) {
 
 function formatStatsSummary() {
   const now = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const url = linkTags.tagUrl('https://crewinjob.com/?utm_source=telegram&utm_medium=channel', linkTags.fixedTag('channel'));
   return `📊 <b>CrewinJob Günlük Güncelleme</b> — ${now}\n\n` +
     `🌍 Gemi adamı ve denizcilik iş ilanları için:\n` +
-    `🔗 <a href="https://crewinjob.com?utm_source=telegram">crewinjob.com</a>\n\n` +
+    `🔗 <a href="${escapeHtml(url)}">crewinjob.com</a>\n\n` +
     `#crewinjob #denizcilik #gemiadami #maritimejobs`;
 }
 
@@ -69,7 +72,7 @@ async function postJobsToChannel(bot) {
     const jobs = await fetchLatestJobs(3);
     if (jobs.length > 0) {
       for (const job of jobs) {
-        await sendToChannel(bot, formatJobPost(job));
+        await sendToChannel(bot, formatJobPost(job, 'channel'));
         await new Promise(r => setTimeout(r, 1500));
       }
       console.log(`[poster] ${jobs.length} ilan paylaşıldı`);

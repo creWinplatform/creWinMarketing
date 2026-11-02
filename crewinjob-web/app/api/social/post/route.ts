@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFreshTwitterOAuth2Token, getToken, graphFetch, twitterOAuth1Creds } from '@/lib/social-tokens';
 import { buildOAuthHeader }   from '@/lib/oauth1';
-import { crewinTag, newCrewinShareTag, registerCrewinTag, tagCrewinLinks } from '@/lib/platform/crewin-links';
+import { crewinTag, newCrewinShareTag, registerCrewinTag, tagCrewinShare } from '@/lib/platform/crewin-links';
 
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
 export const fetchCache = 'force-no-store';
@@ -535,8 +535,7 @@ export async function POST(req: NextRequest) {
   const tag = campaign ? crewinTag('campaign', campaign) : newCrewinShareTag();
   let tagged = 0;
   const textFor = (p: string) => {
-    const original = perPlatformContent?.[p] || content, result = tagCrewinLinks(original, tag, p, 'social');
-    if (p === 'twitter' && result.text.length > 280) return original;
+    const result = tagCrewinShare(perPlatformContent?.[p] || content, tag, p);
     tagged += result.tagged;
     return result.text;
   };

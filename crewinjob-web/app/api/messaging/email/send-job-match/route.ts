@@ -6,6 +6,7 @@ import { crewinEmailGate } from '@/lib/crewin-iys-email';
 import { iysEnabled } from '@/lib/platform/iys-types';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
+import { crewinTag, registerCrewinTag, tagCrewinLinks } from '@/lib/platform/crewin-links';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -93,6 +94,10 @@ export async function POST(request: NextRequest) {
     // Her alıcı için kişisel ilan listesi çek (userId yoksa genel liste)
     const jobsMap   = await fetchJobsInBatches(api, recipients);
 
+    // crewinjob.com linkleri (ilanlar dahil) bu e-posta türünün rz_ etiketini taşır; abonelikten çıkma linkine dokunulmaz.
+    const tag = crewinTag('email', `job-match:${campaign}`);
+    let tagged = 0;
+
     // Her alıcı için kişiselleştirilmiş konu + HTML oluştur
     // nationality varsa retention.js'deki NATIONALITY_TO_LANGUAGE_CODE'dan dil otomatik çözülür;
     // yoksa route'a gelen fallback lang kullanılır
@@ -104,10 +109,12 @@ export async function POST(request: NextRequest) {
         lang,                                   // nationality eşleşmezse fallback
         unsubscribeUrl,
       });
+      const linked = tagCrewinLinks(html, tag, 'email', 'email', true);
+      tagged += linked.tagged;
       return {
         to:             r.email,
         subject,                                // alıcının dilindeki konu (broadcast item.subject'i kullanır)
-        html:           html + openPixelTag(r.userId, campaign),
+        html:           linked.text + openPixelTag(r.userId, campaign),
         headers:        sesHeaders(r.userId, campaign),
         unsubscribeUrl: listUnsubscribeTarget(unsubscribeUrl),
       };
@@ -115,6 +122,9 @@ export async function POST(request: NextRequest) {
 
     // Tüm e-postaları gönder — konu her item'da; ikinci argüman yalnızca yedek
     const result = await send.broadcastPersonalizedEmail(items, 'Size Uygun İlanlar');
+    if (tagged) {
+      try { registerCrewinTag(tag, 'email', campaign === 'job-match' ? 'İş eşleştirme e-postası' : `İş eşleştirme e-postası (${campaign})`); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
+    }
 
     // email_sent event — best-effort, yalnızca başarıyla gidenler; en fazla EVENT_CONCURRENCY eşzamanlı çağrı
     const sendResults = Array.isArray(result.results) ? result.results as Array<{ to?: string; success?: boolean }> : [];

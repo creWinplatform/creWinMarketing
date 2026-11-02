@@ -97,3 +97,33 @@ test('Crewin receives signed events, maps its goal stages and sees which share b
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM platform_attribution_touches').all()).includes('48213'),'no backend id is kept');
   }finally{db.close();}
 }));
+
+test('unsubscribe links are never tagged; X keeps texts that a tag would push past 280; profile links have fixed tags',()=>{
+  const {tagCrewinShare,crewinProfileLink}=load('crewin-links.ts'),tag=crewinTag('share','s-1');
+  assert.equal(tagCrewinLinks('Çık: https://www.crewinjob.com/account/unsubscribe?token=abc',tag,'email','email').tagged,0);
+  const long=`${'a'.repeat(240)} https://www.crewinjob.com/jobs`;
+  assert.deepEqual(plain(tagCrewinShare(long,tag,'twitter')),{text:long,tagged:0},'X keeps the untagged text');
+  assert.equal(tagCrewinShare(long,tag,'linkedin').tagged,1,'other platforms have room');
+  const profile=new URL(crewinProfileLink('instagram'));
+  assert.equal(profile.searchParams.get('utm_campaign'),crewinTag('profile','instagram'));assert.equal(profile.searchParams.get('utm_source'),'instagram');
+});
+
+test('the agent computes the same tags, and its appended registry names job posts (the last line for a tag wins)',()=>withData(dir=>{
+  const agentDir=path.join(dir,'agent'),file=path.join(agentDir,'data','link-tags.jsonl'),saved=process.env.CREWINJOB_AGENT_DIR,savedFile=process.env.CREWIN_LINK_TAGS_FILE;
+  process.env.CREWINJOB_AGENT_DIR=agentDir;process.env.CREWIN_LINK_TAGS_FILE=file;
+  try{
+    const agent=require('../../crewinjob-agent/modules/link-tags.js');
+    for(const [kind,id] of [['job','48213'],['bot','telegram-bot'],['share','x-1']])assert.equal(agent.crewinTag(kind,id),crewinTag(kind,id),`${kind}/${id}`);
+    const url=agent.jobLink('https://crewinjob.com/jobs/detail/48213',48213,'','group');
+    assert.equal(new URL(url).searchParams.get('utm_campaign'),crewinTag('job','48213'));
+    agent.jobLink('https://crewinjob.com/jobs/detail/48213?utm_source=telegram&utm_medium=channel','48213','Chief Officer · Bulk Carrier','channel');
+    agent.jobLink('https://crewinjob.com/jobs/detail/48213','48213','Başka başlık','group');
+    fs.appendFileSync(file,'{broken\n');
+    const items=crewinTaggedItems();
+    assert.deepEqual(plain(items.get(crewinTag('job','48213'))),{kind:'content',id:crewinTag('job','48213'),title:'İlan: Chief Officer · Bulk Carrier'},'a generic title is replaced once by the real one');
+    assert.equal(items.get(crewinTag('profile','tiktok')).title,'TikTok profil linki');
+  }finally{
+    if(saved===undefined)delete process.env.CREWINJOB_AGENT_DIR;else process.env.CREWINJOB_AGENT_DIR=saved;
+    if(savedFile===undefined)delete process.env.CREWIN_LINK_TAGS_FILE;else process.env.CREWIN_LINK_TAGS_FILE=savedFile;
+  }
+}));

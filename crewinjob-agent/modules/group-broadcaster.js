@@ -4,6 +4,7 @@ const { getClient }       = require('./tg-client');
 const { getJoinedGroups } = require('./group-discovery');
 const { loadPosted, updatePostedJob, log } = require('./auto-poster');
 const { writeJsonAtomic } = require('./json-file');
+const linkTags = require('./link-tags');
 const fs   = require('fs');
 const path = require('path');
 
@@ -110,7 +111,9 @@ function formatJobMessage(job) {
 
   // İlanId'ye göre deterministik şablon seçimi (tekrar eden aynı mesaj yok)
   const tpl = TEMPLATES[(job.ilanId || 0) % TEMPLATES.length];
-  return tpl(pos, ship, country, contract, salary, job.ilanUrl);
+  // Link ilanın Ryzevo etiketini taşır; aynı ilanın kanal ve bot linkleriyle aynı etiket (link-tags.js)
+  const url = linkTags.jobLink(job.ilanUrl, job.ilanId, d._positionName ? [pos, ship].filter(Boolean).join(' · ') : '', 'group');
+  return tpl(pos, ship, country, contract, salary, url);
 }
 
 // ── Tek ilanı tek gruba gönder (hata yönetimi + günlük sayaç) ─────────────────
@@ -251,8 +254,10 @@ async function broadcastNewJobs(maxJobs = 60, maxGroups = 30) {
 }
 
 // ── Feature 4: Kaynak mesaja otomatik reply ───────────────────────────────────
-async function replyToSource(msg, ilanUrl, isTurkish = false) {
+// title: ilanın pozisyonu (ve gemi tipi); etiketin raporda adı olur.
+async function replyToSource(msg, rawIlanUrl, isTurkish = false, title = '') {
   if (!msg.chatId || !msg.messageId) return;
+  const ilanUrl = linkTags.jobLink(rawIlanUrl, linkTags.jobIdFromUrl(rawIlanUrl), title, 'group');
   try {
     const client = await getClient();
     const peer = msg.chatUsername

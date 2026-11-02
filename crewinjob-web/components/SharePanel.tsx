@@ -9,6 +9,7 @@ import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
 import { compositePostImage, PLATFORM_TARGET } from '@/lib/image-composite';
 import { loadPartnerLogo } from '@/lib/partner-logo';
+import { tagCrewinShare } from '@/lib/platform/crewin-link-text';
 
 const LOGO_KEY = 'crewinjob_brand_logo';
 
@@ -322,6 +323,28 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
   // Facebook / Instagram / TikTok hızlı paylaşım durumu
   const [quickPosting, setQuickPosting] = useState<string | null>(null);
   const [quickToast,   setQuickToast]   = useState<{ show: boolean; platform: string; success: boolean; message: string; url?: string } | null>(null);
+  // Kopyala-aç paylaşımların rz_ etiketi panel açılırken alınır: tıklama ile panoya yazma arasında istek olmaz.
+  // Instagram/TikTok açıklamasındaki linkler tıklanmaz; onlar için etiketli profil linki gösterilir.
+  const [linkTag,      setLinkTag]      = useState('');
+  const [profileLinks, setProfileLinks] = useState<Record<string, string>>({});
+  const [profileCopied, setProfileCopied] = useState('');
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/social/link-tag', { cache: 'no-store' })
+      .then(res => res.ok ? res.json() : null)
+      .then((data: { tag?: string; profiles?: Record<string, string> } | null) => { if (alive && data?.tag) { setLinkTag(data.tag); setProfileLinks(data.profiles || {}); } })
+      .catch(() => { /* etiketsiz paylaşım yine çalışır */ });
+    return () => { alive = false; };
+  }, []);
+  /** crewinjob.com linklerine bu panelin etiketini ekler ve etiketin başlığını (paylaşılan metin) kaydeder. */
+  const tagShare = (text: string, platform: string) => {
+    if (!linkTag) return text;
+    const result = tagCrewinShare(text, linkTag, platform);
+    if (result.tagged) {
+      void fetch('/api/social/link-tag', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag: linkTag, title: editText }) }).catch(() => { /* yalnız başlık eksik kalır */ });
+    }
+    return result.text;
+  };
 
   /** Platform boyutunda görsel: ham arka plan varsa yeniden bas, yoksa sığdır (letterbox). */
   const imageForPlatform = useCallback(async (platformId: string): Promise<string> => {
@@ -431,14 +454,14 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
   };
 
   const handleTwitterQuickShare = async (text: string) => {
-    const { imageCopied } = await shareToTwitter(text, imageData, imageMime);
+    const { imageCopied } = await shareToTwitter(tagShare(text, 'twitter'), imageData, imageMime);
     setTwToast({ show: true, imageCopied, platform: 'twitter' });
     setTrackUrl('');
     setTrackSaved(false);
   };
 
   const handleLinkedInQuickShare = async (text: string) => {
-    const { imageCopied, textCopied } = await shareToLinkedIn(text, imageData, imageMime);
+    const { imageCopied, textCopied } = await shareToLinkedIn(tagShare(text, 'linkedin'), imageData, imageMime);
     setTwToast({ show: true, imageCopied, textCopied, platform: 'linkedin' });
     setTrackUrl('');
     setTrackSaved(false);
@@ -776,7 +799,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                 <button
                   onClick={async () => {
                     try {
-                      await navigator.clipboard.writeText(editText);
+                      await navigator.clipboard.writeText(tagShare(editText, 'copy'));
                       setCopiedText(true);
                       setTimeout(() => setCopiedText(false), 3000);
                     } catch { /* ignore */ }
@@ -1107,6 +1130,28 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                                   </button>
                                 )}
                               </>
+                            )}
+
+                            {/* Instagram / TikTok — açıklamadaki link tıklanmaz; profil linki etiketli olsun */}
+                            {(p.id === 'instagram' || p.id === 'tiktok') && profileLinks[p.id] && (
+                              <div className="text-[10px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                                {lang === 'tr'
+                                  ? 'Açıklamadaki linke tıklanamaz. Profilinizdeki linki bununla değiştirin; oradan gelenler “Hangi iş müşteri getirdi” raporunda görünür.'
+                                  : 'Links in the caption are not clickable. Use this link on your profile; people who come through it show in the “Which work brought customers” report.'}
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    try {
+                                      await navigator.clipboard.writeText(profileLinks[p.id]);
+                                      setProfileCopied(p.id);
+                                      setTimeout(() => setProfileCopied(''), 3000);
+                                    } catch { /* ignore */ }
+                                  }}
+                                  className="mt-1 w-full text-left font-mono text-[10px] break-all bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 px-2 py-1.5 rounded-lg"
+                                >
+                                  {profileCopied === p.id ? (lang === 'tr' ? '✅ Profil linki kopyalandı' : '✅ Profile link copied') : `📋 ${profileLinks[p.id]}`}
+                                </button>
+                              </div>
                             )}
                           </div>
                         )}
@@ -1450,7 +1495,7 @@ export default function SharePanel({ content, imageData, imageMime, rawBgData, r
                           {errorInfo.canCopy && (
                             <button
                               onClick={async () => {
-                                await navigator.clipboard.writeText(platformContent);
+                                await navigator.clipboard.writeText(tagShare(platformContent, r.platform));
                               }}
                               className="flex items-center gap-1.5 text-xs bg-white dark:bg-slate-700 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 px-3 py-1.5 rounded-lg font-medium transition-colors"
                             >
