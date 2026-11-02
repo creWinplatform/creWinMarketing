@@ -47,8 +47,8 @@ export class ProjectMeasurements {
   sources(): MeasurementSource[] {
     this.authorize(true);
     const google = this.db.prepare("SELECT id,account_name AS name,provider,integration_id AS resource FROM platform_connections WHERE organization_id=? AND project_id=? AND active=1 AND provider IN ('ga4','search_console') ORDER BY account_name,id").all(...this.args()) as Omit<MeasurementSource, 'version' | 'eventNames'>[];
-    // Product-data event sources exist only in standard projects; the Crewin workspace's data comes from its backend.
-    const events = this.repo.workspace(this.scope.subject, ...this.args())?.project.productPack === 'standard' ? new ProductSegments(this.db, this.scope).sources().filter(item => item.kind === 'webhook' && item.state === 'active') : [];
+    // Signed product-event sources: standard projects, and the Crewin workspace's backend events (product_events).
+    const events = ryzevoFeature(this.repo.workspace(this.scope.subject, ...this.args())?.project.productPack, 'product_events') ? new ProductSegments(this.db, this.scope).eventSources().filter(item => item.state === 'active') : [];
     return [...google.map(item => ({ ...item, version: null, eventNames: [] })), ...events.map(item => ({ id: item.id, name: item.name, provider: 'product_webhook' as const, resource: 'signed_events', version: item.version, eventNames: item.eventNames }))];
   }
   private valid(row: Binding) {
@@ -56,7 +56,7 @@ export class ProjectMeasurements {
       if (!this.can(row.manager_id) || row.goal_signature !== this.signature(row.goal_id, row.stage_index)) return false;
       const connection = this.connection(row.connection_id); if (connection.provider !== row.provider) return false;
       if (row.provider === 'product_webhook') {
-        const source = new ProductSegments(this.db, { ...this.scope, subject: row.manager_id }).sources().find(item => item.id === row.connection_id);
+        const source = new ProductSegments(this.db, { ...this.scope, subject: row.manager_id }).eventSources().find(item => item.id === row.connection_id);
         if (source?.state !== 'active' || source.version !== row.source_version || !source.eventNames.includes(JSON.parse(row.definition_json).eventName)) return false;
       }
       return true;
@@ -163,7 +163,7 @@ export class ProjectMeasurements {
     return row;
   }
   private product(row: Binding, job: Job): MeasurementResult {
-    const source = new ProductSegments(this.db, { ...this.scope, subject: row.manager_id }).sources().find(item => item.id === row.connection_id)!;
+    const source = new ProductSegments(this.db, { ...this.scope, subject: row.manager_id }).eventSources().find(item => item.id === row.connection_id)!;
     const start = Date.parse(job.date_from), cutoff = Date.now() - WEBHOOK_LIMITS.retentionDays * 86400000, checkedAt = new Date().toISOString();
     if (!source.coverageFrom || !Number.isFinite(Date.parse(source.coverageFrom)) || Date.parse(source.coverageFrom) > start || start < cutoff) return { status: 'partial', value: null, reason: 'coverage', timezone: 'UTC', rows: 0, checkedAt };
     const end = new Date(Date.parse(job.date_to) + 86400000).toISOString(), definition: MeasurementDefinition = JSON.parse(row.definition_json);

@@ -49,7 +49,7 @@ For each tagged post or email: how many people who first arrived through it went
   - Ryzevo tags that are deleted or not in this project.
 - **Coverage:** of the people who reached the first stage, how many had any known first touch and how many a Ryzevo tag.
 - **Who can see what:**
-  - Reading needs `read` in a standard project. Crewin has no product events and gets 403.
+  - Reading needs `read` in a standard project or the Crewin workspace (`ryzevoFeature(pack, 'attribution')`).
   - The amount setting needs `connections.manage` and applies to events received after it is saved.
 
 ## Where it shows
@@ -58,6 +58,36 @@ For each tagged post or email: how many people who first arrived through it went
 - **Monthly report:** `facts.results` gives people per stage for the month's items and channels, with a coverage line. Only counts are kept. Reports approved earlier have no such section.
 - **Product data → Signed webhook:** snippet, server example, the field, and the amount setting (`AttributionSetup.tsx`). The schema preview says how many sample events carry a tag.
 - **Job guide:** the results job has "See which work brought your signups". It is done once a tagged event has arrived.
+
+## The Crewin workspace (2 November 2026)
+- **Open features:** `product_events` and `attribution` are in `CREWIN_RYZEVO_FEATURES`.
+  - Signed webhook sources: `ProductDataSources.authorize('webhook')`, the ingest query (`ryzevoPackSql('product_events')`), and `ProductSegments.eventSources()` for goal measurements.
+  - REST data sources and segments stay standard-only.
+  - The routes take Crewin's single account through `getRyzevoAccess`.
+- **Where it shows:**
+  - Project settings → Product data, with the signed-webhook panel only;
+  - Analytics → "Which work brought customers", in `CrewinReportsPanel`.
+- **Crewin's own links** (`lib/platform/crewin-links.ts`): links to crewinjob.com and its subdomains get `utm_campaign=rz_…`, made by `linkTag` in the Crewin scope (`crewin` / `crewinjob`). A link that already has a `utm_` parameter is left alone.
+
+  | Tool | Tag |
+  |---|---|
+  | Campaign executor (`appendUtm`) | `crewinTag('campaign', campaign.id)`; other sites keep the campaign's own UTM name |
+  | `/api/social/post` (SharePanel, scheduled posts, calendar runner) | the campaign's tag when `campaignId` is sent, otherwise one new share tag per post. Instagram and TikTok are not tagged. |
+  | `/api/messaging/telegram/send` | one share tag per send: the text in HTML mode, button links always |
+  | `/api/messaging/email/send` | the CTA, the HTML (links without `&`) and the text: the campaign's tag, or `crewinTag('email', subject)` |
+
+  - Sources use the standard names: `twitter` is sent as `x`.
+  - In the report, `share` tags show as posts; `campaign` and `email` tags show as campaigns.
+- **Tag registry:** `data/crewin-link-tags.json` stores tag, kind, title (links stripped, 80 characters) and time.
+  - Written synchronously when a send tags at least one link. The first title wins.
+  - Holds at most 3,000 entries and 400 days.
+  - `crewinTaggedItems()` combines it with `data/campaigns.json`; a campaign's own name wins.
+- **Legacy GA4 table:** the Analytics "UTM campaign performance" table shows the registered title next to an `rz_` tag (`campaignLabels` in `/api/analytics`).
+- **Not tagged:**
+  - SharePanel's copy-and-open shares (LinkedIn quick share, X intent): they never pass through the server;
+  - job-match emails;
+  - the agent's Telegram bot posts.
+- **Backend side:** `docs/CREWIN-BACKEND-ATTRIBUTION-PROMPT.md`.
 
 ## Limits
 - Instagram captions and WhatsApp button links are not tagged.
@@ -73,7 +103,13 @@ For each tagged post or email: how many people who first arrived through it went
 - the clamp to the event time, cross-source matching and the 90-day window;
 - per-stage counts, channels, other campaigns, unmatched tags, coverage and amount;
 - `forTag` and the monthly report;
-- gates (viewer, other project, Crewin);
+- gates (viewer, other project; Crewin reads only its own report);
 - pruning;
 - email link tagging and the digest;
 - the snippet (no cookie before consent, first touch kept, unclean values refused).
+
+`test/platform-crewin-links.test.cjs` covers:
+- Crewin's tags;
+- which links are tagged (own site and subdomains, existing `utm_`, HTML `&`, look-alike hosts);
+- the registry (first title, pruning, campaign names);
+- end to end for Crewin: a signed source, goal-stage bindings, a tagged sign-up followed by an untagged later event, coverage, and no leak to other projects.

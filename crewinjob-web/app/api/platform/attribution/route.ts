@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPlatformAccess } from '@/lib/platform/workspace-server';
+import { getRyzevoAccess } from '@/lib/platform/workspace-server';
 import { platformDatabase } from '@/lib/platform/database';
 import { ProjectAttribution } from '@/lib/platform/attribution';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
@@ -9,7 +9,7 @@ export const dynamic='force-dynamic',maxDuration=30;
 async function handle(request:NextRequest){
   const headers={'Cache-Control':'private, no-store'};
   try{
-    const access=await getPlatformAccess();if(!access||access.identity.mode!=='platform')return NextResponse.json({error:'Proje oturumu gerekli.'},{status:403,headers});
+    const access=await getRyzevoAccess();if(!access)return NextResponse.json({error:'Proje oturumu gerekli.'},{status:403,headers});
     const service=new ProjectAttribution(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId});
     if(request.method==='GET'){
       const view=request.nextUrl.searchParams.get('view');

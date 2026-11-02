@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getFreshTwitterOAuth2Token, getToken, graphFetch, twitterOAuth1Creds } from '@/lib/social-tokens';
 import { buildOAuthHeader }   from '@/lib/oauth1';
+import { crewinTag, newCrewinShareTag, registerCrewinTag, tagCrewinLinks } from '@/lib/platform/crewin-links';
 
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
 export const fetchCache = 'force-no-store';
@@ -12,6 +13,7 @@ interface PostRequest {
   perPlatformImageData?:  Record<string, string>;  // platform → uyarlanmış görsel
   imageData?:             string;
   imageMime?:             string;
+  campaignId?:            string;  // kampanya teslimatı: linkler kampanyanın rz_ etiketini taşır
 }
 
 interface PostResult {
@@ -521,15 +523,28 @@ async function postTikTok(content: string): Promise<PostResult> {
 
 // ── Ana POST handler ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const { platforms, content, perPlatformContent, perPlatformImageData, imageData, imageMime } = await req.json() as PostRequest;
+  const { platforms, content, perPlatformContent, perPlatformImageData, imageData, imageMime, campaignId } = await req.json() as PostRequest;
 
   if (!platforms?.length) return NextResponse.json({ error: 'Platform seçilmedi' }, { status: 400 });
   if (!content?.trim())   return NextResponse.json({ error: 'İçerik boş' }, { status: 400 });
 
+  // crewinjob.com linkleri bu paylaşımın rz_ etiketini taşır (zaten utm_ taşıyan linklere dokunulmaz).
+  // Instagram/TikTok açıklamasındaki linkler tıklanmaz; etiketlenmez. X'te etiket metni 280 karakterin üstüne taşırsa
+  // metin etiketsiz gider: truncateForTwitter ham uzunluğu sayar, uzayan link kesilebilirdi.
+  const campaign = typeof campaignId === 'string' && /^[\w:.-]{1,100}$/.test(campaignId) ? campaignId : '';
+  const tag = campaign ? crewinTag('campaign', campaign) : newCrewinShareTag();
+  let tagged = 0;
+  const textFor = (p: string) => {
+    const original = perPlatformContent?.[p] || content, result = tagCrewinLinks(original, tag, p, 'social');
+    if (p === 'twitter' && result.text.length > 280) return original;
+    tagged += result.tagged;
+    return result.text;
+  };
+
   const results: PostResult[] = await Promise.all(
     platforms.map(async (p) => {
       // Platform için uyarlanmış metin ve görsel — yoksa orijinali kullan
-      const platformContent  = perPlatformContent?.[p]   || content;
+      const platformContent  = ['instagram', 'tiktok'].includes(p) ? perPlatformContent?.[p] || content : textFor(p);
       const platformImage    = perPlatformImageData?.[p] || imageData;
       try {
         switch (p) {
@@ -546,5 +561,8 @@ export async function POST(req: NextRequest) {
     })
   );
 
+  if (tagged && results.some(result => result.success)) {
+    try { registerCrewinTag(tag, campaign ? 'campaign' : 'share', content); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
+  }
   return NextResponse.json({ results });
 }

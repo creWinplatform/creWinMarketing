@@ -1,6 +1,7 @@
 import path from 'path';
 import type { AdPlatform } from '@/lib/ads-types';
 import { readJson, withFileLock, writeJsonAtomic } from '@/lib/json-store';
+import { crewinSource, crewinTag, isCrewinSite } from '@/lib/platform/crewin-links';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const FILE = path.join(DATA_DIR, 'campaigns.json');
@@ -368,14 +369,17 @@ export function releaseCampaign(id: string, status: CampaignStatus): Promise<Uni
   });
 }
 
+// Links to crewinjob.com carry the campaign's Ryzevo tag (utm_campaign=rz_…), so the backend's first-touch cookie and the
+// "Which work brought customers" report can name the campaign; other links keep the campaign's own UTM name.
 export function appendUtm(text: string, campaign: UnifiedCampaign, source: string, medium: string): string {
   return text.replace(/https?:\/\/[^\s<>"]+/g, raw => {
     const suffix = raw.match(/[),.!?]+$/)?.[0] || '';
     const candidate = suffix ? raw.slice(0, -suffix.length) : raw;
     try {
       const url = new URL(candidate);
-      url.searchParams.set('utm_campaign', campaign.utm.campaign);
-      url.searchParams.set('utm_source', source);
+      const own = isCrewinSite(url);
+      url.searchParams.set('utm_campaign', own ? crewinTag('campaign', campaign.id) : campaign.utm.campaign);
+      url.searchParams.set('utm_source', own ? crewinSource(source) : source);
       url.searchParams.set('utm_medium', medium);
       url.searchParams.set('utm_content', campaign.id);
       return `${url.toString()}${suffix}`;

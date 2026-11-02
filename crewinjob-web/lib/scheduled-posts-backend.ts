@@ -122,6 +122,7 @@ export async function publishToSocial(body: {
   imageData?: string;
   imageMime?: string;
   perPlatformContent?: Record<string, string>;
+  campaignId?: string;
 }, actor: string): Promise<SocialPostResult[]> {
   const res  = await internalFetch('/api/social/post', { method: 'POST', body: JSON.stringify(body) }, actor);
   const data = await res.json().catch(() => ({})) as { results?: SocialPostResult[]; error?: string };

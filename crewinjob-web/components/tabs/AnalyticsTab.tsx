@@ -34,6 +34,7 @@ interface AnalyticsResponse {
   countries?: GA4Report; cities?: GA4Report; sources?: GA4Report;
   devices?: GA4Report; daily?: GA4Report;
   campaigns?: GA4Report;
+  campaignLabels?: Record<string, string>; // rz_ etiketi → paylaşım / kampanya / e-posta adı
 }
 
 // ── GSC Types ─────────────────────────────────────────────────────────────────
@@ -867,7 +868,7 @@ export default function AnalyticsTab() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="text-left text-xs text-slate-600 border-b border-slate-100 dark:border-slate-700"><th className="py-2">{L(lang, 'Kampanya', 'Campaign')}</th><th className="py-2 text-right">{L(lang, 'Oturum', 'Sessions')}</th><th className="py-2 text-right">{L(lang, 'Aktif kullanıcı', 'Active users')}</th></tr></thead>
-              <tbody>{campaignRows.map(row => <tr key={row.name} className="border-b border-slate-50 dark:border-slate-800"><td className="py-2 text-slate-700 dark:text-slate-200 font-medium">{row.name}</td><td className="py-2 text-right text-slate-600 dark:text-slate-300">{fmt(row.value, lang)}</td><td className="py-2 text-right text-slate-500">{fmt(row.sub || 0, lang)}</td></tr>)}</tbody>
+              <tbody>{campaignRows.map(row => <tr key={row.name} className="border-b border-slate-50 dark:border-slate-800"><td className="py-2 text-slate-700 dark:text-slate-200 font-medium">{data?.campaignLabels?.[row.name] ? <>{data.campaignLabels[row.name]} <span className="text-xs font-normal text-slate-500">{row.name}</span></> : row.name}</td><td className="py-2 text-right text-slate-600 dark:text-slate-300">{fmt(row.value, lang)}</td><td className="py-2 text-right text-slate-500">{fmt(row.sub || 0, lang)}</td></tr>)}</tbody>
             </table>
           </div>
         </div>

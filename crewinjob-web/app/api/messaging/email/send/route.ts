@@ -14,6 +14,7 @@ import { crewinEmailGate, type CrewinEmailGateResult } from '@/lib/crewin-iys-em
 import { iysEnabled } from '@/lib/platform/iys-types';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
+import { crewinTag, registerCrewinTag, tagCrewinLinks } from '@/lib/platform/crewin-links';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -97,13 +98,19 @@ function personalizeText(text: string | undefined, r: RecipientRef, campaign: st
 export async function POST(request: NextRequest) {
   try {
     const body: SendBody = await request.json();
-    const { mode, to, recipients, subject, html, text, campaign, ctaPath } = body;
+    const { mode, to, recipients, subject, campaign, ctaPath } = body;
     // ctaPath yalnızca "/" ile başlayan yol olabilir ("@evil.com" gibi host enjeksiyonunu engeller)
-    const ctaTarget = typeof ctaPath === 'string' && /^\/(?!\/)/.test(ctaPath) ? `https://www.crewinjob.com${ctaPath}` : DEFAULT_CTA_TARGET;
+    const rawCtaTarget = typeof ctaPath === 'string' && /^\/(?!\/)/.test(ctaPath) ? `https://www.crewinjob.com${ctaPath}` : DEFAULT_CTA_TARGET;
 
-    if (!subject || !html) {
+    if (!subject || !body.html) {
       return NextResponse.json({ error: '"subject" ve "html" zorunludur.' }, { status: 400 });
     }
+    // crewinjob.com linkleri (CTA dahil) rz_ etiketini taşır: kampanya kimliği varsa kampanyanın, yoksa bu e-postanın
+    // (konu satırından). Kampanya yürütücüsünün zaten etiketlediği linklere dokunulmaz.
+    const tag = crewinTag(campaign ? 'campaign' : 'email', campaign || subject);
+    const cta = tagCrewinLinks(rawCtaTarget, tag, 'email', 'email'), tagHtml = tagCrewinLinks(body.html, tag, 'email', 'email', true), tagText = tagCrewinLinks(body.text || '', tag, 'email', 'email');
+    const ctaTarget = cta.text, html = tagHtml.text, text = body.text ? tagText.text : body.text;
+    const remember = () => { if (cta.tagged + tagHtml.tagged + tagText.tagged) { try { registerCrewinTag(tag, campaign ? 'campaign' : 'email', subject); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); } } };
 
     const send = agentModule('modules/messaging-send.js');
     const api  = agentModule('modules/api.js');
@@ -135,6 +142,7 @@ export async function POST(request: NextRequest) {
         undefined,
         listUnsubscribeTarget(unsubscribeUrl),
       );
+      remember();
       return NextResponse.json({ ...result, iys: iysView(gate) });
     }
 
@@ -170,6 +178,7 @@ export async function POST(request: NextRequest) {
       });
 
       const result = await send.broadcastPersonalizedEmail(items, subject);
+      remember();
 
       // email_sent event'i — best-effort, gönderim sonucunu bloklamaz; en fazla EVENT_CONCURRENCY eşzamanlı çağrı
       const withUserId = refs.filter(r => r.userId != null);

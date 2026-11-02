@@ -7,7 +7,7 @@ import { localeTag } from '@/lib/i18n/shared';
 import type { AttributionPeriod, AttributionReport } from '@/lib/platform/attribution-types';
 import Msg from '@/components/Msg';
 
-const CHANNELS: Record<string, [string, string]> = { linkedin: ['LinkedIn', 'LinkedIn'], facebook: ['Facebook', 'Facebook'], x: ['X', 'X'], telegram: ['Telegram', 'Telegram'], email: ['E-posta', 'Email'], '': ['Kanal bilinmiyor', 'Unknown channel'] };
+const CHANNELS: Record<string, [string, string]> = { linkedin: ['LinkedIn', 'LinkedIn'], facebook: ['Facebook', 'Facebook'], x: ['X', 'X'], telegram: ['Telegram', 'Telegram'], whatsapp: ['WhatsApp', 'WhatsApp'], email: ['E-posta', 'Email'], '': ['Kanal bilinmiyor', 'Unknown channel'] };
 
 // Which posts and emails brought the people who signed up, activated or paid: the first tagged link each person came
 // through (reported by the team's own product events), counted per goal stage. Observations, not credited causes.

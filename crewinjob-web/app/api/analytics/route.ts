@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleApiError, getServiceAccountToken, googleErrorStatus, googlePostJson } from '@/lib/gsc';
+import { crewinTaggedItems } from '@/lib/platform/crewin-links';
+import { LINK_TAG } from '@/lib/platform/link-tracking-types';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -80,9 +82,16 @@ export async function GET(req: NextRequest) {
         runReport(token, propertyId, ['sessionCampaignName'], ['sessions','activeUsers','engagedSessions'], [cur], bySessionsDesc, 20),
       ]);
 
+    // Crewin'in kendi araçlarının rz_ etiketleri: tabloda etiket yerine paylaşımın, kampanyanın veya e-postanın adı görünür.
+    const tagged = crewinTaggedItems(), campaignLabels: Record<string, string> = {};
+    for (const row of ((campaigns as { rows?: { dimensionValues?: { value?: string }[] }[] } | null)?.rows || [])) {
+      const name = row.dimensionValues?.[0]?.value || '', item = LINK_TAG.test(name) ? tagged.get(name) : undefined;
+      if (item?.title) campaignLabels[name] = item.title;
+    }
+
     return NextResponse.json({
       ok: true,
-      overview, prevOverview, topPages, countries, cities, sources, devices, daily, campaigns,
+      overview, prevOverview, topPages, countries, cities, sources, devices, daily, campaigns, campaignLabels,
       fetchedAt: new Date().toISOString(),
     });
   } catch (e: unknown) {

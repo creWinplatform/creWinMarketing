@@ -315,6 +315,31 @@ if(process.argv.includes('--attribution')){
     authenticateProductWebhook(db,source.id,new Headers({'X-Ryzevo-Timestamp':timestamp,'X-Ryzevo-Signature':'v1='+createHmac('sha256',Buffer.from(secret,'hex')).update(`${timestamp}.${source.id}.`).update(bytes).digest('hex')}),encryptionKey)(bytes);}
   console.log(`Attribution QA: ${people.length} people, ${events.length} signed events, two tagged posts and one tagged email; Analytics shows which work brought them.`);
 }
+if(process.argv.includes('--crewin-attribution')){
+  // Crewin attribution QA (with --crewin): a signed source for the backend's seafarer events bound to Crewin's goal
+  // stages, three registered rz_ tags (two shares, one email) and people who arrived through them. The tag registry and
+  // the campaigns file are read from a throwaway folder, never the app's data/.
+  if(!process.argv.includes('--crewin'))throw new Error('Crewin attribution QA requires --crewin.');
+  process.env.CREWIN_WEB_DATA_DIR=path.join(directory,'crewin-data');
+  const {ProductWebhooks,authenticateProductWebhook}=load('product-webhooks.ts'),{ProjectMeasurements}=load('measurements.ts'),{newCrewinShareTag,crewinTag,registerCrewinTag}=load('crewin-links.ts');
+  const scope={subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'},hooks=new ProductWebhooks(db,scope),secret=randomBytes(32).toString('hex');
+  const names=['seafarer.registered','seafarer.profile_completed','seafarer.applied'],at=(days,minutes=0)=>new Date(Date.now()-days*86400000-minutes*60000).toISOString();
+  const source=hooks.save({name:'Denizci olayları',secret,config:{entityType:'user',attributes:[{key:'platform',type:'string'}],eventNames:names}},encryptionKey);
+  hooks.preview(source.id,{sourceVersion:source.version,events:[{id:'qa-preview',entityId:'qa',eventName:'seafarer.registered',occurredAt:at(0,5),attributes:{platform:'web'}}]});hooks.state(source.id,source.version,'activate');
+  const measure=new ProjectMeasurements(db,scope,encryptionKey);
+  names.forEach((eventName,stageIndex)=>measure.save({goalId:'seafarer_activation',stageIndex,connectionId:source.id,metric:'unique_entities',eventName,enabled:false,expectedVersion:0}));
+  const winter=newCrewinShareTag(),guide=newCrewinShareTag(),mail=crewinTag('email','Profilinizi tamamlayın');
+  registerCrewinTag(winter,'share','Kış sezonu ilanları yayında: yeni zabit ve tayfa ilanları https://www.crewinjob.com/jobs');
+  registerCrewinTag(guide,'share','Gemi adamı CV rehberi');registerCrewinTag(mail,'email','Profilinizi tamamlayın');
+  const people=[[winter,'linkedin',3],[winter,'linkedin',2],[winter,'facebook',2],[winter,'x',1],[guide,'telegram',4],[mail,'email',2],[mail,'email',1],['newsletter-ekim','newsletter',5],[null,null,2]];
+  const events=[];people.forEach(([campaign,src,days],i)=>{const entityId=`qa-seafarer-${i+1}`;
+    events.push({id:`registered-${i+1}`,entityId,eventName:'seafarer.registered',occurredAt:at(days),attributes:{platform:'web'},...(campaign?{attribution:{campaign,source:src,medium:src==='email'?'email':'social',touchedAt:at(days+1)}}:{})});
+    if(i%2===0)events.push({id:`profile-${i+1}`,entityId,eventName:'seafarer.profile_completed',occurredAt:at(days,-90),attributes:{platform:'android'}});
+    if(i===0||i===5)events.push({id:`applied-${i+1}`,entityId,eventName:'seafarer.applied',occurredAt:at(0,20+i),attributes:{platform:'web'}});});
+  const bytes=Buffer.from(JSON.stringify({sourceVersion:source.version,events})),timestamp=String(Math.floor(Date.now()/1000));
+  authenticateProductWebhook(db,source.id,new Headers({'X-Ryzevo-Timestamp':timestamp,'X-Ryzevo-Signature':'v1='+createHmac('sha256',Buffer.from(secret,'hex')).update(`${timestamp}.${source.id}.`).update(bytes).digest('hex')}),encryptionKey)(bytes);
+  console.log(`Crewin attribution QA: ${people.length} seafarers, ${events.length} signed events; Analytics shows which Crewin share or email brought them.`);
+}
 if(process.argv.includes('--measurements')){
   const {ProjectMeasurements}=load('measurements.ts'),{defaultMeasurementPeriod}=load('measurement-types.ts');
   const scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId},measurements=new ProjectMeasurements(db,scope,encryptionKey),source=measurements.sources().find(item=>item.provider==='product_webhook');

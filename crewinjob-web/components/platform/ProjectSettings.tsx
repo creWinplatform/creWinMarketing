@@ -31,8 +31,8 @@ export default function ProjectSettings({
   const tr = lang === 'tr',
     project = workspace.project,
     [section, setSection] = useState('profile');
-  // The Crewin workspace's single account gets Ryzevo's Google and Meta connections and the brand studio (ryzevoFeature);
-  // product data and plan stay with standard projects.
+  // The Crewin workspace's single account gets Ryzevo's Google and Meta connections, the brand studio and signed product
+  // events (ryzevoFeature); REST data sources and the plan stay with standard projects.
   const crewin = project.productPack === 'crewin' && workspace.accessMode === 'legacy_single_account',
     brandOpen = (workspace.accessMode === 'platform_account' && project.productPack === 'standard') || (crewin && ryzevoFeature(project.productPack, 'brand')),
     // Crewin declares and connects İYS for its own WhatsApp sender.
@@ -40,6 +40,7 @@ export default function ProjectSettings({
   const canConnections =
       (workspace.accessMode === 'platform_account' || crewin) &&
       workspace.permissions?.includes('connections.manage'),
+    dataOpen = canConnections && (project.productPack === 'standard' || (crewin && ryzevoFeature(project.productPack, 'product_events'))),
     canTeam = workspace.permissions?.includes('members.manage'),
     // The deployment administrator (the team running Ryzevo) also gets the operator console.
     canOperate = workspace.accessMode === 'legacy_single_account' && canTeam;
@@ -54,7 +55,7 @@ export default function ProjectSettings({
         ))
     )
       setSection('connections');
-    else if (canConnections && project.productPack==='standard' && requested==='data') setSection('data');
+    else if (dataOpen && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
     else if(brandOpen&&requested==='brand')setSection('brand');
     else if(iysOpen&&requested==='iys')setSection('iys');
@@ -108,7 +109,7 @@ export default function ProjectSettings({
             id: 'data',
             Icon: Database,
             label: tr ? 'Ürün verisi' : 'Product data',
-            visible: canConnections && project.productPack==='standard',
+            visible: dataOpen,
           },
           {
             id:'brand',Icon:Palette,label:tr?'Marka dili & rakipler':'Brand voice & competitors',
@@ -262,7 +263,7 @@ export default function ProjectSettings({
           <AccountSettings workspace={workspace} lang={lang} />
         </div>
       )}
-      {section === 'data' && canConnections && project.productPack==='standard' && <ProductDataSources key={project.id} lang={lang} />}
+      {section === 'data' && dataOpen && <ProductDataSources key={project.id} lang={lang} webhookOnly={crewin} />}
       {section==='iys'&&iysOpen&&<div className="mt-6"><IysPanel key={'iys-'+project.id} lang={lang} crewin={crewin}/></div>}
       {section==='brand'&&brandOpen&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}

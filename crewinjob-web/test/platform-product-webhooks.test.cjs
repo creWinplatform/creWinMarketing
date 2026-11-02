@@ -32,7 +32,9 @@ test('webhooks reuse source/credentials and deny legacy, viewers and cross-proje
   assert.ok(!JSON.stringify(hooks.list()).includes(SECRET));assert.ok(!db.prepare('SELECT encrypted_credentials FROM platform_connections').get().encrypted_credentials.includes(SECRET));
   assert.equal(new ProductDataSources(db,scope(a)).list().length,0);
   assert.throws(()=>new ConnectionJobs(db,scope(a)).enqueue(source.id,'not-a-verification'));
-  assert.throws(()=>new ProductWebhooks(db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).list());
+  const crewin={subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'};
+  assert.equal(new ProductWebhooks(db,crewin).list().length,0,'Crewin’s signed webhooks see only its own sources');
+  assert.throws(()=>new ProductDataSources(db,crewin).list(),error=>error.status===403,'REST sources stay standard-only');
   const viewer=repo.addMember(a.userId,a.organizationId,a.projectId,{username:'viewer',password:'fixture-password-123',role:'viewer'});
   assert.throws(()=>new ProductWebhooks(db,{...scope(a),subject:viewer.userId}).list());
   assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);

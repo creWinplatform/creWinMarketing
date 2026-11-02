@@ -12,12 +12,13 @@ import { recordEmailOptOut } from './email-safety';
 import { queueIysConsent } from './iys';
 import { normalizeAttribution, recordAttribution } from './attribution';
 import type { AttributionTouch } from './attribution-types';
+import { ryzevoPackSql } from './ryzevo-features';
 
 type Row={connection_id:string;organization_id:string;project_id:string;version:number;config_json:string;enabled:number;paused:number;preview_at:string|null;preview_revision:string|null;last_synced_at:string|null;webhook_actor_id:string|null;account_name:string;active:number;encrypted_credentials:string;integration_id:string};
 type Consent={channel:'email';status:'opted_in'|'opted_out';evidenceRef:string;recordedAt:string};
 type Event={id:string;eventName:string;record:ProductRecord;consent:Consent|null;touch:AttributionTouch|null;ignoredTouch:boolean;digest:string};
 const dayMs=86400000,mask=(id:string)=>`...${id.slice(-4)}`;
-const query=`SELECT s.*,c.account_name,c.active,c.encrypted_credentials,c.integration_id FROM platform_product_sources s JOIN platform_connections c ON c.id=s.connection_id AND c.organization_id=s.organization_id AND c.project_id=s.project_id JOIN platform_projects p ON p.id=s.project_id AND p.organization_id=s.organization_id WHERE c.provider='product_webhook' AND p.product_pack='standard'`;
+const query=`SELECT s.*,c.account_name,c.active,c.encrypted_credentials,c.integration_id FROM platform_product_sources s JOIN platform_connections c ON c.id=s.connection_id AND c.organization_id=s.organization_id AND c.project_id=s.project_id JOIN platform_projects p ON p.id=s.project_id AND p.organization_id=s.organization_id WHERE c.provider='product_webhook' AND ${ryzevoPackSql('product_events')}`;
 const revision=(row:Row)=>createHash('sha256').update(JSON.stringify([row.version,row.config_json,row.encrypted_credentials])).digest('hex');
 const authorized=(db:Database.Database,row:Row)=>Boolean(row.webhook_actor_id&&new PlatformRepository(db).can(row.webhook_actor_id,row.organization_id,row.project_id,'connections.manage'));
 export class ProductWebhookError extends MarketingStoreError {
@@ -121,7 +122,7 @@ export function authenticateProductWebhook(db:Database.Database,id:string,header
 
 export class ProductWebhooks {
   constructor(private db:Database.Database,private scope:MarketingScope){}
-  authorize(){new ProductDataSources(this.db,this.scope).authorize();}
+  authorize(){new ProductDataSources(this.db,this.scope).authorize('webhook');}
   private args(){return [this.scope.organizationId,this.scope.projectId] as const;}
   private row(id:string):Row {
     const row=this.db.prepare(`${query} AND s.connection_id=? AND s.organization_id=? AND s.project_id=?`).get(id,...this.args()) as Row|undefined;

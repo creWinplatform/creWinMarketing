@@ -73,6 +73,7 @@ export async function POST(req: NextRequest) {
             imageData: post.imageData,
             imageMime: post.imageMime,
             perPlatformContent: post.perPlatformContent,
+            campaignId: post.campaignId,
           }, 'schedule-runner')
         : [];
       const merged  = mergeResults(previous, latest);

@@ -9,6 +9,7 @@ import {normalizeProductSource} from './product-data-types';
 import {normalizeWebhookConfig,WEBHOOK_LIMITS} from './product-webhook-types';
 import {normalizeSegmentDefinition,SEGMENT_LIMITS,type StoredSegmentDefinition,type SegmentSource,type SegmentSummary,type SegmentPreview,type SegmentBinding} from './segment-types';
 import {evaluateSegment,type SegmentEvent,type SegmentEntity} from './segment-engine';
+import {ryzevoFeature} from './ryzevo-features';
 
 type SourceRow={connection_id:string;version:number;config_json:string;enabled:number;encrypted_checkpoint:string;last_synced_at:string|null;event_coverage_from:string|null;webhook_actor_id:string|null;active:number;provider:string;account_name:string};
 type SegmentRow={id:string;name:string;version:number;archived:number;updated_at:string};
@@ -37,6 +38,12 @@ export class ProductSegments {
     return {id,name:row.account_name,version:row.version,kind,entityType:config.entityType,attributes:config.attributes.map(({key,type})=>({key,type})),eventNames:kind==='webhook'?(config as ReturnType<typeof normalizeWebhookConfig>).eventNames:[],state:!row.active||!row.enabled?'inactive':delegated?'active':'blocked',lastSyncedAt:row.last_synced_at,coverageFrom:row.event_coverage_from,hasMore:Boolean(row.encrypted_checkpoint)};
   }
   sources(){this.authorize('content.write');return (this.db.prepare(`${sourceQuery} ORDER BY c.account_name`).all(...this.args()) as SourceRow[]).map(row=>this.source(row.connection_id));}
+  // Signed-webhook sources for goal measurements: open to the Crewin workspace too (product_events); segments are not.
+  eventSources(){
+    const repo=this.repo();
+    if(!repo.can(this.scope.subject,...this.args(),'content.write')||!ryzevoFeature(repo.workspace(this.scope.subject,...this.args())?.project.productPack,'product_events'))throw new MarketingStoreError('Ürün olayı kaynaklarına erişim reddedildi.',403);
+    return (this.db.prepare(`${sourceQuery} AND c.provider='product_webhook' ORDER BY c.account_name`).all(...this.args()) as SourceRow[]).map(row=>this.source(row.connection_id));
+  }
   private row(id:string):SegmentRow {
     const row=this.db.prepare('SELECT * FROM platform_segments WHERE id=? AND organization_id=? AND project_id=?').get(id,...this.args()) as SegmentRow|undefined;
     if(!row)throw new MarketingStoreError('Segment bulunamadı.',404);return row;

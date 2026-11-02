@@ -36,11 +36,14 @@ test('Crewin’s account reaches the opened features and not the others',coachRu
     budget:()=>new (load('budget-planner.ts').BudgetPlanner)(f.db,CREWIN).read(),
     inbox:()=>new (load('social-inbox.ts').ProjectSocialInbox)(f.db,CREWIN,KEY).read(),
     push:()=>new (load('web-push.ts').WebPush)(f.db,CREWIN,KEY).read(),
+    productEvents:()=>new (load('product-webhooks.ts').ProductWebhooks)(f.db,CREWIN).list(),
+    attribution:()=>new (load('attribution.ts').ProjectAttribution)(f.db,CREWIN).report(30),
   };
   for(const [name,run] of Object.entries(opened)){try{await run();}catch(error){assert.notEqual(error.status,403,`${name} is open to Crewin: ${error.message}`);}}
   const closed={
     socialPublications:()=>new (load('social-publications.ts').SocialPublications)(f.db,CREWIN,KEY).workspace(),
     segments:()=>new (load('segments.ts').ProductSegments)(f.db,CREWIN).list(),
+    restDataSources:()=>new (load('product-data.ts').ProductDataSources)(f.db,CREWIN).list(),
     emailSender:()=>new (load('email-sender.ts').EmailSenders)(f.db,CREWIN,KEY).get(),
     prospects:()=>new (load('prospects.ts').ProjectProspects)(f.db,CREWIN).read(),
     ads:()=>new (load('ad-manager.ts').ProjectAds)(f.db,CREWIN,KEY).read(),

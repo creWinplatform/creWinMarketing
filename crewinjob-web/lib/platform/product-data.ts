@@ -6,6 +6,7 @@ import { ProjectMarketingStore, MarketingStoreError, type MarketingScope } from 
 import { decryptCredentials, encryptCredentials, type StoredCredentials } from './credential-envelope';
 import { normalizeProductSource, PRODUCT_SOURCE_LIMITS, type ProductPreview, type ProductSource, type ProductSourceConfig } from './product-data-types';
 import { readProductPage, type ProductPageLoader } from './product-rest';
+import { ryzevoFeature } from './ryzevo-features';
 import { normalizeProductRecords as normalizeRecords, writeProductRecords, type ProductRecord } from './product-records';
 
 type Row = { connection_id:string; organization_id:string; project_id:string; version:number; config_json:string; enabled:number; paused:number; preview_at:string|null; preview_revision:string|null; last_synced_at:string|null; encrypted_checkpoint:string; account_name:string; encrypted_credentials:string; active:number; provider:string; integration_id:string };
@@ -16,9 +17,10 @@ const mask = (id:string) => `...${id.slice(-4)}`;
 export class ProductDataSources {
   constructor(private db:Database.Database,private scope:MarketingScope) {}
   private args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  authorize() {
-    const repo=new PlatformRepository(this.db);
-    if (!repo.can(this.scope.subject,...this.args(),'connections.manage') || repo.workspace(this.scope.subject,...this.args())?.project.productPack!=='standard') throw new MarketingStoreError('Standart proje veri yönetimi yetkisi gerekli.',403);
+  // REST sources are standard-only; signed webhooks are also open to the Crewin workspace (product_events).
+  authorize(kind:'rest'|'webhook'='rest') {
+    const repo=new PlatformRepository(this.db),pack=repo.workspace(this.scope.subject,...this.args())?.project.productPack;
+    if (!repo.can(this.scope.subject,...this.args(),'connections.manage') || !(kind==='webhook'?ryzevoFeature(pack,'product_events'):pack==='standard')) throw new MarketingStoreError('Standart proje veri yönetimi yetkisi gerekli.',403);
   }
   private row(id:string):Row {
     const row=this.db.prepare(`SELECT s.*,c.account_name,c.encrypted_credentials,c.active,c.provider,c.integration_id FROM platform_product_sources s JOIN platform_connections c ON c.id=s.connection_id AND c.organization_id=s.organization_id AND c.project_id=s.project_id WHERE s.connection_id=? AND s.organization_id=? AND s.project_id=?`).get(id,...this.args()) as Row|undefined;

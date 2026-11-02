@@ -7,6 +7,8 @@ import { productTimestamp } from './product-records';
 import { normalizeWebhookConfig } from './product-webhook-types';
 import { linkTag } from './link-tracking';
 import { LINK_TAG } from './link-tracking-types';
+import { ryzevoFeature } from './ryzevo-features';
+import { crewinTaggedItems } from './crewin-links';
 import { ATTRIBUTION_CAMPAIGN, ATTRIBUTION_LABEL, ATTRIBUTION_LIMITS as LIMITS, ATTRIBUTION_PERIODS, ATTRIBUTION_WINDOW_DAYS as WINDOW, type AttributionChannel, type AttributionItem, type AttributionOther, type AttributionPeriod, type AttributionReport, type AttributionSettingsView, type AttributionStage, type AttributionTagResult, type AttributionTouch } from './attribution-types';
 
 type Scope = { organizationId: string; projectId: string };
@@ -74,9 +76,10 @@ export class ProjectAttribution {
   private repo: PlatformRepository;
   constructor(private db: Database.Database, private scope: MarketingScope) { this.repo = new PlatformRepository(db); }
   private project() { return this.repo.workspace(this.scope.subject, ...args(this.scope))?.project; }
+  private open() { return ryzevoFeature(this.project()?.productPack, 'attribution'); }
   private canManage() { return this.repo.can(this.scope.subject, ...args(this.scope), 'connections.manage'); }
   private authorize(manage = false) {
-    if (!this.repo.can(this.scope.subject, ...args(this.scope), 'read') || this.project()?.productPack !== 'standard' || manage && !this.canManage()) throw new MarketingStoreError('Kaynak atfına erişim reddedildi.', 403);
+    if (!this.repo.can(this.scope.subject, ...args(this.scope), 'read') || !this.open() || manage && !this.canManage()) throw new MarketingStoreError('Kaynak atfına erişim reddedildi.', 403);
   }
   private settingsRow() { return this.db.prepare('SELECT * FROM platform_attribution_settings WHERE organization_id=? AND project_id=?').get(...args(this.scope)) as Settings | undefined; }
   private sources() {
@@ -111,11 +114,13 @@ export class ProjectAttribution {
       .get(...args(this.scope), stage.connectionId, stage.eventName, from, to) as { entities: number; touched: number; ryzevo: number };
     return { entities: row.entities || 0, touched: row.touched || 0, ryzevo: row.ryzevo || 0 };
   }
-  // The project's own content items and campaigns, by the tag their links carry.
+  // The project's own content items and campaigns, by the tag their links carry. The Crewin workspace's posts, campaigns
+  // and emails go out through its own tools, which register their tags (crewin-links.ts).
   private items() {
     const content = this.db.prepare("SELECT id,COALESCE(json_extract(payload,'$.headline'),substr(json_extract(payload,'$.content'),1,80)) AS title FROM platform_content_history WHERE organization_id=? AND project_id=?").all(...args(this.scope)) as { id: string; title: string | null }[];
     const campaigns = this.db.prepare("SELECT id,json_extract(payload,'$.name') AS title FROM platform_campaigns WHERE organization_id=? AND project_id=?").all(...args(this.scope)) as { id: string; title: string | null }[];
     return new Map<string, { kind: 'content' | 'campaign'; id: string; title: string }>([
+      ...(this.project()?.productPack === 'crewin' ? crewinTaggedItems() : []),
       ...content.map(item => [linkTag(this.scope, 'content', item.id), { kind: 'content' as const, id: item.id, title: item.title || '' }] as const),
       ...campaigns.map(item => [linkTag(this.scope, 'campaign', item.id), { kind: 'campaign' as const, id: item.id, title: item.title || '' }] as const),
     ]);
@@ -170,7 +175,7 @@ export class ProjectAttribution {
   }
   // One tagged post or email: people per stage in the last 90 days who arrived through this tag (and this channel).
   forTag(tag: string | null, source: string | null): AttributionTagResult {
-    if (!tag || !LINK_TAG.test(tag) || this.project()?.productPack !== 'standard' || !this.hasTouches()) return null;
+    if (!tag || !LINK_TAG.test(tag) || !this.open() || !this.hasTouches()) return null;
     const stages = this.stages();
     if (!stages.length) return null;
     const from = new Date(Date.now() - 90 * DAY).toISOString(), to = new Date(Date.now() + 1000).toISOString();
@@ -180,7 +185,7 @@ export class ProjectAttribution {
   // People per stage for every Ryzevo tag in [from, to), and per tag and channel: the coach's learning loop reads its own
   // drafts' and campaigns' tags from this.
   tagCounts(from: string, to: string) {
-    const stages = this.project()?.productPack === 'standard' && this.hasTouches() ? this.stages() : [];
+    const stages = this.open() && this.hasTouches() ? this.stages() : [];
     const byTag = new Map<string, number[]>(), byTagSource = new Map<string, number[]>();
     stages.forEach((stage, index) => {
       for (const group of this.groups(stage, from, to, undefined, ` AND ${RYZEVO}`)) {
@@ -193,7 +198,7 @@ export class ProjectAttribution {
   }
   // The month's figures for the monthly report: people counted by the time they reached the stage.
   monthResults(from: string, to: string) {
-    if (this.project()?.productPack !== 'standard' || !this.hasTouches()) return null;
+    if (!this.open() || !this.hasTouches()) return null;
     const result = this.compute(from, to, 10);
     if (!result.stages.length) return null;
     return { stages: result.stages.map(stage => stage.label), coverage: result.coverage, value: result.value,

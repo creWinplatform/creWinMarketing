@@ -15,8 +15,10 @@ type RecordItem = ProductPreview['samples'][number] & {receivedAt:string};
 type Data = {items:ProductSource[];sourceCount:number;jobs:Job[];records:RecordItem[]};
 const endpoint='/api/platform/data-sources';
 const initialConfig=():ProductSourceConfig=>({url:'',auth:'bearer',itemsPath:'result.items',idPath:'id',updatedAtPath:'updatedAt',entityType:'user',attributes:[{key:'progress',path:'progress',type:'number'}],nextCursorPath:'',cursorParam:''});
-export default function ProductDataSources({lang}:{lang:Locale}) {
+// The Crewin workspace gets only signed webhooks: its backend sends the events, nothing is pulled.
+export default function ProductDataSources({lang,webhookOnly=false}:{lang:Locale;webhookOnly?:boolean}) {
   const [mode,setMode]=useState<'rest'|'webhook'>('rest');
+  if(webhookOnly)return <ProductWebhooksPanel lang={lang}/>;
   return <div><div className="product-data-modes" role="tablist" onKeyDown={onTabKeys} aria-label={lang==='tr'?'Veri kaynağı türü':'Source type'}>{(['rest','webhook'] as const).map(value=><button key={value} role="tab" aria-selected={mode===value} tabIndex={mode===value?0:-1} onClick={()=>setMode(value)}>{value==='rest'?'REST API':lang==='tr'?'İmzalı webhook':'Signed webhook'}</button>)}</div>{mode==='rest'?<RestDataSources lang={lang}/>:<ProductWebhooksPanel lang={lang}/>}</div>;
 }
 function RestDataSources({lang}:{lang:Locale}) {

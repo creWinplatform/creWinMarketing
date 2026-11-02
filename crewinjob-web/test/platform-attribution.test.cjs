@@ -119,7 +119,8 @@ test('stages fall back to event names, settings are validated and only the proje
  assert.throws(()=>f.attribution.saveSettings({valueConnectionId:f.billing.id,valueEvent:'payment.succeeded',valueKey:'amount',currency:'lira'}),error=>error.status===400);
  assert.throws(()=>f.attribution.saveSettings({valueConnectionId:f.billing.id,valueEvent:'payment.succeeded',valueKey:'amount',currency:'TRY',extra:1}));
  assert.equal(f.attribution.saveSettings({valueConnectionId:null,valueEvent:null,valueKey:null,currency:null}).valueConnectionId,null);
- assert.throws(()=>new ProjectAttribution(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).report(30),error=>error.status===403,'Crewin has no product events');
+ const crewin=new ProjectAttribution(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'}).report(30);
+ assert.equal(crewin.setup.touches,0,'Crewin reads its own report, not this project’s');assert.equal(crewin.items.length,0);
  const viewer=f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'viewer',password:'fixture-password-123',role:'viewer'});
  const asViewer=new ProjectAttribution(f.db,{...f.scope,subject:viewer.userId});
  assert.equal(asViewer.report(90).days,90);assert.equal(asViewer.settings().options.length,0);assert.throws(()=>asViewer.saveSettings({valueConnectionId:null}),error=>error.status===403);
