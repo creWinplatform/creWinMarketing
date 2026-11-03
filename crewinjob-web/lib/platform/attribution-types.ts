@@ -44,6 +44,8 @@ export type AttributionSettingsView = {
 
 // The snippet the team pastes into its own site. It writes nothing until the site's consent banner calls
 // ryzevoTouch.allow() (or the tag carries data-consent="granted"), keeps the first touch only and never sends anything.
+// siteDomain: the cookie's Domain, so a sign-up on another subdomain still reads it (the Crewin workspace: crewinjob.com).
+export const attributionSnippet = (siteDomain?: string) => siteDomain ? ATTRIBUTION_SNIPPET.replace('<script data-consent="ask">', `<script data-consent="ask" data-domain="${siteDomain}">`) : ATTRIBUTION_SNIPPET;
 export const ATTRIBUTION_SNIPPET = `<script data-consent="ask">
 /* Ryzevo: keeps the first tagged link a visitor arrived through in your site's own cookie (90 days). */
 (function (w, d) {

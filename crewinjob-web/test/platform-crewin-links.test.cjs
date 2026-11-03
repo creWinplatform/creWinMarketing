@@ -127,3 +127,9 @@ test('the agent computes the same tags, and its appended registry names job post
     if(savedFile===undefined)delete process.env.CREWIN_LINK_TAGS_FILE;else process.env.CREWIN_LINK_TAGS_FILE=savedFile;
   }
 }));
+
+test('Crewin’s snippet sets the cookie for all of crewinjob.com',()=>{
+  const {attributionSnippet,ATTRIBUTION_SNIPPET}=load('attribution-types.ts');
+  assert.ok(attributionSnippet('crewinjob.com').startsWith('<script data-consent="ask" data-domain="crewinjob.com">'));
+  assert.equal(attributionSnippet(),ATTRIBUTION_SNIPPET,'standard projects keep the snippet as it was');
+});

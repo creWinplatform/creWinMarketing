@@ -66,6 +66,7 @@ For each tagged post or email: how many people who first arrived through it went
   - The routes take Crewin's single account through `getRyzevoAccess`.
 - **Where it shows:**
   - Project settings → Product data, with the signed-webhook panel only;
+    - its "Source tag" snippet comes with `data-domain="crewinjob.com"` (`attributionSnippet`), so a sign-up on any crewinjob.com subdomain reads the cookie;
   - Analytics → "Which work brought customers", in `CrewinReportsPanel`.
 - **Crewin's own links** (`lib/platform/crewin-links.ts`; the browser-safe half is `crewin-link-text.ts`): links to crewinjob.com and its subdomains get `utm_campaign=rz_…`, made by `linkTag` in the Crewin scope (`crewin` / `crewinjob`).
   - A link that already has a `utm_` parameter is left alone.

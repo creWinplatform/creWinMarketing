@@ -4,7 +4,7 @@ import { Copy, Target } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { copyText } from '@/lib/client-copy';
-import { ATTRIBUTION_COOKIE, ATTRIBUTION_SERVER_EXAMPLE, ATTRIBUTION_SNIPPET, ATTRIBUTION_WINDOW_DAYS, type AttributionSettingsView } from '@/lib/platform/attribution-types';
+import { ATTRIBUTION_COOKIE, ATTRIBUTION_SERVER_EXAMPLE, attributionSnippet, ATTRIBUTION_WINDOW_DAYS, type AttributionSettingsView } from '@/lib/platform/attribution-types';
 import Msg from '@/components/Msg';
 
 const FIELD = `"attribution": {
@@ -16,7 +16,7 @@ const FIELD = `"attribution": {
 
 // How the team's own site and server pass the first tagged link a person arrived through to Ryzevo, and which event
 // carries the amount. Nothing here sends anything: the snippet writes one first-party cookie after consent.
-export default function AttributionSetup({ lang }: { lang: Locale }) {
+export default function AttributionSetup({ lang, siteDomain }: { lang: Locale; siteDomain?: string }) {
   const tr = lang === 'tr';
   const [view, setView] = useState<AttributionSettingsView | null>(null), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false), [copied, setCopied] = useState('');
   const [connectionId, setConnection] = useState(''), [eventName, setEvent] = useState(''), [valueKey, setKey] = useState(''), [currency, setCurrency] = useState('TRY');
@@ -56,7 +56,7 @@ export default function AttributionSetup({ lang }: { lang: Locale }) {
       <li>{tr ? 'Kayıt olayını gönderirken çerezi okuyup olaya ekleyin (sunucu örneği).' : 'When sending the signup event, read the cookie and add it (server example).'}</li>
       <li>{tr ? 'Aynı kişi için tüm kaynaklarda aynı kayıt türünü ve kimliği kullanın; ödeme olayı başka bir kaynaktan gelse de eşleşir.' : 'Use the same entity type and id for the person in every source; a payment event from another source still matches.'}</li>
     </ol>
-    {block('snippet', tr ? 'Site kod parçası' : 'Site snippet', ATTRIBUTION_SNIPPET)}
+    {block('snippet', tr ? 'Site kod parçası' : 'Site snippet', attributionSnippet(siteDomain))}
     {block('server', tr ? 'Sunucu örneği (Node)' : 'Server example (Node)', ATTRIBUTION_SERVER_EXAMPLE)}
     {block('field', tr ? 'Olaydaki alan' : 'Field on the event', FIELD)}
     <p className="studio-note">{tr ? 'Biçimi bozuk bir etiket olayı reddettirmez; yalnız etiket yok sayılır. Örnek yüke bu alanı ekleyip “Şemayı önizle” ile deneyebilirsiniz.' : 'A malformed tag never rejects the event; only the tag is ignored. Add this field to the sample payload and use “Preview schema” to try it.'}</p>
