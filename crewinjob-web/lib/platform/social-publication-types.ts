@@ -15,7 +15,7 @@ export type Publication = {
   // People who arrived through this post's tagged link and then reached each goal stage (the team's product events).
   results?: AttributionTagResult;
 };
-export type EngagementCounts = Partial<Record<'likes'|'comments'|'shares'|'impressions'|'clicks'|'reach'|'bookmarks'|'quotes',number>>;
+export type EngagementCounts = Partial<Record<'likes'|'comments'|'shares'|'impressions'|'clicks'|'reach'|'bookmarks'|'quotes'|'views',number>>;
 export type PublicationEngagement = { status:'not_requested'|'refreshing'|'ready'|'unavailable'|'unsupported'; counts:EngagementCounts; observedAt:string|null; attemptedAt:string|null };
 export type PublicationWorkspace = { items: Publication[]; total: number; page: number; sources: PublicationSource[]; sourceTotal: number; targets: PublicationTarget[]; canManage: boolean; configured: boolean; publishingEnabled: boolean; timezone: string };
 export const PUBLICATION_LABELS: Record<string, [string,string]> = {

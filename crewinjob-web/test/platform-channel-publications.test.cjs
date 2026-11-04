@@ -13,7 +13,7 @@ const json=(body,status=200,headers={})=>new Response(JSON.stringify(body),{stat
 function provider(routes){const calls=[];const fetch=async(url,init={})=>{const key=`${init.method||'GET'} ${String(url).split('?')[0]}`;calls.push({key,url:String(url),init});const route=routes[key];if(!route)throw new Error(`unexpected ${key}`);return typeof route==='function'?route(init,String(url)):new Response(await route.clone().text(),{status:route.status,headers:route.headers});};return {fetch,calls};}
 const withFetch=async(fake,work)=>{const original=globalThis.fetch;globalThis.fetch=fake;try{return await work();}finally{globalThis.fetch=original;}};
 const TOKENS={
-  tiktok:{'POST https://open.tiktokapis.com/v2/oauth/token/':json({access_token:'tt-access',expires_in:86400,refresh_token:'tt-refresh',refresh_expires_in:31536000,open_id:'-000abcDEF',scope:'user.info.basic,video.publish',token_type:'Bearer'}),
+  tiktok:{'POST https://open.tiktokapis.com/v2/oauth/token/':json({access_token:'tt-access',expires_in:86400,refresh_token:'tt-refresh',refresh_expires_in:31536000,open_id:'-000abcDEF',scope:'user.info.basic,video.publish,video.list',token_type:'Bearer'}),
     'GET https://open.tiktokapis.com/v2/user/info/':json({data:{user:{open_id:'-000abcDEF',display_name:'QA'}},error:{code:'ok'}})},
   pinterest:{'POST https://api.pinterest.com/v5/oauth/token':json({access_token:'pin-access',expires_in:2592000,refresh_token:'pin-refresh',refresh_token_expires_in:31536000,scope:'boards:read pins:write user_accounts:read'}),
     'GET https://api.pinterest.com/v5/boards/549755885175':json({id:'549755885175',name:'Dövme fikirleri'})},
@@ -30,7 +30,7 @@ const videoReader=async url=>({status:200,finalUrl:url,headers:new Headers({'con
 const run=fn=>async()=>{const f=fixture();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';try{await fn(f);}finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}};
 
 test('each channel connects with OAuth; the account is the open_id, the chosen board or the channel; no secret leaves the vault',run(async f=>{
-  const tiktok=await connect(f,'tiktok');assert.equal(tiktok.url.origin+tiktok.url.pathname,'https://www.tiktok.com/v2/auth/authorize/');assert.equal(tiktok.url.searchParams.get('scope'),'user.info.basic,video.publish');
+  const tiktok=await connect(f,'tiktok');assert.equal(tiktok.url.origin+tiktok.url.pathname,'https://www.tiktok.com/v2/auth/authorize/');assert.equal(tiktok.url.searchParams.get('scope'),'user.info.basic,video.publish,video.list');
   const pinterest=await connect(f,'pinterest',{boardId:'549755885175'});
   const youtube=await connect(f,'youtube');assert.equal(youtube.url.searchParams.get('access_type'),'offline');assert.ok(youtube.url.searchParams.get('code_challenge'));
   const rows=f.db.prepare("SELECT platform,account_id FROM platform_social_accounts WHERE platform IN ('tiktok','pinterest','youtube') ORDER BY platform").all();
@@ -90,7 +90,7 @@ test('the access token is refreshed from the refresh token; a rotated refresh to
   const {connection}=await connect(f,'tiktok'),row=()=>f.db.prepare('SELECT encrypted_credentials v FROM platform_connections WHERE id=?').get(connection.id).v,before=row();
   f.db.prepare('UPDATE platform_connections SET encrypted_credentials=? WHERE id=?').run(before,connection.id);
   const credentials=decryptCredentials(before,KEY,f.scope.organizationId,f.scope.projectId,connection.id);credentials.channelPublishing.accessExpiresAt=Date.now()-1000;
-  const fake=provider({'POST https://open.tiktokapis.com/v2/oauth/token/':init=>{assert.match(String(init.body),/grant_type=refresh_token/);assert.match(String(init.body),/refresh_token=tt-refresh/);return json({access_token:'tt-access-2',expires_in:86400,refresh_token:'tt-refresh-2',refresh_expires_in:31536000,open_id:'-000abcDEF',scope:'user.info.basic,video.publish'});}});
+  const fake=provider({'POST https://open.tiktokapis.com/v2/oauth/token/':init=>{assert.match(String(init.body),/grant_type=refresh_token/);assert.match(String(init.body),/refresh_token=tt-refresh/);return json({access_token:'tt-access-2',expires_in:86400,refresh_token:'tt-refresh-2',refresh_expires_in:31536000,open_id:'-000abcDEF',scope:'user.info.basic,video.publish,video.list'});}});
   const access=await channel.channelAccess(f.db,[f.scope.organizationId,f.scope.projectId],KEY,{id:connection.id,encrypted_credentials:before},credentials,fake.fetch);
   assert.equal(access.token,'tt-access-2');assert.equal(row(),before,'the approved envelope does not change');
   const stored=f.db.prepare('SELECT encrypted_refresh FROM platform_channel_tokens WHERE connection_id=?').get(connection.id);
@@ -109,4 +109,66 @@ test('YouTube Short: resumable upload from the approved file, #Shorts title, pri
   const rejected=await channel.publishYouTubeShort('yt-access','x',video,reserve,provider({'POST https://www.googleapis.com/upload/youtube/v3/videos':json({error:'quota'},403)}).fetch,source);
   assert.equal(rejected.state,'rejected');
   assert.equal((await channel.publishTikTokVideo('a','x',video,()=>false,async()=>assert.fail('no call without a reservation'))).state,'blocked');
+});
+
+test('Pinterest takes 2:3 pins; other channels keep the 0.8-1.91 rule',async()=>{
+  const {normalizePublicationImage}=load('publication-image.ts'),tall=(await sharp({create:{width:1000,height:1500,channels:3,background:'#333'}}).png().toBuffer()).toString('base64');
+  const pin=await normalizePublicationImage(tall,'image/png','pinterest');assert.ok(pin.height>pin.width,'kept tall');
+  await assert.rejects(()=>normalizePublicationImage(tall,'image/png','instagram'),/0,8–1,91/);
+  await assert.rejects(()=>normalizePublicationImage(tall,'image/png'),/0,8–1,91/);
+});
+
+test('a TikTok photo post: up to five approved images, served to TikTok from signed URLs on the public origin',run(async f=>{
+  const saved=process.env.PLATFORM_PUBLIC_ORIGIN;process.env.PLATFORM_PUBLIC_ORIGIN='https://panel.ryzevo-qa.com';
+  try{
+    const {connection}=await connect(f,'tiktok');const image=await makeImage();
+    f.store.saveContent({id:'tt-photo',platform:'tiktok',language:'tr',headline:'Portfolyo',content:'Yeni portfolyo çalışmaları\n#dövme',timestamp:Date.now(),prompt:'',images:[{data:image.imageData,mime:'image/png'},{data:image.imageData,mime:'image/png'}]},true);
+    const service=new SocialPublications(f.db,f.scope,KEY,undefined,videoReader),source=service.workspace().sources.find(item=>item.id==='tt-photo');
+    assert.equal(source.eligible,true);assert.equal(source.format,'carousel');
+    process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';let urls=[];
+    const fake=provider({'POST https://open.tiktokapis.com/v2/post/publish/creator_info/query/':json({data:{privacy_level_options:['SELF_ONLY']},error:{code:'ok'}}),
+      'POST https://open.tiktokapis.com/v2/post/publish/content/init/':init=>{const body=JSON.parse(init.body);urls=body.source_info.photo_images;assert.equal(body.media_type,'PHOTO');assert.equal(body.post_info.title,'Yeni portfolyo çalışmaları');return json({data:{publish_id:'p_pub_url~v2.9'},error:{code:'ok'}});}});
+    let jobId;
+    await withFetch(fake.fetch,async()=>{
+      await service.check(connection.id);const target=service.workspace().targets.find(item=>item.id===connection.id);
+      const job=await service.create({sourceKind:'content',sourceId:'tt-photo',connectionId:connection.id,expectedDigest:source.digest,expectedTargetRevision:target.revision,mode:'publish',idempotencyKey:'tiktok-photo-1',acknowledged:true});
+      jobId=job.id;await service.process(job.id);assert.equal(service.get(job.id).state,'accepted');
+    });
+    assert.equal(urls.length,2);assert.ok(urls.every(url=>url.startsWith(`https://panel.ryzevo-qa.com/api/platform/publication-media/${jobId}?signature=`)));
+    const {providerPublicationImage}=load('social-publications.ts'),second=new URL(urls[1]);
+    const served=providerPublicationImage(f.db,KEY,jobId,second.searchParams.get('signature'),Number(second.searchParams.get('index')));
+    assert.ok(served.data,'TikTok can fetch the accepted post image');
+    assert.throws(()=>providerPublicationImage(f.db,KEY,jobId,'0'.repeat(64),1),e=>e.status===404,'a wrong signature gets nothing');
+  }finally{if(saved===undefined)delete process.env.PLATFORM_PUBLIC_ORIGIN;else process.env.PLATFORM_PUBLIC_ORIGIN=saved;}
+}));
+
+test('a Pinterest video pin: register, stream the file as multipart, wait for processing, then pin',async()=>{
+  const video={url:'https://cdn.example.com/dovme.mp4',format:'feed',bytes:4,contentType:'video/mp4',etag:'"v1"',lastModified:null,checkedAt:new Date().toISOString()};
+  const source=async()=>({response:new Response(new Uint8Array([1,2,3,4]),{status:200,headers:{'content-length':'4'}}),finalUrl:new URL(video.url),redirects:[]});
+  let polls=0,uploaded='';
+  const fake=async(url,init={})=>{
+    const key=`${init.method||'GET'} ${String(url).split('?')[0]}`;
+    if(key==='POST https://api.pinterest.com/v5/media')return json({media_id:'12345',upload_url:'https://pinterest-media-upload.s3-accelerate.amazonaws.com/',upload_parameters:{key:'uploads/x',policy:'p'}});
+    if(key==='POST https://pinterest-media-upload.s3-accelerate.amazonaws.com/'){uploaded=Buffer.from(await new Response(init.body).arrayBuffer()).toString('latin1');assert.equal(Number(init.headers['Content-Length']),Buffer.byteLength(uploaded,'latin1'));return new Response(null,{status:204});}
+    if(key==='GET https://api.pinterest.com/v5/media/12345'){polls++;return json({status:polls<2?'processing':'succeeded'});}
+    if(key==='POST https://api.pinterest.com/v5/pins'){const body=JSON.parse(init.body);assert.deepEqual(body.media_source,{source_type:'video_id',media_id:'12345',cover_image_key_frame_time:1});return json({id:'55555'});}
+    throw new Error(`unexpected ${key}`);
+  };
+  const result=await channel.publishPinterestVideoPin('pin','549755885175','Dövme süreci','Süreç https://example.com/x',video,()=>true,fake,source,async()=>{});
+  assert.deepEqual(JSON.parse(JSON.stringify(result)),{state:'accepted',postId:'55555'});
+  assert.ok(uploaded.includes('name="policy"')&&uploaded.includes('name="file"; filename="video.mp4"')&&uploaded.includes('\x01\x02\x03\x04'),'fields first, then the file');
+  assert.equal(polls,2);
+  const failed=await channel.publishPinterestVideoPin('pin','1','t','x',video,()=>assert.fail('never pinned'),async(url,init={})=>String(url).endsWith('/v5/media')&&init.method==='POST'?json({media_id:'1',upload_url:'https://evil.example.com/',upload_parameters:{}}):assert.fail(),source,async()=>{});
+  assert.equal(failed.state,'blocked','only the Pinterest upload host');
+});
+
+test('engagement counts for the three channels, as each provider reports them',async()=>{
+  const yt=await channel.readChannelEngagement('youtube','t','dQw4w9WgXcQ',provider({'GET https://www.googleapis.com/youtube/v3/videos':json({items:[{id:'dQw4w9WgXcQ',statistics:{viewCount:'1200',likeCount:'45',commentCount:'3'}}]})}).fetch);
+  assert.deepEqual(JSON.parse(JSON.stringify(yt)),{views:1200,likes:45,comments:3});
+  const pin=await channel.readChannelEngagement('pinterest','t','987654321',provider({'GET https://api.pinterest.com/v5/pins/987654321/analytics':json({all:{summary_metrics:{IMPRESSION:900,SAVE:12,OUTBOUND_CLICK:30,PIN_CLICK:50}}})}).fetch);
+  assert.deepEqual(JSON.parse(JSON.stringify(pin)),{impressions:900,bookmarks:12,clicks:30});
+  const tt=await channel.readChannelEngagement('tiktok','t','v_pub_url~v2.123',provider({'POST https://open.tiktokapis.com/v2/post/publish/status/fetch/':json({data:{status:'PUBLISH_COMPLETE',publicaly_available_post_id:['7300000000000000001']},error:{code:'ok'}}),
+    'POST https://open.tiktokapis.com/v2/video/query/':json({data:{videos:[{id:'7300000000000000001',view_count:5000,like_count:300,comment_count:20,share_count:7}]},error:{code:'ok'}})}).fetch);
+  assert.deepEqual(JSON.parse(JSON.stringify(tt)),{views:5000,likes:300,comments:20,shares:7});
+  await assert.rejects(()=>channel.readChannelEngagement('tiktok','t','v_pub_url~v2.1',provider({'POST https://open.tiktokapis.com/v2/post/publish/status/fetch/':json({data:{status:'PROCESSING_UPLOAD'},error:{code:'ok'}})}).fetch),/Not public yet/);
 });

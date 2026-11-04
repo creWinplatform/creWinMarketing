@@ -23,7 +23,7 @@ import { cleanEngagementCounts, readPublicationEngagement, type EngagementReader
 import { LinkTracking, linkTag, linkTrackingEnabled, tagOwnLinks } from './link-tracking';
 import { LINK_SOURCES } from './link-tracking-types';
 import { ProjectAttribution } from './attribution';
-import { CHANNEL_TEXT_LIMITS, channelAccess, channelConfiguration, channelPostId, channelPostUrl, checkChannelPublishing, isChannelPlatform, publishPinterestPin, publishTikTokVideo, publishYouTubeShort, type ChannelPlatform } from './channel-publishing';
+import { CHANNEL_TEXT_LIMITS, publicMediaOrigin, publishTikTokPhotos, publishPinterestVideoPin, readChannelEngagement, channelAccess, channelConfiguration, channelPostId, channelPostUrl, checkChannelPublishing, isChannelPlatform, publishPinterestPin, publishTikTokVideo, publishYouTubeShort, type ChannelPlatform } from './channel-publishing';
 
 type Connection = { id: string; account_name: string; encrypted_credentials: string; account_id: string; platform: string; expires_at: number | null; integration_id:string; accountType?:'organization' };
 type Snapshot = { title: string; text: string; accountName: string; accountId: string; platform?: string; accountType?:'organization'; image?: PublicationImage; images?: PublicationImage[]; video?: PublicationVideo; story?: boolean };
@@ -71,7 +71,7 @@ export class SocialPublications {
       if (link && !text.includes(link)) text += `\n\n${link}`;
       imageCount=campaign.content.imageData?1:0;
       unsupportedHtml=Boolean(campaign.content.html);
-      const format=['instagram','facebook','tiktok','youtube'].includes(platform)?campaign.content.video?.[platform as 'instagram']:undefined;
+      const format=['instagram','facebook','tiktok','youtube','pinterest'].includes(platform)?campaign.content.video?.[platform as 'instagram']:undefined;
       video = format && campaign.content.video ? {url:campaign.content.video.url,format} : undefined;
       media = Boolean(campaign.content.imageData || campaign.content.html || video); raw = campaign;
     } else {
@@ -90,9 +90,9 @@ export class SocialPublications {
     // A video item is its own format: no images, a format the channel supports and the channel's caption limit.
     const videoOk = Boolean(video && !imageCount && !(raw as {rawBgData?:string}).rawBgData && ((VIDEO_FORMATS as Record<string,readonly string[]>)[platform]||[]).includes(video.format) && typeof text === 'string' && Boolean(text.trim()) && text.length <= (platform==='instagram'?2200:isChannelPlatform(platform)?CHANNEL_TEXT_LIMITS[platform]:3000) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text));
     // TikTok and YouTube take a video only; Pinterest one image with a description of up to 500 characters.
-    const eligible = video ? videoOk : isChannelPlatform(platform) ? platform==='pinterest' && !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && text.length <= CHANNEL_TEXT_LIMITS.pinterest && imageCount===1 && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text) : !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && (platform==='twitter'?xText(text).valid:text.length <= (platform==='instagram'?2200:platform==='telegram'?TELEGRAM_TEXT_LIMIT:3000)) && (platform==='instagram'?imageCount>=1&&imageCount<=5:['facebook','linkedin','twitter'].includes(platform)?imageCount<=1&&(!media||imageCount===1):!media) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
+    const eligible = video ? videoOk : isChannelPlatform(platform) ? platform!=='youtube' && !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && text.length <= CHANNEL_TEXT_LIMITS[platform] && (platform==='pinterest'?imageCount===1:imageCount>=1&&imageCount<=5) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text) : !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && (platform==='twitter'?xText(text).valid:text.length <= (platform==='instagram'?2200:platform==='telegram'?TELEGRAM_TEXT_LIMIT:3000)) && (platform==='instagram'?imageCount>=1&&imageCount<=5:['facebook','linkedin','twitter'].includes(platform)?imageCount<=1&&(!media||imageCount===1):!media) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
     const digest=hash(JSON.stringify([...(platform === 'linkedin' ? [kind,id,raw,project] : [kind,id,raw,project,platform]),...(tracking?[]:['links:untagged'])]));
-    const previews=!video&&['instagram','facebook','linkedin','twitter','pinterest'].includes(platform)?Array.from({length:Math.min(imageCount,5)},(_,index)=>`/api/platform/publication-preview?kind=${kind}&id=${encodeURIComponent(id)}&digest=${digest}&platform=${platform}&index=${index}`):[];
+    const previews=!video&&['instagram','facebook','linkedin','twitter','pinterest','tiktok'].includes(platform)?Array.from({length:Math.min(imageCount,5)},(_,index)=>`/api/platform/publication-preview?kind=${kind}&id=${encodeURIComponent(id)}&digest=${digest}&platform=${platform}&index=${index}`):[];
     return { kind: kind as 'content' | 'campaign', id, platform, title, text, eligible, digest, format:video?(video.format==='reel'?'reel':video.format==='story'?'story':'video'):story?'story':imageCount>1?'carousel':imageCount?'image':'text',...(story?{story:true}:{}),...(video?{video:{url:video.url,format:video.format}}:{}), ...(platform==='twitter'?{weightedLength:xText(text).length}:{}), ...(tagging.tagged?{trackedLinks:tagging.tagged}:{}), ...(previews.length?{imagePreview:previews[0],imagePreviews:previews}:{}) };
   }
   private results(tag:string,platform:string){const results=new ProjectAttribution(this.db,this.scope).forTag(tag,LINK_SOURCES[platform]||null);return results?{results}:{};}
@@ -102,13 +102,13 @@ export class SocialPublications {
   }
   private imageIndex(index:number){if(!Number.isSafeInteger(index)||index<0||index>4)throw new MarketingStoreError('Gorsel bulunamadi.',404);return index;}
   private async previewImages(kind:string,id:string,digest:string,platform:string) {
-    this.authorize();if(!['instagram','facebook','linkedin','twitter','pinterest'].includes(platform))throw new MarketingStoreError('Gorsel kanali gecersiz.');
+    this.authorize();if(!['instagram','facebook','linkedin','twitter','pinterest','tiktok'].includes(platform))throw new MarketingStoreError('Gorsel kanali gecersiz.');
     const source=this.source(kind,id,platform);if(source.digest!==digest||!source.eligible)throw new MarketingStoreError('Görsel kaynağı değişti veya uygun değil.',409);
     const day=new Date().toISOString().slice(0,10),usage=this.db.prepare("SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource='social_image'").get(...this.args(),day) as {count:number}|undefined;
     if((usage?.count||0)>=200)throw new MarketingStoreError('Günlük görsel kontrol sınırına ulaşıldı.',429);
     this.db.prepare("INSERT INTO platform_usage VALUES(?,?,?,'social_image',1) ON CONFLICT(organization_id,project_id,period,resource) DO UPDATE SET count=count+1").run(...this.args(),day);
     const raw=kind==='campaign'?this.store.campaign(id)?.content:JSON.parse((this.db.prepare('SELECT payload FROM platform_content_history WHERE id=? AND organization_id=? AND project_id=?').get(id,...this.args()) as {payload:string}).payload);
-    const images=await normalizePublicationImages(raw?.images?.length?raw.images:[{data:raw?.imageData,mime:raw?.imageMime||'image/jpeg'}]);
+    const images=await normalizePublicationImages(raw?.images?.length?raw.images:[{data:raw?.imageData,mime:raw?.imageMime||'image/jpeg'}],platform);
     this.authorize();if(this.source(kind,id,platform).digest!==digest)throw new MarketingStoreError('Görsel değişti. Yeniden inceleyin.',409);return images;
   }
   async create(input:EnqueueInput) {
@@ -169,7 +169,7 @@ export class SocialPublications {
     return {id:row.id,mode:row.mode,status:row.status,state:row.state,title:snapshot.title,text:snapshot.text,platform:snapshot.platform||'linkedin',accountType:snapshot.accountType||'person',accountName:snapshot.accountName,accountId:snapshot.accountId,sourceKind:row.source_kind,sourceId:row.source_id,scheduledAt:row.scheduled_at,timezone:row.timezone,submittedAt:row.submitted_at,updatedAt:row.updated_at,reason:row.reason,providerPostId:row.provider_post_id,providerUrl:row.provider_url,cancelRequested:Boolean(row.cancel_requested),nextCheckAt:row.next_check_at,format:snapshot.video?(snapshot.video.format==='reel'?'reel':snapshot.video.format==='story'?'story':'video'):snapshot.story?'story':images.length>1?'carousel':images.length?'image':'text',...(snapshot.video?{video:{url:snapshot.video.url,format:snapshot.video.format,bytes:snapshot.video.bytes}}:{}),engagement:this.engagement(row),...(row.link_tag&&row.mode==='publish'&&row.state==='accepted'?{site:new LinkTracking(this.db,this.scope).result(row.link_tag,snapshot.platform||'linkedin',row.submitted_at),...this.results(row.link_tag,snapshot.platform||'linkedin')}:{}),...(images.length?{image:images[0],images}:{})};
   }
   get(id: string) { this.authorize(); return this.describe(this.row(id)); }
-  private engagementSupported(row:Row){if(row.mode!=='publish'||row.state!=='accepted'||!row.provider_post_id)return false;const s=this.snapshot(row);return s.platform==='linkedin'?(s.accountType==='organization'&&process.env.PLATFORM_LINKEDIN_ANALYTICS_ENABLED==='1'):['facebook','instagram','twitter'].includes(s.platform||'');}
+  private engagementSupported(row:Row){if(row.mode!=='publish'||row.state!=='accepted'||!row.provider_post_id)return false;const s=this.snapshot(row);return s.platform==='linkedin'?(s.accountType==='organization'&&process.env.PLATFORM_LINKEDIN_ANALYTICS_ENABLED==='1'):['facebook','instagram','twitter','tiktok','pinterest','youtube'].includes(s.platform||'');}
   private engagement(row:Row):PublicationEngagement {
     if(!this.engagementSupported(row))return {status:'unsupported',counts:{},observedAt:null,attemptedAt:null};
     const metric=this.db.prepare('SELECT * FROM platform_social_engagement WHERE job_id=? AND organization_id=? AND project_id=?').get(row.id,...this.args()) as {counts_json:string;observed_at:string|null;attempted_at:string;state:PublicationEngagement['status'];lease_until:string|null}|undefined;
@@ -191,7 +191,8 @@ export class SocialPublications {
     if(!claimed)return this.get(id);
     let counts:EngagementCounts|undefined;try{
       const credentials=decryptCredentials<StoredCredentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);
-      counts=cleanEngagementCounts(await read({platform:connection.platform,accountId:connection.account_id,accountType:connection.accountType,postId:row.provider_post_id!,credentials}));
+      // TikTok, Pinterest and YouTube read with a fresh access token; the stored envelope stays as it is.
+      counts=cleanEngagementCounts(isChannelPlatform(connection.platform)&&read===readPublicationEngagement?await readChannelEngagement(connection.platform,(await channelAccess(this.db,this.args(),this.key,connection,credentials)).token,row.provider_post_id!):await read({platform:connection.platform,accountId:connection.account_id,accountType:connection.accountType,postId:row.provider_post_id!,credentials}));
     }catch{}
     this.db.transaction(()=>{
       this.authorize(true);
@@ -258,8 +259,11 @@ export class SocialPublications {
   providerImage(id:string,signature:string,index=0) {
     this.imageIndex(index);
     const row=this.row(id);
-    if(row.mode!=='publish'||!row.preparation_started_at||Date.now()-Date.parse(row.preparation_started_at)>900000||Date.parse(row.preparation_started_at)>Date.now()||!['queued','running'].includes(row.status)||!['preparing','container_processing','checking'].includes(row.state)||row.cancel_requested||row.submitted_at||!/^[a-f0-9]{64}$/.test(signature)||!timingSafeEqual(Buffer.from(signature,'hex'),Buffer.from(this.imageSignature(row,index),'hex')))throw new MarketingStoreError('Görsel bulunamadı.',404);
-    const snapshot=this.snapshot(row),image=snapshotImages(snapshot)[index];if(!image||snapshot.platform!=='instagram')throw new MarketingStoreError('Görsel bulunamadı.',404);
+    // TikTok pulls a photo post's images after it accepted the post, so its job serves them in the submitting/accepted
+    // states as well (still only within 15 minutes of preparation and with the signature).
+    const tiktok=this.snapshot(row).platform==='tiktok';
+    if(row.mode!=='publish'||!row.preparation_started_at||Date.now()-Date.parse(row.preparation_started_at)>900000||Date.parse(row.preparation_started_at)>Date.now()||!(tiktok?['running','completed'].includes(row.status)&&['checking','submitting','accepted'].includes(row.state):['queued','running'].includes(row.status)&&['preparing','container_processing','checking'].includes(row.state)&&!row.submitted_at)||row.cancel_requested||!/^[a-f0-9]{64}$/.test(signature)||!timingSafeEqual(Buffer.from(signature,'hex'),Buffer.from(this.imageSignature(row,index),'hex')))throw new MarketingStoreError('Görsel bulunamadı.',404);
+    const snapshot=this.snapshot(row),image=snapshotImages(snapshot)[index];if(!image||!['instagram','tiktok'].includes(snapshot.platform||''))throw new MarketingStoreError('Görsel bulunamadı.',404);
     this.live(row);return image;
   }
   private waitForImage(row:Row,lease:string,manualRunner?:string) {
@@ -355,13 +359,21 @@ export class SocialPublications {
       else if(connection.platform==='twitter'&&snapshot.image)result=credentials.xPublishing?.scopes.includes('media.write')?await publishXImage(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.image,reserve):{state:'blocked',postId:null};
       else if(isChannelPlatform(connection.platform)){
         const token=(access as {token?:string}).token||credentials.accessToken;
-        if(connection.platform==='pinterest')result=snapshot.image?await publishPinterestPin(token,snapshot.accountId,snapshot.title,snapshot.text,snapshot.image,reserve):{state:'blocked',postId:null};
+        if(connection.platform==='pinterest'&&!snapshot.video)result=snapshot.image?await publishPinterestPin(token,snapshot.accountId,snapshot.title,snapshot.text,snapshot.image,reserve):{state:'blocked',postId:null};
+        else if(connection.platform==='tiktok'&&!snapshot.video){
+          // TikTok pulls the approved images from signed URLs on the panel's public origin within 15 minutes.
+          const images=snapshotImages(snapshot);let origin='';try{origin=publicMediaOrigin();}catch{origin='';}
+          const started=origin&&images.length?this.db.prepare("UPDATE platform_social_publications SET preparation_started_at=? WHERE job_id=? AND preparation_started_at IS NULL").run(new Date().toISOString(),id).changes:0;
+          if(!started){result={state:'blocked',postId:null};reason='unavailable';}
+          else{const fresh=this.row(id);result=await publishTikTokPhotos(token,snapshot.text,images.map((_,index)=>`${origin}/api/platform/publication-media/${id}?signature=${this.imageSignature(fresh,index)}${index?`&index=${index}`:''}`),reserve);}
+        }
         else{
           // The approved file must still be the one at the address; YouTube's upload may take minutes, so the lease grows.
           let current:PublicationVideo|null=null;try{current=snapshot.video?await checkPublicationVideo(snapshot.video,this.videoReader):null;}catch{current=null;}
           if(!this.holder(id,lease))return;this.live(claimed,manualRunner);
           if(!current||!snapshot.video||!sameVideo(current,snapshot.video)){result={state:'blocked',postId:null};reason='media_changed';}
           else if(connection.platform==='tiktok')result=await publishTikTokVideo(token,snapshot.text,snapshot.video,reserve);
+          else if(connection.platform==='pinterest'){this.db.prepare('UPDATE platform_jobs SET lease_until=? WHERE id=? AND lease_token=?').run(new Date(Date.now()+15*60000).toISOString(),id,lease);result=await publishPinterestVideoPin(token,snapshot.accountId,snapshot.title,snapshot.text,snapshot.video,reserve);}
           else{this.db.prepare('UPDATE platform_jobs SET lease_until=? WHERE id=? AND lease_token=?').run(new Date(Date.now()+15*60000).toISOString(),id,lease);result=await publishYouTubeShort(token,snapshot.text,snapshot.video,reserve);}
         }
       }

@@ -15,7 +15,7 @@ const record=(value:unknown):Record<string,unknown>=>value&&typeof value==='obje
 const count=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0&&Number(value)<=1e12?Number(value):undefined;
 export function cleanEngagementCounts(raw:unknown):EngagementCounts {
   const result:EngagementCounts={};
-  for(const name of ['likes','comments','shares','impressions','clicks','reach','bookmarks','quotes'] as const){
+  for(const name of ['likes','comments','shares','impressions','clicks','reach','bookmarks','quotes','views'] as const){
     const value=count(record(raw)[name]);if(value!==undefined)result[name]=value;
   }
   if(!Object.keys(result).length)throw new Error('No measured counters.');return result;

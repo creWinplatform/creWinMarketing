@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
+import { isIP } from 'node:net';
 import type Database from 'better-sqlite3';
 import { decryptCredentials, encryptCredentials, type StoredCredentials } from './credential-envelope';
 import { readSocialResponse } from './social-connection';
@@ -19,6 +20,8 @@ export const isChannelPlatform = (platform: string): platform is ChannelPlatform
 export const CHANNEL_NAMES: Record<ChannelPlatform, string> = { tiktok: 'TikTok', pinterest: 'Pinterest', youtube: 'YouTube' };
 export const CHANNEL_CALLBACK = '/api/platform/channels/callback';
 export const CHANNEL_TEXT_LIMITS: Record<ChannelPlatform, number> = { tiktok: 2200, pinterest: 500, youtube: 5000 };
+// TikTok photo posts and Pinterest pins take up to five images and the image rules below.
+export const CHANNEL_IMAGE_PLATFORMS = ['tiktok', 'pinterest'] as const;
 export type ChannelGrant = { configurationRevision: string; scopes: string[]; accessExpiresAt: number };
 
 const ENV: Record<ChannelPlatform, [string, string, string]> = {
@@ -27,7 +30,8 @@ const ENV: Record<ChannelPlatform, [string, string, string]> = {
   youtube: ['PLATFORM_YOUTUBE_CLIENT_ID', 'PLATFORM_YOUTUBE_CLIENT_SECRET', 'PLATFORM_YOUTUBE_REDIRECT_URI'],
 };
 const SCOPES: Record<ChannelPlatform, string[]> = {
-  tiktok: ['user.info.basic', 'video.publish'],
+  // video.list reads the published post's counts.
+  tiktok: ['user.info.basic', 'video.publish', 'video.list'],
   pinterest: ['boards:read', 'pins:read', 'pins:write', 'user_accounts:read'],
   youtube: ['https://www.googleapis.com/auth/youtube.upload', 'https://www.googleapis.com/auth/youtube.readonly'],
 };
@@ -208,3 +212,85 @@ export async function publishYouTubeShort(accessToken: string, text: string, vid
 export const youtubeVideoId = (value: string) => /^[A-Za-z0-9_-]{11}$/.test(value);
 export const channelPostUrl = (platform: ChannelPlatform, postId: string) => platform === 'pinterest' ? `https://www.pinterest.com/pin/${postId}/` : platform === 'youtube' ? `https://www.youtube.com/shorts/${postId}` : null;
 export const channelPostId = (platform: ChannelPlatform, postId: string) => platform === 'pinterest' ? pinterestPinId(postId) : platform === 'youtube' ? youtubeVideoId(postId) : tiktokPublishId(postId);
+
+// The panel's public https origin (PLATFORM_PUBLIC_ORIGIN): TikTok pulls photo posts from signed media URLs on it, so the
+// domain must be verified in the TikTok app.
+export function publicMediaOrigin() {
+  const url = new URL(process.env.PLATFORM_PUBLIC_ORIGIN || '');
+  if (url.protocol !== 'https:' || url.username || url.password || url.port || url.pathname !== '/' || url.search || url.hash || isIP(url.hostname) || !url.hostname.includes('.') || /(?:^|\.)(?:localhost|local|internal|test|invalid|example)$/.test(url.hostname)) throw new Error('Public origin required.');
+  return url.origin;
+}
+// A TikTok photo post: 1-5 approved images, the first line (up to 90) as title and the text as description.
+export async function publishTikTokPhotos(accessToken: string, text: string, imageUrls: string[], reserve: () => boolean, http: ChannelHttp = channelHttp): Promise<PublishResult> {
+  if (!imageUrls.length || imageUrls.length > 5) return { state: 'blocked', postId: null };
+  const title = (text.split('\n').find(line => line.trim())?.trim() || '').slice(0, 90);
+  if (!reserve()) return { state: 'blocked', postId: null };
+  try {
+    const payload = await channelJson('https://open.tiktokapis.com/v2/post/publish/content/init/', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+      body: JSON.stringify({ post_info: { title, description: text.slice(0, 4000), privacy_level: tiktokPrivacy(), disable_comment: false, auto_add_music: true }, source_info: { source: 'PULL_FROM_URL', photo_cover_index: 0, photo_images: imageUrls }, post_mode: 'DIRECT_POST', media_type: 'PHOTO' }), signal: AbortSignal.timeout(20000) }, http);
+    const id = (payload.data as { publish_id?: unknown } | undefined)?.publish_id;
+    return typeof id === 'string' && tiktokPublishId(id) ? { state: 'accepted', postId: id } : { state: 'uncertain', postId: null };
+  } catch (error) { return outcome(error); }
+}
+
+// A Pinterest video pin: the approved file is registered, streamed to Pinterest's upload address (multipart, built as a
+// stream so a 300 MB file is never held in memory), processed, then pinned to the board.
+const UPLOAD_HOST = /^[a-z0-9.-]+\.amazonaws\.com$/;
+export async function publishPinterestVideoPin(accessToken: string, boardId: string, title: string, text: string, video: PublicationVideo, reserve: () => boolean, http: ChannelHttp = channelHttp, source: typeof fetchPublic = fetchPublic, wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))): Promise<PublishResult> {
+  let mediaId: string;
+  try {
+    const media = await channelJson('https://api.pinterest.com/v5/media', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_type: 'video' }) }, http);
+    const upload = new URL(String(media.upload_url)), fields = (media.upload_parameters || {}) as Record<string, unknown>;
+    if (typeof media.media_id !== 'string' || !/^\d{1,30}$/.test(media.media_id) || upload.protocol !== 'https:' || !UPLOAD_HOST.test(upload.hostname) || Object.values(fields).some(value => typeof value !== 'string')) return { state: 'blocked', postId: null };
+    mediaId = media.media_id;
+    let file: Response;
+    try { file = (await source(new URL(video.url), 'video/mp4,video/quicktime')).response; } catch { return { state: 'blocked', postId: null }; }
+    if (file.status !== 200 || Number(file.headers.get('content-length')) !== video.bytes || !file.body) { await file.body?.cancel().catch(() => undefined); return { state: 'blocked', postId: null }; }
+    const boundary = `----ryzevo${randomBytes(12).toString('hex')}`, encoder = new TextEncoder();
+    const head = encoder.encode(Object.entries(fields).map(([key, value]) => `--${boundary}\r\nContent-Disposition: form-data; name="${key.replace(/["\r\n]/g, '')}"\r\n\r\n${value}\r\n`).join('') + `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="video.mp4"\r\nContent-Type: ${video.contentType}\r\n\r\n`);
+    const tail = encoder.encode(`\r\n--${boundary}--\r\n`), reader = file.body.getReader();
+    const body = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(head); }, async pull(controller) { const { done, value } = await reader.read(); if (done) { controller.enqueue(tail); controller.close(); } else controller.enqueue(value); }, cancel() { void reader.cancel(); } });
+    const sent = await http(upload.href, { method: 'POST', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(14 * 60000), headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': String(head.length + video.bytes + tail.length) }, body, duplex: 'half' } as RequestInit);
+    await sent.body?.cancel().catch(() => undefined);
+    if (!sent.ok) return { state: 'blocked', postId: null };
+    // Pinterest processes the file before it can be pinned: a few minutes at most.
+    for (let attempt = 0; ; attempt++) {
+      const status = String((await channelJson(`https://api.pinterest.com/v5/media/${mediaId}`, accessToken, {}, http)).status || '');
+      if (status === 'succeeded') break;
+      if (status === 'failed' || attempt >= 36) return { state: 'blocked', postId: null };
+      await wait(5000);
+    }
+  } catch { return { state: 'blocked', postId: null }; }
+  const link = text.match(/https:\/\/[^\s<>"'`]+/)?.[0]?.replace(/[.,;:!?)\]}»”’]+$/, '');
+  if (!reserve()) return { state: 'blocked', postId: null };
+  try {
+    const payload = await channelJson('https://api.pinterest.com/v5/pins', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ board_id: boardId, title: title.slice(0, 100), description: text.slice(0, 500), ...(link ? { link } : {}), media_source: { source_type: 'video_id', media_id: mediaId, cover_image_key_frame_time: 1 } }), signal: AbortSignal.timeout(20000) }, http);
+    return typeof payload.id === 'string' && pinterestPinId(payload.id) ? { state: 'accepted', postId: payload.id } : { state: 'uncertain', postId: null };
+  } catch (error) { return outcome(error); }
+}
+
+// Counts as each provider reports them, for the publication card. TikTok's publish id leads to the post once TikTok has
+// made it public; until then there is nothing to read.
+const num = (value: unknown) => { const n = typeof value === 'string' && /^\d{1,15}$/.test(value) ? Number(value) : value; return Number.isSafeInteger(n) && Number(n) >= 0 ? Number(n) : undefined; };
+export async function readChannelEngagement(platform: ChannelPlatform, accessToken: string, postId: string, http: ChannelHttp = channelHttp): Promise<Record<string, number | undefined>> {
+  if (platform === 'youtube') {
+    if (!youtubeVideoId(postId)) throw new Error('Invalid video.');
+    const item = (((await channelJson(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${postId}`, accessToken, {}, http)).items as unknown[] | undefined)?.[0] || {}) as { id?: string; statistics?: Record<string, unknown> };
+    if (item.id !== postId) throw new Error('Video not found.');
+    return { views: num(item.statistics?.viewCount), likes: num(item.statistics?.likeCount), comments: num(item.statistics?.commentCount) };
+  }
+  if (platform === 'pinterest') {
+    if (!pinterestPinId(postId)) throw new Error('Invalid pin.');
+    const day = (offset: number) => new Date(Date.now() - offset * DAY).toISOString().slice(0, 10);
+    const payload = await channelJson(`https://api.pinterest.com/v5/pins/${postId}/analytics?start_date=${day(89)}&end_date=${day(0)}&metric_types=IMPRESSION,SAVE,PIN_CLICK,OUTBOUND_CLICK`, accessToken, {}, http);
+    const summary = ((payload.all as { summary_metrics?: Record<string, unknown> } | undefined)?.summary_metrics || {}) as Record<string, unknown>;
+    return { impressions: num(summary.IMPRESSION), bookmarks: num(summary.SAVE), clicks: num(summary.OUTBOUND_CLICK) };
+  }
+  if (!tiktokPublishId(postId)) throw new Error('Invalid publish id.');
+  const status = (await channelJson('https://open.tiktokapis.com/v2/post/publish/status/fetch/', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' }, body: JSON.stringify({ publish_id: postId }) }, http)).data as { publicaly_available_post_id?: unknown[] } | undefined;
+  const videoId = status?.publicaly_available_post_id?.[0];
+  if (videoId === undefined || !/^\d{1,30}$/.test(String(videoId))) throw new Error('Not public yet.');
+  const video = (((await channelJson('https://open.tiktokapis.com/v2/video/query/?fields=id,like_count,comment_count,share_count,view_count', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' }, body: JSON.stringify({ filters: { video_ids: [String(videoId)] } }) }, http)).data as { videos?: Record<string, unknown>[] } | undefined)?.videos || [])[0] || {};
+  return { views: num(video.view_count), likes: num(video.like_count), comments: num(video.comment_count), shares: num(video.share_count) };
+}

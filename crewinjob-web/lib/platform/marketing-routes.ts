@@ -45,8 +45,8 @@ function campaignInput(raw: Record<string, unknown>, timezone: string, goalIds: 
   // A campaign video goes to Instagram and/or the Facebook Page in the format chosen for each; other channels get the text.
   let video: CampaignContent['video'];
   if (content.video && typeof content.video === 'object') {
-    const value = content.video as Record<string, unknown>, formats: { instagram?: 'reel' | 'story'; facebook?: 'feed' | 'reel'; tiktok?: 'feed'; youtube?: 'feed' } = {};
-    for (const platform of ['instagram', 'facebook', 'tiktok', 'youtube'] as const) if (value[platform] !== undefined && value[platform] !== '') {
+    const value = content.video as Record<string, unknown>, formats: { instagram?: 'reel' | 'story'; facebook?: 'feed' | 'reel'; tiktok?: 'feed'; youtube?: 'feed'; pinterest?: 'feed' } = {};
+    for (const platform of ['instagram', 'facebook', 'tiktok', 'youtube', 'pinterest'] as const) if (value[platform] !== undefined && value[platform] !== '') {
       if (!platforms.includes(platform)) throw new MarketingStoreError('Video biçimi yalnız kampanyada seçili Instagram, Facebook, TikTok veya YouTube kanalı için verilebilir.');
       const normalized = normalizeContentVideo({ url: value.url, format: value[platform] }, platform);
       (formats as Record<string, string>)[platform] = normalized.format;
@@ -76,20 +76,20 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   let images=current?.images;
   if(raw.images!==undefined){
     if(!Array.isArray(raw.images)||raw.images.length>5)throw new MarketingStoreError('En fazla 5 gorsel secin.');
-    if(raw.images.length&&platform!=='instagram')throw new MarketingStoreError('Çoklu görsel yalnız Instagram için destekleniyor.');
+    if(raw.images.length&&!['instagram','tiktok'].includes(platform))throw new MarketingStoreError('Çoklu görsel yalnız Instagram ve TikTok için destekleniyor.');
     const {normalizePublicationImages}=await import('./publication-image');
-    images=raw.images.length?(await normalizePublicationImages(raw.images)).map(image=>({data:image.data,mime:'image/jpeg'})):undefined;
+    images=raw.images.length?(await normalizePublicationImages(raw.images,platform)).map(image=>({data:image.data,mime:'image/jpeg'})):undefined;
   }
-  if(images?.length&&platform!=='instagram')throw new MarketingStoreError('Kanal degistirmeden once coklu gorselleri kaldirin.');
+  if(images?.length&&!['instagram','tiktok'].includes(platform))throw new MarketingStoreError('Kanal degistirmeden once coklu gorselleri kaldirin.');
   let imageData=current?.imageData,imageMime=current?.imageMime;
   if(raw.imageData===''){imageData=undefined;imageMime=undefined;}
-  else if(raw.imageData!==undefined){const image=await normalizePublicationImage(raw.imageData,raw.imageMime);imageData=image.data;imageMime='image/jpeg';}
+  else if(raw.imageData!==undefined){const image=await normalizePublicationImage(raw.imageData,raw.imageMime,platform);imageData=image.data;imageMime='image/jpeg';}
   if(images?.length&&imageData)throw new MarketingStoreError('Tek gorsel veya coklu gorsel secin; ikisini birlikte gondermeyin.');
   let video=current?.video;
   if(raw.video===''||raw.video===null)video=undefined;
   else if(raw.video!==undefined)video=normalizeContentVideo(raw.video,platform);
   if(video&&(images?.length||imageData))throw new MarketingStoreError('Video ile görsel aynı içerikte kullanılamaz.');
-  if(video&&!['instagram','facebook','tiktok','youtube'].includes(platform))throw new MarketingStoreError('Video yalnız Instagram (Reels, Story), Facebook sayfası (video, Reels), TikTok ve YouTube Shorts için destekleniyor.');
+  if(video&&!['instagram','facebook','tiktok','youtube','pinterest'].includes(platform))throw new MarketingStoreError('Video yalnız Instagram (Reels, Story), Facebook sayfası (video, Reels), TikTok, YouTube Shorts ve Pinterest için destekleniyor.');
   const story=raw.story===undefined?Boolean(current?.story):raw.story===true;
   if(story&&(platform!=='instagram'||!imageData||images?.length||video))throw new MarketingStoreError('Görselli Story yalnız tek görselli Instagram içeriği için seçilebilir.');
   return { id: current?.id || `hist_${randomUUID()}`, timestamp: current?.timestamp || Date.now(),

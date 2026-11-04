@@ -9,7 +9,7 @@ function load(file) {
   if (cache.has(full)) return cache.get(full);
   const exported = {};
   const code = ts.transpileModule(fs.readFileSync(full, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  vm.runInNewContext(code, { exports: exported, process, Buffer, Date, URL, URLSearchParams, Intl, TextDecoder, TextEncoder, structuredClone, AbortSignal, Response, Headers, FormData, Blob, setTimeout, clearTimeout, fetch: (...args) => globalThis.fetch(...args), require: name => {
+  vm.runInNewContext(code, { exports: exported, process, Buffer, Date, URL, URLSearchParams, Intl, TextDecoder, TextEncoder, structuredClone, AbortSignal, Response, Headers, FormData, Blob, ReadableStream, setTimeout, clearTimeout, fetch: (...args) => globalThis.fetch(...args), require: name => {
     if (name === 'server-only') return {};
     if (name.startsWith('.')) return load(path.resolve(path.dirname(full), `${name}.ts`));
     return require(name);
