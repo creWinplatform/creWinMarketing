@@ -5,7 +5,8 @@ import { MarketingStoreError } from './errors';
 // Videos are hosted by the team (their own https address); Ryzevo stores only the address. Before a publication is
 // queued the address is checked with the SSRF-safe fetcher (no redirects, a video type and a known size), and the same
 // check runs again before publishing: if the file changed, nothing is posted.
-export const VIDEO_FORMATS={instagram:['reel','story'],facebook:['feed','reel']} as const;
+// TikTok and YouTube Shorts take one vertical video (format "feed").
+export const VIDEO_FORMATS={instagram:['reel','story'],facebook:['feed','reel'],tiktok:['feed'],youtube:['feed']} as const;
 export type VideoFormat='reel'|'story'|'feed';
 export type ContentVideo={url:string;format:VideoFormat};
 export type PublicationVideo=ContentVideo&{bytes:number;contentType:string;etag:string|null;lastModified:string|null;checkedAt:string};
@@ -14,7 +15,7 @@ export type VideoReader=(url:URL)=>Promise<{status:number;headers:Headers;finalU
 export const readVideoHeaders:VideoReader=async url=>{const {response,finalUrl}=await fetchPublic(url,'video/mp4,video/quicktime');return {status:response.status,headers:response.headers,finalUrl,cancel:async()=>{await response.body?.cancel().catch(()=>undefined);}};};
 export function normalizeContentVideo(raw:unknown,platform:string):ContentVideo{
   const value=raw&&typeof raw==='object'?raw as Record<string,unknown>:{},formats=(VIDEO_FORMATS as Record<string,readonly string[]>)[platform];
-  if(!formats)throw new MarketingStoreError('Video yalnız Instagram (Reels, Story) ve Facebook sayfası (video, Reels) için destekleniyor.');
+  if(!formats)throw new MarketingStoreError('Video yalnız Instagram (Reels, Story), Facebook sayfası (video, Reels), TikTok ve YouTube Shorts için destekleniyor.');
   if(typeof value.format!=='string'||!formats.includes(value.format))throw new MarketingStoreError('Bu kanal için geçerli bir video biçimi seçin.');
   let url:URL;try{url=new URL(String(value.url));}catch{throw new MarketingStoreError('Videonun https adresini girin.');}
   if(url.protocol!=='https:'||url.username||url.password||url.href.length>1000||url.hash)throw new MarketingStoreError('Videonun https adresini girin.');

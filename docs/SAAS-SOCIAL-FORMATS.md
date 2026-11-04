@@ -18,6 +18,8 @@ Video, Reels, Stories, LinkedIn/X image upload, TikTok/YouTube adapters, comment
 inboxes/replies and automated DMs are NOT implemented by this increment. Existing
 draft-only channels do not become publishable because they appear in an editor.
 
+**Update (4 November 2026): TikTok, Pinterest and YouTube Shorts are publishable.** See `docs/SAAS-CHANNELS.md`.
+
 ## User workflow
 
 1. Content Library: save a Facebook photo or select up to five Instagram images.

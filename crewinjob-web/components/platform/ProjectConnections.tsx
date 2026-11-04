@@ -4,6 +4,7 @@ import type { Locale } from '@/lib/platform/catalog';
 import MetaConnection from './MetaConnection';
 import CallbackOriginNotice from './CallbackOriginNotice';
 import XConnection from './XConnection';
+import ChannelConnections from './ChannelConnections';
 import LinkedInOrganizationConnection from './LinkedInOrganizationConnection';
 import { ConnectionGuidePanel, ProviderGuideButton } from './GrowthCompass';
 import { translateMessage } from '@/lib/i18n/messages';
@@ -134,6 +135,7 @@ export default function ProjectConnections({ lang, crewin = false }: { lang: Loc
       <MetaConnection lang={lang} onSaved={load} requestedProvider={requestedProvider} inboxDefault={crewin} setupHref={crewin ? '/?tab=project&settings=operations&setup=meta' : undefined}/>
       {crewin && <p className="text-sm text-slate-500">{tr ? 'Crewin’in sosyal paylaşımları, e-postası ve WhatsApp’ı kendi sekmelerinden çalışır. Buradaki bağlantılar yalnız Ryzevo özellikleri içindir: Google (Search Console, GA4) ölçüm ve SEO takibine, Meta gelen kutusuna veri verir.' : 'Crewin’s social posts, email and WhatsApp run from their own tabs. These connections are only for the Ryzevo features: Google (Search Console, GA4) feeds measurements and SEO tracking, Meta feeds the inbox.'}</p>}
       {!crewin && <XConnection lang={lang} requestedProvider={requestedProvider}/>}
+      {!crewin && <ChannelConnections lang={lang} requestedProvider={requestedProvider}/>}
       {!crewin && <LinkedInOrganizationConnection lang={lang} onSaved={load} requestedProvider={requestedProvider}/>}
       {!crewin && <details open={requestedProvider==='linkedin_person'||undefined}><summary className="cursor-pointer text-sm font-medium">{tr ? 'LinkedIn hesabı bağla' : 'Connect LinkedIn account'}</summary><ProviderGuideButton lang={lang} id="linkedin_person"/>{linkedinConfigured ? <form onSubmit={connectLinkedIn} className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label className="text-xs">{tr ? 'Hesap adı' : 'Account name'}<input name="accountName" required maxLength={160} className={input} /></label>

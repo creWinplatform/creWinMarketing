@@ -23,6 +23,7 @@ import { cleanEngagementCounts, readPublicationEngagement, type EngagementReader
 import { LinkTracking, linkTag, linkTrackingEnabled, tagOwnLinks } from './link-tracking';
 import { LINK_SOURCES } from './link-tracking-types';
 import { ProjectAttribution } from './attribution';
+import { CHANNEL_TEXT_LIMITS, channelAccess, channelConfiguration, channelPostId, channelPostUrl, checkChannelPublishing, isChannelPlatform, publishPinterestPin, publishTikTokVideo, publishYouTubeShort, type ChannelPlatform } from './channel-publishing';
 
 type Connection = { id: string; account_name: string; encrypted_credentials: string; account_id: string; platform: string; expires_at: number | null; integration_id:string; accountType?:'organization' };
 type Snapshot = { title: string; text: string; accountName: string; accountId: string; platform?: string; accountType?:'organization'; image?: PublicationImage; images?: PublicationImage[]; video?: PublicationVideo; story?: boolean };
@@ -44,12 +45,20 @@ export class SocialPublications {
   private connection(id: string) {
     const row = this.db.prepare("SELECT c.id,c.integration_id,c.account_name,c.encrypted_credentials,s.account_id,s.platform,s.expires_at FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.id=? AND c.organization_id=? AND c.project_id=? AND c.active=1 AND c.provider='social'").get(id, ...this.args()) as Connection | undefined;
     if (!row) throw new MarketingStoreError('Yayın hesabı bulunamadı.', 404);
-    if (!['linkedin','facebook','instagram','twitter','telegram'].includes(row.platform) || row.expires_at && row.expires_at <= Date.now()) throw new MarketingStoreError('Etkin LinkedIn, Facebook, Instagram, X veya Telegram bağlantısı gerekli.', 409);
+    if (!['linkedin','facebook','instagram','twitter','telegram','tiktok','pinterest','youtube'].includes(row.platform) || row.expires_at && row.expires_at <= Date.now()) throw new MarketingStoreError('Etkin bir sosyal yayın bağlantısı gerekli.', 409);
     if(isLinkedInOrganization(row.platform,row.account_id,row.integration_id))row.accountType='organization';
     return row;
   }
-  private config(platform = 'linkedin') { try { return platform === 'telegram' ? telegramPublishingConfiguration().revision : platform === 'twitter' ? xConfiguration().revision : platform === 'instagram' ? instagramPublishingConfiguration().revision : platform === 'facebook' ? facebookPublishingConfiguration().revision : platform === 'linkedin' ? linkedinPublishingConfiguration().revision : ''; } catch { return ''; } }
+  private config(platform = 'linkedin') { try { return isChannelPlatform(platform) ? channelConfiguration(platform).revision : platform === 'telegram' ? telegramPublishingConfiguration().revision : platform === 'twitter' ? xConfiguration().revision : platform === 'instagram' ? instagramPublishingConfiguration().revision : platform === 'facebook' ? facebookPublishingConfiguration().revision : platform === 'linkedin' ? linkedinPublishingConfiguration().revision : ''; } catch { return ''; } }
   private checker(platform:string,accountType?:string) { return platform==='linkedin'&&accountType==='organization'?checkLinkedInOrganizationPublishing:platform==='twitter'?checkXPublishing:platform==='telegram'?checkTelegramPublishing:platform==='instagram'?checkInstagramPublishing:platform==='facebook'?checkFacebookPublishing:checkLinkedInPublishing; }
+  // TikTok / Pinterest / YouTube: a fresh access token from the refresh token, then the provider's own publishing check.
+  private channelCheck(connection: Connection): PublishCheck {
+    return async (_token, accountId, credentials) => {
+      const access = await channelAccess(this.db, this.args(), this.key, connection, credentials!);
+      await checkChannelPublishing(connection.platform as ChannelPlatform, access.token, accountId);
+      return { expiresAt: access.expiresAt, token: access.token } as { expiresAt: number };
+    };
+  }
   private source(kind: unknown, id: unknown, platform = 'linkedin'): PublicationSource {
     if (typeof kind!=='string'||!['content','campaign'].includes(kind) || typeof id !== 'string' || !id || id.length > 150) throw new MarketingStoreError('Geçerli içerik kaynağı gerekli.');
     const project = this.repo.workspace(this.scope.subject, ...this.args())!.project;
@@ -62,7 +71,7 @@ export class SocialPublications {
       if (link && !text.includes(link)) text += `\n\n${link}`;
       imageCount=campaign.content.imageData?1:0;
       unsupportedHtml=Boolean(campaign.content.html);
-      const format=platform==='instagram'||platform==='facebook'?campaign.content.video?.[platform]:undefined;
+      const format=['instagram','facebook','tiktok','youtube'].includes(platform)?campaign.content.video?.[platform as 'instagram']:undefined;
       video = format && campaign.content.video ? {url:campaign.content.video.url,format} : undefined;
       media = Boolean(campaign.content.imageData || campaign.content.html || video); raw = campaign;
     } else {
@@ -79,10 +88,11 @@ export class SocialPublications {
     const tracking=linkTrackingEnabled(this.db,this.scope),tagging=tracking&&typeof text==='string'?tagOwnLinks(text,project.website,platform,linkTag(this.scope,kind,id)):{text,tagged:0};
     text=tagging.text;
     // A video item is its own format: no images, a format the channel supports and the channel's caption limit.
-    const videoOk = Boolean(video && !imageCount && !(raw as {rawBgData?:string}).rawBgData && ((VIDEO_FORMATS as Record<string,readonly string[]>)[platform]||[]).includes(video.format) && typeof text === 'string' && Boolean(text.trim()) && text.length <= (platform==='instagram'?2200:3000) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text));
-    const eligible = video ? videoOk : !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && (platform==='twitter'?xText(text).valid:text.length <= (platform==='instagram'?2200:platform==='telegram'?TELEGRAM_TEXT_LIMIT:3000)) && (platform==='instagram'?imageCount>=1&&imageCount<=5:['facebook','linkedin','twitter'].includes(platform)?imageCount<=1&&(!media||imageCount===1):!media) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
+    const videoOk = Boolean(video && !imageCount && !(raw as {rawBgData?:string}).rawBgData && ((VIDEO_FORMATS as Record<string,readonly string[]>)[platform]||[]).includes(video.format) && typeof text === 'string' && Boolean(text.trim()) && text.length <= (platform==='instagram'?2200:isChannelPlatform(platform)?CHANNEL_TEXT_LIMITS[platform]:3000) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text));
+    // TikTok and YouTube take a video only; Pinterest one image with a description of up to 500 characters.
+    const eligible = video ? videoOk : isChannelPlatform(platform) ? platform==='pinterest' && !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && text.length <= CHANNEL_TEXT_LIMITS.pinterest && imageCount===1 && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text) : !unsupportedHtml && typeof text === 'string' && Boolean(text.trim()) && (platform==='twitter'?xText(text).valid:text.length <= (platform==='instagram'?2200:platform==='telegram'?TELEGRAM_TEXT_LIMIT:3000)) && (platform==='instagram'?imageCount>=1&&imageCount<=5:['facebook','linkedin','twitter'].includes(platform)?imageCount<=1&&(!media||imageCount===1):!media) && !/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
     const digest=hash(JSON.stringify([...(platform === 'linkedin' ? [kind,id,raw,project] : [kind,id,raw,project,platform]),...(tracking?[]:['links:untagged'])]));
-    const previews=!video&&['instagram','facebook','linkedin','twitter'].includes(platform)?Array.from({length:Math.min(imageCount,5)},(_,index)=>`/api/platform/publication-preview?kind=${kind}&id=${encodeURIComponent(id)}&digest=${digest}&platform=${platform}&index=${index}`):[];
+    const previews=!video&&['instagram','facebook','linkedin','twitter','pinterest'].includes(platform)?Array.from({length:Math.min(imageCount,5)},(_,index)=>`/api/platform/publication-preview?kind=${kind}&id=${encodeURIComponent(id)}&digest=${digest}&platform=${platform}&index=${index}`):[];
     return { kind: kind as 'content' | 'campaign', id, platform, title, text, eligible, digest, format:video?(video.format==='reel'?'reel':video.format==='story'?'story':'video'):story?'story':imageCount>1?'carousel':imageCount?'image':'text',...(story?{story:true}:{}),...(video?{video:{url:video.url,format:video.format}}:{}), ...(platform==='twitter'?{weightedLength:xText(text).length}:{}), ...(tagging.tagged?{trackedLinks:tagging.tagged}:{}), ...(previews.length?{imagePreview:previews[0],imagePreviews:previews}:{}) };
   }
   private results(tag:string,platform:string){const results=new ProjectAttribution(this.db,this.scope).forTag(tag,LINK_SOURCES[platform]||null);return results?{results}:{};}
@@ -92,7 +102,7 @@ export class SocialPublications {
   }
   private imageIndex(index:number){if(!Number.isSafeInteger(index)||index<0||index>4)throw new MarketingStoreError('Gorsel bulunamadi.',404);return index;}
   private async previewImages(kind:string,id:string,digest:string,platform:string) {
-    this.authorize();if(!['instagram','facebook','linkedin','twitter'].includes(platform))throw new MarketingStoreError('Gorsel kanali gecersiz.');
+    this.authorize();if(!['instagram','facebook','linkedin','twitter','pinterest'].includes(platform))throw new MarketingStoreError('Gorsel kanali gecersiz.');
     const source=this.source(kind,id,platform);if(source.digest!==digest||!source.eligible)throw new MarketingStoreError('Görsel kaynağı değişti veya uygun değil.',409);
     const day=new Date().toISOString().slice(0,10),usage=this.db.prepare("SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource='social_image'").get(...this.args(),day) as {count:number}|undefined;
     if((usage?.count||0)>=200)throw new MarketingStoreError('Günlük görsel kontrol sınırına ulaşıldı.',429);
@@ -118,8 +128,8 @@ export class SocialPublications {
     const canManage = this.can(), sources: PublicationSource[] = []; let sourceTotal=0;
     if (canManage) {
       const candidates=this.db.prepare(`SELECT *,COUNT(*) OVER() AS total FROM (
-        SELECT 'content' AS kind,id,json_extract(payload,'$.platform') AS platform,updated_at FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.platform') IN ('linkedin','facebook','instagram','twitter','telegram')
-        UNION ALL SELECT DISTINCT 'campaign' AS kind,c.id,ch.value AS platform,c.updated_at FROM platform_campaigns c,json_each(c.payload,'$.channels.social') ch WHERE c.organization_id=? AND c.project_id=? AND json_extract(c.payload,'$.status')='draft' AND ch.value IN ('linkedin','facebook','instagram','twitter','telegram')
+        SELECT 'content' AS kind,id,json_extract(payload,'$.platform') AS platform,updated_at FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.platform') IN ('linkedin','facebook','instagram','twitter','telegram','tiktok','pinterest','youtube')
+        UNION ALL SELECT DISTINCT 'campaign' AS kind,c.id,ch.value AS platform,c.updated_at FROM platform_campaigns c,json_each(c.payload,'$.channels.social') ch WHERE c.organization_id=? AND c.project_id=? AND json_extract(c.payload,'$.status')='draft' AND ch.value IN ('linkedin','facebook','instagram','twitter','telegram','tiktok','pinterest','youtube')
       ) ORDER BY updated_at DESC,id,platform LIMIT 50`).all(...this.args(),...this.args()) as {kind:'content'|'campaign';id:string;platform:string;total:number}[];
       sourceTotal=candidates[0]?.total||0;for(const item of candidates)sources.push(this.source(item.kind,item.id,item.platform));
     }
@@ -128,7 +138,7 @@ export class SocialPublications {
       return { id:item.id, name:item.account_name, platform:item.platform, accountId:item.account_id, accountType:isLinkedInOrganization(item.platform,item.account_id,item.integration_id)?'organization' as const:'person' as const, revision, configured:Boolean(this.config(item.platform)), ready:Boolean(proof), checkedAt:proof?.checked_at || null, expiresAt:item.expires_at ? new Date(item.expires_at).toISOString() : null };
     }) : [];
     const rows = this.db.prepare(query+' ORDER BY p.scheduled_at DESC,j.rowid DESC LIMIT 20 OFFSET ?').all(...this.args(),(page-1)*20) as Row[];
-    return { items:rows.map(row=>this.describe(row)), total:(this.db.prepare('SELECT COUNT(*) AS n FROM platform_social_publications WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n, page, sources, sourceTotal, targets, canManage, configured:['linkedin','facebook','instagram','twitter','telegram'].some(platform=>Boolean(this.config(platform))), publishingEnabled:socialPublishingEnabled(), timezone:this.repo.workspace(this.scope.subject,...this.args())!.project.timezone };
+    return { items:rows.map(row=>this.describe(row)), total:(this.db.prepare('SELECT COUNT(*) AS n FROM platform_social_publications WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n, page, sources, sourceTotal, targets, canManage, configured:['linkedin','facebook','instagram','twitter','telegram','tiktok','pinterest','youtube'].some(platform=>Boolean(this.config(platform))), publishingEnabled:socialPublishingEnabled(), timezone:this.repo.workspace(this.scope.subject,...this.args())!.project.timezone };
   }
   async check(connectionId: string, read?: PublishCheck) {
     this.authorize(true); const connection=this.connection(connectionId), revision=hash(connection.encrypted_credentials), config=this.config(connection.platform);
@@ -142,7 +152,7 @@ export class SocialPublications {
       this.db.prepare('INSERT INTO platform_social_publish_checks VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(connection_id) DO UPDATE SET revision=excluded.revision,configuration_revision=excluded.configuration_revision,manager_id=excluded.manager_id,checked_at=excluded.checked_at,expires_at=excluded.expires_at,check_id=excluded.check_id').run(connectionId,...this.args(),revision,config,this.scope.subject,now,now,checkId);
     }).immediate();
     try {
-      const credentials=decryptCredentials<StoredCredentials>(connection.encrypted_credentials,this.key,...this.args(),connectionId), proof=await (read || this.checker(connection.platform,connection.accountType))(credentials.accessToken,connection.account_id,credentials);
+      const credentials=decryptCredentials<StoredCredentials>(connection.encrypted_credentials,this.key,...this.args(),connectionId), proof=await (read || (isChannelPlatform(connection.platform)?this.channelCheck(connection):this.checker(connection.platform,connection.accountType)))(credentials.accessToken,connection.account_id,credentials);
       return this.db.transaction(()=>{
         this.authorize(true); if (hash(this.connection(connectionId).encrypted_credentials)!==revision || this.config(connection.platform)!==config || !Number.isFinite(proof.expiresAt) || proof.expiresAt<=Date.now()+60000) throw new Error();
         const checkedAt=new Date().toISOString(), expiresAt=new Date(Math.min(proof.expiresAt,Date.now()+300000)).toISOString();
@@ -150,7 +160,7 @@ export class SocialPublications {
         if(!updated.changes)throw new Error();
         this.audit('social.publish.check'); return {ready:true,checkedAt,expiresAt};
       }).immediate();
-    } catch { throw new MarketingStoreError(connection.accountType==='organization'?'LinkedIn şirket yayın izni doğrulanamadı. w_organization_social, r_organization_admin, seçilen sayfa rolü ve token süresini kontrol edin.':connection.platform==='telegram'?'Telegram yayın izni doğrulanamadı. Botu kanala yönetici olarak ekleyin ve “Mesaj gönder” iznini açın; bot token’ının güncel olduğunu kontrol edin.':connection.platform==='twitter'?'X yayın izni doğrulanamadı. X OAuth ile yayın izni isteyerek yeniden bağlanın; tweet.write, token süresi ve uygulama erişimini kontrol edin.':connection.platform==='instagram'?'Instagram yayın izni doğrulanamadı. instagram_content_publish izni, bağlı sayfa ve içerik oluşturma görevini kontrol edin.':connection.platform==='facebook'?'Facebook yayın izni doğrulanamadı. Yayın izniyle yeniden bağlanın; pages_manage_posts ve sayfanın içerik oluşturma görevini kontrol edin.':'LinkedIn yayın izni doğrulanamadı. w_member_social iznini, token süresini ve hesabı kontrol edin.',409); }
+    } catch { if(isChannelPlatform(connection.platform))throw new MarketingStoreError('Kanal yayın izni doğrulanamadı. Hesabı yeniden bağlayın; uygulama izinlerini ve (TikTok) gizlilik ayarını kontrol edin.'); throw new MarketingStoreError(connection.accountType==='organization'?'LinkedIn şirket yayın izni doğrulanamadı. w_organization_social, r_organization_admin, seçilen sayfa rolü ve token süresini kontrol edin.':connection.platform==='telegram'?'Telegram yayın izni doğrulanamadı. Botu kanala yönetici olarak ekleyin ve “Mesaj gönder” iznini açın; bot token’ının güncel olduğunu kontrol edin.':connection.platform==='twitter'?'X yayın izni doğrulanamadı. X OAuth ile yayın izni isteyerek yeniden bağlanın; tweet.write, token süresi ve uygulama erişimini kontrol edin.':connection.platform==='instagram'?'Instagram yayın izni doğrulanamadı. instagram_content_publish izni, bağlı sayfa ve içerik oluşturma görevini kontrol edin.':connection.platform==='facebook'?'Facebook yayın izni doğrulanamadı. Yayın izniyle yeniden bağlanın; pages_manage_posts ve sayfanın içerik oluşturma görevini kontrol edin.':'LinkedIn yayın izni doğrulanamadı. w_member_social iznini, token süresini ve hesabı kontrol edin.',409); }
   }
   private row(id: string) { const row=this.db.prepare(query+' AND j.id=?').get(...this.args(),id) as Row|undefined; if(!row)throw new MarketingStoreError('Yayın işi bulunamadı.',404);return row; }
   private snapshot(row: Row) { return decryptCredentials<Snapshot>(row.encrypted_snapshot,this.key,...this.args(),`publication:${row.id}`); }
@@ -323,7 +333,7 @@ export class SocialPublications {
         this.db.transaction(()=>{if(!this.holder(id,lease))return;this.live(claimed,manualRunner);this.finish(id,'rehearsed',null);}).immediate();return;
       }
       const credentials=decryptCredentials<StoredCredentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);reason='unavailable';
-      const access=await (check || this.checker(connection.platform,connection.accountType))(credentials.accessToken,connection.account_id,credentials);
+      const access=await (check || (isChannelPlatform(connection.platform)?this.channelCheck(connection):this.checker(connection.platform,connection.accountType)))(credentials.accessToken,connection.account_id,credentials);
       if(!this.holder(id,lease))return;this.live(claimed,manualRunner);
       if(!Number.isFinite(access.expiresAt)||access.expiresAt<=Date.now()+60000)throw new Error();
       const reserve=()=>this.db.transaction(()=>{
@@ -343,14 +353,26 @@ export class SocialPublications {
       else if(connection.platform==='linkedin'&&snapshot.image)result=await (connection.accountType==='organization'?publishLinkedInOrganizationImage:publishLinkedInImage)(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.image,reserve);
       // X image posts need the media.write grant, which older X connections do not have; they reconnect first.
       else if(connection.platform==='twitter'&&snapshot.image)result=credentials.xPublishing?.scopes.includes('media.write')?await publishXImage(credentials.accessToken,snapshot.accountId,snapshot.text,snapshot.image,reserve):{state:'blocked',postId:null};
+      else if(isChannelPlatform(connection.platform)){
+        const token=(access as {token?:string}).token||credentials.accessToken;
+        if(connection.platform==='pinterest')result=snapshot.image?await publishPinterestPin(token,snapshot.accountId,snapshot.title,snapshot.text,snapshot.image,reserve):{state:'blocked',postId:null};
+        else{
+          // The approved file must still be the one at the address; YouTube's upload may take minutes, so the lease grows.
+          let current:PublicationVideo|null=null;try{current=snapshot.video?await checkPublicationVideo(snapshot.video,this.videoReader):null;}catch{current=null;}
+          if(!this.holder(id,lease))return;this.live(claimed,manualRunner);
+          if(!current||!snapshot.video||!sameVideo(current,snapshot.video)){result={state:'blocked',postId:null};reason='media_changed';}
+          else if(connection.platform==='tiktok')result=await publishTikTokVideo(token,snapshot.text,snapshot.video,reserve);
+          else{this.db.prepare('UPDATE platform_jobs SET lease_until=? WHERE id=? AND lease_token=?').run(new Date(Date.now()+15*60000).toISOString(),id,lease);result=await publishYouTubeShort(token,snapshot.text,snapshot.video,reserve);}
+        }
+      }
       else result=await (transport || (connection.accountType==='organization'?publishLinkedInOrganizationText:connection.platform==='twitter'?publishXText:connection.platform==='telegram'?publishTelegramText:connection.platform==='facebook'?publishFacebookText:publishLinkedInText))(credentials.accessToken,snapshot.accountId,snapshot.text,reserve);
     }catch{try{this.live(claimed,manualRunner);}catch{reason='changed';}}
     this.db.transaction(()=>{
       if(!this.holder(id,lease))return;const row=this.row(id);
       if(row.submitted_at){
-        const snapshot=this.snapshot(row),facebook=snapshot.platform==='facebook',instagram=snapshot.platform==='instagram',x=snapshot.platform==='twitter',telegram=snapshot.platform==='telegram';
-        const accepted=result.state==='accepted'&&typeof result.postId==='string'&&(x?xPostId(result.postId):telegram?telegramPostId(result.postId):instagram?instagramId(result.postId):facebook?(snapshot.video?facebookVideoId(result.postId):validFacebookPost(result.postId,snapshot.accountId)):/^urn:li:(share|ugcPost):\d{1,30}$/.test(result.postId));
-        if(accepted){this.db.prepare('UPDATE platform_social_publications SET provider_post_id=?,provider_url=? WHERE job_id=?').run(result.postId,x?`https://x.com/i/status/${result.postId}`:telegram?(typeof result.postUrl==='string'&&/^https:\/\/t\.me\/[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(result.postUrl)?result.postUrl:null):instagram?instagramPermalink(result.postUrl):facebook?(snapshot.video?.format==='reel'?`https://www.facebook.com/reel/${result.postId}`:`https://www.facebook.com/${result.postId}`):`https://www.linkedin.com/feed/update/${result.postId}`,id);this.finish(id,'accepted',null);}
+        const snapshot=this.snapshot(row),channel=isChannelPlatform(snapshot.platform||'')?snapshot.platform as ChannelPlatform:null,facebook=snapshot.platform==='facebook',instagram=snapshot.platform==='instagram',x=snapshot.platform==='twitter',telegram=snapshot.platform==='telegram';
+        const accepted=result.state==='accepted'&&typeof result.postId==='string'&&(channel?channelPostId(channel,result.postId):x?xPostId(result.postId):telegram?telegramPostId(result.postId):instagram?instagramId(result.postId):facebook?(snapshot.video?facebookVideoId(result.postId):validFacebookPost(result.postId,snapshot.accountId)):/^urn:li:(share|ugcPost):\d{1,30}$/.test(result.postId));
+        if(accepted){this.db.prepare('UPDATE platform_social_publications SET provider_post_id=?,provider_url=? WHERE job_id=?').run(result.postId,channel?channelPostUrl(channel,result.postId!):x?`https://x.com/i/status/${result.postId}`:telegram?(typeof result.postUrl==='string'&&/^https:\/\/t\.me\/[A-Za-z][A-Za-z0-9_]{4,31}\/\d{1,12}$/.test(result.postUrl)?result.postUrl:null):instagram?instagramPermalink(result.postUrl):facebook?(snapshot.video?.format==='reel'?`https://www.facebook.com/reel/${result.postId}`:`https://www.facebook.com/${result.postId}`):`https://www.linkedin.com/feed/update/${result.postId}`,id);this.finish(id,'accepted',null);}
         else this.finish(id,result.state==='rejected'?'rejected':'uncertain',result.state==='rejected'?'unavailable':'interrupted');
       }else this.finish(id,'blocked',reason);
     }).immediate();

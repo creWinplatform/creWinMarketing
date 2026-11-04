@@ -7,7 +7,9 @@ import type { SocialConfiguration } from './social-configuration';
 export type MetaPublishingGrant = { userAccessToken: string; appId: string };
 export type XPublishingGrant = { configurationRevision: string; scopes: string[] };
 export type LinkedInOrganizationGrant = { memberSub:string; configurationRevision:string; publishing:boolean };
-export type StoredCredentials = { accessToken: string; refreshToken: string; googleOAuth?: boolean; expiresAt?: number; smtp?: SmtpConfiguration; social?: SocialConfiguration; metaPublishing?: MetaPublishingGrant; xPublishing?: XPublishingGrant; linkedinOrganization?:LinkedInOrganizationGrant };
+// TikTok, Pinterest, YouTube: the app revision and scopes at connect time and when the stored access token expires.
+export type ChannelPublishingGrant = { configurationRevision: string; scopes: string[]; accessExpiresAt: number };
+export type StoredCredentials = { accessToken: string; refreshToken: string; googleOAuth?: boolean; expiresAt?: number; smtp?: SmtpConfiguration; social?: SocialConfiguration; metaPublishing?: MetaPublishingGrant; xPublishing?: XPublishingGrant; linkedinOrganization?:LinkedInOrganizationGrant; channelPublishing?: ChannelPublishingGrant };
 export function encryptCredentials(value: object, key: string, organizationId: string, projectId: string, id: string) {
   const iv = randomBytes(12), cipher = createCipheriv('aes-256-gcm', Buffer.from(key, 'hex'), iv);
   cipher.setAAD(Buffer.from(projectScopeKey(organizationId, projectId, id)));

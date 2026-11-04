@@ -61,7 +61,7 @@ export interface CampaignContent {
   perPlatformContent?: Record<string, string>;
   ctaUrl?: string;
   /** Standard projects: one team-hosted https video, sent as the chosen format to Instagram and/or the Facebook Page. */
-  video?: { url: string; instagram?: 'reel' | 'story'; facebook?: 'feed' | 'reel' };
+  video?: { url: string; instagram?: 'reel' | 'story'; facebook?: 'feed' | 'reel'; tiktok?: 'feed'; youtube?: 'feed' };
 }
 
 export interface CampaignBackendChannelConfig {

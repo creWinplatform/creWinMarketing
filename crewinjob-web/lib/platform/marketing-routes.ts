@@ -38,21 +38,21 @@ function campaignInput(raw: Record<string, unknown>, timezone: string, goalIds: 
   if (goalId && !goalIds.includes(goalId)) throw new MarketingStoreError('Bu hedef projede bulunamadı.');
   if (!['awareness', 'traffic', 'registration', 'reactivation'].includes(objective)) throw new MarketingStoreError('Geçersiz kampanya hedefi.');
   const platforms = Array.isArray(channels.social) ? channels.social : [];
-  if (!platforms.every(value => typeof value === 'string' && ['linkedin', 'facebook', 'instagram', 'twitter', 'tiktok'].includes(value))) throw new MarketingStoreError('Geçersiz kanal.');
+  if (!platforms.every(value => typeof value === 'string' && ['linkedin', 'facebook', 'instagram', 'twitter', 'tiktok', 'pinterest', 'youtube'].includes(value))) throw new MarketingStoreError('Geçersiz kanal.');
   if (platforms.length === 0 && channels.email !== true) throw new MarketingStoreError('En az bir kanal seçin.');
   const ctaUrl = string(content.ctaUrl, 2048).trim();
   if (ctaUrl) { const url = new URL(ctaUrl); if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new MarketingStoreError('Geçersiz hedef bağlantı.'); }
   // A campaign video goes to Instagram and/or the Facebook Page in the format chosen for each; other channels get the text.
   let video: CampaignContent['video'];
   if (content.video && typeof content.video === 'object') {
-    const value = content.video as Record<string, unknown>, formats: { instagram?: 'reel' | 'story'; facebook?: 'feed' | 'reel' } = {};
-    for (const platform of ['instagram', 'facebook'] as const) if (value[platform] !== undefined && value[platform] !== '') {
-      if (!platforms.includes(platform)) throw new MarketingStoreError('Video biçimi yalnız kampanyada seçili Instagram veya Facebook kanalı için verilebilir.');
+    const value = content.video as Record<string, unknown>, formats: { instagram?: 'reel' | 'story'; facebook?: 'feed' | 'reel'; tiktok?: 'feed'; youtube?: 'feed' } = {};
+    for (const platform of ['instagram', 'facebook', 'tiktok', 'youtube'] as const) if (value[platform] !== undefined && value[platform] !== '') {
+      if (!platforms.includes(platform)) throw new MarketingStoreError('Video biçimi yalnız kampanyada seçili Instagram, Facebook, TikTok veya YouTube kanalı için verilebilir.');
       const normalized = normalizeContentVideo({ url: value.url, format: value[platform] }, platform);
       (formats as Record<string, string>)[platform] = normalized.format;
       video = { url: normalized.url, ...formats };
     }
-    if (!video) throw new MarketingStoreError('Video için Instagram veya Facebook biçimini seçin.');
+    if (!video) throw new MarketingStoreError('Video için Instagram, Facebook, TikTok veya YouTube biçimini seçin.');
   }
   return { name, ...(goalId ? { goalId } : {}), objective: objective as CreateCampaignInput['objective'], audience: { fillBuckets: [] },
     channels: { social: Array.from(new Set(platforms)) as string[], email: channels.email === true, whatsapp: false, telegram: false, paidAds: [] },
@@ -70,7 +70,7 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   const content = string(raw.content, 100000, current?.content).trim();
   if (!content) throw new MarketingStoreError('İçerik gerekli.');
   const platform = string(raw.platform, 50, current?.platform || 'email');
-  if (!['email', 'linkedin', 'facebook', 'instagram', 'twitter', 'telegram', 'tiktok', 'blog'].includes(platform)) throw new MarketingStoreError('Geçersiz kanal.');
+  if (!['email', 'linkedin', 'facebook', 'instagram', 'twitter', 'telegram', 'tiktok', 'pinterest', 'youtube', 'blog'].includes(platform)) throw new MarketingStoreError('Geçersiz kanal.');
   const language = string(raw.language, 10, current?.language || 'tr');
   if (!['tr', 'en'].includes(language)) throw new MarketingStoreError('Geçersiz dil.');
   let images=current?.images;
@@ -89,7 +89,7 @@ async function contentInput(raw: Record<string, unknown>, current?: HistoryItem)
   if(raw.video===''||raw.video===null)video=undefined;
   else if(raw.video!==undefined)video=normalizeContentVideo(raw.video,platform);
   if(video&&(images?.length||imageData))throw new MarketingStoreError('Video ile görsel aynı içerikte kullanılamaz.');
-  if(video&&!['instagram','facebook'].includes(platform))throw new MarketingStoreError('Video yalnız Instagram (Reels, Story) ve Facebook sayfası (video, Reels) için destekleniyor.');
+  if(video&&!['instagram','facebook','tiktok','youtube'].includes(platform))throw new MarketingStoreError('Video yalnız Instagram (Reels, Story), Facebook sayfası (video, Reels), TikTok ve YouTube Shorts için destekleniyor.');
   const story=raw.story===undefined?Boolean(current?.story):raw.story===true;
   if(story&&(platform!=='instagram'||!imageData||images?.length||video))throw new MarketingStoreError('Görselli Story yalnız tek görselli Instagram içeriği için seçilebilir.');
   return { id: current?.id || `hist_${randomUUID()}`, timestamp: current?.timestamp || Date.now(),

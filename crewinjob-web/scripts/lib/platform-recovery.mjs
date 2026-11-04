@@ -5,7 +5,7 @@ import { lstat, open, readFile, realpath } from 'node:fs/promises';
 import { join, parse, relative, resolve, sep } from 'node:path';
 
 // Bump alongside schema changes and add any new encrypted-column AAD contracts.
-export const MAX_RECOVERY_SCHEMA = 67;
+export const MAX_RECOVERY_SCHEMA = 68;
 const MAX_DATABASE_BYTES = 4 * 1024 ** 3;
 const identifier = value => `"${value.replaceAll('"', '""')}"`;
 export class RecoveryError extends Error {
@@ -105,6 +105,7 @@ const ENCRYPTED_COLUMNS = [
   { since: 54, table: 'platform_billing_live_orders', column: 'encrypted_token', resource: row => row.id },
   { since: 62, table: 'platform_push_subscriptions', column: 'encrypted_endpoint', resource: row => `push:${row.id}` },
   { since: 67, table: 'platform_iys_recipients', column: 'encrypted_recipient', resource: row => `iys-recipient:${row.channel}:${row.recipient_key}` },
+  { since: 68, table: 'platform_channel_tokens', column: 'encrypted_refresh', resource: row => `channel-refresh:${row.connection_id}` },
   { since: 67, table: 'platform_iys_outbox', column: 'encrypted_recipient', resource: row => `iys-outbox:${row.id}` },
 ];
 // Both spellings mark an encrypted field: encrypted_<name> (older tables) and <name>_encrypted (WhatsApp, inbox).

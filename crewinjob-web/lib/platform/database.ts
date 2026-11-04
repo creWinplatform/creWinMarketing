@@ -1434,6 +1434,23 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(67,datetime('now'));
   `))();
+  // TikTok, Pinterest and YouTube publishing: social accounts accept the three platforms (same columns, rows kept), and a
+  // provider that rotates the refresh token keeps the new one here, encrypted, so the connection envelope stays as approved.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=68').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_social_accounts_v68 (
+      connection_id TEXT PRIMARY KEY REFERENCES platform_connections(id),
+      platform TEXT NOT NULL CHECK(platform IN ('linkedin','twitter','facebook','instagram','telegram','tiktok','pinterest','youtube')),
+      account_id TEXT NOT NULL, expires_at INTEGER, page_id TEXT, graph_version TEXT
+    );
+    INSERT INTO platform_social_accounts_v68(connection_id,platform,account_id,expires_at,page_id,graph_version) SELECT connection_id,platform,account_id,expires_at,page_id,graph_version FROM platform_social_accounts;
+    DROP TABLE platform_social_accounts;
+    ALTER TABLE platform_social_accounts_v68 RENAME TO platform_social_accounts;
+    CREATE TABLE platform_channel_tokens (
+      connection_id TEXT PRIMARY KEY REFERENCES platform_connections(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      revision TEXT NOT NULL CHECK(length(revision)=64), encrypted_refresh TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(68,datetime('now'));
+  `))();
   return db;
 }
 

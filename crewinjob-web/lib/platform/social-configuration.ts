@@ -1,11 +1,16 @@
 import 'server-only';
-export type SocialConfiguration = { platform: 'linkedin' | 'twitter' | 'facebook' | 'instagram' | 'telegram'; accountId: string; accountType?: 'person' | 'organization'; pageId?: string; graphVersion?: string };
+export type SocialConfiguration = { platform: 'linkedin' | 'twitter' | 'facebook' | 'instagram' | 'telegram' | 'tiktok' | 'pinterest' | 'youtube'; accountId: string; accountType?: 'person' | 'organization'; pageId?: string; graphVersion?: string };
 export const isLinkedInOrganization = (platform:string,accountId:string,integrationId:string) => platform==='linkedin'&&integrationId===`linkedin:organization:${accountId}`;
 export function normalizeSocialConfiguration(raw: unknown): SocialConfiguration {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Social account required.');
   const value = raw as Record<string, unknown>;
-  if (typeof value.platform !== 'string' || !['linkedin', 'twitter', 'facebook', 'instagram', 'telegram'].includes(value.platform) || typeof value.accountId !== 'string') throw new Error('Unsupported social account.');
+  if (typeof value.platform !== 'string' || !['linkedin', 'twitter', 'facebook', 'instagram', 'telegram', 'tiktok', 'pinterest', 'youtube'].includes(value.platform) || typeof value.accountId !== 'string') throw new Error('Unsupported social account.');
   const accountId = value.accountId.trim();
+  // TikTok: the creator's open_id. Pinterest: the board's numeric id. YouTube: the channel id.
+  if (value.platform === 'tiktok' || value.platform === 'youtube') {
+    if (!(value.platform === 'tiktok' ? /^[A-Za-z0-9_.-]{1,128}$/ : /^UC[A-Za-z0-9_-]{22}$/).test(accountId)) throw new Error('Invalid social account ID.');
+    return { platform: value.platform, accountId };
+  }
   // Telegram channels are addressed by @username or by their -100… chat id.
   if (!(value.platform === 'telegram' ? /^(-100\d{6,15}|@[A-Za-z][A-Za-z0-9_]{4,31})$/ : value.platform !== 'linkedin' ? /^\d{1,30}$/ : /^[a-zA-Z0-9_-]{1,128}$/).test(accountId)) throw new Error('Invalid social account ID.');
   if(value.accountType!==undefined&&(value.platform!=='linkedin'||!['person','organization'].includes(String(value.accountType))))throw new Error('Invalid account type.');
