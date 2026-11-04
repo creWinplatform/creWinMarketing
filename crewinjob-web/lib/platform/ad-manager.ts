@@ -253,6 +253,18 @@ export class ProjectAds{
       else if(Array.isArray(insights.data)&&!insights.data.length){spend=0;impressions=0;clicks=0;}}catch{throw new MarketingStoreError('Meta harcama verisi şu anda alınamadı.',502);}
     return this.db.transaction(()=>{this.db.prepare('UPDATE platform_ad_plans SET spend_minor=?,impressions=?,clicks=?,spend_checked_at=?,updated_at=? WHERE id=?').run(spend,impressions,clicks,new Date().toISOString(),new Date().toISOString(),row.id);return this.read();}).immediate();
   }
+  // Spend per day as the provider reports it, for the mobile report (CPI/ROAS). Read only; nothing is estimated.
+  async dailySpend(raw:{id:unknown;from:string;to:string}):Promise<{plan:{id:string;name:string;currency:string};days:{day:string;amount:number}[]}>{
+    this.authorize('read');const row=this.row(raw.id);if(!row.provider_campaign_id)throw new MarketingStoreError('Plan reklam sağlayıcısında oluşturulmamış.',409);
+    if(!DATE.test(raw.from)||!DATE.test(raw.to)||raw.from>raw.to)throw new MarketingStoreError('Harcama aralığı geçersiz.');
+    const {connection,credentials}=this.credentials(row.connection_id),unit=adMinorUnit(row.currency);let days:{day:string;spendMinor:number}[]=[];
+    try{
+      if(this.provider!=='meta')days=await (this.client(credentials,await this.token(connection,credentials)) as GoogleAdsClient|LinkedInAdsClient).dailySpend(this.providerPlan(row),unit,raw.from,raw.to);
+      else{const insights=await this.graph('GET',`${row.provider_campaign_id}/insights`,credentials.accessToken,{fields:'spend,date_start',time_increment:'1',time_range:JSON.stringify({since:raw.from,until:raw.to}),limit:'100'});
+        days=(Array.isArray(insights.data)?insights.data as Record<string,unknown>[]:[]).flatMap(item=>typeof item.date_start==='string'&&DATE.test(item.date_start)&&typeof item.spend==='string'&&/^\d+(\.\d+)?$/.test(item.spend)?[{day:item.date_start,spendMinor:Math.round(Number(item.spend)*unit)}]:[]);}
+    }catch(reason){if(reason instanceof MarketingStoreError)throw reason;throw new MarketingStoreError(`${PROVIDER_NAME[this.provider]} harcama verisi şu anda alınamadı.`,502);}
+    return {plan:{id:row.id,name:row.name,currency:row.currency},days:days.filter(item=>item.day>=raw.from&&item.day<=raw.to).map(item=>({day:item.day,amount:item.spendMinor/unit}))};
+  }
   read():AdsSnapshot{
     this.authorize();this.settleStale();const connection=this.connection(),policy=this.policy();let account:AdsSnapshot['account']=null;
     let pendingVerification=false;

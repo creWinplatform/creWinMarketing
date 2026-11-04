@@ -10,7 +10,10 @@ import { CampaignReviews } from './campaign-review';
 import { EmailPilotQueue } from './email-pilots';
 import { SesProvider } from './ses-provider';
 import { emailIdentity } from './email-safety';
-import { AUTOMATION_LIMITS, type AutomationDefinition, type AutomationState, type AutomationsSnapshot, type AutomationView, type EnrollmentState } from './automation-types';
+import { MobileGrowth } from './mobile-store';
+import { MobileDelivery } from './mobile-delivery';
+import { mobileEntity } from './mobile-ingestion';
+import { AUTOMATION_LIMITS, type AutomationChannel, type AutomationDefinition, type AutomationState, type AutomationsSnapshot, type AutomationView, type EnrollmentState } from './automation-types';
 
 type Row={id:string;name:string;state:AutomationState;definition_json:string;source_id:string;revision:number;created_by:string;activated_by:string|null;activated_at:string|null;last_evaluated_at:string|null;updated_at:string};
 type Enrollment={id:number;entity_id:string;entered_at:string;due_at:string;state:EnrollmentState;reason:string|null};
@@ -49,10 +52,23 @@ export class ProjectAutomations{
     }else throw new MarketingStoreError('Tetikleyici geçersiz.');
     const exitEvent=raw.exitEvent===null||raw.exitEvent===undefined||raw.exitEvent===''?null:typeof raw.exitEvent==='string'&&EVENT.test(raw.exitEvent)?raw.exitEvent:undefined;
     if(exitEvent===undefined)throw new MarketingStoreError('Çıkış olayı adı geçersiz.');
+    const channel:AutomationChannel=raw.channel==='push'||raw.channel==='in_app'?raw.channel:'email';
     const campaign=typeof raw.campaignId==='string'?new ProjectMarketingStore(this.db,this.scope).campaign(raw.campaignId):undefined;
-    if(!campaign||!campaign.channels.email)throw new MarketingStoreError('E-posta kanalı açık bir kampanya seçin.',404);
-    if(!campaign.segmentBinding||campaign.segmentBinding.sourceId!==sourceId)throw new MarketingStoreError('Kampanyanın kitlesi otomasyonla aynı veri kaynağından olmalı.',409);
-    return {sourceId,definition:{name,trigger:definitionTrigger,waitDays:int(raw.waitDays,0,AUTOMATION_LIMITS.waitDays,'Bekleme süresi 0–30 gün olmalı.'),exitEvent,exitOnLeave:raw.exitOnLeave===true&&definitionTrigger.kind==='segment',campaignId:campaign.id,capDays:int(raw.capDays,1,AUTOMATION_LIMITS.capDays,'Sıklık sınırı 1–90 gün olmalı.')}};
+    let mobile:AutomationDefinition['mobile']=null;
+    if(channel==='email'){
+      if(!campaign||!campaign.channels.email)throw new MarketingStoreError('E-posta kanalı açık bir kampanya seçin.',404);
+      if(!campaign.segmentBinding||campaign.segmentBinding.sourceId!==sourceId)throw new MarketingStoreError('Kampanyanın kitlesi otomasyonla aynı veri kaynağından olmalı.',409);
+    }else{
+      // The message text comes from a campaign draft, the delivery from the app's own push or in-app connection.
+      if(!campaign||campaign.status!=='draft')throw new MarketingStoreError('Mobil mesaj için bir kampanya taslağı seçin.',404);
+      // A saved rule keeps them under "mobile" (re-checked on activation); the editor sends them flat.
+      const target=(raw.mobile&&typeof raw.mobile==='object'?raw.mobile:raw) as Record<string,unknown>,service=new MobileGrowth(this.db,this.scope,this.key),appId=typeof target.appId==='string'?target.appId:'',connectionId=typeof target.connectionId==='string'?target.connectionId:'';
+      let app;try{app=service.app(appId);}catch{throw new MarketingStoreError('Mobil uygulama bu projede bulunamadı.',404);}
+      const connection=service.integrations(app.id).find(item=>item.id===connectionId);
+      if(!connection||!connection.active||!(channel==='push'?['onesignal','firebase'].includes(connection.provider):connection.provider==='bridge'))throw new MarketingStoreError('Kanala uygun etkin bir mobil bağlantı seçin.',409);
+      mobile={appId:app.id,connectionId};
+    }
+    return {sourceId,definition:{name,trigger:definitionTrigger,waitDays:int(raw.waitDays,0,AUTOMATION_LIMITS.waitDays,'Bekleme süresi 0–30 gün olmalı.'),exitEvent,exitOnLeave:raw.exitOnLeave===true&&definitionTrigger.kind==='segment',campaignId:campaign.id,capDays:int(raw.capDays,1,AUTOMATION_LIMITS.capDays,'Sıklık sınırı 1–90 gün olmalı.'),...(channel==='email'?{}:{channel,mobile})}};
   }
   save(raw:Record<string,unknown>){
     this.authorize('content.write');const {definition,sourceId}=this.normalize(raw);
@@ -121,7 +137,9 @@ export class ProjectAutomations{
       const row=this.row(raw.id);if(row.state!=='active')throw new MarketingStoreError('Önce otomasyonu etkinleştirin.',409);
       const definition=this.definition(row),ready=this.db.prepare("SELECT id,entity_id,entered_at,due_at,state,reason FROM platform_automation_enrollments WHERE automation_id=? AND state='ready' ORDER BY due_at LIMIT ?").all(row.id,AUTOMATION_LIMITS.approvePerRun) as Enrollment[];
       if(!ready.length)throw new MarketingStoreError('Onay bekleyen kişi yok.',409);
-      const now=new Date().toISOString(),version=(this.db.prepare('SELECT version FROM platform_product_sources WHERE connection_id=? AND organization_id=? AND project_id=?').get(row.source_id,...this.args()) as {version:number}).version;
+      const now=new Date().toISOString();
+      if(definition.channel==='push'||definition.channel==='in_app')return this.approveMobile(row,definition,ready,mode,raw.sendAcknowledged===true,now);
+      const version=(this.db.prepare('SELECT version FROM platform_product_sources WHERE connection_id=? AND organization_id=? AND project_id=?').get(row.source_id,...this.args()) as {version:number}).version;
       const members=this.members(row.source_id,ready.map(item=>item.entity_id)),eligible:EligibleEmailRecipient[]=[];
       const eligibility=new EmailRecipients(this.db,this.scope,this.key).eligibility(row.source_id,version,members,undefined,eligible);
       if(!eligibility.mappingReady)throw new MarketingStoreError('Güncel alıcı eşleştirmesi gerekli.',409);
@@ -140,21 +158,43 @@ export class ProjectAutomations{
       this.run(row.id,mode,job.id,counts,now);this.audit(`automation.approve.${mode}`);return {counts,job,snapshot:this.read()};
     }).immediate();
   }
+  // Push / in-app: the ready people whose app registration has consent for the channel get one message job through the
+  // app's own flow (preview, approval, live and broadcast switches, daily push limit). The others leave on a send.
+  private approveMobile(row:Row,definition:AutomationDefinition,ready:Enrollment[],mode:'rehearsal'|'send',acknowledged:boolean,now:string){
+    const mobile=definition.mobile!,service=new MobileGrowth(this.db,this.scope,this.key),delivery=new MobileDelivery(service),counts={notSendable:0,sent:0,held:0,rehearsed:0};
+    const contactsOf=(ids:string[])=>{const keys=new Map(ids.map(id=>{try{return [mobileEntity(this.key,mobile.appId,id),id] as const;}catch{return ['',id] as const;}}));
+      const found=new Set<string>();for(const [key,id] of keys){if(!key)continue;const has=this.db.prepare(`SELECT 1 FROM platform_mobile_contacts WHERE app_id=? AND organization_id=? AND project_id=? AND entity_key=? AND ${definition.channel==='push'?'push_consent=1':'in_app_consent=1'} LIMIT 1`).get(mobile.appId,...this.args(),key);if(has)found.add(id);}return found;};
+    const reachable=contactsOf(ready.map(item=>item.entity_id)),update=this.db.prepare('UPDATE platform_automation_enrollments SET state=?,reason=?,job_id=?,updated_at=? WHERE id=?');
+    const sendable=ready.filter(item=>{const ok=reachable.has(item.entity_id);if(!ok&&mode==='send'){update.run('exited','not_sendable',null,now,item.id);counts.notSendable++;}return ok;});
+    if(!sendable.length){if(mode==='send')this.run(row.id,mode,null,counts,now);return {counts,job:null,snapshot:this.read()};}
+    const input={appId:mobile.appId,connectionId:mobile.connectionId,campaignId:definition.campaignId,channel:definition.channel,mode:mode==='send'?'live':'rehearsal',path:'/',audience:'entities',entityIds:sendable.map(item=>item.entity_id),expiresAt:new Date(Date.parse(now)+2*DAY).toISOString()};
+    const preview=delivery.preview(input),job=delivery.enqueue({...input,expectedDigest:preview.digest,idempotencyKey:randomUUID(),acknowledged});
+    for(const item of sendable){if(mode==='send'){update.run('sent',null,job.id,now,item.id);counts.sent++;}else counts.rehearsed++;}
+    this.run(row.id,mode,job.id,counts,now);this.audit(`automation.approve.${mode}`);return {counts,job,snapshot:this.read()};
+  }
   private run(id:string,mode:'rehearsal'|'send',jobId:string|null,counts:Record<string,number>,at:string){this.db.prepare("INSERT INTO platform_automation_runs(id,automation_id,organization_id,project_id,kind,mode,actor_id,job_id,counts_json,created_at) VALUES(?,?,?,?,'approve',?,?,?,?,?)").run(`autorun_${randomUUID()}`,id,...this.args(),mode,this.scope.subject,jobId,JSON.stringify(counts),at);}
+  // Apps and their push / in-app connections, for a push or in-app automation (empty without the mobile module).
+  private mobileOptions():AutomationsSnapshot['mobile']{
+    try{const service=new MobileGrowth(this.db,this.scope,this.key),apps=service.apps();
+      return {apps:apps.map(app=>({id:app.id,name:app.name})),connections:apps.flatMap(app=>service.integrations(app.id).filter(item=>item.active&&['onesignal','firebase','bridge'].includes(item.provider)).map(item=>({id:item.id,appId:app.id,provider:item.provider})))};}
+    catch{return {apps:[],connections:[]};}
+  }
   read():AutomationsSnapshot{
     this.authorize();const rows=this.db.prepare('SELECT * FROM platform_automations WHERE organization_id=? AND project_id=? ORDER BY created_at,id').all(...this.args()) as Row[];
-    const store=new ProjectMarketingStore(this.db,this.scope),campaigns=store.listCampaigns().filter(item=>item.channels.email),reviews=this.can('content.write')?new CampaignReviews(this.db,this.scope,this.key):null;
+    const store=new ProjectMarketingStore(this.db,this.scope),allCampaigns=store.listCampaigns(),campaigns=allCampaigns.filter(item=>item.channels.email),reviews=this.can('content.write')?new CampaignReviews(this.db,this.scope,this.key):null;
     const segments=this.db.prepare('SELECT s.id,s.name,s.version,v.source_id FROM platform_segments s JOIN platform_segment_versions v ON v.segment_id=s.id AND v.version=s.version WHERE s.organization_id=? AND s.project_id=? AND s.archived=0 ORDER BY s.name').all(...this.args()) as {id:string;name:string;version:number;source_id:string}[];
     const automations=rows.map((row):AutomationView=>{
       const definition=this.definition(row),counts={waiting:0,ready:0,sent:0,exited:0} as Record<EnrollmentState,number>,reasons:Record<string,number>={};
       for(const item of this.db.prepare('SELECT state,reason,COUNT(*) n FROM platform_automation_enrollments WHERE automation_id=? GROUP BY state,reason').all(row.id) as {state:EnrollmentState;reason:string|null;n:number}[]){counts[item.state]+=item.n;if(item.reason)reasons[item.reason]=(reasons[item.reason]||0)+item.n;}
       const runs=(this.db.prepare('SELECT kind,mode,job_id,counts_json,created_at FROM platform_automation_runs WHERE automation_id=? ORDER BY created_at DESC,rowid DESC LIMIT 5').all(row.id) as {kind:'evaluate'|'approve';mode:'rehearsal'|'send'|null;job_id:string|null;counts_json:string;created_at:string}[]).map(item=>({kind:item.kind,mode:item.mode,createdAt:item.created_at,counts:JSON.parse(item.counts_json),jobId:item.job_id}));
       return {...definition,id:row.id,state:row.state,revision:row.revision,sourceId:row.source_id,activatedAt:row.activated_at,lastEvaluatedAt:row.last_evaluated_at,updatedAt:row.updated_at,counts,reasons,runs,
-        campaignName:campaigns.find(item=>item.id===definition.campaignId)?.name||null,segmentName:definition.trigger.kind==='segment'?segments.find(item=>item.id===(definition.trigger as {segmentId:string}).segmentId)?.name||null:null};
+        campaignName:allCampaigns.find(item=>item.id===definition.campaignId)?.name||null,segmentName:definition.trigger.kind==='segment'?segments.find(item=>item.id===(definition.trigger as {segmentId:string}).segmentId)?.name||null:null};
     });
     const sources=this.can('content.write')?new ProductSegments(this.db,this.scope).sources().map(item=>({id:item.id,name:item.name,eventNames:item.eventNames})):[];
     return {automations,segments:segments.map(item=>({id:item.id,name:item.name,version:item.version,sourceId:item.source_id})),sources,
-      campaigns:campaigns.map(item=>{let approval='none';try{approval=reviews?reviews.get(item.id).approval:'none';}catch{approval='none';}return {id:item.id,name:item.name,sourceId:item.segmentBinding?.sourceId||null,approval};}),
+      campaigns:[...campaigns.map(item=>{let approval='none';try{approval=reviews?reviews.get(item.id).approval:'none';}catch{approval='none';}return {id:item.id,name:item.name,sourceId:item.segmentBinding?.sourceId||null,approval,email:true};}),
+        ...allCampaigns.filter(item=>!item.channels.email&&item.status==='draft').map(item=>({id:item.id,name:item.name,sourceId:item.segmentBinding?.sourceId||null,approval:'none',email:false}))],
+      mobile:this.mobileOptions(),
       canWrite:this.can('content.write'),canActivate:this.can('campaign.approve'),canApprove:this.canApprove(),sendingEnabled:new SesProvider(this.db,this.scope,this.key).state().ready};
   }
 }

@@ -9,7 +9,7 @@ import { linkTag } from './link-tracking';
 import { LINK_TAG } from './link-tracking-types';
 import { ryzevoFeature } from './ryzevo-features';
 import { crewinTaggedItems } from './crewin-links';
-import { ATTRIBUTION_CAMPAIGN, ATTRIBUTION_LABEL, ATTRIBUTION_LIMITS as LIMITS, ATTRIBUTION_PERIODS, ATTRIBUTION_WINDOW_DAYS as WINDOW, type AttributionChannel, type AttributionItem, type AttributionOther, type AttributionPeriod, type AttributionReport, type AttributionSettingsView, type AttributionStage, type AttributionTagResult, type AttributionTouch } from './attribution-types';
+import { ATTRIBUTION_CAMPAIGN, ATTRIBUTION_LABEL, ATTRIBUTION_LIMITS as LIMITS, ATTRIBUTION_PERIODS, ATTRIBUTION_WINDOW_DAYS as WINDOW, type AttributionChannel, type AttributionItem, type AttributionOther, type AttributionPeriod, type AttributionReport, type AttributionItemKind, type AttributionSettingsView, type AttributionStage, type AttributionTagResult, PROFILE_NAMES, PROFILE_PLATFORMS, type AttributionTouch } from './attribution-types';
 
 type Scope = { organizationId: string; projectId: string };
 type Settings = { value_connection_id: string | null; value_event: string | null; value_key: string | null; currency: string | null; updated_at: string };
@@ -52,14 +52,31 @@ export function recordAttribution(db: Database.Database, scope: Scope, key: stri
   const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
   db.prepare('INSERT INTO platform_attribution_events VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(connection_id,event_id) DO NOTHING').run(input.connectionId, input.eventId, ...args(scope), entity, input.eventName, input.observedAt, value, receivedAt);
   if (!input.touch) return false;
+  return writeTouch(db, scope, entity, input.touch, input.connectionId, input.eventId, input.observedAt, receivedAt);
+}
+function writeTouch(db: Database.Database, scope: Scope, entity: string, touch: AttributionTouch, connectionId: string, eventId: string, observedAt: string, receivedAt: string) {
   // A touch cannot come after the event that reported it.
-  const touchedAt = input.touch.touchedAt && input.touch.touchedAt < input.observedAt ? input.touch.touchedAt : input.observedAt;
+  const touchedAt = touch.touchedAt && touch.touchedAt < observedAt ? touch.touchedAt : observedAt;
   const old = db.prepare('SELECT touched_at FROM platform_attribution_touches WHERE organization_id=? AND project_id=? AND entity_key=?').get(...args(scope), entity) as { touched_at: string } | undefined;
   if (old && old.touched_at <= touchedAt) return false;
   db.prepare(`INSERT INTO platform_attribution_touches VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id,entity_key) DO UPDATE SET campaign=excluded.campaign,source=excluded.source,medium=excluded.medium,
-    touched_at=excluded.touched_at,connection_id=excluded.connection_id,event_id=excluded.event_id,recorded_at=excluded.recorded_at`).run(...args(scope), entity, input.touch.campaign, input.touch.source, input.touch.medium, touchedAt, input.connectionId, input.eventId, receivedAt);
+    touched_at=excluded.touched_at,connection_id=excluded.connection_id,event_id=excluded.event_id,recorded_at=excluded.recorded_at`).run(...args(scope), entity, touch.campaign, touch.source, touch.medium, touchedAt, connectionId, eventId, receivedAt);
   return true;
 }
+// Mobile events reach the trail through the app's own source under an app-specific id. For an event that carries the
+// app's customer id (the same opaque id the team's backend sends with entity type "user"), the trail moves to that
+// person, so an app install and a backend signup are one person. An install or attribution the provider credits to a
+// campaign is that person's touch, with medium "app"; provider labels are cleaned to the tag alphabet.
+const tagLabel = (value: unknown, max: number) => { const text = String(value ?? '').trim().replace(/[^A-Za-z0-9._:-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, max); return text && !/^(unknown|none|null|organic)$/i.test(text) ? text : null; };
+export function linkMobileAttribution(db: Database.Database, scope: Scope, key: string, input: { connectionId: string; eventId: string; externalId: string; observedAt: string; campaign?: unknown; channel?: unknown; touch: boolean }, receivedAt: string) {
+  const entity = attributionEntity(key, scope, 'user', input.externalId);
+  db.prepare('UPDATE platform_attribution_events SET entity_key=? WHERE connection_id=? AND event_id=? AND organization_id=? AND project_id=?').run(entity, input.connectionId, input.eventId, ...args(scope));
+  const campaign = input.touch ? tagLabel(input.campaign, 100) : null;
+  if (!campaign) return false;
+  return writeTouch(db, scope, entity, { campaign, source: tagLabel(input.channel, 64), medium: 'app', touchedAt: input.observedAt }, input.connectionId, input.eventId, input.observedAt, receivedAt);
+}
+// The fixed tag of a profile link: the same for every visit, so the report counts who came through the profile.
+export const profileTag = (scope: Scope, platform: string) => linkTag(scope, 'profile', platform);
 export function pruneAttribution(db: Database.Database, now = Date.now()) {
   return db.transaction(() => {
     const cutoff = new Date(now - LIMITS.retentionDays * DAY).toISOString(), touchCutoff = new Date(now - LIMITS.touchDays * DAY).toISOString();
@@ -119,8 +136,9 @@ export class ProjectAttribution {
   private items() {
     const content = this.db.prepare("SELECT id,COALESCE(json_extract(payload,'$.headline'),substr(json_extract(payload,'$.content'),1,80)) AS title FROM platform_content_history WHERE organization_id=? AND project_id=?").all(...args(this.scope)) as { id: string; title: string | null }[];
     const campaigns = this.db.prepare("SELECT id,json_extract(payload,'$.name') AS title FROM platform_campaigns WHERE organization_id=? AND project_id=?").all(...args(this.scope)) as { id: string; title: string | null }[];
-    return new Map<string, { kind: 'content' | 'campaign'; id: string; title: string }>([
+    return new Map<string, { kind: AttributionItemKind; id: string; title: string }>([
       ...(this.project()?.productPack === 'crewin' ? crewinTaggedItems() : []),
+      ...PROFILE_PLATFORMS.map(platform => [profileTag(this.scope, platform), { kind: 'profile' as const, id: `profile:${platform}`, title: PROFILE_NAMES[platform] }] as const),
       ...content.map(item => [linkTag(this.scope, 'content', item.id), { kind: 'content' as const, id: item.id, title: item.title || '' }] as const),
       ...campaigns.map(item => [linkTag(this.scope, 'campaign', item.id), { kind: 'campaign' as const, id: item.id, title: item.title || '' }] as const),
     ]);
@@ -207,7 +225,9 @@ export class ProjectAttribution {
   }
   settings(): AttributionSettingsView {
     this.authorize(); const row = this.settingsRow(), canManage = this.canManage();
-    return { valueConnectionId: row?.value_connection_id || null, valueEvent: row?.value_event || null, valueKey: row?.value_key || null, currency: row?.currency || null, updatedAt: row?.updated_at || null, canManage,
+    let origin = ''; try { const url = new URL(this.project()?.website || ''); origin = /^https?:$/.test(url.protocol) ? url.origin : ''; } catch { origin = ''; }
+    const profileLinks = origin ? PROFILE_PLATFORMS.map(platform => ({ platform, url: `${origin}/?utm_source=${platform}&utm_medium=social&utm_campaign=${profileTag(this.scope, platform)}` })) : [];
+    return { valueConnectionId: row?.value_connection_id || null, valueEvent: row?.value_event || null, valueKey: row?.value_key || null, currency: row?.currency || null, updatedAt: row?.updated_at || null, canManage, profileLinks,
       options: canManage ? this.sources().filter(item => item.active).map(item => { const config = normalizeWebhookConfig(JSON.parse(item.config_json)); return { connectionId: item.connection_id, name: item.account_name, eventNames: config.eventNames, numberKeys: config.attributes.filter(field => field.type === 'number').map(field => field.key) }; }) : [] };
   }
   // Which numeric attribute of which event is the amount. It applies to events received from now on.

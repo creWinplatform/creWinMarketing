@@ -6,6 +6,7 @@ import { MarketingStoreError } from './errors';
 import { assertProjectWork } from './entitlements';
 import { encryptCredentials,decryptCredentials,type StoredCredentials } from './credential-envelope';
 import { authenticateProductWebhook } from './product-webhooks';
+import { linkMobileAttribution } from './attribution';
 import { mobileDate,mobileText,mobileNumber,mobileCurrency,mobileRecord as rec } from './mobile-validation';
 import type { MobileApp,MobileProvider } from './mobile-types';
 
@@ -70,6 +71,11 @@ export function recordMobileEvents(service:MobileGrowth,app:MobileApp,provider:M
     const signature=createHmac('sha256',Buffer.from(sourceSecret,'hex')).update(`${timestamp}.${app.sourceId}.`).update(body).digest('hex');
     const result=authenticateProductWebhook(db,app.sourceId,new Headers({'x-ryzevo-timestamp':timestamp,'x-ryzevo-signature':`v1=${signature}`}),key)(body);
     for(const item of normalized)db.prepare('INSERT INTO platform_mobile_event_details VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id,event_id) DO NOTHING').run(app.sourceId,item.id,...service.args(),app.id,provider,item.event.kind,item.digest,JSON.stringify(item.event.details));
+    // "Which work brought customers": a customer-identified event joins the person's trail; an install or attribution
+    // from the app's primary attribution source is a first touch when the provider names a campaign.
+    const receivedAt=new Date().toISOString();
+    for(const item of normalized){const details=item.event.details;if(details.identity!=='customer'||details.environment==='sandbox')continue;
+      linkMobileAttribution(db,service.scope,key,{connectionId:app.sourceId,eventId:item.id,externalId:item.event.entityId,observedAt:item.event.occurredAt,campaign:details.campaign,channel:details.channel,touch:['install','attribution'].includes(item.event.kind)&&provider===app.attributionProvider},receivedAt);}
     return result;
   }).immediate();
 }

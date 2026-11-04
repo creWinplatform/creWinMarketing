@@ -116,8 +116,8 @@ request.Headers.Add("x-ryzevo-signature", signature);
 - **Gönderim yöntemi:** olayları bir kuyruktan, kullanıcı isteğinden bağımsız gönderin. Panel ulaşılamazsa kayıt veya ödeme akışı etkilenmemeli.
 - **Sınırlar** (kaynak başına):
   - dakikada 120 istek;
-  - proje başına günde 1.000 olay;
-  - 30 günde saklanan en çok 10.000 olay.
+  - proje başına günde 20.000 olay;
+  - 30 günde saklanan en çok 200.000 olay.
   - Bu hacim aşılacaksa önceden panel ekibine bildirin.
 - **Geçmiş olaylar:** 30 günden eski olaylar kabul edilmez; geçmişe dönük doldurma yapılamaz.
 

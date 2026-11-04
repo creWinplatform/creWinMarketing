@@ -43,6 +43,17 @@ export function projectEntitlement(db: Database.Database, scope: Scope) {
     liveDeliveryAllowed: !trial, periodKey: trial ? 'trial-v1' : null };
 }
 
+// Product and mobile event quotas: the stock 1,000 a day and 10,000 stored for trials, pilots and Launch; larger paid
+// plans and the operator's own Crewin workspace get more. Receipts (duplicate detection) are kept for ten times as many.
+export const DEFAULT_EVENT_LIMITS = Object.freeze({ perDay: 1000, stored: 10000 });
+const PLAN_EVENT_LIMITS: Record<string, { perDay: number; stored: number }> = { launch: DEFAULT_EVENT_LIMITS, growth: { perDay: 5000, stored: 50000 }, team: { perDay: 20000, stored: 200000 } };
+const CREWIN_EVENT_LIMITS = Object.freeze({ perDay: 20000, stored: 200000 });
+export function projectEventLimits(db: Database.Database, scope: Scope) {
+  const project = db.prepare('SELECT product_pack FROM platform_projects WHERE id=? AND organization_id=?').get(scope.projectId, scope.organizationId) as { product_pack: string } | undefined;
+  if (project?.product_pack === 'crewin') return CREWIN_EVENT_LIMITS;
+  try { const rights = projectEntitlement(db, scope); return rights.id === 'paid' && PLAN_EVENT_LIMITS[rights.plan] || DEFAULT_EVENT_LIMITS; } catch { return DEFAULT_EVENT_LIMITS; }
+}
+
 export function assertProjectWork(db: Database.Database, scope: Scope) {
   const rights = projectEntitlement(db, scope);
   if (!rights.active) throw new MarketingStoreError('Deneme süresi doldu. Mevcut kayıtlarınız korunuyor; yeni üretim için yöneticiyle iletişime geçin.', 403);

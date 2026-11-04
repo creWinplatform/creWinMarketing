@@ -13,8 +13,12 @@ export type AttributionTouch = { campaign: string; source: string | null; medium
 // One goal stage the team mapped to a product event (Analytics → Automatic measurements), or a bare event name when no
 // stage is mapped yet.
 export type AttributionStage = { goalId: string | null; stageIndex: number | null; label: { tr: string; en: string }; connectionId: string; eventName: string };
+// profile: the fixed tag of an Instagram/TikTok profile link (captions are not clickable, the profile link is).
+export type AttributionItemKind = 'content' | 'campaign' | 'profile';
+export const PROFILE_PLATFORMS = ['instagram', 'tiktok'] as const;
+export const PROFILE_NAMES: Record<typeof PROFILE_PLATFORMS[number], string> = { instagram: 'Instagram', tiktok: 'TikTok' };
 export type AttributionItem = {
-  tag: string; kind: 'content' | 'campaign'; id: string; title: string; sources: string[];
+  tag: string; kind: AttributionItemKind; id: string; title: string; sources: string[];
   // Sessions GA4 reported for the tag in its own stored period (null when GA4 is not connected or not read yet).
   sessions: number | null;
   counts: number[]; value: number | null;
@@ -40,6 +44,8 @@ export type AttributionSettingsView = {
   valueConnectionId: string | null; valueEvent: string | null; valueKey: string | null; currency: string | null; updatedAt: string | null;
   canManage: boolean;
   options: { connectionId: string; name: string; eventNames: string[]; numberKeys: string[] }[];
+  // Links to put on the Instagram/TikTok profile, one fixed tag each (empty without a project website).
+  profileLinks: { platform: typeof PROFILE_PLATFORMS[number]; url: string }[];
 };
 
 // The snippet the team pastes into its own site. It writes nothing until the site's consent banner calls

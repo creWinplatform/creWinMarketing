@@ -13,6 +13,7 @@ import { queueIysConsent } from './iys';
 import { normalizeAttribution, recordAttribution } from './attribution';
 import type { AttributionTouch } from './attribution-types';
 import { ryzevoPackSql } from './ryzevo-features';
+import { projectEventLimits } from './entitlements';
 
 type Row={connection_id:string;organization_id:string;project_id:string;version:number;config_json:string;enabled:number;paused:number;preview_at:string|null;preview_revision:string|null;last_synced_at:string|null;webhook_actor_id:string|null;account_name:string;active:number;encrypted_credentials:string;integration_id:string};
 type Consent={channel:'email';status:'opted_in'|'opted_out';evidenceRef:string;recordedAt:string};
@@ -93,8 +94,9 @@ export function authenticateProductWebhook(db:Database.Database,id:string,header
       }
       const args=[fresh.organization_id,fresh.project_id] as const,period=new Date().toISOString().slice(0,10);
       const used=db.prepare("SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource='product_events'").get(...args,period) as {count:number}|undefined;
-      if((used?.count||0)+pending.length>WEBHOOK_LIMITS.eventsPerDay)throw new ProductWebhookError('quota','Günlük olay kotasına ulaşıldı.',429);
-      for(const [table,limit] of [['platform_product_events',WEBHOOK_LIMITS.events],['platform_product_event_receipts',WEBHOOK_LIMITS.receipts]] as const){
+      const quota=projectEventLimits(db,{organizationId:fresh.organization_id,projectId:fresh.project_id});
+      if((used?.count||0)+pending.length>quota.perDay)throw new ProductWebhookError('quota','Günlük olay kotasına ulaşıldı.',429);
+      for(const [table,limit] of [['platform_product_events',quota.stored],['platform_product_event_receipts',quota.stored*10]] as const){
         const count=(db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE organization_id=? AND project_id=?`).get(...args) as {n:number}).n;
         if(count+pending.length>limit)throw new ProductWebhookError('quota','Saklanan olay sınırına ulaşıldı. Saklama işçisini kontrol edin.',429);
       }

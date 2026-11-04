@@ -106,9 +106,22 @@ For each tagged post or email: how many people who first arrived through it went
   - links already carrying another campaign's `utm_campaign`.
 - **Backend side:** `docs/CREWIN-BACKEND-ATTRIBUTION-PROMPT.md`.
 
+## App installs (4 November 2026)
+- `recordMobileEvents` → `linkMobileAttribution`. An event from the mobile source with a customer id (`identity: customer`, not sandbox) is handled as follows:
+  - **The person's trail:** the event moves from the app-specific id to the customer id, as `attributionEntity(..., 'user', customerId)`. An install and a backend signup are then one person.
+  - **First touch:** an `install` or `attribution` event from the app's primary attribution source becomes the person's first touch when the provider names a campaign.
+  - **Touch fields:**
+    - medium `app`;
+    - campaign and channel cleaned to the tag alphabet (`Yaz Lansmanı` → `Yaz_Lansman`);
+    - organic, unknown and empty campaigns are skipped.
+  - The earliest touch wins, as for web touches.
+- A non-Ryzevo campaign name shows under "Campaigns outside Ryzevo".
+
 ## Limits
-- Instagram captions and WhatsApp button links are not tagged.
-- Mobile events do not feed touches yet.
+- Instagram and TikTok captions and WhatsApp button links are not tagged.
+  - Every project gets a fixed-tag profile link per platform: `profileTag(scope, platform)`, shown in the Source tag setup.
+  - In the report, the profile link is the item kind `profile`.
+- Mobile touches come only from the app's primary attribution source (AppsFlyer/Adjust/bridge). They count only when the event carries the app's customer id; it must be the backend's `entityId`, with entity type `user` (see "App installs" below).
 - First touch only; there is no multi-touch model.
 - Without consent the snippet keeps the touch only in memory for that page view. If the banner is accepted on a later page, the touch from the landing page is lost.
 

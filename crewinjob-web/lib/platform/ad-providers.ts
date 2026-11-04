@@ -16,6 +16,9 @@ export const adHttp:AdHttp=async({method,url,headers,body})=>{
 export type ProviderAccount={name:string;currency:string;status:string|null;timezone:string|null};
 export type ProviderPlan={id:string;name:string;objective:'OUTCOME_AWARENESS'|'OUTCOME_TRAFFIC';daily_budget_minor:number;currency:string;start_date:string;end_date:string;countries_json:string;link_url:string;provider_campaign_id:string|null;provider_adset_id:string|null};
 export type ProviderSpend={spendMinor:number;impressions:number|null;clicks:number|null};
+// Spend per UTC day as the provider reports it, for the mobile report's CPI/ROAS (installs are matched by day).
+export type ProviderDailySpend={day:string;spendMinor:number}[];
+const DAY=/^\d{4}-\d{2}-\d{2}$/;
 const fail=(message:string,status=502)=>new MarketingStoreError(message,status);
 const count=(value:unknown)=>typeof value==='string'&&/^\d{1,15}$/.test(value)?Number(value):typeof value==='number'&&Number.isSafeInteger(value)?value:null;
 
@@ -59,6 +62,11 @@ export class GoogleAdsClient{
     if(!metrics)return {spendMinor:0,impressions:0,clicks:0};
     const micros=count(metrics.costMicros);if(micros===null)throw new Error('no cost');
     return {spendMinor:Math.round(micros/1_000_000*minorUnit),impressions:count(metrics.impressions),clicks:count(metrics.clicks)};
+  }
+  async dailySpend(plan:ProviderPlan,minorUnit:number,from:string,to:string):Promise<ProviderDailySpend>{
+    if(!plan.provider_campaign_id||!CAMPAIGN_RESOURCE.test(plan.provider_campaign_id)||!DAY.test(from)||!DAY.test(to))throw new Error('no campaign');
+    const rows=await this.search(`SELECT segments.date, metrics.cost_micros FROM campaign WHERE campaign.resource_name = '${plan.provider_campaign_id}' AND segments.date BETWEEN '${from}' AND '${to}'`);
+    return rows.flatMap(row=>{const day=row.segments?.date,micros=count(row.metrics?.costMicros);return typeof day==='string'&&DAY.test(day)&&micros!==null?[{day,spendMinor:Math.round(micros/1_000_000*minorUnit)}]:[];});
   }
 }
 
@@ -114,5 +122,16 @@ export class LinkedInAdsClient{
     const first=(Array.isArray(payload.elements)?payload.elements:[])[0] as Record<string,unknown>|undefined;if(!first)return {spendMinor:0,impressions:0,clicks:0};
     const cost=typeof first.costInLocalCurrency==='string'&&/^\d+(\.\d+)?$/.test(first.costInLocalCurrency)?Number(first.costInLocalCurrency):null;if(cost===null)throw new Error('no cost');
     return {spendMinor:Math.round(cost*minorUnit),impressions:count(first.impressions),clicks:count(first.clicks)};
+  }
+  async dailySpend(plan:ProviderPlan,minorUnit:number,from:string,to:string):Promise<ProviderDailySpend>{
+    if(!plan.provider_campaign_id||!LI_ID.test(plan.provider_campaign_id)||!DAY.test(from)||!DAY.test(to))throw new Error('no campaign');
+    const [fy,fm,fd]=from.split('-').map(Number),[ty,tm,td]=to.split('-').map(Number);
+    const {payload}=await this.request('GET',`adAnalytics?q=analytics&pivot=CAMPAIGN&timeGranularity=DAILY&dateRange=(start:(year:${fy},month:${fm},day:${fd}),end:(year:${ty},month:${tm},day:${td}))&campaigns=List(urn%3Ali%3AsponsoredCampaign%3A${plan.provider_campaign_id})&fields=costInLocalCurrency,dateRange`);
+    return (Array.isArray(payload.elements)?payload.elements:[]).flatMap(value=>{
+      const item=value as Record<string,unknown>,start=(item.dateRange as {start?:{year?:number;month?:number;day?:number}}|undefined)?.start;
+      const cost=typeof item.costInLocalCurrency==='string'&&/^\d+(\.\d+)?$/.test(item.costInLocalCurrency)?Number(item.costInLocalCurrency):null;
+      if(!start||!Number.isInteger(start.year)||!Number.isInteger(start.month)||!Number.isInteger(start.day)||cost===null)return [];
+      return [{day:`${start.year}-${String(start.month).padStart(2,'0')}-${String(start.day).padStart(2,'0')}`,spendMinor:Math.round(cost*minorUnit)}];
+    });
   }
 }

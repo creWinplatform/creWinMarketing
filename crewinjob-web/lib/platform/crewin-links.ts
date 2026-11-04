@@ -17,7 +17,7 @@ export { crewinSource, isCrewinSite, tagCrewinLinks, tagCrewinShare };
 // data/link-tags.jsonl (crewinjob-agent/modules/link-tags.js computes the same tags).
 export type CrewinTagKind = 'campaign' | 'share' | 'email';
 type Entry = { tag: string; kind: string; title: string; createdAt: string };
-type Item = { kind: 'content' | 'campaign'; id: string; title: string };
+type Item = { kind: 'content' | 'campaign' | 'profile'; id: string; title: string };
 const DAY = 86400000, REGISTRY = { entries: 3000, days: 400 };
 const registryFile = () => path.join(crewinDataDir(), 'crewin-link-tags.json');
 const agentRegistryFile = () => path.join(process.env.CREWINJOB_AGENT_DIR ? path.resolve(process.env.CREWINJOB_AGENT_DIR) : path.join(process.cwd(), '..', 'crewinjob-agent'), 'data', 'link-tags.jsonl');
@@ -76,7 +76,7 @@ export function crewinTaggedItems() {
   return new Map<string, Item>([
     ...agentRegistry().map(entry),
     ...registry.map(entry),
-    ...PROFILE_PLATFORMS.map(platform => [crewinTag('profile', platform), { kind: 'content' as const, id: `profile:${platform}`, title: PROFILE_TITLES[platform] }] as const),
+    ...PROFILE_PLATFORMS.map(platform => [crewinTag('profile', platform), { kind: 'profile' as const, id: `profile:${platform}`, title: PROFILE_TITLES[platform] }] as const),
     ...campaigns.map(item => [crewinTag('campaign', item.id), { kind: 'campaign' as const, id: item.id, title: item.name }] as const),
   ]);
 }

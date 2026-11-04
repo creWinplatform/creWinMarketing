@@ -59,6 +59,10 @@ export default function AttributionSetup({ lang, siteDomain }: { lang: Locale; s
     {block('snippet', tr ? 'Site kod parçası' : 'Site snippet', attributionSnippet(siteDomain))}
     {block('server', tr ? 'Sunucu örneği (Node)' : 'Server example (Node)', ATTRIBUTION_SERVER_EXAMPLE)}
     {block('field', tr ? 'Olaydaki alan' : 'Field on the event', FIELD)}
+    {Boolean(view?.profileLinks.length) && <>
+      <p className="studio-note"><strong>{tr ? 'Profil linkleri' : 'Profile links'}</strong> {tr ? 'Instagram ve TikTok açıklamasındaki linke tıklanamaz. Profilinizdeki linki bununla değiştirin; oradan gelenler raporda “Profil linki” satırında görünür.' : 'Links in Instagram and TikTok captions are not clickable. Use this link on your profile; people who come through it show as “Profile link” in the report.'}</p>
+      {view!.profileLinks.map(item => <div key={item.platform}>{block(`profile-${item.platform}`, item.platform === 'instagram' ? 'Instagram' : 'TikTok', item.url)}</div>)}
+    </>}
     <p className="studio-note">{tr ? 'Biçimi bozuk bir etiket olayı reddettirmez; yalnız etiket yok sayılır. Örnek yüke bu alanı ekleyip “Şemayı önizle” ile deneyebilirsiniz.' : 'A malformed tag never rejects the event; only the tag is ignored. Add this field to the sample payload and use “Preview schema” to try it.'}</p>
     {error && <p role="alert" className="studio-error"><Msg text={error} /></p>}{notice && <p role="status" className="studio-success">{notice}</p>}
     {view?.canManage && view.options.length > 0 && <form className="studio-form-grid attribution-value" onSubmit={event => void save(event)}>

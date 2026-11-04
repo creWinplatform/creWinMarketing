@@ -11,6 +11,8 @@ import { ProjectOperations } from './operations';
 import { MOBILE_EVENT_NAMES,mobileId,mobileText,normalizeMobileApp,mobileProvider,mobilePath,mobileDay,mobileCurrency,mobileNumber } from './mobile-validation';
 import { asoFindings,readAppleListing,readPlayListing,probeMobileIntegration,validateMobileIntegration,createBranchLink,type MobileTransport,type MobileSecret } from './mobile-providers';
 import type { MobileApp,MobileIntegration,MobileProvider,MobileStoreSnapshot,MobileLink } from './mobile-types';
+import { ProjectAds } from './ad-manager';
+import { AD_PROVIDERS,type AdProvider } from './ad-providers';
 
 export type MobileAppRow={id:string;organization_id:string;project_id:string;source_id:string;source_version:number;config_json:string;coverage_through:string|null;created_at:string;updated_at:string};
 export type MobileIntegrationRow={connection_id:string;organization_id:string;project_id:string;app_id:string;kind:MobileProvider;config_json:string;actor_id:string;status:string;checked_at:string|null;checked_revision:string|null;last_event_at:string|null;encrypted_credentials:string;active:number};
@@ -111,5 +113,23 @@ export class MobileGrowth {
     const day=mobileDay(raw.day),currency=mobileCurrency(raw.currency),amount=mobileNumber(raw.amount),attribution=mobileText(raw.attributionCampaign,120);
     if(day>new Date().toISOString().slice(0,10)||Date.parse(day)<Date.now()-90*86400000)throw new MarketingStoreError('Harcama tarihi son 90 gün içinde olmalı.');
     this.db.prepare('INSERT INTO platform_mobile_costs VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(app_id,campaign_id,day,currency) DO UPDATE SET attribution_campaign=excluded.attribution_campaign,amount=excluded.amount,actor_id=excluded.actor_id,updated_at=excluded.updated_at').run(...this.args(),app.id,campaign.id,attribution,day,currency,amount,this.scope.subject,new Date().toISOString());this.audit('mobile.spend.manual');return this.costs(app.id);
+  }
+  // Ad plans already created on a provider: their daily spend can be pulled into the mobile report.
+  adPlans(){return this.db.prepare("SELECT id,provider,name,currency,state FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider_campaign_id IS NOT NULL ORDER BY updated_at DESC LIMIT 50").all(...this.args()) as {id:string;provider:AdProvider;name:string;currency:string;state:string}[];}
+  // Daily spend of an ad plan as its provider reports it: the last 30 closed days within the plan's dates. Rows are keyed
+  // "ad:<provider>:<plan>" next to manual entries and match installs by the provider campaign name (the name the
+  // attribution provider reports; the plan's name unless the team gives another).
+  async syncAdSpend(raw:Record<string,unknown>,ads:(provider:AdProvider)=>Pick<ProjectAds,'dailySpend'>=provider=>new ProjectAds(this.db,this.scope,this.key,undefined,provider)){
+    this.authorize('content.write');assertProjectWork(this.db,this.scope);const app=this.app(String(raw.appId)),provider=String(raw.provider) as AdProvider;
+    if(!AD_PROVIDERS.includes(provider))throw new MarketingStoreError('Reklam sağlayıcısı geçersiz.');
+    const plan=this.db.prepare('SELECT id,name,currency,start_date,end_date,provider_campaign_id FROM platform_ad_plans WHERE id=? AND organization_id=? AND project_id=? AND provider=?').get(String(raw.planId),...this.args(),provider) as {id:string;name:string;currency:string;start_date:string;end_date:string;provider_campaign_id:string|null}|undefined;
+    if(!plan)throw new MarketingStoreError('Reklam planı bulunamadı.',404);if(!plan.provider_campaign_id)throw new MarketingStoreError('Plan reklam sağlayıcısında oluşturulmamış.',409);
+    const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10),earliest=new Date(Date.now()-30*86400000).toISOString().slice(0,10);
+    const from=plan.start_date>earliest?plan.start_date:earliest,to=plan.end_date<yesterday?plan.end_date:yesterday;
+    if(from>to)throw new MarketingStoreError('Planın son 30 günde kapanmış bir günü yok.',409);
+    const attribution=raw.attributionCampaign?mobileText(raw.attributionCampaign,120):mobileText(plan.name,120),result=await ads(provider).dailySpend({id:plan.id,from,to});
+    const now=new Date().toISOString(),campaign=`ad:${provider}:${plan.id}`;
+    this.db.transaction(()=>{for(const item of result.days)this.db.prepare('INSERT INTO platform_mobile_costs VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(app_id,campaign_id,day,currency) DO UPDATE SET attribution_campaign=excluded.attribution_campaign,amount=excluded.amount,actor_id=excluded.actor_id,updated_at=excluded.updated_at').run(...this.args(),app.id,campaign,attribution,item.day,plan.currency,item.amount,this.scope.subject,now);}).immediate();
+    this.audit('mobile.spend.sync');return {synced:result.days.length,from,to,costs:this.costs(app.id)};
   }
 }

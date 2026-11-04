@@ -10,9 +10,20 @@ import { mobileDate,mobileId,mobilePath,mobileText } from './mobile-validation';
 import { mobileEntity,recordMobileEvents } from './mobile-ingestion';
 import { sendMobilePush } from './mobile-providers';
 import type { MobileMessage } from './mobile-types';
+import { ProductSegments } from './segments';
+import type { SegmentEntity } from './segment-engine';
 
 type Contact={id:string;entity_key:string;provider:string;encrypted_destination:string;push_consent:number;in_app_consent:number;allow_pilot:number;updated_at:string};
-type Intent={appId:string;appRevision:string;campaignId:string;campaignDigest:string;connectionId:string;connectionRevision:string;provider:string;channel:'push'|'in_app';mode:'live'|'rehearsal';title:string;body:string;path:string;scheduledAt:string|null;expiresAt:string;targets:{id:string;revision:string}[]};
+// audience: "pilot" is the original 1-5 allowlisted contacts. "all", "segment" and "entities" (an automation's ready
+// people) reach every contact with consent for the channel, up to MOBILE_AUDIENCE_MAX; a live send to them also needs
+// PLATFORM_MOBILE_BROADCAST_ENABLED=1. Pushes per project per day: PLATFORM_MOBILE_PUSH_PER_DAY (default 5, the pilot).
+export type MobileAudience='pilot'|'all'|'segment'|'entities';
+type Intent={appId:string;appRevision:string;campaignId:string;campaignDigest:string;connectionId:string;connectionRevision:string;provider:string;channel:'push'|'in_app';mode:'live'|'rehearsal';title:string;body:string;path:string;scheduledAt:string|null;expiresAt:string;targets:{id:string;revision:string}[];audience?:MobileAudience;segment?:{id:string;version:number}|null};
+export const MOBILE_AUDIENCE_MAX=1000;
+export const mobileBroadcastEnabled=()=>process.env.PLATFORM_MOBILE_BROADCAST_ENABLED==='1';
+export const mobilePushPerDay=()=>{const value=Number(process.env.PLATFORM_MOBILE_PUSH_PER_DAY||5);return Number.isSafeInteger(value)&&value>=1&&value<=10000?value:5;};
+// A pilot target is fixed with its allowlist flag; a broad audience only with its destination and consent.
+const targetRevision=(audience:MobileAudience,row:Contact)=>mobileRevision(JSON.stringify(audience==='pilot'?[row.encrypted_destination,row.push_consent,row.in_app_consent,row.allow_pilot]:[row.encrypted_destination,row.push_consent,row.in_app_consent]));
 type Row={id:string;organization_id:string;project_id:string;actor_id:string;connection_id:string;status:string;state:string;app_id:string;campaign_id:string;channel:string;mode:string;scheduled_at:string;expires_at:string;source_digest:string;encrypted_snapshot:string;reason:string|null;created_at:string;task_id:string|null};
 const query="SELECT j.id,j.actor_id,j.connection_id,j.status,j.created_at,m.* FROM platform_jobs j JOIN platform_mobile_messages m ON m.job_id=j.id AND m.organization_id=j.organization_id AND m.project_id=j.project_id WHERE j.job_type='mobile.message' AND j.organization_id=? AND j.project_id=?";
 type PushSender=typeof sendMobilePush;
@@ -30,20 +41,42 @@ export class MobileDelivery {
     if(connection.app_id!==app.id||!connection.active||!['push','in_app'].includes(String(channel))||!['rehearsal','live'].includes(String(mode))||!(channel==='push'?['onesignal','firebase'].includes(connection.kind):connection.kind==='bridge'))throw new MarketingStoreError('Uygulama, kanal veya sağlayıcı eşleşmiyor.');
     const campaign=this.service.store.campaign(String(raw.campaignId));if(!campaign||campaign.status!=='draft')throw new MarketingStoreError('Kampanya taslağı bulunamadı.',404);
     const title=(campaign.content.subject||campaign.name).trim(),body=campaign.content.text.trim();if(!title||title.length>100||!body||body.length>1000||/\{\{[\s\S]*?\}\}/.test(title+body))throw new MarketingStoreError('Kampanyada en fazla 100 karakter başlık ve 1000 karakter değişkensiz mesaj gerekli.');
+    const audience:MobileAudience=['all','segment','entities'].includes(String(raw.audience))?raw.audience as MobileAudience:'pilot';
+    let segment:Intent['segment']=null,contacts:{id:string;revision:string}[];
+    if(audience!=='pilot'){
+      const consented=`SELECT * FROM platform_mobile_contacts WHERE app_id=? AND organization_id=? AND project_id=? AND ${channel==='push'?'push_consent=1 AND provider=?':'in_app_consent=1'}`,params=[app.id,...this.args(),...(channel==='push'?[connection.kind]:[])];
+      let rows:Contact[];
+      if(audience==='all')rows=this.service.db.prepare(`${consented} ORDER BY updated_at DESC LIMIT ?`).all(...params,MOBILE_AUDIENCE_MAX+1) as Contact[];
+      else{
+        let ids:string[];
+        if(audience==='segment'){const version=Number(raw.segmentVersion),members:SegmentEntity[]=[];if(typeof raw.segmentId!=='string'||!Number.isSafeInteger(version))throw new MarketingStoreError('Segment ve sürümü gerekli.');
+          new ProductSegments(this.service.db,this.service.scope).evaluateSaved(raw.segmentId,version,members);segment={id:raw.segmentId,version};ids=members.map(item=>item.id);}
+        else{if(!Array.isArray(raw.entityIds)||raw.entityIds.length>MOBILE_AUDIENCE_MAX)throw new MarketingStoreError('Kişi listesi geçersiz.');ids=raw.entityIds.map(String);}
+        const keys=[...new Set(ids.flatMap(id=>{try{return [mobileEntity(this.service.key,app.id,id)];}catch{return [];}}))];rows=[];
+        for(let i=0;i<keys.length;i+=400){const chunk=keys.slice(i,i+400);rows.push(...this.service.db.prepare(`${consented} AND entity_key IN (${chunk.map(()=>'?').join(',')})`).all(...params,...chunk) as Contact[]);}
+      }
+      // One device per person: the most recently updated registration.
+      const byPerson=new Map<string,Contact>();for(const row of rows){const old=byPerson.get(row.entity_key);if(!old||old.updated_at<row.updated_at)byPerson.set(row.entity_key,row);}
+      if(!byPerson.size)throw new MarketingStoreError('Bu kitlede kanala izin vermiş alıcı yok.',409);
+      if(byPerson.size>MOBILE_AUDIENCE_MAX)throw new MarketingStoreError('Bir mesaj en çok 1.000 alıcıya gidebilir; kitleyi daraltın.',429);
+      contacts=[...byPerson.values()].map(row=>({id:row.id,revision:targetRevision(audience,row)})).sort((a,b)=>a.id.localeCompare(b.id));
+    }else{
     if(!Array.isArray(raw.contactIds)||raw.contactIds.length<1||raw.contactIds.length>5||new Set(raw.contactIds).size!==raw.contactIds.length)throw new MarketingStoreError('1-5 benzersiz pilot alıcı seçin.');
     const identities=new Set<string>();
-    const contacts=raw.contactIds.map(value=>{const id=mobileId(value),contact=this.service.db.prepare('SELECT * FROM platform_mobile_contacts WHERE id=? AND app_id=? AND organization_id=? AND project_id=?').get(id,app.id,...this.args()) as Contact|undefined;if(!contact||!contact.allow_pilot||!(channel==='push'?contact.push_consent&&contact.provider===connection.kind:contact.in_app_consent))throw new MarketingStoreError('Alıcı izni veya pilot allowlist kaydı eksik.',409);if(identities.has(contact.entity_key))throw new MarketingStoreError('Aynı kullanıcı için tek cihaz/sağlayıcı kaydı seçin.');identities.add(contact.entity_key);return {id,revision:mobileRevision(JSON.stringify([contact.encrypted_destination,contact.push_consent,contact.in_app_consent,contact.allow_pilot]))};}).sort((a,b)=>a.id.localeCompare(b.id));
+    contacts=raw.contactIds.map(value=>{const id=mobileId(value),contact=this.service.db.prepare('SELECT * FROM platform_mobile_contacts WHERE id=? AND app_id=? AND organization_id=? AND project_id=?').get(id,app.id,...this.args()) as Contact|undefined;if(!contact||!contact.allow_pilot||!(channel==='push'?contact.push_consent&&contact.provider===connection.kind:contact.in_app_consent))throw new MarketingStoreError('Alıcı izni veya pilot allowlist kaydı eksik.',409);if(identities.has(contact.entity_key))throw new MarketingStoreError('Aynı kullanıcı için tek cihaz/sağlayıcı kaydı seçin.');identities.add(contact.entity_key);return {id,revision:targetRevision('pilot',contact)};}).sort((a,b)=>a.id.localeCompare(b.id));
+    }
     const scheduledAt=raw.scheduledAt?mobileDate(raw.scheduledAt):null,expiresAt=mobileDate(raw.expiresAt);
     if(scheduledAt&&(Date.parse(scheduledAt)<Date.now()-60000||Date.parse(scheduledAt)>Date.now()+30*86400000)||Date.parse(expiresAt)<(scheduledAt?Date.parse(scheduledAt):Date.now())+60000||Date.parse(expiresAt)>(scheduledAt?Date.parse(scheduledAt):Date.now())+7*86400000)throw new MarketingStoreError('Geçerli yayın zamanı ve en fazla 7 günlük bitiş seçin.');
-    return {appId:app.id,appRevision:app.updatedAt,campaignId:campaign.id,campaignDigest:mobileRevision(JSON.stringify(campaign)),connectionId:connection.connection_id,connectionRevision:mobileRevision(connection.encrypted_credentials),provider:connection.kind,channel:channel as Intent['channel'],mode:mode as Intent['mode'],title,body,path:mobilePath(raw.path||'/'),scheduledAt,expiresAt,targets:contacts};
+    return {appId:app.id,appRevision:app.updatedAt,campaignId:campaign.id,campaignDigest:mobileRevision(JSON.stringify(campaign)),connectionId:connection.connection_id,connectionRevision:mobileRevision(connection.encrypted_credentials),provider:connection.kind,channel:channel as Intent['channel'],mode:mode as Intent['mode'],title,body,path:mobilePath(raw.path||'/'),scheduledAt,expiresAt,targets:contacts,...(audience==='pilot'?{}:{audience,segment})};
   }
-  preview(raw:Record<string,unknown>){const intent=this.intent(raw);return {digest:mobileRevision(JSON.stringify(intent)),title:intent.title,body:intent.body,path:intent.path,targetCount:intent.targets.length,channel:intent.channel,provider:intent.provider,scheduledAt:intent.scheduledAt,expiresAt:intent.expiresAt};}
+  preview(raw:Record<string,unknown>){const intent=this.intent(raw);return {digest:mobileRevision(JSON.stringify(intent)),title:intent.title,body:intent.body,path:intent.path,targetCount:intent.targets.length,channel:intent.channel,provider:intent.provider,scheduledAt:intent.scheduledAt,expiresAt:intent.expiresAt,audience:intent.audience||'pilot',broadcastEnabled:mobileBroadcastEnabled()};}
   enqueue(raw:Record<string,unknown>){
     this.authorize();const idempotency=`mobile:${mobileId(raw.idempotencyKey)}`;
     return this.service.db.transaction(()=>{
       const previous=this.service.db.prepare(query+' AND j.idempotency_key=?').get(...this.args(),idempotency) as Row|undefined;if(previous){if(previous.source_digest!==raw.expectedDigest)throw new MarketingStoreError('İşlem anahtarı farklı önizlemeye ait.',409);return this.describe(previous);}
       const intent=this.intent(raw),digest=mobileRevision(JSON.stringify(intent));if(digest!==raw.expectedDigest)throw new MarketingStoreError('Önizleme değişti. Tekrar inceleyin.',409);
-      if(intent.mode==='live'){assertProjectDelivery(this.service.db,this.service.scope);if(process.env.PLATFORM_MOBILE_SEND_ENABLED!=='1'||raw.acknowledged!==true)throw new MarketingStoreError('Gerçek mobil gönderim kapalı veya onay eksik.',409);}
+      if(intent.mode==='live'){assertProjectDelivery(this.service.db,this.service.scope);if(process.env.PLATFORM_MOBILE_SEND_ENABLED!=='1'||raw.acknowledged!==true)throw new MarketingStoreError('Gerçek mobil gönderim kapalı veya onay eksik.',409);
+        if(intent.audience&&intent.audience!=='pilot'&&!mobileBroadcastEnabled())throw new MarketingStoreError('Pilot dışı kitleye gerçek gönderim bu sunucuda kapalı.',409);}
       this.service.quota('mobile_enqueue',20);const id=randomUUID(),now=new Date().toISOString(),scheduled=intent.scheduledAt||now;
       const task=new ProjectOperations(this.service.db,this.service.scope).saveTask({title:`${intent.mode==='rehearsal'?'Prova':'Mobil'} · ${intent.title}`.slice(0,160),campaignId:intent.campaignId,dueAt:scheduled,status:'planned',note:`mobile-message:${id}\n${intent.channel} · ${intent.provider}`});
       this.service.db.prepare("INSERT INTO platform_jobs(id,organization_id,project_id,actor_id,connection_id,revision,idempotency_key,status,created_at,updated_at,job_type) VALUES(?,?,?,?,?,?,?,'queued',?,?,'mobile.message')").run(id,...this.args(),this.service.scope.subject,intent.connectionId,intent.connectionRevision,idempotency,now,now);
@@ -64,10 +97,10 @@ export class MobileDelivery {
     this.authorize();for(const permission of ['connections.manage','campaign.approve','campaign.dispatch'] as const)if(!this.service.repo.can(actor,...this.args(),permission))throw new Error('Approval authority lost.');
     const app=this.service.app(intent.appId),connection=this.service.integration(intent.connectionId),campaign=this.service.store.campaign(intent.campaignId);
     if(app.updatedAt!==intent.appRevision||!connection.active||mobileRevision(connection.encrypted_credentials)!==intent.connectionRevision||!campaign||mobileRevision(JSON.stringify(campaign))!==intent.campaignDigest)throw new Error('Approval changed.');
-    if(intent.mode==='live'){assertProjectDelivery(this.service.db,this.service.scope);if(process.env.PLATFORM_MOBILE_SEND_ENABLED!=='1')throw new Error('Sending disabled.');}else assertProjectWork(this.service.db,this.service.scope);
+    if(intent.mode==='live'){assertProjectDelivery(this.service.db,this.service.scope);if(process.env.PLATFORM_MOBILE_SEND_ENABLED!=='1'||intent.audience&&intent.audience!=='pilot'&&!mobileBroadcastEnabled())throw new Error('Sending disabled.');}else assertProjectWork(this.service.db,this.service.scope);
     return connection;
   }
-  private contact(intent:Intent,id:string){const target=intent.targets.find(item=>item.id===id),row=this.service.db.prepare('SELECT * FROM platform_mobile_contacts WHERE id=? AND app_id=? AND organization_id=? AND project_id=?').get(id,intent.appId,...this.args()) as Contact|undefined;if(!target||!row||!row.allow_pilot||!(intent.channel==='push'?row.push_consent&&row.provider===intent.provider:row.in_app_consent)||mobileRevision(JSON.stringify([row.encrypted_destination,row.push_consent,row.in_app_consent,row.allow_pilot]))!==target.revision)throw new Error('Recipient permission changed.');return row;}
+  private contact(intent:Intent,id:string){const target=intent.targets.find(item=>item.id===id),row=this.service.db.prepare('SELECT * FROM platform_mobile_contacts WHERE id=? AND app_id=? AND organization_id=? AND project_id=?').get(id,intent.appId,...this.args()) as Contact|undefined;const audience=intent.audience||'pilot';if(!target||!row||audience==='pilot'&&!row.allow_pilot||!(intent.channel==='push'?row.push_consent&&row.provider===intent.provider:row.in_app_consent)||targetRevision(audience,row)!==target.revision)throw new Error('Recipient permission changed.');return row;}
   async process(id:string,sender:PushSender=sendMobilePush){
     this.authorize();const lease=randomUUID(),started=Date.now(),row=this.row(id),intent=this.snapshot(row);
     const claimed=this.service.db.transaction(()=>{const now=new Date().toISOString(),job=this.service.db.prepare('SELECT status,lease_until FROM platform_jobs WHERE id=?').get(id) as {status:string;lease_until:string|null};if(!['queued','running'].includes(job.status)||row.scheduled_at>now||job.status==='running'&&job.lease_until&&job.lease_until>now)return false;this.service.db.prepare("UPDATE platform_mobile_deliveries SET state='uncertain' WHERE job_id=? AND state='submitted'").run(id);this.service.db.prepare("UPDATE platform_jobs SET status='running',lease_token=?,lease_until=?,attempts=attempts+1,updated_at=? WHERE id=?").run(lease,new Date(Date.now()+60000).toISOString(),now,id);return true;}).immediate();if(!claimed)return this.get(id);
@@ -81,7 +114,7 @@ export class MobileDelivery {
         if(Date.now()-started>25000)break;if(!holder())return this.get(id);this.valid(intent,row.actor_id);
         const delivery=this.service.db.prepare('SELECT state FROM platform_mobile_deliveries WHERE job_id=? AND contact_id=?').get(id,target.id) as {state:string};if(delivery.state!=='pending')continue;
         let contact:Contact;try{contact=this.contact(intent,target.id);}catch{this.service.db.prepare("UPDATE platform_mobile_deliveries SET state='blocked' WHERE job_id=? AND contact_id=?").run(id,target.id);continue;}
-        const reserve=this.service.db.transaction(()=>{if(!holder())return false;this.valid(intent,row.actor_id);this.contact(intent,target.id);this.service.quota('mobile_push',5);return Boolean(this.service.db.prepare("UPDATE platform_mobile_deliveries SET state='submitted',submitted_at=? WHERE job_id=? AND contact_id=? AND state='pending'").run(new Date().toISOString(),id,target.id).changes);}).immediate();if(!reserve)continue;
+        const reserve=this.service.db.transaction(()=>{if(!holder())return false;this.valid(intent,row.actor_id);this.contact(intent,target.id);this.service.quota('mobile_push',mobilePushPerDay());return Boolean(this.service.db.prepare("UPDATE platform_mobile_deliveries SET state='submitted',submitted_at=? WHERE job_id=? AND contact_id=? AND state='pending'").run(new Date().toISOString(),id,target.id).changes);}).immediate();if(!reserve)continue;
         const destination=decryptCredentials<{destination:string}>(contact.encrypted_destination,this.service.key,...this.args(),`mobile-contact:${contact.id}`).destination;
         const rawId=createHash('sha256').update(`${id}:${contact.id}`).digest('hex').slice(0,32),idempotencyKey=`${rawId.slice(0,8)}-${rawId.slice(8,12)}-4${rawId.slice(13,16)}-a${rawId.slice(17,20)}-${rawId.slice(20)}`;
         const result=await sender({provider:intent.provider as 'firebase'|'onesignal',config:JSON.parse(connection.config_json),secret:this.service.secret(connection),destination,title:intent.title,body:intent.body,path:intent.path,idempotencyKey});

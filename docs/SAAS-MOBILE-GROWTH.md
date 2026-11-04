@@ -146,6 +146,34 @@ transaction IDs and subtracts observed refunds. No currency conversion, tax/fee
 calculation or claimed causal lift. Partial/missing/conflicting revenue data suppress
 net/ROAS. Manual spend is not an ads API synchronization or audited accounting.
 
+## Additions (4 November 2026)
+- **Audiences:** `preview` and `enqueue` take `audience`:
+  - `pilot` (the default): the 1–5 allowlisted contacts, unchanged;
+  - `all`: every contact with consent for the channel;
+  - `segment`: `segmentId` + `segmentVersion`; members are matched through `mobileEntity(key, appId, memberId)`;
+  - `entities`: an explicit id list, used by automations.
+- **Limits for broad audiences:**
+  - One device per person, at most 1,000 recipients (`MOBILE_AUDIENCE_MAX`).
+  - The allowlist flag is not part of the frozen target revision. Consent and destination still are.
+  - A live send to a non-pilot audience also needs `PLATFORM_MOBILE_BROADCAST_ENABLED=1`.
+  - Pushes per project per day: `PLATFORM_MOBILE_PUSH_PER_DAY` (default 5).
+- **Push automations:**
+  - An automation can use `channel: push | in_app` with `mobile: {appId, connectionId}`.
+  - **Message content:** the title and text come from a campaign draft.
+  - **Recipients:** approving enqueues one mobile job for the ready people whose app id equals the trigger source's id and who have consent for the channel.
+  - **Unreachable people:** the others leave on a send (`not_sendable`).
+  - **Gates:** a send still needs the live and broadcast switches.
+- **Ad spend sync:** `syncAdSpend` pulls the daily spend of an ad-manager plan from Meta, Google Ads or LinkedIn.
+  - **Period:** the last 30 closed days within the plan's dates.
+  - **Storage:** rows go into `platform_mobile_costs` as `ad:<provider>:<plan>`, matched to installs by the provider campaign name (the plan name unless one is given).
+  - **Warnings:** the report shows `spend_synced`, and `spend_manual` only when manual rows exist.
+- **Limits:**
+  - Event quotas follow the plan (`projectEventLimits`): 1,000/day and 10,000 stored for trial, pilot and Launch; 5,000/50,000 for Growth; 20,000/200,000 for Team and the Crewin workspace.
+  - Receipts are kept for ten times the stored limit.
+  - The mobile report reads up to 90 closed days, bounded by the stored limit.
+- **Profile links:** Instagram and TikTok profile links with fixed tags are listed under Product data → Signed webhook → Source tag.
+- **Tests:** `test/platform-mobile-attribution.test.cjs`, `test/platform-mobile-audience.test.cjs`.
+
 ## Delivery and operations
 
 `PLATFORM_MOBILE_SEND_ENABLED=0` and `PLATFORM_MOBILE_LINKS_ENABLED=0` by default.
