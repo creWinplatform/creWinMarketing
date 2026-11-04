@@ -7,7 +7,7 @@ import { MarketingStoreError } from './marketing-store';
 export type AdProvider='meta'|'google'|'linkedin'|'tiktok'|'apple_search';
 export const AD_PROVIDERS:AdProvider[]=['meta','google','linkedin','tiktok','apple_search'];
 export const AD_CONNECTION:Record<AdProvider,'meta_ads'|'google_ads'|'linkedin_ads'|'tiktok_ads'|'apple_search_ads'>={meta:'meta_ads',google:'google_ads',linkedin:'linkedin_ads',tiktok:'tiktok_ads',apple_search:'apple_search_ads'};
-export type AdHttp=(request:{method:'GET'|'POST'|'PUT';url:string;headers:Record<string,string>;body?:string})=>Promise<{status:number;header:(name:string)=>string|null;payload:Record<string,unknown>}>;
+export type AdHttp=(request:{method:'GET'|'POST'|'PUT';url:string;headers:Record<string,string>;body?:string|FormData})=>Promise<{status:number;header:(name:string)=>string|null;payload:Record<string,unknown>}>;
 export const adHttp:AdHttp=async({method,url,headers,body})=>{
   const parsed=new URL(url);if(parsed.protocol!=='https:'||!['googleads.googleapis.com','api.linkedin.com','business-api.tiktok.com','api.searchads.apple.com','appleid.apple.com'].includes(parsed.hostname)||parsed.username||parsed.password||parsed.searchParams.has('access_token'))throw new Error('Invalid ad host.');
   const response=await fetch(parsed,{method,headers:{Accept:'application/json',...headers},body,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});

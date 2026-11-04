@@ -1,6 +1,6 @@
 'use client';
 import { useState,type FormEvent,type ReactNode } from 'react';
-import { Plus,RefreshCw,Save,Trash2,Check,Send,Download,Pencil } from 'lucide-react';
+import { Plus,RefreshCw,Save,Trash2,Check,Send,Download,Pencil,Sparkles } from 'lucide-react';
 import { localeTag } from '@/lib/i18n/shared';
 import { translateMessage } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/platform/catalog';
@@ -15,7 +15,9 @@ function Table({label,heads,children}:{label:string;heads:string[];children:Reac
 
 // App Store search positions for the terms the team tracks.
 export function MobileKeywords({lang,data,app,busy,run,post}:Props){
-  const tr=lang==='tr',t=(a:string,b:string)=>tr?a:b,[term,setTerm]=useState(''),[country,setCountry]=useState(app.country);
+  const tr=lang==='tr',t=(a:string,b:string)=>tr?a:b,[term,setTerm]=useState(''),[country,setCountry]=useState(app.country),[rival,setRival]=useState('');
+  const tracked=new Set(data.competitors.map(item=>item.id)),suggested=[...new Map(data.keywords.flatMap(item=>item.leaders).filter(item=>item.id&&item.id!==app.appleId&&!tracked.has(item.id)).map(item=>[item.id,item])).values()].slice(0,8);
+  const addRival=(appleId:string)=>void run(async()=>{await post({action:'addCompetitor',appId:app.id,appleId});setRival('');},t('Rakip eklendi; sırası bir sonraki kontrolde görünür.','Competitor added; its positions appear after the next check.'));
   const add=(event:FormEvent)=>{event.preventDefault();void run(async()=>{await post({action:'addKeyword',appId:app.id,term,country});setTerm('');},t('Anahtar kelime eklendi; ilk sıra bir sonraki kontrolde görünür.','Keyword added; its first position appears after the next check.'));};
   const change=(rank:number|null,previous:number|null)=>{
     if(rank===null||previous===null)return <span className="mobile-rank-flat">—</span>;const diff=previous-rank;
@@ -29,14 +31,24 @@ export function MobileKeywords({lang,data,app,busy,run,post}:Props){
       <label className="mobile-country">{t('Ülke','Country')}<input required maxLength={2} value={country} onChange={event=>setCountry(event.target.value.toUpperCase())}/></label>
       <div className="mobile-actions"><button className="studio-primary" disabled={busy||data.keywords.length>=30}><Plus size={16}/>{t('Ekle','Add')}</button><button type="button" className="studio-secondary" disabled={busy||!data.keywords.length} onClick={()=>void run(()=>post({action:'checkRanks',appId:app.id}),t('Bugün kontrol edilmemiş terimler kontrol edildi (en çok 10).','Terms not checked today were checked (up to 10).'))}><RefreshCw size={16}/>{t('Şimdi kontrol et','Check now')}</button></div>
     </form>}
-    {data.keywords.length?<Table label={t('Anahtar kelime sıraları','Keyword positions')} heads={[t('Terim','Term'),t('Ülke','Country'),t('Sıra','Position'),t('Değişim','Change'),t('İlk üç','Top three'),t('Son 7 gün','Last 7 days'),'']}>{data.keywords.map(item=><tr key={item.id}>
+    {data.keywords.length?<Table label={t('Anahtar kelime sıraları','Keyword positions')} heads={[t('Terim','Term'),t('Ülke','Country'),t('Sıra','Position'),t('Değişim','Change'),...(data.competitors.length?[t('Rakipler','Competitors')]:[]),t('İlk üç','Top three'),t('Son 7 gün','Last 7 days'),'']}>{data.keywords.map(item=><tr key={item.id}>
       <td>{item.term}</td><td>{item.country}</td>
       <td>{item.checkedOn===null?<small>{t('Bekliyor','Waiting')}</small>:item.rank===null?<small>{item.resultCount===null?t('Okunamadı','Not read'):t('İlk 200’de yok','Not in top 200')}</small>:<strong>{item.rank}</strong>}</td>
       <td>{change(item.rank,item.previousRank)}</td>
+      {data.competitors.length>0&&<td><small>{item.competitors.length?item.competitors.map(rival=>`${rival.name} ${rival.rank===null?'—':`#${rival.rank}`}`).join(' · '):'—'}</small></td>}
       <td><small>{item.leaders.map(leader=>leader.name).join(' · ')||'—'}</small></td>
       <td><small>{item.history.slice(-7).map(point=>point.rank??'–').join(' · ')||'—'}</small></td>
       <td>{data.canWrite&&<button className="studio-text-button" aria-label={`${t('Takipten çıkar','Stop tracking')}: ${item.term}`} disabled={busy} onClick={()=>void run(()=>post({action:'removeKeyword',appId:app.id,id:item.id}))}><Trash2 size={15}/></button>}</td>
     </tr>)}</Table>:<p className="studio-empty">{t('Henüz takip edilen anahtar kelime yok.','No tracked keywords yet.')}</p>}
+    {app.appleId&&<div className="mobile-competitors">
+      <h3>{t('Rakip uygulamalar','Competitor apps')} <small>{data.competitors.length} / 5</small></h3>
+      {data.competitors.length>0&&<ul>{data.competitors.map(item=><li key={item.id}><span>{item.name} <small>#{item.id}</small></span>{data.canWrite&&<button className="studio-text-button" aria-label={`${t('Takipten çıkar','Stop tracking')}: ${item.name}`} disabled={busy} onClick={()=>void run(()=>post({action:'removeCompetitor',appId:app.id,appleId:item.id}))}><Trash2 size={15}/></button>}</li>)}</ul>}
+      {data.canWrite&&data.competitors.length<5&&<>
+        {suggested.length>0&&<div className="mobile-actions"><small>{t('Aramalarda üstte çıkanlar:','Ranking above in searches:')}</small>{suggested.map(item=><button key={item.id} className="studio-secondary" disabled={busy} onClick={()=>addRival(item.id)}><Plus size={14}/>{item.name}</button>)}</div>}
+        <form className="mobile-inline-form" onSubmit={event=>{event.preventDefault();addRival(rival.trim());}}><label>{t('App Store kimliğiyle ekle','Add by App Store ID')}<input inputMode="numeric" required pattern="[0-9]{5,15}" value={rival} onChange={event=>setRival(event.target.value)}/></label><div className="mobile-actions"><button className="studio-secondary" disabled={busy}><Plus size={16}/>{t('Rakip ekle','Add competitor')}</button></div></form>
+      </>}
+      <p className="studio-note">{t('Rakiplerin sırası, sizin terimleriniz kontrol edilirken aynı arama sonuçlarından okunur; ek istek yapılmaz.','Competitor positions are read from the same search results when your terms are checked; no extra request is made.')}</p>
+    </div>}
     <p className="studio-data-notice">{t('Google Play’in herkese açık bir arama API’si yok; sıra takibi yalnız App Store için yapılır.','Google Play has no public search API; positions are tracked for the App Store only.')}</p>
   </section>;
 }
@@ -69,7 +81,7 @@ export function MobileListings({lang,data,app,busy,run,post}:Props){
         <label>{t('Mağaza','Store')}<select value={store} disabled={Boolean(editing)} onChange={event=>{setStore(event.target.value as 'ios'|'android');setFields({});}}>{stores.map(item=><option key={item} value={item}>{item==='ios'?'App Store':'Google Play'}</option>)}</select></label>
         <label>{t('Dil','Language')}<input required maxLength={5} value={locale} onChange={event=>setLocale(event.target.value)}/></label>
       </div>
-      <div className="mobile-actions"><button type="button" className="studio-secondary" disabled={busy||!connected} onClick={()=>void run(async()=>{const value=await post<{fields:Record<string,string>;locale:string;editable:boolean}>({action:'currentListing',appId:app.id,store,locale});setFields(value.fields);setLocale(value.locale);},t('Mağazadaki metin forma getirildi; kaydedilmedi.','The store’s text was loaded into the form; nothing was saved.'))}><Download size={16}/>{t('Mağazadaki metni getir','Load the store text')}</button>{!connected&&<small>{store==='ios'?t('App Store Connect bağlantısı gerekli (Entegrasyonlar).','Needs the App Store Connect connection (Integrations).'):t('Google Play bağlantısı gerekli (Entegrasyonlar).','Needs the Google Play connection (Integrations).')}</small>}</div>
+      <div className="mobile-actions"><button type="button" className="studio-secondary" disabled={busy||!connected} onClick={()=>void run(async()=>{const value=await post<{fields:Record<string,string>;locale:string;editable:boolean}>({action:'currentListing',appId:app.id,store,locale});setFields(value.fields);setLocale(value.locale);},t('Mağazadaki metin forma getirildi; kaydedilmedi.','The store’s text was loaded into the form; nothing was saved.'))}><Download size={16}/>{t('Mağazadaki metni getir','Load the store text')}</button><button type="button" className="studio-secondary" disabled={busy} onClick={()=>void run(async()=>{const value=await post<{fields:Record<string,string>}>({action:'suggestListing',appId:app.id,store,locale,current:fields});setFields({...fields,...value.fields});},t('AI önerisi forma yazıldı; kaydedilmedi. Gözden geçirip düzenleyin.','The AI proposal is in the form; nothing was saved. Review and edit it.'))}><Sparkles size={16}/>{t('AI ile öner','Suggest with AI')}</button>{!connected&&<small>{store==='ios'?t('App Store Connect bağlantısı gerekli (Entegrasyonlar).','Needs the App Store Connect connection (Integrations).'):t('Google Play bağlantısı gerekli (Entegrasyonlar).','Needs the Google Play connection (Integrations).')}</small>}</div>
       <div className="studio-form-grid mobile-listing-fields">{list.map(([key,limit])=><label key={key} className={LONG.has(key)?'studio-form-full':undefined}><span className="mobile-field-head"><span>{label(key)}</span><small className={length(fields[key])>limit?'mobile-over':undefined}>{length(fields[key])} / {limit}</small></span>
         {LONG.has(key)?<textarea rows={key==='promotionalText'?3:6} value={fields[key]||''} onChange={event=>setFields({...fields,[key]:event.target.value})}/>:<input value={fields[key]||''} onChange={event=>setFields({...fields,[key]:event.target.value})}/>}</label>)}</div>
       <div className="studio-form-actions"><button className="studio-primary" disabled={busy||list.some(([key,limit])=>length(fields[key])>limit)}><Save size={16}/>{editing?t('Taslağı güncelle','Update draft'):t('Taslağı kaydet','Save draft')}</button></div>

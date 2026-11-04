@@ -256,6 +256,65 @@ The ASO tab adds three things next to the store audit.
 - Migration 70 adds `platform_mobile_keywords`, `platform_mobile_keyword_ranks`, `platform_mobile_skan` and `platform_mobile_listing_drafts`.
 - **Tests:** `test/platform-mobile-aso.test.cjs`, with fake Apple, App Store Connect, Google Play and AppsFlyer responses and a throwaway EC key; no network.
 
+## Store reviews, competitors, AI listing proposals and the monthly report (schemas 71–72, 4 November 2026)
+
+**Store reviews (Reviews tab).**
+
+- **Reading:**
+  - App Store Connect: the latest 200 reviews with their published responses.
+  - Google Play: reviews written or changed in the last week, which is the API's own window.
+  - The worker reads each connected store once a day, as the person who set up the connection, one store per tick. "Get reviews" reads now.
+  - Up to 1000 reviews per app are kept for 400 days.
+- **What is shown:**
+  - per store: the average, the 1–5 distribution, the last 30 days and the unanswered count;
+  - the latest reviews, with an all, unanswered or 1–3 star filter.
+- **Replies:**
+  - Editors write a draft. "Draft with AI" fills the form only. Its rules: no invented facts, promises, links or contact details, and no personal details from the review.
+  - An approver accepts the exact text; any edit clears the approval.
+  - Limits: 5970 characters on the App Store, 350 on Google Play.
+- **Sending a reply** needs all of the following:
+  - `connections.manage`;
+  - `PLATFORM_MOBILE_REVIEW_REPLY_ENABLED=1` (off by default);
+  - an explicit acknowledgement;
+  - an unchanged approval.
+  - The reply is claimed before the call, so it is sent once.
+  - App Store: `POST /v1/customerReviewResponses` (a new response replaces the old one). Google Play: `reviews/{id}:reply`.
+  - A failed reply stays as a draft to edit and approve again.
+
+**Competitor apps (ASO tab).**
+
+- Up to five App Store apps per app, added from the apps ranking above in the tracked searches or by App Store ID. An ID is looked up once.
+- Their positions are taken from the same search results when the app's own terms are checked, so no extra request is made.
+- They are stored as `competitors_json` with each day's check.
+
+**AI listing proposals.** "Suggest with AI" in the listing draft form proposes the store fields from:
+
+- the current text;
+- the tracked terms and positions;
+- the names of the apps above, for context only.
+
+The proposal is checked before it reaches the form:
+
+- it is clipped to the store limits;
+- keywords that repeat words already in the name or subtitle are dropped;
+- a proposal with a link, a promise, personal details or a competitor's name is refused;
+- it fills the form only and is saved and approved like any draft.
+
+**Monthly report.** A "Mobile app" section per app carries:
+
+- installs from the app's own events (kept 90 days);
+- campaign spend and CPI;
+- SKAN totals;
+- store ratings and replies sent this month;
+- App Store positions at the first and last check of the month.
+
+It holds counts only, never review text, authors or replies.
+
+**Files:**
+
+- Code: `lib/platform/mobile-reviews.ts`, `mobile-month.ts`, `mobile-aso.ts` (competitors and `suggestListing`), `components/platform/MobileReviews.tsx`.
+- **Tests:** `test/platform-mobile-reviews.test.cjs`, `test/platform-mobile-aso.test.cjs`.
+
 ## Delivery and operations
 
 `PLATFORM_MOBILE_SEND_ENABLED=0` and `PLATFORM_MOBILE_LINKS_ENABLED=0` by default.

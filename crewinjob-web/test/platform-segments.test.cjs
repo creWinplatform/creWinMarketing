@@ -148,11 +148,12 @@ test('migration 13 preserves existing data and starts webhook coverage at migrat
   f.db.prepare('UPDATE platform_product_sources SET event_coverage_from=? WHERE connection_id=?').run(old,hook.id);
   const counts=f.db.prepare('SELECT COUNT(*) AS n FROM platform_product_records').get().n;
   f.db.exec('DROP TABLE platform_segment_previews; DROP TABLE platform_segment_versions; DROP TABLE platform_segments; ALTER TABLE platform_product_sources DROP COLUMN event_coverage_from; DELETE FROM platform_migrations WHERE version=13;');
-  await f.db.backup(file);const before=Date.now();db=openPlatformDatabase(file);
+  await f.db.backup(file);const before=Date.now();db=openPlatformDatabase(file);const after=Date.now();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM platform_product_records').get().n,counts);
   assert.equal(db.prepare('SELECT event_coverage_from FROM platform_product_sources WHERE connection_id=?').get(source.id).event_coverage_from,null);
   const coverage=db.prepare('SELECT event_coverage_from FROM platform_product_sources WHERE connection_id=?').get(hook.id).event_coverage_from;
-  assert.ok(Date.parse(coverage)>=before);assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
+  // SQLite's clock and Date.now() can differ by a few milliseconds on Windows: allow a second either side.
+  assert.ok(Date.parse(coverage)>=before-1000&&Date.parse(coverage)<=after+1000,`coverage ${coverage} is the migration time`);assert.equal(db.prepare('PRAGMA foreign_key_check').all().length,0);
   db.close();db=openPlatformDatabase(file);
   assert.equal(db.prepare('SELECT event_coverage_from FROM platform_product_sources WHERE connection_id=?').get(hook.id).event_coverage_from,coverage);
  }finally{db?.close();f.db.close();}

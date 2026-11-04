@@ -455,6 +455,43 @@ The app is kept in `platform_ad_plans.app_json`. Changing it clears the approval
 - **Apple:** an API user in Apple Search Ads (Account Settings → API) with its public key uploaded there.
 - **Meta and Google:** app installs need the app registered with Meta (App ID, SDK or MMP) and linked to Google Ads for conversion tracking.
 
+## 15. Ad spend warnings and ad images (schemas 73–74, 4 November 2026)
+
+**Spend warnings.** They are computed for running plans and shown in two places: on the plan card with a pause suggestion, and as team alerts (`ad_overspend`, `ad_cpi`) on the overview card, in email and on phones. Only ad managers see them.
+
+- **Overspend:** the provider-reported spend is above days run × daily budget × the threshold. A day of synced spend above daily budget × the threshold also counts.
+- **CPI:** the last 7 closed days of synced spend divided by the installs the attribution provider credited to the plan's campaign name, against the team's cap in that currency. Spend with no install also passes the cap.
+- **Thresholds:**
+  - The overspend threshold is 100–300% (default 120%); a CPI cap can be set per currency.
+  - People who approve plans and manage connections set them in the budget card.
+  - They are stored in `platform_ad_alert_settings`.
+- **Spend refresh:** the worker reads the spend of one running plan per tick, every 6 hours, as the plan's approver, at most four tries a day per plan. It is a read only.
+- **Pausing:** Ryzevo never pauses on its own; the team uses the plan's Pause button.
+
+**Ad images (Meta and TikTok plans already created on the provider).**
+
+- **Draft:**
+  - The team adds an image (JPEG, PNG or WebP, aspect ratio 0.5–1.91 so 9:16 works, made into a JPEG of up to 1080×2160) with a headline, ad text and a call to action.
+  - Meta also needs the Facebook Page ID.
+  - App plans offer only "Install now".
+- **Approval:** an approver accepts the exact image and text (a digest); any edit clears the approval.
+- **Sending** needs all of the following:
+  - `connections.manage` and `campaign.approve`;
+  - `PLATFORM_AD_CREATIVES_ENABLED=1` (off by default);
+  - an explicit acknowledgement.
+- **Meta:** the image goes to `adimages`, a creative to `adcreatives` (the page, the link or store address, the text and the call to action) and a PAUSED ad to `ads` in the plan's ad set. Spending still starts only with the plan's own start approval.
+- **TikTok:** the image goes to the ad account's library (`file/image/ad/upload/`, a file upload with its MD5 signature). Ad groups and ads are built in TikTok Ads Manager.
+- **Failures and limits:**
+  - A partial failure is recorded with what was done.
+  - Images sent to a provider are removed in the provider's own screen.
+  - Up to 10 images per plan.
+- **Videos:** not sent yet; they are added in the provider's tool.
+
+**Files:**
+
+- Code: `lib/platform/ad-alerts.ts`, `ad-spend-refresh.ts`, `ad-creatives.ts`, `app/api/platform/ad-creatives`, `components/platform/AdCreatives.tsx`.
+- **Tests:** `test/platform-ad-alerts.test.cjs`, `test/platform-ad-creatives.test.cjs`.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**

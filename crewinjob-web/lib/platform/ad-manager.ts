@@ -16,7 +16,7 @@ type Plan={app_json:string|null;id:string;provider:AdProvider;connection_id:stri
 export type AdGraph=(method:'GET'|'POST',path:string,token:string,params?:Record<string,string>)=>Promise<Record<string,unknown>>;
 const version=()=>{const value=process.env.PLATFORM_META_ADS_GRAPH_VERSION||'v25.0';return /^v\d{1,3}\.\d$/.test(value)?value:'v25.0';};
 export const metaAdsGraph:AdGraph=async(method,path,token,params={})=>{
-  if(!/^(act_\d{1,20}|\d{1,25})(\/(campaigns|adsets|insights))?$/.test(path))throw new Error('Invalid ad path.');
+  if(!/^(act_\d{1,20}|\d{1,25})(\/(campaigns|adsets|insights|adimages|adcreatives|ads))?$/.test(path))throw new Error('Invalid ad path.');
   const url=new URL(`https://graph.facebook.com/${version()}/${path}`);if(method==='GET')for(const [key,value] of Object.entries(params))url.searchParams.set(key,value);
   const response=await fetch(url,{method,headers:{Authorization:`Bearer ${token}`,Accept:'application/json',...(method==='POST'?{'Content-Type':'application/x-www-form-urlencoded'}:{})},body:method==='POST'?new URLSearchParams(params):undefined,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});
   const text=await response.text();let payload:Record<string,unknown>={};try{payload=JSON.parse(text.slice(0,65536));}catch{payload={};}
@@ -177,6 +177,12 @@ export class ProjectAds{
       this.db.prepare("UPDATE platform_ad_plans SET connection_id=?,name=?,objective=?,special_category=?,daily_budget_minor=?,currency=?,start_date=?,end_date=?,countries_json=?,link_url=?,app_json=?,digest=?,state='draft',approved_by=NULL,approved_digest=NULL,approved_at=NULL,revision=revision+1,updated_at=? WHERE id=?").run(plan.connection_id,plan.name,plan.objective,plan.special_category,plan.daily_budget_minor,plan.currency,plan.start_date,plan.end_date,plan.countries_json,plan.link_url,plan.app_json,digest,now,row.id);
       this.audit('ads.plan.update');return this.read();
     }).immediate();
+  }
+  // Provider access for a plan already created on the provider (ad images): the plan, its account id and a token.
+  async planAccess(id:unknown){
+    this.authorize('manage');const row=this.row(id);if(!row.provider_campaign_id)throw new MarketingStoreError('Plan reklam sağlayıcısında oluşturulmamış.',409);
+    const {connection,credentials}=this.credentials(row.connection_id);
+    return {plan:{id:row.id,name:row.name,objective:row.objective,link_url:row.link_url,provider_adset_id:row.provider_adset_id,app:planApp(row)},adAccountId:credentials.adAccountId,token:this.provider==='meta'?credentials.accessToken:await this.token(connection,credentials)};
   }
   private row(id:unknown){const row=typeof id==='string'?this.db.prepare('SELECT * FROM platform_ad_plans WHERE id=? AND organization_id=? AND project_id=? AND provider=?').get(id,...this.args(),this.provider) as Plan|undefined:undefined;if(!row)throw new MarketingStoreError('Reklam planı bulunamadı.',404);return row;}
   private approvedNow(row:Plan){return row.approved_digest===row.digest&&Boolean(row.approved_by&&this.repo.can(row.approved_by,...this.args(),'campaign.approve'));}

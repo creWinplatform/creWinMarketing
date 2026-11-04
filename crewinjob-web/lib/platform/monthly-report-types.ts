@@ -17,6 +17,16 @@ export type MonthlyReportFacts = {
   // People who arrived through a tagged post or email and reached a goal stage this month, by the team's own product
   // events (first touch, 90 days). Absent in reports approved before it existed.
   results?: MonthlyResults | null;
+  // The month's mobile app figures (installs, SKAN, spend, App Store positions, ratings). Counts only; absent in reports
+  // approved before it existed.
+  mobile?: MonthlyMobile[];
+};
+export type MonthlyMobile = {
+  name: string; installs: number | null;
+  skan: { installs: number; revenue: number | null; cost: number | null; currency: string } | null;
+  spend: { currency: string; amount: number; cpi: number | null }[];
+  keywords: { tracked: number; improved: number; declined: number; top: { term: string; country: string; first: number | null; last: number | null }[] } | null;
+  reviews: { store: 'ios' | 'android'; count: number; average: number | null; replied: number; overallAverage: number | null; overallCount: number }[];
 };
 export type MonthlyResults = {
   stages: { tr: string; en: string }[];

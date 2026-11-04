@@ -5,11 +5,14 @@ import { MarketingStoreError } from './errors';
 import { assertProjectDelivery,assertProjectWork,projectEntitlement } from './entitlements';
 import { mobileDay,mobileId,mobileRecord } from './mobile-validation';
 import { mobileGoogleAccess,readPlayListing,type MobileSecret,type MobileTransport } from './mobile-providers';
-import { ANDROID_FIELDS,IOS_FIELDS,appStoreRank,readAppStoreListing,readSkanReport,writeAppStoreListing,writePlayListing,type SkanRow } from './mobile-aso-providers';
+import { ANDROID_FIELDS,IOS_FIELDS,appStoreLookup,appStoreRank,readAppStoreListing,readSkanReport,writeAppStoreListing,writePlayListing,type SkanRow } from './mobile-aso-providers';
 import { mobileRevision,type MobileGrowth } from './mobile-store';
+import { maskPersonal } from './messaging-sources';
+import { COACH_BANNED,coachClip,coachObject,type CoachGenerator } from './coach';
+import { parseCoachJson,runCoachAi } from './coach-ai';
 import type { MobileApp,MobileKeyword,MobileListingDraft,MobileSkanReport } from './mobile-types';
 
-export const ASO_LIMITS={keywords:30,checksPerRun:10,skanDays:90,drafts:20,historyDays:400} as const;
+export const ASO_LIMITS={keywords:30,checksPerRun:10,skanDays:90,drafts:20,historyDays:400,competitors:5} as const;
 export const listingPublishEnabled=()=>process.env.PLATFORM_MOBILE_LISTING_PUBLISH_ENABLED==='1';
 const today=()=>new Date().toISOString().slice(0,10);
 // Provider clients throw plain errors whose message is a code; read it without relying on the Error realm.
@@ -17,7 +20,8 @@ const errorCode=(error:unknown)=>typeof (error as {message?:unknown})?.message==
 const dayOffset=(days:number)=>new Date(Date.now()+days*86400000).toISOString().slice(0,10);
 type KeywordRow={id:string;term:string;country:string;checked_on:string|null};
 type DraftRow={id:string;app_id:string;store:'ios'|'android';locale:string;fields_json:string;digest:string;state:MobileListingDraft['state'];revision:number;approved_digest:string|null;approved_at:string|null;published_at:string|null;last_error:string|null;created_at:string;updated_at:string};
-type Rank={rank:number|null;resultCount:number;leaders:{id:string;name:string}[]};
+type Rank={rank:number|null;resultCount:number;leaders:{id:string;name:string}[];competitors?:Record<string,number|null>};
+const competitorIds=(db:Database.Database,appId:string)=>(db.prepare('SELECT apple_id FROM platform_mobile_competitors WHERE app_id=? ORDER BY created_at,apple_id').all(appId) as {apple_id:string}[]).map(row=>row.apple_id);
 
 export function normalizeTerm(value:unknown){
   const term=typeof value==='string'?value.normalize('NFC').trim().replace(/\s+/g,' ').toLocaleLowerCase('tr'):'';
@@ -25,17 +29,17 @@ export function normalizeTerm(value:unknown){
 }
 function recordRank(db:Database.Database,keywordId:string,result:Rank|null){
   const now=new Date().toISOString(),day=now.slice(0,10);
-  if(result)db.prepare('INSERT INTO platform_mobile_keyword_ranks VALUES(?,?,?,?,?,?) ON CONFLICT(keyword_id,day) DO UPDATE SET rank=excluded.rank,result_count=excluded.result_count,leaders_json=excluded.leaders_json,checked_at=excluded.checked_at').run(keywordId,day,result.rank,result.resultCount,JSON.stringify(result.leaders),now);
+  if(result)db.prepare('INSERT INTO platform_mobile_keyword_ranks(keyword_id,day,rank,result_count,leaders_json,checked_at,competitors_json) VALUES(?,?,?,?,?,?,?) ON CONFLICT(keyword_id,day) DO UPDATE SET rank=excluded.rank,result_count=excluded.result_count,leaders_json=excluded.leaders_json,checked_at=excluded.checked_at,competitors_json=excluded.competitors_json').run(keywordId,day,result.rank,result.resultCount,JSON.stringify(result.leaders),now,JSON.stringify(result.competitors||{}));
   db.prepare('UPDATE platform_mobile_keywords SET checked_on=? WHERE id=?').run(day,keywordId);
   db.prepare('DELETE FROM platform_mobile_keyword_ranks WHERE keyword_id=? AND day<?').run(keywordId,dayOffset(-ASO_LIMITS.historyDays));
 }
 // The worker checks a few terms per tick, once a day each. A failed check is not retried that day.
 export async function refreshDueKeywordRanks(db:Database.Database,read:MobileTransport=fetch,limit=5){
-  const due=db.prepare("SELECT k.id,k.term,k.country,k.organization_id,k.project_id,a.config_json FROM platform_mobile_keywords k JOIN platform_mobile_apps a ON a.id=k.app_id AND a.organization_id=k.organization_id AND a.project_id=k.project_id JOIN platform_projects p ON p.id=k.project_id AND p.organization_id=k.organization_id AND p.product_pack='standard' WHERE k.checked_on IS NULL OR k.checked_on<? ORDER BY k.checked_on IS NOT NULL,k.checked_on,k.id LIMIT ?").all(today(),limit) as {id:string;term:string;country:string;organization_id:string;project_id:string;config_json:string}[];
+  const due=db.prepare("SELECT k.id,k.app_id,k.term,k.country,k.organization_id,k.project_id,a.config_json FROM platform_mobile_keywords k JOIN platform_mobile_apps a ON a.id=k.app_id AND a.organization_id=k.organization_id AND a.project_id=k.project_id JOIN platform_projects p ON p.id=k.project_id AND p.organization_id=k.organization_id AND p.product_pack='standard' WHERE k.checked_on IS NULL OR k.checked_on<? ORDER BY k.checked_on IS NOT NULL,k.checked_on,k.id LIMIT ?").all(today(),limit) as {id:string;app_id:string;term:string;country:string;organization_id:string;project_id:string;config_json:string}[];
   let checked=0;
   for(const row of due){
     let result:Rank|null=null;
-    try{if(projectEntitlement(db,{organizationId:row.organization_id,projectId:row.project_id}).active)result=await appStoreRank(JSON.parse(row.config_json) as MobileApp,row.term,row.country,read);}catch{result=null;}
+    try{if(projectEntitlement(db,{organizationId:row.organization_id,projectId:row.project_id}).active)result=await appStoreRank(JSON.parse(row.config_json) as MobileApp,row.term,row.country,read,competitorIds(db,row.app_id));}catch{result=null;}
     recordRank(db,row.id,result);if(result)checked++;
   }
   return checked;
@@ -78,10 +82,28 @@ export class MobileAso{
   args(){return this.mobile.args();}
   keywords(appId:string):MobileKeyword[]{
     this.mobile.rawApp(appId);
+    const rivals=this.competitors(appId);
     return (this.db.prepare('SELECT id,term,country,checked_on FROM platform_mobile_keywords WHERE app_id=? AND organization_id=? AND project_id=? ORDER BY created_at,id').all(appId,...this.args()) as KeywordRow[]).map(row=>{
-      const ranks=this.db.prepare('SELECT day,rank,result_count,leaders_json FROM platform_mobile_keyword_ranks WHERE keyword_id=? ORDER BY day DESC LIMIT 30').all(row.id) as {day:string;rank:number|null;result_count:number;leaders_json:string}[];
-      return {id:row.id,term:row.term,country:row.country,checkedOn:row.checked_on,rank:ranks[0]?.rank??null,previousRank:ranks[1]?.rank??null,resultCount:ranks[0]?.result_count??null,leaders:ranks[0]?JSON.parse(ranks[0].leaders_json):[],history:ranks.map(item=>({day:item.day,rank:item.rank})).reverse()};
+      const ranks=this.db.prepare('SELECT day,rank,result_count,leaders_json,competitors_json FROM platform_mobile_keyword_ranks WHERE keyword_id=? ORDER BY day DESC LIMIT 30').all(row.id) as {day:string;rank:number|null;result_count:number;leaders_json:string;competitors_json:string|null}[];
+      const positions=JSON.parse(ranks[0]?.competitors_json||'{}') as Record<string,number|null>;
+      return {id:row.id,term:row.term,country:row.country,checkedOn:row.checked_on,rank:ranks[0]?.rank??null,previousRank:ranks[1]?.rank??null,resultCount:ranks[0]?.result_count??null,leaders:ranks[0]?JSON.parse(ranks[0].leaders_json):[],history:ranks.map(item=>({day:item.day,rank:item.rank})).reverse(),competitors:rivals.map(rival=>({id:rival.id,name:rival.name,rank:rival.id in positions?positions[rival.id]:undefined})).filter(item=>item.rank!==undefined) as {id:string;name:string;rank:number|null}[]};
     });
+  }
+  competitors(appId:string){this.mobile.rawApp(appId);return (this.db.prepare('SELECT apple_id id,name FROM platform_mobile_competitors WHERE app_id=? AND organization_id=? AND project_id=? ORDER BY created_at,apple_id').all(appId,...this.args()) as {id:string;name:string}[]);}
+  // Up to five competitor apps; their positions are read in the same searches as the app's own terms (no extra request).
+  async addCompetitor(raw:Record<string,unknown>,read?:MobileTransport){
+    this.mobile.authorize('content.write');assertProjectWork(this.db,this.mobile.scope);const app=this.mobile.app(String(raw.appId)),id=typeof raw.appleId==='string'?raw.appleId.trim():'';
+    if(!/^[1-9]\d{4,14}$/.test(id))throw new MarketingStoreError('Rakip için App Store kimliğini (yalnız rakam) girin.');if(id===app.appleId)throw new MarketingStoreError('Kendi uygulamanız rakip olarak eklenemez.');
+    if(this.competitors(app.id).length>=ASO_LIMITS.competitors)throw new MarketingStoreError('En çok beş rakip uygulama takip edilebilir.',429);
+    this.db.transaction(()=>this.mobile.quota('mobile_rank',150)).immediate();
+    let name:string;try{name=await appStoreLookup(id,app.country,read);}catch{throw new MarketingStoreError('Bu App Store kimliğiyle uygulama bulunamadı.',404);}
+    return this.db.transaction(()=>{this.mobile.authorize('content.write');
+      if(this.db.prepare('INSERT INTO platform_mobile_competitors VALUES(?,?,?,?,?,?,?) ON CONFLICT(app_id,apple_id) DO NOTHING').run(...this.args(),app.id,id,name,this.mobile.scope.subject,new Date().toISOString()).changes===0)throw new MarketingStoreError('Bu rakip zaten takip ediliyor.',409);
+      this.mobile.audit('mobile.aso.competitor.add');return {competitors:this.competitors(app.id),keywords:this.keywords(app.id)};}).immediate();
+  }
+  removeCompetitor(appId:string,appleId:string){
+    this.mobile.authorize('content.write');this.mobile.rawApp(appId);
+    return this.db.transaction(()=>{if(this.db.prepare('DELETE FROM platform_mobile_competitors WHERE app_id=? AND apple_id=? AND organization_id=? AND project_id=?').run(appId,String(appleId),...this.args()).changes===0)throw new MarketingStoreError('Rakip bulunamadı.',404);this.mobile.audit('mobile.aso.competitor.remove');return {competitors:this.competitors(appId),keywords:this.keywords(appId)};}).immediate();
   }
   addKeyword(raw:Record<string,unknown>){
     this.mobile.authorize('content.write');assertProjectWork(this.db,this.mobile.scope);const app=this.mobile.app(String(raw.appId));
@@ -106,7 +128,7 @@ export class MobileAso{
     let checked=0,failed=0;
     for(const row of due){
       this.db.transaction(()=>this.mobile.quota('mobile_rank',150)).immediate();
-      let result:Rank|null=null;try{result=await appStoreRank(app,row.term,row.country,read);}catch{result=null;}
+      let result:Rank|null=null;try{result=await appStoreRank(app,row.term,row.country,read,competitorIds(this.db,app.id));}catch{result=null;}
       this.mobile.authorize('content.write');recordRank(this.db,row.id,result);if(result)checked++;else failed++;
     }
     this.mobile.audit('mobile.aso.rank');return {checked,failed,remaining:Math.max(0,(this.db.prepare('SELECT COUNT(*) n FROM platform_mobile_keywords WHERE app_id=? AND (checked_on IS NULL OR checked_on<?)').get(app.id,today()) as {n:number}).n),keywords:this.keywords(app.id)};
@@ -187,6 +209,30 @@ export class MobileAso{
   deleteListing(appId:string,id:string){
     this.mobile.authorize('content.write');this.mobile.rawApp(appId);
     return this.db.transaction(()=>{const row=this.draftRow(appId,id);if(row.state==='publishing')throw new MarketingStoreError('Mağazaya yazılmakta olan taslak silinemez.',409);this.db.prepare('DELETE FROM platform_mobile_listing_drafts WHERE id=?').run(row.id);this.mobile.audit('mobile.listing.delete');return this.listings(appId);}).immediate();
+  }
+  // AI proposes listing text from the app, the current text and the tracked App Store positions (with the apps ranking
+  // above). The proposal fills the form only; it is saved, approved and written like any draft.
+  async suggestListing(raw:Record<string,unknown>,generator?:CoachGenerator){
+    this.mobile.authorize('content.write');assertProjectWork(this.db,this.mobile.scope);if(!generator)throw new MarketingStoreError('Bu platform için AI sağlayıcısı ve model henüz yapılandırılmadı.',503);
+    const app=this.mobile.app(String(raw.appId)),store=this.store(app,raw.store),locale=this.locale(app,raw.locale),limits=fieldLimits(store),project=this.mobile.repo.workspace(this.mobile.scope.subject,...this.args())!.project;
+    let current:Record<string,string>={};try{current=raw.current===undefined?{}:normalizeListing(store,raw.current);}catch{current={};}
+    const keywords=this.keywords(app.id).slice(0,30).map(item=>({term:item.term,country:item.country,position:item.rank,above:item.leaders.map(leader=>leader.name).slice(0,3)}));
+    const keys=Object.keys(limits),language=locale.startsWith('en')?'English':locale.startsWith('tr')?'Turkish':`the language of locale ${locale}`;
+    const prompt=`You write ${store==='ios'?'App Store':'Google Play'} listing text in ${language} for the app "${app.name}" (website ${app.website}). Brand voice: ${(project.brandVoice||'clear, warm, practical').slice(0,300)}.
+Return only JSON with these keys and character limits: ${keys.map(key=>`${key} (max ${limits[key]})`).join(', ')}.${store==='ios'?' The keywords field is comma separated without spaces and must not repeat words already in name or subtitle.':''}
+Rules: describe only what the current text and the facts say the app does; do not invent features, awards, prices, discounts, rankings, user numbers or reviews; no guarantees, superlatives like "best" or "#1", links, emails or phone numbers; do not use competitor or other app names.
+Current text (JSON, may be partial): ${JSON.stringify(current).slice(0,5000)}
+Tracked App Store search terms with the app's current position (null = not in the top 200) and the apps above it (for context only, never name them): ${JSON.stringify(keywords).slice(0,3000)}`;
+    return runCoachAi(this.db,this.mobile.scope,generator,prompt,output=>{
+      const fail=()=>new MarketingStoreError('AI önerisi kurallara uymadı (bağlantı, vaat, kişisel bilgi veya başka uygulama adı). Metni kendiniz yazabilirsiniz.',422);
+      let value:Record<string,unknown>;try{value=coachObject(parseCoachJson(output));}catch{throw fail();}
+      const proposal:Record<string,string>={};for(const key of keys)if(typeof value[key]==='string'&&(value[key] as string).trim())proposal[key]=coachClip((value[key] as string).trim(),limits[key]);
+      let fields:Record<string,string>;try{fields=normalizeListing(store,proposal);}catch{throw fail();}
+      if(store==='ios'&&fields.keywords){const shown=new Set(`${fields.name||''} ${fields.subtitle||''}`.toLocaleLowerCase('tr').split(/[^\p{L}\p{N}]+/u).filter(Boolean));fields.keywords=fields.keywords.split(',').filter(item=>!item.toLocaleLowerCase('tr').split(/\s+/).every(word=>shown.has(word))).join(',');if(!fields.keywords)delete fields.keywords;}
+      const text=JSON.stringify(fields),rivals=keywords.flatMap(item=>item.above).filter(name=>name&&name.toLocaleLowerCase('tr')!==app.name.toLocaleLowerCase('tr')&&name.length>3);
+      if(!Object.keys(fields).length||COACH_BANNED.test(text)||/https?:\/\/|www\./i.test(text)||maskPersonal(text)!==text||rivals.some(name=>text.toLocaleLowerCase('tr').includes(name.toLocaleLowerCase('tr'))))throw fail();
+      return fields;
+    },fields=>{this.mobile.authorize('content.write');this.mobile.audit('mobile.listing.ai');return {store,locale,fields,checks:listingChecks(store,fields)};});
   }
   // Reads the store's current text into the form. Nothing is saved.
   async currentListing(raw:Record<string,unknown>,read?:MobileTransport,getToken:(secret:MobileSecret,scope:string)=>Promise<string>=mobileGoogleAccess){

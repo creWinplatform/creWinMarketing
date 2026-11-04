@@ -1519,6 +1519,64 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_mobile_listing_scope ON platform_mobile_listing_drafts(organization_id,project_id,app_id,updated_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(70,datetime('now'));
   `))();
+  // Store reviews of the project's apps and the team's replies, approved on their exact text before they are sent.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=71').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_mobile_reviews (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, app_id TEXT NOT NULL,
+      store TEXT NOT NULL CHECK(store IN ('ios','android')), provider_id TEXT NOT NULL, rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+      title TEXT NOT NULL, body TEXT NOT NULL, author TEXT NOT NULL, territory TEXT NOT NULL, language TEXT NOT NULL, app_version TEXT NOT NULL,
+      reviewed_at TEXT NOT NULL, store_reply TEXT, store_reply_at TEXT, fetched_at TEXT NOT NULL,
+      UNIQUE(app_id,store,provider_id),
+      FOREIGN KEY(app_id,organization_id,project_id) REFERENCES platform_mobile_apps(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_mobile_review_order ON platform_mobile_reviews(app_id,reviewed_at);
+    CREATE TABLE platform_mobile_review_replies (
+      review_id TEXT PRIMARY KEY REFERENCES platform_mobile_reviews(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL, app_id TEXT NOT NULL,
+      text TEXT NOT NULL, digest TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('team','ai')),
+      state TEXT NOT NULL CHECK(state IN ('draft','approved','sending','sent','failed')), revision INTEGER NOT NULL DEFAULT 1,
+      approved_by TEXT, approved_digest TEXT, approved_at TEXT, sent_at TEXT, last_error TEXT,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE platform_mobile_review_sync (
+      app_id TEXT NOT NULL, store TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, synced_at TEXT NOT NULL,
+      PRIMARY KEY(app_id,store)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(71,datetime('now'));
+  `))();
+  // Competitor apps per app; their App Store positions are kept with each day's check of the app's own terms.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=72').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_mobile_competitors (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, app_id TEXT NOT NULL, apple_id TEXT NOT NULL, name TEXT NOT NULL,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY(app_id,apple_id),
+      FOREIGN KEY(app_id,organization_id,project_id) REFERENCES platform_mobile_apps(id,organization_id,project_id)
+    );
+    ALTER TABLE platform_mobile_keyword_ranks ADD COLUMN competitors_json TEXT;
+    INSERT INTO platform_migrations(version,applied_at) VALUES(72,datetime('now'));
+  `))();
+  // Ad spend warning thresholds per project: the overspend percentage and a cost-per-install cap per currency.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=73').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ad_alert_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      overspend_percent INTEGER NOT NULL CHECK(overspend_percent BETWEEN 100 AND 300), cpi_caps_json TEXT NOT NULL,
+      updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(73,datetime('now'));
+  `))();
+  // Ad images of created Meta and TikTok plans, approved on their exact image and text before they are sent.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=74').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ad_creatives (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, plan_id TEXT NOT NULL REFERENCES platform_ad_plans(id),
+      provider TEXT NOT NULL CHECK(provider IN ('meta','tiktok')), image BLOB NOT NULL, thumb BLOB NOT NULL, width INTEGER NOT NULL, height INTEGER NOT NULL, sha256 TEXT NOT NULL,
+      headline TEXT NOT NULL, primary_text TEXT NOT NULL, cta TEXT NOT NULL, page_id TEXT NOT NULL, digest TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('draft','approved','uploading','uploaded','failed')), revision INTEGER NOT NULL DEFAULT 1,
+      approved_by TEXT, approved_digest TEXT, approved_at TEXT, image_ref TEXT, creative_ref TEXT, ad_ref TEXT, last_error TEXT, uploaded_at TEXT,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX platform_ad_creative_plan ON platform_ad_creatives(plan_id,created_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(74,datetime('now'));
+  `))();
   return db;
 }
 

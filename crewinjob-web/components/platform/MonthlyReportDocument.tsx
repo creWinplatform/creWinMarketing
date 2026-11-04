@@ -1,10 +1,10 @@
 'use client';
 import { ExternalLink } from 'lucide-react';
-import type { MonthlyReportFacts, MonthlyResults } from '@/lib/platform/monthly-report-types';
+import type { MonthlyMobile, MonthlyReportFacts, MonthlyResults } from '@/lib/platform/monthly-report-types';
 
 const CHANNELS:Record<string,string>={linkedin:'LinkedIn',facebook:'Facebook',instagram:'Instagram',twitter:'X',x:'X',telegram:'Telegram',email:'E-posta / Email',social:'Sosyal / Social'};
 const SOURCES:Record<string,[string,string]>={manual:['Manuel kayıt','Manual record'],ga4:['Google Analytics','Google Analytics'],search_console:['Search Console','Search Console'],product_event:['Ürün olayları','Product events']};
-const PROVIDERS:Record<string,string>={meta:'Meta',google:'Google Ads',linkedin:'LinkedIn'};
+const PROVIDERS:Record<string,string>={meta:'Meta',google:'Google Ads',linkedin:'LinkedIn',tiktok:'TikTok',apple_search:'Apple Search Ads'};
 
 // The report itself, in the report's own language: the same markup is previewed by the team and opened by a link.
 export default function MonthlyReportDocument({facts,note,approvedAt,draft}:{facts:MonthlyReportFacts;note:string;approvedAt:string|null;draft?:boolean}){
@@ -48,6 +48,7 @@ export default function MonthlyReportDocument({facts,note,approvedAt,draft}:{fac
       <div className="studio-table-scroll" tabIndex={0} role="region" aria-label={tr?'Reklam planları':'Ad plans'}><table className="studio-table"><thead><tr><th scope="col">{tr?'Plan':'Plan'}</th><th scope="col">{tr?'Sağlayıcı':'Provider'}</th><th scope="col">{tr?'Harcama':'Spend'}</th><th scope="col">{tr?'Gösterim':'Impressions'}</th><th scope="col">{tr?'Tıklama':'Clicks'}</th></tr></thead>
         <tbody>{facts.ads.map((plan,index)=><tr key={index}><td>{plan.name}</td><td>{PROVIDERS[plan.provider]||plan.provider}</td><td>{plan.spendMinor===null?'—':money(plan.spendMinor,plan.currency)}</td><td>{plan.impressions===null?'—':n(plan.impressions)}</td><td>{plan.clicks===null?'—':n(plan.clicks)}</td></tr>)}</tbody></table></div>
       <p className="monthly-report-muted">{tr?'Harcama, gösterim ve tıklama planın başından son okumaya kadar sağlayıcının bildirdiği toplamdır; yalnız bu aya ait değildir.':'Spend, impressions and clicks are the provider-reported totals from the start of each plan to the last reading, not this month alone.'}</p></section>}
+    {facts.mobile&&facts.mobile.length>0&&<ReportMobile apps={facts.mobile} tr={tr} n={n}/>}
     <section><h2>{tr?'Hedef ölçümleri':'Goal measurements'}</h2>
       {facts.measurements.length?<ul>{facts.measurements.map((item,index)=><li key={index}><strong>{item.goal[facts.language]} · {item.stage[facts.language]}:</strong> {n(item.first)} ({date(item.firstAt)}) → {n(item.last)} ({date(item.lastAt)}) · {SOURCES[item.source]?.[tr?0:1]||item.source}</li>)}</ul>
       :<p>{tr?'Bu ay ölçüm kaydedilmedi. Veri yok, sıfır demek değildir.':'No measurement was recorded this month. No data is not zero.'}</p>}</section>
@@ -67,5 +68,24 @@ function ReportResults({results,tr,n,channel}:{results:MonthlyResults;tr:boolean
       <tbody>{results.items.map((item,index)=><tr key={index}><td>{item.title||(tr?'Adsız':'Untitled')}</td><td>{item.sources.map(channel).join(', ')||'—'}</td>{item.counts.map((count,stage)=><td key={stage}>{n(count)}</td>)}{results.value&&<td>{money(item.value)}</td>}</tr>)}</tbody></table></div>
     :<p>{tr?'Bu ay etiketli bir paylaşım veya e-postadan gelip bir hedef aşamasına ulaşan kişi görülmedi.':'Nobody who came through a tagged post or email reached a goal stage this month.'}</p>}
     <p className="monthly-report-muted">{tr?'Kişiler ilk geldikleri etiketli bağlantıya göre sayılır (ilk temas, 90 gün) ve ekibin kendi ürün olaylarından gelir. Bu bir gözlemdir, neden-sonuç kanıtı değildir.':'People are counted by the tagged link they first came through (first touch, 90 days), from the team’s own product events. This is an observation, not proof of cause.'}</p>
+  </section>;
+}
+
+// The month's mobile app figures: installs from the app's own events, SKAN, spend, App Store positions and ratings.
+function ReportMobile({apps,tr,n}:{apps:MonthlyMobile[];tr:boolean;n:(value:number)=>string}){
+  const amount=(value:number|null,currency:string)=>{if(value===null)return '—';try{return new Intl.NumberFormat(tr?'tr-TR':'en-GB',{style:'currency',currency}).format(value);}catch{return `${n(value)} ${currency}`;}};
+  const store=(value:string)=>value==='ios'?'App Store':'Google Play',rank=(value:number|null)=>value===null?(tr?'ilk 200 dışı':'outside top 200'):`#${value}`;
+  return <section><h2>{tr?'Mobil uygulama':'Mobile app'}</h2>
+    {apps.map((app,index)=><div className="monthly-report-mobile" key={index}>
+      {apps.length>1&&<h3>{app.name}</h3>}
+      <ul>
+        <li>{tr?'Yükleme (uygulamanın kendi olayları)':'Installs (the app’s own events)'}: {app.installs===null?(tr?'veri tutulma süresi dışında':'outside the data retention period'):n(app.installs)}</li>
+        {app.spend.map(item=><li key={item.currency}>{tr?'Kampanya harcaması':'Campaign spend'}: {amount(item.amount,item.currency)}{item.cpi!==null?` · CPI ${amount(item.cpi,item.currency)}`:''}</li>)}
+        {app.skan&&<li>SKAN (App Store, AppsFlyer): {n(app.skan.installs)} {tr?'yükleme':'installs'}{app.skan.cost!==null?` · ${tr?'maliyet':'cost'} ${amount(app.skan.cost,app.skan.currency)}`:''}{app.skan.revenue!==null?` · ${tr?'gelir':'revenue'} ${amount(app.skan.revenue,app.skan.currency)}`:''}</li>}
+        {app.reviews.map(item=><li key={item.store}>{store(item.store)}: {tr?`bu ay ${n(item.count)} yorum`:`${n(item.count)} reviews this month`}{item.average!==null?` · ${tr?'ortalama':'average'} ${n(item.average)}★`:''} · {tr?`${n(item.replied)} yanıt`:`${n(item.replied)} replies`}{item.overallAverage!==null?` · ${tr?'tüm yorumlarda':'all reviews'} ${n(item.overallAverage)}★ (${n(item.overallCount)})`:''}</li>)}
+        {app.keywords&&<li>{tr?`App Store anahtar kelimeleri: ${n(app.keywords.tracked)} terim · ${n(app.keywords.improved)} yükseldi · ${n(app.keywords.declined)} düştü`:`App Store keywords: ${n(app.keywords.tracked)} terms · ${n(app.keywords.improved)} up · ${n(app.keywords.declined)} down`}{app.keywords.top.length>0&&<> · {app.keywords.top.map(item=>`${item.term} (${item.country}) ${rank(item.first)} → ${rank(item.last)}`).join(', ')}</>}</li>}
+      </ul>
+    </div>)}
+    <p className="monthly-report-muted">{tr?'SKAN, Apple’ın toplu ve gecikmeli bildirdiği yüklemelerdir; uygulamanın kendi yükleme sayısıyla toplanmaz. Sıralar Apple’ın herkese açık arama sonuçlarındaki yerdir; App Store uygulamasındaki kişisel sıradan farklı olabilir.':'SKAN installs are reported by Apple in aggregate and with a delay; they are not added to the app’s own install count. Positions are places in Apple’s public search results and can differ from the personalised order in the App Store app.'}</p>
   </section>;
 }

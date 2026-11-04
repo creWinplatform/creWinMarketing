@@ -304,3 +304,15 @@
 @media (max-width:900px){.whatsapp-connect{grid-template-columns:1fr}}
 .coach-track{display:grid;gap:8px;margin:12px 0 4px}.coach-track h3{display:flex;align-items:center;gap:6px}
 .coach-track-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}.coach-track-list li{display:grid;gap:3px;padding:10px 12px;border:1px solid var(--studio-border);border-radius:6px;font-size:12px}
+/* Ad spend warnings. */
+.ads-alert-form{margin-top:14px}.ads-form-title{grid-column:1/-1;margin:0;font-size:14px}.ads-form-note{grid-column:1/-1;margin:0}
+.ads-warning{margin:8px 0;padding:8px 12px;border-left:3px solid #b4483c;background:var(--studio-surface);color:var(--studio-ink);font-size:13px}
+@media(max-width:600px){.ads-alert-form{grid-template-columns:minmax(0,1fr)}}
+/* Ad images of a plan. */
+.ads-creatives{margin-top:12px;border-top:1px solid var(--studio-border);padding-top:10px;min-width:0}.ads-creatives-body{display:grid;gap:12px;margin-top:10px}
+.ads-creative-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}.ads-creative-list li{display:flex;gap:12px;align-items:flex-start;min-width:0}.ads-creative-list img{flex:0 0 96px;height:auto;border-radius:6px;border:1px solid var(--studio-border)}
+.ads-creative-list li>div{min-width:0;display:grid;gap:4px}.ads-creative-list p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.ads-creative-form{display:grid;gap:10px;max-width:560px}.ads-creative-form label{display:grid;gap:4px}.ads-creative-preview{border-radius:6px;border:1px solid var(--studio-border);height:auto}
+.ads-check{display:flex;gap:8px;align-items:flex-start;font-size:13px}
+@media(max-width:600px){.ads-creative-list li{flex-direction:column}.ads-creative-list img{flex-basis:auto}}
+

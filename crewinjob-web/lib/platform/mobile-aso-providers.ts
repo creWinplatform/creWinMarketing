@@ -8,13 +8,20 @@ import type { MobileApp } from './mobile-types';
 // App Store search position, from Apple's public iTunes Search API: the order of the first 200 software results for a
 // term in one country. It is close to, but not the same as, the App Store app's own ranking (personalisation, ads).
 export const RANK_DEPTH=200;
-export async function appStoreRank(app:MobileApp,term:string,country:string,read:MobileTransport=fetch){
+export async function appStoreRank(app:MobileApp,term:string,country:string,read:MobileTransport=fetch,competitors:string[]=[]){
   if(!app.appleId)throw new Error('Apple store ID missing.');
   const query=new URLSearchParams({term,country:country.toLowerCase(),entity:'software',limit:String(RANK_DEPTH)});
   const rows=(await mobileJson(await mobileRequest(read,`https://itunes.apple.com/search?${query}`))).results;if(!Array.isArray(rows))throw new Error('Invalid response.');
   const results=rows.map(rec).filter(row=>row.wrapperType==='software'||row.kind==='software');
   const index=results.findIndex(row=>String(row.trackId)===app.appleId);
-  return {rank:index<0?null:index+1,resultCount:results.length,leaders:results.slice(0,3).map(row=>({id:String(row.trackId||''),name:String(row.trackName||'').replace(/[\x00-\x1f]/g,'').slice(0,120)}))};
+  const place=(id:string)=>{const found=results.findIndex(row=>String(row.trackId)===id);return found<0?null:found+1;};
+  return {rank:index<0?null:index+1,resultCount:results.length,leaders:results.slice(0,3).map(row=>({id:String(row.trackId||''),name:String(row.trackName||'').replace(/[\x00-\x1f]/g,'').slice(0,120)})),competitors:Object.fromEntries(competitors.map(id=>[id,place(id)]))};
+}
+// The public name of an App Store app, to track it as a competitor.
+export async function appStoreLookup(id:string,country:string,read:MobileTransport=fetch){
+  const rows=(await mobileJson(await mobileRequest(read,`https://itunes.apple.com/lookup?${new URLSearchParams({id,country:country.toLowerCase(),entity:'software'})}`))).results;
+  const row=Array.isArray(rows)?rec(rows[0]):{};if(String(row.trackId)!==id||typeof row.trackName!=='string')throw new Error('Not found.');
+  return String(row.trackName).replace(/[\x00-\x1f]/g,'').slice(0,120);
 }
 
 // App Store Connect API: an API key (issuer id, key id, .p8 EC key) signs a 20-minute token per run; it is never stored.
@@ -127,4 +134,53 @@ export async function readSkanReport(config:Record<string,string>,secret:MobileS
   const reader=response.body?.getReader();if(!reader)throw new Error('empty');let size=0;const chunks:Uint8Array[]=[];
   try{for(;;){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>8*1024*1024)throw new Error('too_large');chunks.push(part.value);}}finally{await reader.cancel();}
   return parseSkanCsv(new TextDecoder('utf-8').decode(Buffer.concat(chunks)));
+}
+
+// Store reviews. App Store Connect: the latest reviews with their published responses; one response per review, a new
+// one replaces it. Google Play: reviews created or changed in the last week (the API's own window); replies up to 350.
+export type StoreReview={providerId:string;rating:number;title:string;body:string;author:string;territory:string;language:string;appVersion:string;reviewedAt:string;storeReply:string|null;storeReplyAt:string|null};
+export const REPLY_LIMITS={ios:5970,android:350} as const;
+const clean=(value:unknown,max:number)=>String(value??'').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').slice(0,max);
+const iso=(value:unknown)=>{const time=typeof value==='string'?Date.parse(value):NaN;return Number.isFinite(time)?new Date(time).toISOString():null;};
+export async function readAppStoreReviews(app:MobileApp,config:Record<string,string>,secret:MobileSecret,read:MobileTransport=fetch,limit=200):Promise<StoreReview[]>{
+  if(!app.appleId)throw new Error('Apple store ID missing.');
+  const token=appStoreConnectToken(config,secret),reviews:StoreReview[]=[];
+  let url=`${ASC}/apps/${app.appleId}/customerReviews?sort=-createdDate&limit=100&include=response`;
+  for(let page=0;page<Math.ceil(limit/100)&&url;page++){
+    const value=await mobileJson(await mobileRequest(read,url,{headers:{Authorization:`Bearer ${token}`}})),included=(Array.isArray(value.included)?value.included:[]).map(rec);
+    for(const row of (Array.isArray(value.data)?value.data:[]).map(rec)){
+      const attributes=rec(row.attributes),link=rec(rec(rec(row.relationships).response).data),response=included.find(item=>item.type==='customerReviewResponses'&&item.id===link.id),reply=rec(response?.attributes);
+      const rating=Number(attributes.rating),reviewedAt=iso(attributes.createdDate);if(!row.id||!Number.isInteger(rating)||rating<1||rating>5||!reviewedAt)continue;
+      reviews.push({providerId:clean(row.id,100),rating,title:clean(attributes.title,300),body:clean(attributes.body,6000),author:clean(attributes.reviewerNickname,100),territory:clean(attributes.territory,3),language:'',appVersion:'',reviewedAt,storeReply:typeof reply.responseBody==='string'?clean(reply.responseBody,REPLY_LIMITS.ios):null,storeReplyAt:iso(reply.lastModifiedDate)});
+    }
+    const next=rec(value.links).next;url='';
+    if(typeof next==='string'){const parsed=new URL(next);if(parsed.protocol==='https:'&&parsed.hostname==='api.appstoreconnect.apple.com')url=parsed.href;}
+  }
+  return reviews.slice(0,limit);
+}
+export async function replyAppStoreReview(reviewId:string,text:string,config:Record<string,string>,secret:MobileSecret,read:MobileTransport=fetch){
+  const value=await mobileJson(await mobileRequest(read,`${ASC}/customerReviewResponses`,{method:'POST',headers:{Authorization:`Bearer ${appStoreConnectToken(config,secret)}`,'Content-Type':'application/json'},
+    body:JSON.stringify({data:{type:'customerReviewResponses',attributes:{responseBody:text},relationships:{review:{data:{type:'customerReviews',id:reviewId}}}}})}));
+  if(rec(value.data).type!=='customerReviewResponses')throw new Error('No response.');
+}
+const seconds=(value:unknown)=>{const raw=Number(rec(value).seconds);return Number.isFinite(raw)&&raw>0?new Date(raw*1000).toISOString():null;};
+export async function readPlayReviews(app:MobileApp,secret:MobileSecret,getToken:(secret:MobileSecret,scope:string)=>Promise<string>,read:MobileTransport=fetch,limit=200):Promise<StoreReview[]>{
+  if(!app.packageName)throw new Error('Android package required.');
+  const token=await getToken(secret,'https://www.googleapis.com/auth/androidpublisher'),reviews:StoreReview[]=[];let pageToken='';
+  for(let page=0;page<Math.ceil(limit/100);page++){
+    const query=new URLSearchParams({maxResults:'100',...(pageToken?{token:pageToken}:{})});
+    const value=await mobileJson(await mobileRequest(read,`${PLAY}/${app.packageName}/reviews?${query}`,{headers:{Authorization:`Bearer ${token}`}}));
+    for(const row of (Array.isArray(value.reviews)?value.reviews:[]).map(rec)){
+      const comments=(Array.isArray(row.comments)?row.comments:[]).map(rec),user=rec(comments.find(item=>item.userComment)?.userComment),developer=rec(comments.find(item=>item.developerComment)?.developerComment);
+      const rating=Number(user.starRating),reviewedAt=seconds(user.lastModified);if(!row.reviewId||!Number.isInteger(rating)||rating<1||rating>5||!reviewedAt)continue;
+      reviews.push({providerId:clean(row.reviewId,200),rating,title:'',body:clean(user.text,6000).trim(),author:clean(row.authorName,100),territory:'',language:clean(user.reviewerLanguage,10),appVersion:clean(user.appVersionName,40),reviewedAt,storeReply:typeof developer.text==='string'?clean(developer.text,REPLY_LIMITS.android):null,storeReplyAt:seconds(developer.lastModified)});
+    }
+    pageToken=typeof rec(value.tokenPagination).nextPageToken==='string'?String(rec(value.tokenPagination).nextPageToken):'';if(!pageToken)break;
+  }
+  return reviews.slice(0,limit);
+}
+export async function replyPlayReview(app:MobileApp,reviewId:string,text:string,secret:MobileSecret,getToken:(secret:MobileSecret,scope:string)=>Promise<string>,read:MobileTransport=fetch){
+  const token=await getToken(secret,'https://www.googleapis.com/auth/androidpublisher');
+  const value=await mobileJson(await mobileRequest(read,`${PLAY}/${app.packageName}/reviews/${encodeURIComponent(reviewId)}:reply`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({replyText:text})}));
+  if(typeof rec(value.result).replyText!=='string')throw new Error('No reply.');
 }

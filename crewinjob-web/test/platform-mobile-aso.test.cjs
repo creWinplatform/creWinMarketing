@@ -147,3 +147,37 @@ test('Google Play listing: read in a throwaway edit, written in a committed edit
   assert.deepEqual(plain(read.calls.map(call=>call.method)),['POST','PATCH','DELETE'],'the edit is deleted, nothing committed');
   assert.throws(()=>f.aso.saveListing({appId:f.app.id,store:'android',locale:'tr_TR',fields:{title:'x'}}),/Dil kodu/);
 }));
+
+test('AI listing proposals use the tracked positions, keep the limits and rules, and are never saved',withMobile(async f=>{
+  f.aso.addKeyword({appId:f.app.id,term:'dövme'});
+  await f.aso.checkRanks(f.app.id,transport(()=>({results:[{wrapperType:'software',trackId:555,trackName:'InkRival Pro'},{wrapperType:'software',trackId:123456789,trackName:'QA Ink'}]})));
+  let prompt='';const ai=value=>async text=>{prompt=text;return JSON.stringify(value);};
+  await assert.rejects(f.aso.suggestListing({appId:f.app.id,store:'ios'}),e=>e.status===503);
+  const value=await f.aso.suggestListing({appId:f.app.id,store:'ios',locale:'tr-TR',current:{name:'QA Ink'}},ai({name:'QA Ink: Dövme Fikirleri ve Randevu Takvimi',subtitle:'Stüdyo bul, randevu al',keywords:'dövme,tasarım,stüdyo,randevu,kına',description:'Dövme fikirlerini keşfedin.'}));
+  assert.ok([...value.fields.name].length<=30,'clipped to the store limit');assert.equal(value.fields.keywords,'tasarım,kına','words already in the name or subtitle are dropped');
+  assert.match(prompt,/"term":"dövme","country":"TR","position":2/);assert.match(prompt,/InkRival Pro/);assert.match(prompt,/never name them/);
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_mobile_listing_drafts').get().n,0,'nothing saved');
+  await assert.rejects(f.aso.suggestListing({appId:f.app.id,store:'ios'},ai({subtitle:'InkRival Pro’dan daha iyi'})),e=>e.status===422,'no competitor names');
+  await assert.rejects(f.aso.suggestListing({appId:f.app.id,store:'ios'},ai({description:'Bilgi: https://example.com'})),e=>e.status===422,'no links');
+  await assert.rejects(f.aso.suggestListing({appId:f.app.id,store:'ios'},ai('not json')),e=>e.status===422);
+  const android=await f.aso.suggestListing({appId:f.app.id,store:'android'},ai({title:'QA Ink',shortDescription:'Dövme fikirleri ve stüdyolar',fullDescription:'Açıklama',name:'ignored'}));
+  assert.deepEqual(plain(Object.keys(android.fields)),['title','shortDescription','fullDescription']);
+}));
+
+test('competitor apps: looked up once, read from the same searches, limited to five',withMobile(async f=>{
+  f.aso.addKeyword({appId:f.app.id,term:'dövme'});f.aso.addKeyword({appId:f.app.id,term:'tattoo'});
+  const lookup=transport(call=>call.url.pathname==='/lookup'?{results:call.url.searchParams.get('id')==='5550001'?[{trackId:5550001,trackName:'InkRival Pro'}]:[]}:undefined);
+  await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'123456789'},lookup),/Kendi uygulamanız/);
+  await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'abc'},lookup),/yalnız rakam/);
+  await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'99999'},lookup),e=>e.status===404);
+  let value=await f.aso.addCompetitor({appId:f.app.id,appleId:'5550001'},lookup);assert.deepEqual(plain(value.competitors),[{id:'5550001',name:'InkRival Pro'}]);
+  await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'5550001'},lookup),e=>e.status===409);
+  const search=transport(call=>call.url.searchParams.get('term')==='dövme'?{results:[{wrapperType:'software',trackId:5550001,trackName:'InkRival Pro'},{wrapperType:'software',trackId:123456789,trackName:'QA Ink'}]}:{results:[{wrapperType:'software',trackId:7,trackName:'Other'}]});
+  const checked=await f.aso.checkRanks(f.app.id,search);assert.equal(search.calls.length,2,'no extra request for competitors');
+  const by=term=>checked.keywords.find(item=>item.term===term);
+  assert.deepEqual(plain(by('dövme').competitors),[{id:'5550001',name:'InkRival Pro',rank:1}]);assert.deepEqual(plain(by('tattoo').competitors),[{id:'5550001',name:'InkRival Pro',rank:null}]);
+  for(const id of ['11111','22222','33333','44444']){f.db.prepare('INSERT INTO platform_mobile_competitors VALUES(?,?,?,?,?,?,?)').run(f.scope.organizationId,f.scope.projectId,f.app.id,id,`Rival ${id}`,f.scope.subject,new Date().toISOString());}
+  await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'66666'},lookup),e=>e.status===429);
+  value=f.aso.removeCompetitor(f.app.id,'5550001');assert.equal(value.competitors.some(item=>item.id==='5550001'),false);assert.equal(value.keywords[0].competitors.length,0,'a removed competitor disappears from the table');
+  assert.throws(()=>f.as(f.other).competitors(f.app.id),e=>e.status===404);
+}));

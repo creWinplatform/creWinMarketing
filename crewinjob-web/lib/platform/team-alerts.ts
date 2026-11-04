@@ -14,6 +14,7 @@ import { searchDropped } from './seo-operations-types';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
 import { ryzevoFeature } from './ryzevo-features';
 import { iysAttention } from './iys';
+import { adWarnings } from './ad-alerts';
 
 type Lang = 'tr' | 'en';
 type Scope = { subject: string; organizationId: string; projectId: string };
@@ -66,6 +67,12 @@ export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()
     const rows = db.prepare("SELECT id,revision,updated_at FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND last_error IS NOT NULL AND last_error<>'' AND state IN ('created','paused','failed','active') AND updated_at>=? ORDER BY updated_at DESC LIMIT 50")
       .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { id: string; revision: number; updated_at: string }[];
     if (rows.length) alerts.push({ kind: 'ad_error', severity: 'warning', count: rows.length, at: rows[0].updated_at, href: '/?tab=campaigns&campaignView=ads', keys: rows.map(row => `ad:${row.id}:${row.revision}`) });
+    // Running plans above the spend threshold or the cost-per-install cap; the team decides whether to pause.
+    const warnings = adWarnings(db, scope, now);
+    for (const kind of ['ad_overspend', 'ad_cpi'] as const) {
+      const list = warnings.filter(item => item.kind === (kind === 'ad_overspend' ? 'overspend' : 'cpi'));
+      if (list.length) alerts.push({ kind, severity: 'urgent', count: list.length, at: null, href: '/?tab=campaigns&campaignView=ads', plans: [...new Set(list.map(item => item.name))].slice(0, 5), keys: list.map(item => `${kind}:${item.planId}:${item.day}`) });
+    }
   }
   // New or returning findings from a scheduled site scan (a scan someone starts by hand is looked at right away).
   if (can('content.write')) {
@@ -105,6 +112,8 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
       case 'ad_error': return tr ? `${n(alert.count)} reklam planında sağlayıcı hatası var. Harcamanın durumunu reklam hesabından kontrol edin.` : `${n(alert.count)} ad plan(s) have a provider error. Check the spend status in the ad account.`;
       case 'iys_deadline': return tr ? `${n(alert.count)} izin veya ret kaydının İYS bildirim süresi doluyor ya da gönderilemedi (ilk son tarih: ${time(alert.at)}).` : `${n(alert.count)} consent or opt-out record(s) are close to their IYS deadline or could not be sent (first deadline: ${time(alert.at)}).`;
       case 'iys_sync': return tr ? 'İYS değişiklikleri 6 saattir okunamadı; okunana kadar durumu eski alıcılara canlı gönderim yapılmaz.' : 'IYS changes have not been read for 6 hours; until they are, live messages skip recipients with an old status.';
+      case 'ad_overspend': return tr ? `${n(alert.count)} yayındaki reklam planı harcama eşiğini aştı. Duraklatmayı değerlendirin; Ryzevo kendiliğinden duraklatmaz.` : `${n(alert.count)} running ad plan(s) are above the spend threshold. Consider pausing; Ryzevo never pauses on its own.`;
+      case 'ad_cpi': return tr ? `${n(alert.count)} yayındaki reklam planında son 7 günün yükleme başına maliyeti sınırın üstünde. Duraklatmayı değerlendirin.` : `${n(alert.count)} running ad plan(s) cost more per install than the cap over the last 7 days. Consider pausing.`;
       case 'invite_pending': return tr ? `${n(alert.count)} proje daveti kabulünüzü bekliyor (ilk bitiş: ${time(alert.at)}).` : `${n(alert.count)} project invitation(s) are waiting for you (first expires ${time(alert.at)}).`;
       case 'seo_findings': return tr ? `Planlı site taramasında ${n(alert.count)} yeni veya yeniden görülen SEO bulgusu var.` : `The scheduled site scan found ${n(alert.count)} new or returning SEO finding(s).`;
       case 'search_drop': return tr ? `Google aramadan gelen tıklamalar son 7 günde önceki haftaya göre düştü (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).` : `Clicks from Google search fell in the last 7 days compared with the week before (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).`;
