@@ -2,16 +2,11 @@ import 'server-only';
 import { JWT } from 'google-auth-library';
 import { mobileRecord as rec,mobileText } from './mobile-validation';
 import type { MobileApp,MobileProvider,MobileStoreSnapshot } from './mobile-types';
+import { appStoreConnectCredentials,appStoreConnectToken,appsFlyerSkanCredentials } from './mobile-aso-providers';
 
 export type MobileSecret=Record<string,unknown>;
 export type MobileTransport=(url:string,init?:RequestInit)=>Promise<Response>;
-async function json(response:Response){
-  if(!response.ok){await response.body?.cancel();throw new Error('Provider unavailable.');}
-  const reader=response.body?.getReader();if(!reader)throw new Error();let size=0;const chunks:Uint8Array[]=[];
-  try{for(;;){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>512*1024)throw new Error();chunks.push(part.value);}}finally{await reader.cancel();}
-  const value=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid response.');return value as Record<string,unknown>;
-}
-const request=(read:MobileTransport,url:string,init:RequestInit={})=>read(url,{...init,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(12000)});
+import { json,request } from './mobile-http';
 export function googleServiceAccount(value:unknown){
   const raw=rec(value);if(raw.type!=='service_account'||typeof raw.project_id!=='string'||!/^[a-z][a-z0-9-]{4,62}$/.test(raw.project_id)||typeof raw.client_email!=='string'||!/^[a-zA-Z0-9_.-]+@[a-zA-Z0-9.-]+\.gserviceaccount\.com$/.test(raw.client_email)||typeof raw.private_key!=='string'||raw.private_key.length>8192||!raw.private_key.startsWith('-----BEGIN PRIVATE KEY-----'))throw new Error('Service account required.');
   return {project_id:raw.project_id,client_email:raw.client_email,private_key:raw.private_key};
@@ -33,15 +28,24 @@ export function validateMobileIntegration(provider:MobileProvider,raw:unknown,se
   }
   if(provider==='firebase'||provider==='google_play'){
     const account=googleServiceAccount(secret.serviceAccount);credentials.serviceAccount={type:'service_account',...account};config.projectId=account.project_id;
-    if(provider==='google_play'){if(!app.packageName)throw new Error('Android package required.');config.editId=mobileText(value.editId,100);if(!/^[a-zA-Z0-9_-]+$/.test(config.editId))throw new Error('Existing Publisher edit ID required.');}
+    // The edit id is optional: without it the listing is read in a throwaway edit.
+    if(provider==='google_play'){if(!app.packageName)throw new Error('Android package required.');const edit=mobileText(value.editId,100,true);if(edit&&!/^[a-zA-Z0-9_-]+$/.test(edit))throw new Error('Invalid Publisher edit ID.');if(edit)config.editId=edit;}
   }
   if(provider==='branch'){
     const key=mobileText(secret.branchKey,256);if(!/^key_(live|test)_[a-zA-Z0-9]+$/.test(key))throw new Error('Branch key required.');credentials.branchKey=key;
     config.linkDomain=mobileText(value.linkDomain,200).toLowerCase();if(!/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/.test(config.linkDomain)||!(config.linkDomain.endsWith('.app.link')||config.linkDomain===new URL(app.website).hostname))throw new Error('Branch app.link or declared website domain required.');
   }
+  if(provider==='app_store_connect'){if(!app.appleId)throw new Error('Apple store ID required.');const value_=appStoreConnectCredentials(value,secret);Object.assign(config,value_.config);Object.assign(credentials,value_.credentials);}
+  if(provider==='appsflyer_skan'){if(!app.appleId)throw new Error('Apple store ID required.');const value_=appsFlyerSkanCredentials(value,secret);Object.assign(config,value_.config);Object.assign(credentials,value_.credentials);}
   if(JSON.stringify(credentials).length>12000)throw new Error('Credentials too large.');return {config,credentials};
 }
-export async function probeMobileIntegration(provider:MobileProvider,config:Record<string,string>,secret:MobileSecret,read:MobileTransport=fetch):Promise<string>{
+export async function probeMobileIntegration(provider:MobileProvider,config:Record<string,string>,secret:MobileSecret,read:MobileTransport=fetch,app?:MobileApp):Promise<string>{
+  if(provider==='app_store_connect'){
+    if(!app?.appleId)throw new Error('Apple store ID required.');const row=rec((await json(await request(read,`https://api.appstoreconnect.apple.com/v1/apps/${app.appleId}?fields[apps]=bundleId`,{headers:{Authorization:`Bearer ${appStoreConnectToken(config,secret)}`}}))).data);
+    if(String(row.id)!==app.appleId||app.bundleId&&rec(row.attributes).bundleId!==app.bundleId)throw new Error('App mismatch.');return 'access_verified';
+  }
+  if(provider==='appsflyer_skan')return 'credential_saved';
+  if(provider==='google_play'){await mobileGoogleAccess(secret,'https://www.googleapis.com/auth/androidpublisher');return 'credential_verified';}
   if(provider==='onesignal'){
     const value=await json(await request(read,`https://api.onesignal.com/apps/${config.appId}`,{headers:{Authorization:`Key ${secret.apiKey}`}}));
     if(value.id!==config.appId)throw new Error('App mismatch.');return 'access_verified';
@@ -83,11 +87,16 @@ export async function readAppleListing(app:MobileApp,read:MobileTransport=fetch)
   if(String(row.trackId)!==app.appleId||row.wrapperType!=='software'||app.bundleId&&row.bundleId!==app.bundleId)throw new Error('App mismatch.');
   return {title:mobileText(row.trackName,300),subtitle:'',description:mobileText(row.description,20000,true),screenshotCount:Array.isArray(row.screenshotUrls)?row.screenshotUrls.length:null};
 }
-export async function readPlayListing(app:MobileApp,config:Record<string,string>,secret:MobileSecret,read:MobileTransport=fetch,getToken=mobileGoogleAccess){
-  if(!app.packageName||!config.editId)throw new Error('Publisher edit required.');
-  const token=await getToken(secret,'https://www.googleapis.com/auth/androidpublisher');
-  const row=await json(await request(read,`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${app.packageName}/edits/${config.editId}/listings/${app.locale}`,{headers:{Authorization:`Bearer ${token}`}}));
-  if(row.language!==app.locale)throw new Error('Locale mismatch.');
+export async function readPlayListing(app:MobileApp,config:Record<string,string>,secret:MobileSecret,read:MobileTransport=fetch,getToken=mobileGoogleAccess,locale=app.locale){
+  if(!app.packageName)throw new Error('Android package required.');
+  const token=await getToken(secret,'https://www.googleapis.com/auth/androidpublisher'),base=`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${app.packageName}/edits`,headers={Authorization:`Bearer ${token}`};
+  // Without a saved edit id the listing is read in a throwaway edit, deleted afterwards (nothing is committed).
+  let edit=config.editId||'',temporary=false;
+  if(!edit){edit=String((await json(await request(read,base,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:'{}'}))).id||'');temporary=true;if(!/^[a-zA-Z0-9_-]{1,100}$/.test(edit))throw new Error('No edit.');}
+  let row:Record<string,unknown>;
+  try{row=await json(await request(read,`${base}/${edit}/listings/${locale}`,{headers}));}
+  finally{if(temporary)await request(read,`${base}/${edit}`,{method:'DELETE',headers}).then(response=>response.body?.cancel()).catch(()=>{});}
+  if(row.language!==locale)throw new Error('Locale mismatch.');
   return {title:mobileText(row.title,300),subtitle:mobileText(row.shortDescription,500,true),description:mobileText(row.fullDescription,20000,true),screenshotCount:null};
 }
 export async function createBranchLink(app:MobileApp,config:Record<string,string>,secret:MobileSecret,input:{id:string;path:string;campaignId:string},read:MobileTransport=fetch){

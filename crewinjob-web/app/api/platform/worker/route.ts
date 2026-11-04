@@ -4,6 +4,7 @@ import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ConnectionJobs,settleUnauthorizedConnectionJob } from '@/lib/platform/connection-jobs';
 import { pruneProductEvents } from '@/lib/platform/product-webhooks';
+import { refreshDueKeywordRanks } from '@/lib/platform/mobile-aso';
 import { pruneAttribution } from '@/lib/platform/attribution';
 import { deliverIysOutbox, pullIysChanges } from '@/lib/platform/iys';
 import { crewinIysEmailBackfill } from '@/lib/crewin-iys-email';
@@ -113,5 +114,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const iysChanges=Date.now()-startedAt<20000?await pullIysChanges(db,credentialEncryptionKey()).catch(()=>({projects:0,changes:0})):{projects:0,changes:0};
   // Crewin email: recipients whose İYS status is unknown are asked about, 50 per tick (lib/crewin-iys-email.ts).
   const crewinIysEmail=Date.now()-startedAt<20000?await crewinIysEmailBackfill(db,credentialEncryptionKey()).catch(()=>({checked:0})):{checked:0};
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail };
+  // ASO: tracked App Store search terms are checked once a day, five per tick (Apple's public search API).
+  const keywordRanks=Date.now()-startedAt<20000?await refreshDueKeywordRanks(db).catch(()=>0):0;
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks };
 }

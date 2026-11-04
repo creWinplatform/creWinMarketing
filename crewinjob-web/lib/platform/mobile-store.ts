@@ -68,7 +68,7 @@ export class MobileGrowth {
   revoke(id:string){this.authorize('connections.manage');const row=this.integration(id);this.store.revokeConnection(id);this.audit('mobile.integration.revoke');return this.integrations(row.app_id);}
   async probe(id:string,read?:MobileTransport){
     this.authorize('connections.manage');assertProjectWork(this.db,this.scope);const row=this.integration(id),revision=mobileRevision(row.encrypted_credentials);this.db.transaction(()=>this.quota('mobile_probe',25)).immediate();
-    let status='unavailable';try{status=await probeMobileIntegration(row.kind,JSON.parse(row.config_json),this.secret(row),read);}catch{}
+    let status='unavailable';try{status=await probeMobileIntegration(row.kind,JSON.parse(row.config_json),this.secret(row),read,this.app(row.app_id));}catch{}
     this.authorize('connections.manage');if(!this.integration(id).active||mobileRevision(this.integration(id).encrypted_credentials)!==revision)throw new MarketingStoreError('Test sırasında bağlantı değişti.',409);
     this.db.prepare('UPDATE platform_mobile_integrations SET status=?,checked_at=?,checked_revision=? WHERE connection_id=?').run(status,new Date().toISOString(),revision,id);this.audit('mobile.integration.probe');return this.integrations(row.app_id);
   }
@@ -80,7 +80,7 @@ export class MobileGrowth {
       if(raw.mode==='manual'){metadata={title:mobileText(raw.title,300,true),subtitle:mobileText(raw.subtitle,500,true),description:mobileText(raw.description,20000,true),screenshotCount:raw.screenshotCount===null||raw.screenshotCount===''?null:Number(raw.screenshotCount)};if(metadata.screenshotCount!==null&&(!Number.isSafeInteger(metadata.screenshotCount)||metadata.screenshotCount<0||metadata.screenshotCount>100))throw new Error();source='manual';}
       else if(store==='ios'){metadata=await readAppleListing(app,read);source='apple_public';}
       else{const row=this.integration(String(raw.connectionId));if(row.app_id!==app.id||row.kind!=='google_play')throw new Error();metadata=await readPlayListing(app,JSON.parse(row.config_json),this.secret(row),read);source='google_publisher';}
-    }catch{throw new MarketingStoreError('Mağaza kaydı okunamadı. Kimlik, ülke/dil, erişim ve Google Play edit ID değerini kontrol edin.',409);}
+    }catch{throw new MarketingStoreError('Mağaza kaydı okunamadı. Kimlik, ülke/dil ve erişimi kontrol edin.',409);}
     this.authorize('connections.manage');if(this.app(app.id).updatedAt!==revision)throw new MarketingStoreError('Uygulama ayarları değişti.',409);
     const value:MobileStoreSnapshot={id:randomUUID(),store:String(store),source,locale:app.locale,...metadata,checkedAt:new Date().toISOString(),findings:asoFindings(String(store),metadata.title,metadata.subtitle,metadata.description,metadata.screenshotCount)};
     this.db.transaction(()=>{this.db.prepare('INSERT INTO platform_mobile_store_snapshots VALUES(?,?,?,?,?,?)').run(value.id,...this.args(),app.id,JSON.stringify(value),value.checkedAt);this.db.prepare('DELETE FROM platform_mobile_store_snapshots WHERE app_id=? AND id NOT IN (SELECT id FROM platform_mobile_store_snapshots WHERE app_id=? ORDER BY checked_at DESC LIMIT 20)').run(app.id,app.id);this.audit('mobile.aso.audit');}).immediate();return value;

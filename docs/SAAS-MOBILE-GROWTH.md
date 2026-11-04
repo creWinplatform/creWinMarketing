@@ -23,9 +23,10 @@ shared source quota. Back up the database and encryption key before deploying.
 
 | Provider | Implemented | Separate acceptance required |
 | --- | --- | --- |
-| Apple | Public iTunes lookup by explicit App Store ID/country, bundle match, listing metadata snapshot | Confirm real published app and country. No App Store Connect editing or publishing. Lookup does not provide all ASO fields. |
-| Google Play | Authenticated Publisher listing read using an existing edit ID, package and locale | Customer-owned service account, access and existing edit. Ryzevo never inserts, commits or deletes Publisher edits. Screenshot count is unknown in this adapter. |
+| Apple | Public iTunes lookup by explicit App Store ID/country, bundle match, listing metadata snapshot; keyword positions from the public iTunes Search API; App Store Connect API listing read and approved writes (see ASO below) | Confirm real published app and country. Search positions approximate the App Store app (no personalisation, no ads). Nothing is submitted for review. |
+| Google Play | Authenticated Publisher listing read (a saved edit ID, or a throwaway edit that is deleted) and approved listing writes in a committed edit | Customer-owned service account with listing access. A commit can go through Google's review. Screenshot count is unknown in the listing read. No public search API, so no keyword positions. |
 | AppsFlyer | Authorized JSON install/session/attribution ingestion with external app identity | Configure Push API authorization and matching fields/timezone. Stable customer_user_id must match the bridge identity. |
+| AppsFlyer SKAN | SKAN aggregated performance report (SKAN 4, `/api/skadnetworks/v3`), read on demand as CSV with columns matched by name | API V2 token (tokens made before 10 March 2026 were revoked by AppsFlyer), iOS app id (`id…`), report currency. Check the column names against a real export. |
 | Adjust | Authorized normalized JSON install/session/attribution ingestion | A customer server relay must convert native GET/query/form callbacks and timestamps; direct raw callbacks are NOT supported. |
 | Firebase | FCM HTTP v1 single-device push adapter, scoped service-account authentication | Install client SDK, OS permission, refresh/revoke token registration, Firebase project/API grants and controlled physical-device test. Credential verification alone is not delivery verification. |
 | OneSignal | Scoped app-access probe and explicit external-ID push targeting | Install SDK, establish external ID, consent, app REST key and controlled device test. No broad segment targeting. |
@@ -173,6 +174,87 @@ net/ROAS. Manual spend is not an ads API synchronization or audited accounting.
   - The mobile report reads up to 90 closed days, bounded by the stored limit.
 - **Profile links:** Instagram and TikTok profile links with fixed tags are listed under Product data → Signed webhook → Source tag.
 - **Tests:** `test/platform-mobile-attribution.test.cjs`, `test/platform-mobile-audience.test.cjs`.
+
+## ASO (schema 70, 4 November 2026)
+
+The ASO tab adds three things next to the store audit.
+
+**Keyword positions (App Store only).**
+
+- **What is tracked:** up to 30 terms per app, each with its own country.
+- **Where the position comes from:** Apple's public iTunes Search API (`/search`, `entity=software`, `limit=200`). The position is the app's place among those 200 results; "not in top 200" means the app is not among them.
+- **How often:**
+  - The worker checks five terms per tick, once a day each.
+  - "Check now" checks up to ten terms that were not checked today.
+  - A failed read is not retried the same day.
+- **What is kept:** 400 days of history. The table shows the change against the previous check, the last 7 positions and the top three apps.
+- **Limits of the number:**
+  - It is close to the App Store app's own order but not the same: there is no personalisation and no ads.
+  - It is never presented as a ranking promise.
+  - Google Play has no public search API, so it has no positions.
+
+**SKAN from AppsFlyer.**
+
+- **Connection:** the `appsflyer_skan` integration needs the iOS app id (`id…`), the report currency and an AppsFlyer API V2 token. This is separate from the AppsFlyer webhook integration.
+- **What a pull reads:** the SKAN aggregated performance report for an install-date range:
+  - at most 90 days;
+  - ending before yesterday;
+  - by default, the last 30 days up to three days ago.
+- **How the CSV is read:**
+  - Columns are matched by name: Date, Media Source, Campaign, Country, Installs, Clicks, Total Revenue, Total Cost, Converted Users.
+  - Rows with the same day, source, campaign and country are summed.
+  - `N/A` stays unknown.
+- **Storage:** a second pull replaces the whole range, so nothing is counted twice.
+- **What the analytics tab shows:** totals and a per-source and per-campaign table with eCPI.
+- **Data caveats:** SKAN numbers are aggregated by Apple, delayed and thresholded for privacy. They are never added to the bridge install counts.
+
+**Listing drafts.**
+
+- **Fields:**
+
+  | Store | Fields (character limit) |
+  |---|---|
+  | App Store | name and subtitle (30 each), keywords (100), promotional text (170), description and what's new (4000 each) |
+  | Google Play | title (30), short description (80), full description (4000) |
+
+- **Writing a draft:**
+  - Only the filled fields are written.
+  - Keywords are cleaned: spaces around commas and repeated words are removed.
+  - "Load the store text" fills the form from App Store Connect or Google Play and saves nothing.
+- **Checks shown on a draft:**
+  - keywords that repeat words already in the name or subtitle;
+  - unused keyword space;
+  - a short name;
+  - a short Play description;
+  - a short description that only repeats the title.
+- **Approval:**
+  - Editors write drafts; `campaign.approve` approves the exact text (a digest).
+  - Any edit clears the approval.
+- **Writing to the store** needs all of the following:
+  - `connections.manage`;
+  - `PLATFORM_MOBILE_LISTING_PUBLISH_ENABLED=1` (off by default);
+  - an explicit acknowledgement;
+  - an unchanged approval.
+  - The draft is claimed first, so a second click cannot write twice.
+- **App Store Connect:**
+  - **Key:** a team API key (issuer id, key id, `.p8` EC key) signs a 20-minute ES256 token per run. The key is stored only in the encrypted connection.
+  - **Where the fields go:**
+    - name and subtitle go to the editable app info localization;
+    - the other fields go to the editable version localization (states such as `PREPARE_FOR_SUBMISSION` or rejected);
+    - promotional text alone can also go to the live version.
+  - **Locale:** a missing locale is never created.
+  - **Review:** nothing is submitted for review; the team submits the version in App Store Connect.
+- **Google Play:**
+  - A new edit is created, the listing for the locale is patched and the edit is committed.
+  - If the patch fails, the edit is deleted and nothing is committed.
+  - A commit can go through Google's review.
+- **History:** written drafts stay as history and cannot be edited.
+
+**Files:**
+
+- Code: `lib/platform/mobile-aso.ts`, `mobile-aso-providers.ts`, `mobile-http.ts`, `components/platform/MobileAso.tsx`.
+- Migration 70 adds `platform_mobile_keywords`, `platform_mobile_keyword_ranks`, `platform_mobile_skan` and `platform_mobile_listing_drafts`.
+- **Tests:** `test/platform-mobile-aso.test.cjs`, with fake Apple, App Store Connect, Google Play and AppsFlyer responses and a throwaway EC key; no network.
 
 ## Delivery and operations
 

@@ -391,6 +391,7 @@ export const UI_PAIRS: Record<string, string> = {
   "Yayın kuyruğu": "Publication queue",
   "Yayın saati değişti. Önizlemeyi kontrol edip yeniden onaylayın.": "Publication time changed. Review the preview and approve again.",
   "Yayınlanan paylaşım": "Posts published",
+  "Yazılamadı": "Failed",
   "Yeni şifreler eşleşmiyor.": "New passwords do not match.",
   "Yeni taslak": "New draft",
   "Yeniden dene": "Try again",

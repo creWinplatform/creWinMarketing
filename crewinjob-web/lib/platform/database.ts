@@ -1486,6 +1486,39 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_ad_plan_scope ON platform_ad_plans(organization_id,project_id,state);
     INSERT INTO platform_migrations(version,applied_at) VALUES(69,datetime('now'));
   `))();
+  // ASO: tracked App Store search terms and their daily positions, SKAN totals read from AppsFlyer, and store listing
+  // drafts that are approved on their exact text before they are written to App Store Connect or Google Play.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=70').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_mobile_keywords (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, app_id TEXT NOT NULL,
+      country TEXT NOT NULL, term TEXT NOT NULL, checked_on TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+      UNIQUE(app_id,country,term),
+      FOREIGN KEY(app_id,organization_id,project_id) REFERENCES platform_mobile_apps(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_mobile_keyword_ranks (
+      keyword_id TEXT NOT NULL REFERENCES platform_mobile_keywords(id), day TEXT NOT NULL,
+      rank INTEGER CHECK(rank IS NULL OR rank BETWEEN 1 AND 200), result_count INTEGER NOT NULL, leaders_json TEXT NOT NULL, checked_at TEXT NOT NULL,
+      PRIMARY KEY(keyword_id,day)
+    );
+    CREATE TABLE platform_mobile_skan (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, app_id TEXT NOT NULL, day TEXT NOT NULL,
+      media_source TEXT NOT NULL, campaign TEXT NOT NULL, country TEXT NOT NULL, installs INTEGER NOT NULL CHECK(installs>=0),
+      clicks INTEGER, impressions INTEGER, revenue REAL, cost REAL, converted INTEGER, currency TEXT NOT NULL, synced_at TEXT NOT NULL,
+      PRIMARY KEY(app_id,day,media_source,campaign,country),
+      FOREIGN KEY(app_id,organization_id,project_id) REFERENCES platform_mobile_apps(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_mobile_listing_drafts (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, app_id TEXT NOT NULL,
+      store TEXT NOT NULL CHECK(store IN ('ios','android')), locale TEXT NOT NULL, fields_json TEXT NOT NULL, digest TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('draft','approved','publishing','published','failed')), revision INTEGER NOT NULL DEFAULT 1,
+      approved_by TEXT, approved_digest TEXT, approved_at TEXT, published_at TEXT, last_error TEXT,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(app_id,organization_id,project_id) REFERENCES platform_mobile_apps(id,organization_id,project_id)
+    );
+    CREATE INDEX platform_mobile_keyword_due ON platform_mobile_keywords(checked_on);
+    CREATE INDEX platform_mobile_listing_scope ON platform_mobile_listing_drafts(organization_id,project_id,app_id,updated_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(70,datetime('now'));
+  `))();
   return db;
 }
 
