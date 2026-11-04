@@ -78,7 +78,8 @@ test('ad spend sync: last 30 closed days, the plan name or given campaign name, 
   assert.equal(f.db.prepare('SELECT DISTINCT attribution_campaign c FROM platform_mobile_costs').get().c,'yaz_lansman_af');
   const report=require('./platform-loader.cjs').load('mobile-report.ts').mobileReport(f.service,f.app.id);
   assert.ok(report.warnings.includes('spend_synced'));assert.ok(!report.warnings.includes('spend_manual'),'no manual entry, no manual warning');
-  await assert.rejects(()=>f.service.syncAdSpend({appId:f.app.id,provider:'tiktok',planId:plan},fake),e=>e.status===400);
+  await assert.rejects(()=>f.service.syncAdSpend({appId:f.app.id,provider:'snapchat',planId:plan},fake),e=>e.status===400);
+  await assert.rejects(()=>f.service.syncAdSpend({appId:f.app.id,provider:'tiktok',planId:plan},fake),e=>e.status===404,'TikTok is a provider now, but this plan is Meta’s');
   await assert.rejects(()=>f.service.syncAdSpend({appId:f.app.id,provider:'meta',planId:adPlan(f,'google',{'provider-campaign':null})},fake),e=>e.status===404,'the provider must match the plan');
   const future=adPlan(f,'linkedin',{start:day(-5),end:day(-30)});
   await assert.rejects(()=>f.service.syncAdSpend({appId:f.app.id,provider:'linkedin',planId:future},fake),e=>e.status===409,'a plan that has not started has no closed day');

@@ -412,6 +412,49 @@ Everything here keeps the same rule: the team writes and approves, nothing is se
 - **Tests:** `test/platform-whatsapp-inbox.test.cjs`.
 - **Not checked against Meta:** a real inbound webhook and a real reply. Both were tested only with disposable stubs.
 
+## 14. App installs, TikTok ads and Apple Search Ads (Campaigns → Ads, schema 69, 4 November 2026)
+
+The ad manager has five provider tabs now: Meta, Google Ads, LinkedIn, TikTok and Apple Search Ads. The safety model is unchanged:
+
+- caps per provider;
+- approval on the exact content (the promoted app is part of the approval digest);
+- objects created **PAUSED** (TikTok: `DISABLE`);
+- an explicit start behind `PLATFORM_ADS_ENABLED`;
+- pause always allowed;
+- spend only as the provider reports it.
+
+**App-install plans (`OUTCOME_APP_PROMOTION`).** The plan form has an app section. It can be filled from the project's mobile apps (Mobile growth) or by hand:
+
+- store (App Store or Google Play) and the store's app id (a numeric id or a package name);
+- the store address, which must be on `apps.apple.com` or `play.google.com`;
+- **Meta:** Meta's own app id (App ID) is required;
+- **Google:** a target cost per install is required, no higher than the daily budget.
+
+The app is kept in `platform_ad_plans.app_json`. Changing it clears the approval.
+
+| | Meta | Google Ads | TikTok | Apple Search Ads |
+|---|---|---|---|---|
+| Objectives | awareness, traffic, app installs | traffic (Search), app installs (App campaign) | awareness (`REACH`), traffic, app installs (`APP_PROMOTION`, `APP_INSTALL`) | app installs only, App Store apps only |
+| Connect | as before | as before | advertiser id + an access token from TikTok for Business | orgId + an API user's client id, team id, key id and EC private key (PEM) |
+| Created as | PAUSED campaign + ad set with `APP_INSTALLS` and `promoted_object` (app id + store address) | budget + PAUSED `MULTI_CHANNEL` / `APP_CAMPAIGN` with `appCampaignSetting` and `targetCpa`, plus country criteria | campaign with a daily budget, `DISABLE` | PAUSED campaign with `adamId`, daily budget, countries, App Store search results |
+| Start / pause | as before | `ENABLED` / `PAUSED` | `campaign/status/update` `ENABLE` / `DISABLE` | `PUT campaigns/{id}` `ENABLED` / `PAUSED` |
+| Spend | as before | as before | `report/integrated/get` (lifetime, or per day for the mobile report) | `reports/campaigns` (totals, or `DAILY`) |
+
+- **Apple tokens:** Ryzevo signs a one-hour client secret (ES256) with the API user's key and takes a token from `appleid.apple.com` for each request. The token is never stored. The key is stored only inside the encrypted connection.
+- **What the team adds in each provider's tool:** ad groups, keywords, creatives and assets (texts, images, videos).
+- **Mobile report:** the ad spend sync (`syncAdSpend`) works for TikTok and Apple Search Ads plans too.
+- **LinkedIn:** no app-install plans.
+- **Hosts:** the provider HTTP allows only `business-api.tiktok.com`, `api.searchads.apple.com` and `appleid.apple.com` next to the earlier hosts.
+- **Migration 69:** rebuilds `platform_ad_policies` and `platform_ad_plans` so their checks accept the two providers and the new objective, and adds `app_json`. All rows are kept.
+
+**Files:** `lib/platform/ad-providers.ts` (`TikTokAdsClient`, `AppleSearchAdsClient`, `appleSearchToken`, `GoogleAdsClient.createApp`), `ad-manager.ts`, `ad-types.ts`, `components/platform/ProjectAds.tsx`. **Tests:** `test/platform-ad-channels.test.cjs` (fake provider HTTP and a throwaway EC key; no network).
+
+**Before real use:**
+
+- **TikTok:** a TikTok for Business developer app with the ads management permission, then an advertiser access token.
+- **Apple:** an API user in Apple Search Ads (Account Settings → API) with its public key uploaded there.
+- **Meta and Google:** app installs need the app registered with Meta (App ID, SDK or MMP) and linked to Google Ads for conversion tracking.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**

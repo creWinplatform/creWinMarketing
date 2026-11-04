@@ -8,7 +8,7 @@ export const dynamic='force-dynamic';
 export const maxDuration=40;
 // Ad management: plans are approved, created on Meta as PAUSED and started only after a second explicit go-ahead.
 const handle=coachRoute(async(scope,request)=>{
-  const pick=(value:unknown):AdProvider=>value==='google'||value==='linkedin'?value:'meta';
+  const pick=(value:unknown):AdProvider=>value==='google'||value==='linkedin'||value==='tiktok'||value==='apple_search'?value:'meta';
   if(request.method==='GET')return new ProjectAds(platformDatabase(),scope,credentialEncryptionKey(),undefined,pick(new URL(request.url).searchParams.get('provider'))).read();
   const raw=await coachBody(request),ads=new ProjectAds(platformDatabase(),scope,credentialEncryptionKey(),undefined,pick(raw.provider));
   if(raw.action==='connect')return ads.connect(raw);

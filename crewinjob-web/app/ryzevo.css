@@ -153,6 +153,8 @@
 .publication-view-tabs{display:flex;gap:8px;border-bottom:1px solid var(--studio-border);margin-bottom:24px;overflow-x:auto}
 .publication-view-tabs [role=tab]{padding:12px 16px;border-bottom:2px solid transparent;white-space:nowrap;color:var(--studio-muted)}
 .publication-view-tabs [aria-selected=true]{border-bottom-color:var(--studio-ink);color:var(--studio-ink)}
+/* Five ad providers: on narrow screens the tabs wrap instead of hiding the last ones off screen. */
+@media(max-width:600px){.ads-provider-tabs{flex-wrap:wrap;overflow-x:visible;gap:0 4px}.ads-provider-tabs [role=tab]{flex:1 1 auto}}
 .publication-editor fieldset{border:0;padding:0;margin:18px 0 0;min-width:0}
 .publication-preview{min-width:0;padding:12px 16px;border-left:2px solid var(--studio-border);background:transparent}
 .publication-preview>div{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}

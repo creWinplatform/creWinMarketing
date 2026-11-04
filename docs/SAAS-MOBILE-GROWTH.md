@@ -163,7 +163,7 @@ net/ROAS. Manual spend is not an ads API synchronization or audited accounting.
   - **Recipients:** approving enqueues one mobile job for the ready people whose app id equals the trigger source's id and who have consent for the channel.
   - **Unreachable people:** the others leave on a send (`not_sendable`).
   - **Gates:** a send still needs the live and broadcast switches.
-- **Ad spend sync:** `syncAdSpend` pulls the daily spend of an ad-manager plan from Meta, Google Ads or LinkedIn.
+- **Ad spend sync:** `syncAdSpend` pulls the daily spend of an ad-manager plan from Meta, Google Ads, LinkedIn, TikTok or Apple Search Ads.
   - **Period:** the last 30 closed days within the plan's dates.
   - **Storage:** rows go into `platform_mobile_costs` as `ad:<provider>:<plan>`, matched to installs by the provider campaign name (the plan name unless one is given).
   - **Warnings:** the report shows `spend_synced`, and `spend_manual` only when manual rows exist.
