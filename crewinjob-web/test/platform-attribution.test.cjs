@@ -149,20 +149,24 @@ test('email links to the project site carry the campaign tag in the reviewed and
  assert.equal(reviews.get('mail-2').ctaUrl,'https://other.org/x');
 }));
 
-test('the snippet writes nothing before consent and keeps only the first clean touch',()=>{
- const run=(search,consent,cookie='')=>{
+test('the snippet writes nothing before consent, keeps the first clean touch and the last five arrivals',()=>{
+ const run=(search,consent,jar={})=>{
   const html=ATTRIBUTION_SNIPPET.replace(/^<script[^>]*>\n/,'').replace(/<\/script>$/,'');
-  const writes=[],document={cookie,currentScript:{getAttribute:name=>name==='data-consent'?consent:null}};
-  Object.defineProperty(document,'cookie',{get:()=>cookie,set:value=>{writes.push(value);cookie=value.split(';')[0];}});
+  const writes=[],document={currentScript:{getAttribute:name=>name==='data-consent'?consent:null}};
+  Object.defineProperty(document,'cookie',{get:()=>Object.entries(jar).map(([k,v])=>`${k}=${v}`).join('; '),set:value=>{writes.push(value);const [pair]=value.split(';'),at=pair.indexOf('=');jar[pair.slice(0,at)]=pair.slice(at+1);}});
   const window={location:{search}};vm.runInNewContext(html,{window,document,URLSearchParams,JSON,Date,encodeURIComponent,decodeURIComponent});
-  return {writes,api:window.ryzevoTouch};
+  return {writes,api:window.ryzevoTouch,jar};
  };
  assert.equal(run('?utm_campaign=rz_0123456789&utm_source=linkedin','ask').writes.length,0,'no consent, no cookie');
  const allowed=run('?utm_campaign=rz_0123456789&utm_source=linkedin&utm_medium=social','ask');allowed.api.allow();
- assert.equal(allowed.writes.length,1);assert.match(allowed.writes[0],/^ryz_touch=.+; Max-Age=7776000; Path=\/; SameSite=Lax; Secure$/);
- assert.equal(allowed.api.get().campaign,'rz_0123456789');assert.equal(allowed.api.get().source,'linkedin');
- assert.equal(run('?utm_campaign=rz_0123456789','granted').writes.length,1,'data-consent="granted" writes at once');
- const existing=run('?utm_campaign=rz_aaaaaaaaaa','granted','ryz_touch='+encodeURIComponent(JSON.stringify({campaign:'rz_0123456789'})));
- assert.equal(existing.writes.length,0,'the first touch is kept');
+ assert.equal(allowed.writes.length,2);assert.match(allowed.writes[0],/^ryz_touch=.+; Max-Age=7776000; Path=\/; SameSite=Lax; Secure$/);assert.match(allowed.writes[1],/^ryz_touches=/);
+ assert.equal(allowed.api.get().campaign,'rz_0123456789');assert.equal(allowed.api.get().source,'linkedin');assert.equal(allowed.api.all().length,1);
+ assert.equal(run('?utm_campaign=rz_0123456789','granted').writes.length,2,'data-consent="granted" writes at once');
+ const jar={ryz_touch:encodeURIComponent(JSON.stringify({campaign:'rz_0123456789'}))};
+ const existing=run('?utm_campaign=rz_aaaaaaaaaa&utm_source=email','granted',jar);
+ assert.equal(existing.writes.length,1,'the first touch is kept; the arrival is added');assert.equal(existing.api.get().campaign,'rz_0123456789');assert.deepEqual(existing.api.all().map(item=>item.campaign),['rz_aaaaaaaaaa']);
+ assert.equal(run('?utm_campaign=rz_aaaaaaaaaa&utm_source=email','granted',jar).writes.length,0,'the same arrival again is not repeated');
+ for(const tag of ['rz_bbbbbbbbbb','rz_cccccccccc','rz_dddddddddd','rz_eeeeeeeeee','rz_ffffffffff'])run(`?utm_campaign=${tag}`,'granted',jar);
+ assert.deepEqual(run('','granted',jar).api.all().map(item=>item.campaign),['rz_bbbbbbbbbb','rz_cccccccccc','rz_dddddddddd','rz_eeeeeeeeee','rz_ffffffffff'],'only the last five are kept');
  assert.equal(run('?utm_campaign=spring%20sale','granted').writes.length,0,'a value that is not clean is not stored');
 });

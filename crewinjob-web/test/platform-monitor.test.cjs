@@ -202,9 +202,9 @@ test('invalid clocks, future schema and missing backups fail closed without migr
   const f = fixture(t); f.success(60000);
   let report = await f.monitor();
   assert.ok(codes(report).includes('worker_observation_invalid')); assert.ok(codes(report).includes('backup_missing_or_incomplete'));
-  f.db.prepare("INSERT INTO platform_migrations VALUES(77,datetime('now'))").run();
+  f.db.prepare("INSERT INTO platform_migrations VALUES(78,datetime('now'))").run();
   report = await f.monitor(); assert.ok(codes(report).includes('database_schema_unsupported'));
-  assert.equal(f.db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 77);
+  assert.equal(f.db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 78);
 });
 
 test('monitor options are bounded and the CLI returns safe machine-readable nonzero results', async t => {
@@ -228,11 +228,82 @@ test('schema27 migration is additive and repeatable, observations survive a rest
   try { startWorkerObservation(db); } finally { db.close(); }
   db = openPlatformDatabase(legacy);
   try {
-    assert.equal(db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 76);
+    assert.equal(db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 77);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM platform_worker_observations').get().n, 1);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM platform_connections').get().n, 1);
     assert.match(db.prepare("SELECT value FROM platform_operation_metadata WHERE key='database_id'").get().value, /^[a-f0-9-]{36}$/);
     assert.equal(db.pragma('foreign_key_check').length, 0);
     assert.equal(db.pragma('integrity_check', { simple: true }), 'ok');
   } finally { db.close(); }
+});
+
+const notifying = import('../scripts/lib/platform-monitor-notify.mjs');
+const crypto = require('node:crypto');
+// Fake SES values are made at run time; nothing is ever sent (the delivery is a recorder).
+const sesEnv = () => ({ PLATFORM_MONITOR_EMAIL_ENABLED: '1', PLATFORM_MONITOR_EMAIL_TO: 'ops@example.com, Second@Example.com', PLATFORM_AUTH_FROM_EMAIL: 'alerts@example.com', PLATFORM_AUTH_SES_REGION: 'eu-central-1',
+  PLATFORM_AUTH_SES_ACCESS_KEY_ID: 'AKIA' + crypto.randomBytes(16).toString('hex').toUpperCase().slice(0, 16), PLATFORM_AUTH_SES_SECRET_ACCESS_KEY: crypto.randomBytes(30).toString('base64'), PLATFORM_MONITOR_HOST_LABEL: 'QA host' });
+
+test('weekly restore drills: --latest verifies the newest backup, removes the copies and the monitor tracks the result', async t => {
+  const f = fixture(t); f.success(); f.backup();
+  const { monitorConfiguration } = await monitoring, options = monitorConfiguration({ PLATFORM_WORKER_EXPECTED: '1', PLATFORM_DRILL_EXPECTED: '1' });
+  assert.ok(codes(await f.monitor({ options })).includes('restore_drill_stale'), 'no drill yet');
+  assert.equal((await f.monitor()).drill.status, 'not_expected');
+  const drills = path.join(f.directory, 'recovery-drills'), result = f.run('platform-restore-drill', ['--latest'], { PLATFORM_DRILL_PATH: '' });
+  assert.equal(result.status, 0, result.stderr);
+  const folder = path.join(drills, fs.readdirSync(drills).sort().at(-1));
+  assert.deepEqual(fs.readdirSync(folder).sort(), ['DO_NOT_START.txt', 'manifest.json', 'recovery-report.json'], 'database and key copies removed');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(folder, 'recovery-report.json'), 'utf8')).copiesRemoved, true);
+  const report = await f.monitor({ options });
+  assert.equal(report.drill.status, 'passed'); assert.ok(!codes(report).some(code => code.startsWith('restore_drill')));
+  assert.equal((await f.monitor({ options, now: f.now + 9 * 86400000 })).drill.status, 'stale');
+  const failed = path.join(drills, '2999-01-01T00-00-00-000Z-' + crypto.randomUUID());
+  fs.mkdirSync(failed); fs.writeFileSync(path.join(failed, 'FAILED.json'), '{"ok":false}');
+  assert.ok(codes(await f.monitor({ options })).includes('restore_drill_failed'));
+  const inside = f.run('platform-restore-drill', ['--latest', path.join(f.backups, 'drills')]);
+  assert.equal(inside.status, 1); assert.match(inside.stderr, /output_inside_backup/);
+  const manual = f.run('platform-restore-drill', [path.join(f.backups, fs.readdirSync(f.backups).sort().at(-1)), path.join(f.directory, 'manual-drills')]);
+  assert.equal(manual.status, 0, manual.stderr);
+  const kept = path.join(f.directory, 'manual-drills', fs.readdirSync(path.join(f.directory, 'manual-drills'))[0]);
+  assert.ok(fs.readdirSync(kept).includes('platform.sqlite'), 'a manual drill keeps its copy for inspection');
+});
+
+test('operator email: off by default, codes only, once per change, reminders and one all-clear', async t => {
+  const { monitorNotifyConfiguration: config, monitorNotifyDecision: decide, monitorMessage, notifyMonitor } = await notifying;
+  assert.equal(config({}), null); assert.equal(config({ ...sesEnv(), PLATFORM_MONITOR_EMAIL_ENABLED: '0' }), null);
+  for (const extra of [{ PLATFORM_MONITOR_EMAIL_TO: '' }, { PLATFORM_MONITOR_EMAIL_TO: 'not-an-email' }, { PLATFORM_MONITOR_EMAIL_TO: Array.from({ length: 6 }, (_, i) => `o${i}@example.com`).join(',') }, { PLATFORM_AUTH_SES_ACCESS_KEY_ID: 'short' }, { PLATFORM_AUTH_SES_REGION: 'nowhere' }]) assert.equal(config({ ...sesEnv(), ...extra }), null, JSON.stringify(Object.keys(extra)));
+  assert.deepEqual(config(sesEnv()).to, ['ops@example.com', 'second@example.com']);
+  const critical = { status: 'critical', checkedAt: '2026-11-05T10:00:00.000Z', alerts: [{ code: 'worker_stale', severity: 'critical' }, { code: 'queue_delayed', severity: 'warning', count: 3 }] };
+  const ok = { status: 'ok', checkedAt: '2026-11-05T12:00:00.000Z', alerts: [] }, at = Date.parse('2026-11-05T10:00:00Z');
+  assert.deepEqual(decide(critical, null, at), { send: true, kind: 'problem' });
+  const sent = { status: 'critical', codes: 'queue_delayed,worker_stale', notifiedAt: new Date(at).toISOString() };
+  assert.deepEqual(decide(critical, sent, at + 3600000), { send: false });
+  assert.deepEqual(decide(critical, sent, at + 6 * 3600000), { send: true, kind: 'reminder' });
+  assert.deepEqual(decide({ ...critical, alerts: [critical.alerts[0]] }, sent, at + 60000), { send: true, kind: 'problem' }, 'a changed set is news');
+  assert.deepEqual(decide(ok, sent, at), { send: true, kind: 'resolved' });
+  assert.deepEqual(decide(ok, { status: 'ok' }, at), { send: false }); assert.deepEqual(decide(ok, null, at), { send: false });
+  const warning = { status: 'warning', checkedAt: critical.checkedAt, alerts: [critical.alerts[1]] }, warned = { status: 'warning', codes: 'queue_delayed', notifiedAt: sent.notifiedAt };
+  assert.deepEqual(decide(warning, warned, at + 7 * 3600000), { send: false }); assert.equal(decide(warning, warned, at + 24 * 3600000).kind, 'reminder');
+  const mail = monitorMessage(critical, 'problem', 'QA host');
+  assert.match(mail.subject, /QA host: acil sorun/); assert.match(mail.text, /bir süredir çalışmıyor/); assert.match(mail.text, /gecikti\. \(3\) \[queue_delayed\]/);
+  assert.match(monitorMessage(ok, 'resolved').subject, /giderildi/);
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ryzevo-notify-')); t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const statePath = path.join(directory, 'state', 'monitor-notify.json'), mails = [], env = sesEnv();
+  const deliver = async (message, configuration) => { mails.push({ message, to: configuration.to }); };
+  assert.equal(await notifyMonitor({ report: critical, statePath, env: {}, deliver }), 'disabled');
+  assert.equal(await notifyMonitor({ report: critical, statePath, env, now: at, deliver }), 'sent');
+  assert.equal(await notifyMonitor({ report: critical, statePath, env, now: at + 60000, deliver }), 'not_needed');
+  assert.equal(await notifyMonitor({ report: ok, statePath, env, now: at + 120000, deliver: async () => { throw new Error('ses down'); } }), 'failed');
+  assert.equal(await notifyMonitor({ report: ok, statePath, env, now: at + 180000, deliver }), 'sent', 'a failed all-clear is retried');
+  assert.equal(await notifyMonitor({ report: ok, statePath, env, now: at + 240000, deliver }), 'not_needed');
+  assert.equal(mails.length, 2); assert.deepEqual(mails[0].to, ['ops@example.com', 'second@example.com']);
+  const state = fs.readFileSync(statePath, 'utf8');
+  for (const value of [env.PLATFORM_AUTH_SES_SECRET_ACCESS_KEY, env.PLATFORM_AUTH_SES_ACCESS_KEY_ID, 'ops@example.com']) { assert.ok(!state.includes(value)); assert.ok(!JSON.stringify(mails.map(item => item.message)).includes(value)); }
+});
+
+test('the monitor CLI reports the notification outcome without changing its exit code', async t => {
+  const f = fixture(t); f.success(); f.backup();
+  const result = f.run('platform-monitor', [], { PLATFORM_MONITOR_EMAIL_ENABLED: '0' });
+  const report = JSON.parse(result.stdout.trim().split('\n').at(-1));
+  assert.equal(report.notification, 'disabled'); assert.equal(report.notificationsSent, false); assert.equal(result.status, report.exitCode);
+  assert.ok(!fs.existsSync(path.join(f.directory, 'monitor-notify.json')));
 });

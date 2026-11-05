@@ -37,6 +37,17 @@ test('each alert needs the right that acting on it needs',()=>close(f=>{
  assert.deepEqual(f.kinds(f.other),[],'another project sees nothing of this one');
 }));
 
+test('a worker that has run before but stopped warns connection managers, urgent after two hours',()=>close(f=>{
+ const worker=(minutesAgo,success=true)=>{const at=iso(Date.now()-minutesAgo*60000);f.db.prepare("INSERT INTO platform_worker_observations(component,run_id,first_observed_at,started_at,finished_at,outcome,last_success_at) VALUES('platform-worker','r',?,?,?,'completed',?) ON CONFLICT(component) DO UPDATE SET last_success_at=excluded.last_success_at,first_observed_at=excluded.first_observed_at").run(at,at,at,success?at:null);};
+ assert.ok(!f.kinds().includes('worker_stale'),'no worker ever: nothing to say');
+ worker(5);assert.ok(!f.kinds().includes('worker_stale'));
+ worker(45);let alert=teamAlerts(f.db,f.scope).find(item=>item.kind==='worker_stale');assert.equal(alert.severity,'warning');assert.equal(alert.href,'/?tab=project&settings=golive');
+ worker(180);alert=teamAlerts(f.db,f.scope).find(item=>item.kind==='worker_stale');assert.equal(alert.severity,'urgent');
+ worker(180,false);assert.equal(teamAlerts(f.db,f.scope).find(item=>item.kind==='worker_stale').at,null,'never succeeded: counted from the first run');
+ assert.ok(!f.kinds(f.member('editor')).includes('worker_stale'));assert.ok(f.kinds(f.member('admin')).includes('worker_stale'));
+ assert.match(alertMessage([alert],'tr',{name:'P',timezone:'Europe/Istanbul'},'https://ryzevo.example').text,/Zamanlanmış işler .* çalışmıyor/);
+}));
+
 test('the paid period, its grace and a trial warn the billing owner unless a later period is paid',()=>close(f=>{
  const start=Date.now(),end=start+14*DAY;f.db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(f.a.userId,iso(end-14*DAY),iso(end),f.a.organizationId,f.a.projectId);
  assert.deepEqual(f.kinds(),[]);f.db.prepare('UPDATE platform_project_entitlements SET started_at=?,ends_at=? WHERE organization_id=? AND project_id=?').run(iso(start-12*DAY),iso(start+2*DAY),f.a.organizationId,f.a.projectId);
@@ -84,6 +95,6 @@ test('the English email names the deadline in the project time zone and how to t
 test('migration 58 is additive and repeatable',async()=>{
  const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'team-alerts-')),'fixture.sqlite');
  let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeAlertSchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name LIKE 'platform_alert_%'").get().n,0);db.close();
- db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,76);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name LIKE 'platform_alert_%'").get().n,3);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
+ db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,77);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='table' AND name LIKE 'platform_alert_%'").get().n,3);assert.equal(db.pragma('foreign_key_check').length,0);db.close();
  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_migrations WHERE version=58').get().n,1);db.close();
 });

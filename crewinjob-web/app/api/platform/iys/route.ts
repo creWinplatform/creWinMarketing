@@ -31,6 +31,9 @@ async function handle(request:NextRequest){
     if(input.action==='connect')return NextResponse.json(withCrewin(await service.connect(input)),{headers});
     if(input.action==='revoke')return NextResponse.json(withCrewin(service.revoke()),{headers});
     if(input.action==='retry')return NextResponse.json(withCrewin(service.retry(input)),{headers});
+    if(input.action==='merchant_exemption')return NextResponse.json(withCrewin(service.setMerchantExemption(input)),{headers});
+    if(input.action==='merchant_add')return NextResponse.json(withCrewin(service.addMerchants(input)),{headers});
+    if(input.action==='merchant_remove')return NextResponse.json(withCrewin(service.removeMerchant(input)),{headers});
     if(input.action==='crewin_email_mode'){
       if(!crewin||!access.repository.can(access.subject,scope.organizationId,scope.projectId,'connections.manage'))throw new MarketingStoreError('İYS ayarlarına erişim reddedildi.',403);
       if(input.mode!=='measure'&&input.mode!=='enforce')throw new MarketingStoreError('Geçersiz işlem.');

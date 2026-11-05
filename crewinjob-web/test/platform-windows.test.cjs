@@ -28,4 +28,7 @@ test('Windows launch validates origins, private port and build directory without
   assert.deepEqual(windowsCommand('app',root,good()).slice(1),['start','--hostname','127.0.0.1','--port','3033']);
   assert.ok(windowsCommand('backup',root,good())[0].endsWith('platform-backup.mjs'));
   assert.throws(()=>windowsCommand('refund',root,good()));
+  assert.deepEqual(windowsCommand('drill',root,good()).slice(1),['--latest']);
+  assert.equal(check({...good(),PLATFORM_DRILL_PATH:'D:\\Ryzevo\\recovery-drills'},root,{platform:'win32',nodeMajor:22}).ok,true);
+  for (const value of ['D:\\Ryzevo\\backups\\drills',root+'\\drills','relative\\drills']) assert.equal(check({...good(),PLATFORM_DRILL_PATH:value},root,{platform:'win32',nodeMajor:22}).ok,false,value);
 });

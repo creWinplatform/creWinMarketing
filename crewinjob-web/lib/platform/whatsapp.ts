@@ -9,6 +9,8 @@ import { iysGate, iysScope, iysSendBlock, queueIysConsent } from './iys';
 import { IYS_SOURCES, type IysSource } from './iys-types';
 import { INBOX_LIMITS } from './social-inbox-types';
 import { ingestWhatsAppInbound, whatsAppInboundFrom, type WhatsAppInbound } from './social-inbox';
+import { linkTag, linkTrackingEnabled, tagOwnLinks } from './link-tracking';
+import { ProjectAttribution } from './attribution';
 import { WHATSAPP_LIMITS, WHATSAPP_STOP_WORDS, type WhatsAppBatchExtras, type WhatsAppBatchView, type WhatsAppDelivery, type WhatsAppHeaderFormat, type WhatsAppMessageState, type WhatsAppSnapshot, type WhatsAppTemplateView } from './whatsapp-types';
 
 // WhatsApp Cloud API client: fixed host, token only in the Authorization header, a short path allowlist.
@@ -39,6 +41,21 @@ const mediaLink=(value:unknown)=>{
     throw new MarketingStoreError('Başlık medyası için herkese açık bir https bağlantısı girin.');
   return url.href;
 };
+// Own-site links in the variables and the URL button carry the batch's tag (utm_source=whatsapp), so the attribution
+// report can count who came through this send. A value that would grow past its limit is left as written.
+function tagBatch(website:string,tag:string,template:WhatsAppTemplateView,params:string[],overrides:Record<string,string[]>,extras:WhatsAppBatchExtras){
+  const own=(value:string)=>{const next=tagOwnLinks(value,website,'whatsapp',tag,'whatsapp').text;try{return next===value?value:param(next);}catch{return value;}};
+  const tagged:WhatsAppBatchExtras={...extras};
+  if(extras.buttonParam&&template.buttonUrl){
+    const prefix=template.buttonUrl.slice(0,-'{{1}}'.length);let host='',site='';
+    try{host=new URL(prefix).hostname.toLowerCase();site=new URL(website).hostname.toLowerCase().replace(/^www\./,'');}catch{host='';}
+    if(site&&(host===site||host.endsWith(`.${site}`))&&!prefix.includes('#')&&!/utm_/i.test(prefix+extras.buttonParam)){
+      const next=`${extras.buttonParam}${prefix.includes('?')||extras.buttonParam.includes('?')?'&':'?'}utm_source=whatsapp&utm_medium=whatsapp&utm_campaign=${tag}`;
+      try{tagged.buttonParam=buttonParam(next);}catch{tagged.buttonParam=extras.buttonParam;}
+    }
+  }
+  return {params:params.map(own),overrides:Object.fromEntries(Object.entries(overrides).map(([id,list])=>[id,list.map(value=>value?own(value):value)])),extras:tagged};
+}
 const batchDigest=(connectionId:string,template:WhatsAppTemplateView,params:string[],contactIds:string[],overrides:Record<string,string[]>,extras:WhatsAppBatchExtras)=>createHash('sha256').update(JSON.stringify([connectionId,template.name,template.language,template.body,params,contactIds,overrides,template.headerFormat,template.buttonUrl,extras])).digest('hex');
 // The dynamic end of a URL button: a short path or query piece, never a whole new address.
 const buttonParam=(value:unknown)=>{const text=typeof value==='string'?value.trim():'';if(!/^[A-Za-z0-9._~\-\/?=&%+]{1,200}$/.test(text)||text.includes('//'))throw new MarketingStoreError('Düğme bağlantısının değişken kısmı boşluksuz, 1–200 karakterlik bir yol veya sorgu parçası olmalı.');return text;};
@@ -76,7 +93,9 @@ export class ProjectWhatsApp{
     const delivery:Partial<Record<WhatsAppDelivery,number>>={};for(const item of this.db.prepare('SELECT delivery,COUNT(*) n FROM platform_whatsapp_messages WHERE batch_id=? AND delivery IS NOT NULL GROUP BY delivery').all(row.id) as {delivery:WhatsAppDelivery;n:number}[])delivery[item.delivery]=item.n;
     const params=JSON.parse(row.params_json) as string[],template=this.templates(row.connection_id).find(item=>item.name===row.template_name&&item.language===row.template_language);
     return {id:row.id,name:row.name,templateName:row.template_name,templateLanguage:row.template_language,params,overrides:JSON.parse(row.overrides_json||'{}'),extras:JSON.parse(row.extras_json||'{}') as WhatsAppBatchExtras,contactIds:JSON.parse(row.contacts_json),digest:row.digest,state:row.state,mode:row.mode,approved:row.approved_digest===row.digest,approvedAt:row.approved_at,queuedAt:row.queued_at,counts,delivery,
-      preview:template?template.body.replace(/\{\{(\d{1,2})\}\}/g,(match,index)=>params[Number(index)-1]??match):null,revision:row.revision,updatedAt:row.updated_at};
+      preview:template?template.body.replace(/\{\{(\d{1,2})\}\}/g,(match,index)=>params[Number(index)-1]??match):null,revision:row.revision,updatedAt:row.updated_at,
+      // What a real send brought, through its tagged links (null until the attribution report has data).
+      results:row.mode==='send'&&['queued','done'].includes(row.state)?new ProjectAttribution(this.db,this.scope).forTag(linkTag(this.scope,'whatsapp',row.id),'whatsapp'):null};
   }
   read():WhatsAppSnapshot{
     this.authorize();const connection=this.connection();let account:WhatsAppSnapshot['account']=null;
@@ -192,15 +211,19 @@ export class ProjectWhatsApp{
     // Per-recipient values: an empty value keeps the batch's own value for that variable.
     const rawOverrides=raw.overrides&&typeof raw.overrides==='object'?raw.overrides as Record<string,unknown>:{},overrides:Record<string,string[]>={};
     for(const contactId of contactIds){const list=rawOverrides[contactId];if(!Array.isArray(list)||!list.some(item=>typeof item==='string'&&item.trim()))continue;if(list.length!==template.params)throw new MarketingStoreError(`Bu şablon ${template.params} değişken bekliyor.`);overrides[contactId]=list.map(item=>typeof item==='string'&&item.trim()?param(item):'');}
-    const rawExtras=raw.extras&&typeof raw.extras==='object'?raw.extras as Record<string,unknown>:{},extras:WhatsAppBatchExtras={};
-    if(['IMAGE','VIDEO','DOCUMENT'].includes(template.headerFormat))extras.headerLink=mediaLink(rawExtras.headerLink);
-    if(template.buttonUrl)extras.buttonParam=buttonParam(rawExtras.buttonParam);
+    const rawExtras=raw.extras&&typeof raw.extras==='object'?raw.extras as Record<string,unknown>:{},entered:WhatsAppBatchExtras={};
+    if(['IMAGE','VIDEO','DOCUMENT'].includes(template.headerFormat))entered.headerLink=mediaLink(rawExtras.headerLink);
+    if(template.buttonUrl)entered.buttonParam=buttonParam(rawExtras.buttonParam);
+    // The id is known before saving so the tagged links are part of what the team reviews and approves.
+    const batchId=raw.id===undefined?`wabatch_${randomUUID()}`:String(raw.id),website=this.repo.workspace(this.scope.subject,...this.args())?.project.website||'';
+    const tagged=linkTrackingEnabled(this.db,this.scope)?tagBatch(website,linkTag(this.scope,'whatsapp',batchId),template,params,overrides,entered):{params,overrides,extras:entered};
+    const extras=tagged.extras;params.splice(0,params.length,...tagged.params);for(const id of Object.keys(overrides))overrides[id]=tagged.overrides[id];
     const digest=batchDigest(connection.id,template,params,contactIds,overrides,extras);
     return this.db.transaction(()=>{
       this.authorize('content.write');const now=new Date().toISOString();
       if(raw.id===undefined){
         if((this.db.prepare("SELECT COUNT(*) n FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? AND state IN ('draft','approved')").get(...this.args()) as {n:number}).n>=WHATSAPP_LIMITS.batches)throw new MarketingStoreError('Taslak gönderi sınırına ulaşıldı.',429);
-        this.db.prepare("INSERT INTO platform_whatsapp_batches(id,organization_id,project_id,connection_id,name,template_name,template_language,params_json,overrides_json,extras_json,contacts_json,digest,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)").run(`wabatch_${randomUUID()}`,...this.args(),connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,this.scope.subject,now,now);
+        this.db.prepare("INSERT INTO platform_whatsapp_batches(id,organization_id,project_id,connection_id,name,template_name,template_language,params_json,overrides_json,extras_json,contacts_json,digest,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)").run(batchId,...this.args(),connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,this.scope.subject,now,now);
       }else{
         const row=this.batch(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Gönderi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
         if(!['draft','approved'].includes(row.state))throw new MarketingStoreError('Kuyruğa alınmış bir gönderi değiştirilemez.',409);

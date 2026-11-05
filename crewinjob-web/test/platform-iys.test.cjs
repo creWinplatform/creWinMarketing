@@ -143,6 +143,10 @@ test('status queries are bounded and report what İYS holds; business-day deadli
   assert.deepEqual(plain({checked:result.checked,onay:result.onay,ret:result.ret,none:result.none}),{checked:2,onay:1,ret:0,none:1});
   assert.equal(iysGate(f.db,f.scope,'EPOSTA',iysEmailKey(f.scope,KEY,'pilot1@example.com')),null);
   assert.equal(iysDueAt('2026-10-30T09:00:00Z'),'2026-11-04T20:59:59.000Z','Friday + 3 business days = Wednesday 23:59:59 Istanbul');
+  assert.equal(iysDueAt('2026-10-28T09:00:00Z'),'2026-11-03T20:59:59.000Z','29 October is skipped; the half day before it counts');
+  assert.equal(iysDueAt('2026-05-25T09:00:00Z'),'2026-06-02T20:59:59.000Z','the eve counts, the four days of Kurban Bayramı do not');
+  assert.equal(iysDueAt('2029-04-20T09:00:00Z'),'2029-04-26T20:59:59.000Z','fixed holidays apply in any year');
+  assert.equal(iysDueAt('2028-02-24T09:00:00Z'),'2028-02-29T20:59:59.000Z','a year without published religious dates is never extended');
   assert.equal(iysDate('2026-10-30T09:00:00Z'),'2026-10-30 12:00:00');
   fake.state.failAdd=true;queueIysConsent(f.db,f.scope,KEY,{channel:'EPOSTA',recipient:'pilot3@example.com',status:'ONAY',source:'HS_WEB',consentDate:new Date().toISOString(),actor:f.scope.subject});
   await deliverIysOutbox(f.db,KEY,fake.transport);const failed=f.db.prepare("SELECT state,last_error FROM platform_iys_outbox WHERE state='failed'").get();
@@ -166,5 +170,40 @@ test('switched off, İYS checks, queues and screens do nothing and stored record
    assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_iys_outbox').get().n,1,'stored records are kept');
   }finally{process.env.NEXT_PUBLIC_IYS_ENABLED='1';}
   assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),'iys_rejected','switching back on restores the gate');
+ }finally{f.db.close();}
+});
+
+test('the merchant exemption: off by default, opt-in with an acknowledgement, a rejection check instead of a consent',async()=>{
+ const f=fixture();try{
+  const {fake,iys}=await connected(f),shop='shop@example.com',key=iysEmailKey(f.scope,KEY,shop),other=iysEmailKey(f.scope,KEY,'b@example.com');
+  assert.equal(iys.view().merchants.enabled,false);
+  assert.throws(()=>iys.addMerchants({channel:'EPOSTA',recipients:shop,evidence:'QA Ltd'}),/Tacir/i,'marking needs the exemption on');
+  assert.throws(()=>iys.setMerchantExemption({enabled:true}),/açık onay/);
+  let view=iys.setMerchantExemption({enabled:true,acknowledged:true});assert.equal(view.merchants.enabled,true);assert.ok(view.merchants.at);
+  assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),'iys_no_consent','an unmarked recipient still needs a consent');
+  for(const bad of [{channel:'SMS',recipients:shop,evidence:'QA Ltd'},{channel:'EPOSTA',recipients:shop,evidence:'x'},{channel:'EPOSTA',recipients:'not-an-email',evidence:'QA Ltd'},{channel:'EPOSTA',recipients:'',evidence:'QA Ltd'}])assert.throws(()=>iys.addMerchants(bad),JSON.stringify(bad));
+  view=iys.addMerchants({channel:'EPOSTA',recipients:`${shop}\nb@example.com`,evidence:'Ticari unvan: QA Ltd'});
+  assert.equal(view.merchants.total,2);assert.ok(!JSON.stringify(view).includes(shop),'addresses are masked');
+  assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),'iys_stale','a merchant must be checked in IYS once');
+  const viewer=f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'iys-merchant-viewer',password:'fixture-password-123',role:'viewer'});
+  const outsider=new ProjectIys(f.db,{...f.scope,subject:viewer.userId},KEY,fake.transport);
+  assert.throws(()=>outsider.addMerchants({channel:'EPOSTA',recipients:'c@example.com',evidence:'QA Ltd'}),error=>error.status===403);
+  assert.throws(()=>outsider.setMerchantExemption({enabled:false}),error=>error.status===403);assert.deepEqual(plain(outsider.view().merchants.list),[],'viewers see the count, not the list');
+  const result=await iys.query([{channel:'EPOSTA',value:shop},{channel:'EPOSTA',value:'b@example.com'}]);
+  assert.equal(result.none,2);assert.ok(fake.state.requests.filter(item=>item.path.endsWith('/consents/status')).every(item=>item.body.recipientType==='TACIR'),'merchants are checked as TACIR');
+  assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),null,'no rejection: the merchant may be sent to');
+  // A rejection through IYS stops sending; the merchant's opt-out is reported as TACIR.
+  fake.state.register.set(`EPOSTA\n${shop}`,{status:'RET',consentDate:'2026-11-01 10:00:00',source:'HS_WEB'});
+  await iys.query([{channel:'EPOSTA',value:shop}]);assert.equal(iysGate(f.db,f.scope,'EPOSTA',key),'iys_rejected');
+  assert.equal(queueIysConsent(f.db,f.scope,KEY,{channel:'EPOSTA',recipient:'b@example.com',status:'RET',source:'HS_WEB',consentDate:new Date().toISOString(),actor:f.a.userId}),'queued');
+  assert.equal(f.db.prepare("SELECT recipient_type FROM platform_iys_outbox WHERE state='queued'").get().recipient_type,'TACIR');
+  await deliverIysOutbox(f.db,KEY,fake.transport);
+  assert.equal(fake.state.requests.filter(item=>item.path.endsWith('/consents')).at(-1).body.recipientType,'TACIR');
+  assert.equal(iysGate(f.db,f.scope,'EPOSTA',other),'iys_rejected');
+  // Off again: marked recipients need a consent like everyone else.
+  view=iys.addMerchants({channel:'MESAJ',recipients:'+90 532 111 22 99',evidence:'Esnaf: QA Kırtasiye'});
+  await iys.query([{channel:'MESAJ',value:'+905321112299'}]);const phone=iysPhoneKey(f.scope,KEY,'+905321112299');assert.equal(iysGate(f.db,f.scope,'MESAJ',phone),null);
+  iys.setMerchantExemption({enabled:false});assert.equal(iysGate(f.db,f.scope,'MESAJ',phone),'iys_no_consent');
+  assert.equal(iys.removeMerchant({channel:'MESAJ',key:phone}).merchants.total,2);assert.throws(()=>iys.removeMerchant({channel:'MESAJ',key:phone}),error=>error.status===404);
  }finally{f.db.close();}
 });

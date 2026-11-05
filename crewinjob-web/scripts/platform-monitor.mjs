@@ -1,13 +1,20 @@
 import nextEnv from '@next/env';
+import { dirname, join, resolve } from 'node:path';
 import { monitorConfiguration, monitorPlatform } from './lib/platform-monitor.mjs';
+import { notifyMonitor } from './lib/platform-monitor-notify.mjs';
 nextEnv.loadEnvConfig(process.cwd());
 try {
   if (process.argv.length !== 2) throw new Error('invalid_arguments');
+  const databasePath = process.env.PLATFORM_DATABASE_PATH || 'data/platform.sqlite', backupRoot = process.env.PLATFORM_BACKUP_PATH || 'data/backups';
   const report = await monitorPlatform({
-    databasePath: process.env.PLATFORM_DATABASE_PATH || 'data/platform.sqlite',
-    backupRoot: process.env.PLATFORM_BACKUP_PATH || 'data/backups',
+    databasePath,
+    backupRoot,
+    drillRoot: process.env.PLATFORM_DRILL_PATH || resolve(backupRoot, '..', 'recovery-drills'),
     options: monitorConfiguration(),
   });
+  // The operator email is optional and never changes the exit code.
+  report.notification = await notifyMonitor({ report, statePath: process.env.PLATFORM_MONITOR_STATE_PATH || join(dirname(resolve(databasePath)), 'monitor-notify.json') });
+  report.notificationsSent = report.notification === 'sent' || report.notification === 'sent_state_not_saved';
   console.log(JSON.stringify(report));
   process.exitCode = report.exitCode;
 } catch {

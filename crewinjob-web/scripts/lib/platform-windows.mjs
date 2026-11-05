@@ -1,6 +1,6 @@
 import { win32 } from 'node:path';
 
-export const WINDOWS_MODES = ['preflight', 'app', 'worker', 'backup', 'monitor'];
+export const WINDOWS_MODES = ['preflight', 'app', 'worker', 'backup', 'monitor', 'drill'];
 const absolute = value => typeof value === 'string' && /^[a-z]:\\/i.test(value) && !value.includes('\0');
 export function insideWindowsPath(parent, child) {
   if (!absolute(parent) || !absolute(child)) return false;
@@ -26,6 +26,8 @@ export function windowsEnvironmentChecks(env, releaseRoot, { platform = process.
   record('stable_encryption_key', /^[a-f0-9]{64}$/i.test(env.PLATFORM_ENCRYPTION_KEY || '') && !/^([a-f0-9])\1+$/i.test(env.PLATFORM_ENCRYPTION_KEY));
   record('isolated_database', absolute(env.PLATFORM_DATABASE_PATH) && /\.sqlite$/i.test(env.PLATFORM_DATABASE_PATH) && !insideWindowsPath(releaseRoot, env.PLATFORM_DATABASE_PATH));
   record('isolated_backup_root', absolute(env.PLATFORM_BACKUP_PATH) && !insideWindowsPath(releaseRoot, env.PLATFORM_BACKUP_PATH) && !insideWindowsPath(env.PLATFORM_BACKUP_PATH, env.PLATFORM_DATABASE_PATH));
+  // Drill folders share the backup naming, so they must never sit inside the backup root.
+  record('isolated_drill_root', !env.PLATFORM_DRILL_PATH || (absolute(env.PLATFORM_DRILL_PATH) && !insideWindowsPath(releaseRoot, env.PLATFORM_DRILL_PATH) && !insideWindowsPath(env.PLATFORM_BACKUP_PATH, env.PLATFORM_DRILL_PATH)));
   record('isolated_environment_file', absolute(env.RYZEVO_ENV_FILE) && !insideWindowsPath(releaseRoot, env.RYZEVO_ENV_FILE));
   record('persistent_agent_install', absolute(env.CREWINJOB_AGENT_DIR) && !insideWindowsPath(releaseRoot, env.CREWINJOB_AGENT_DIR));
   record('isolated_build_directory', /^\.next-[a-z0-9_-]+$/i.test(env.NEXT_DIST_DIR || ''));
@@ -39,5 +41,7 @@ export function windowsEnvironmentChecks(env, releaseRoot, { platform = process.
 export function windowsCommand(mode, releaseRoot, env) {
   if (!WINDOWS_MODES.includes(mode) || mode === 'preflight') throw new Error('invalid_windows_mode');
   if (mode === 'app') return [win32.join(releaseRoot, 'node_modules/next/dist/bin/next'), 'start', '--hostname', '127.0.0.1', '--port', env.PORT];
+  // The weekly drill restores the newest backup into PLATFORM_DRILL_PATH (or next to the backups) and removes the copies.
+  if (mode === 'drill') return [win32.join(releaseRoot, 'scripts', 'platform-restore-drill.mjs'), '--latest'];
   return [win32.join(releaseRoot, 'scripts', `platform-${mode}.mjs`)];
 }

@@ -9,7 +9,7 @@ import { linkTag } from './link-tracking';
 import { LINK_TAG } from './link-tracking-types';
 import { ryzevoFeature } from './ryzevo-features';
 import { crewinTaggedItems } from './crewin-links';
-import { ATTRIBUTION_CAMPAIGN, ATTRIBUTION_LABEL, ATTRIBUTION_LIMITS as LIMITS, ATTRIBUTION_PERIODS, ATTRIBUTION_WINDOW_DAYS as WINDOW, type AttributionChannel, type AttributionItem, type AttributionOther, type AttributionPeriod, type AttributionReport, type AttributionItemKind, type AttributionSettingsView, type AttributionStage, type AttributionTagResult, PROFILE_NAMES, PROFILE_PLATFORMS, type AttributionTouch } from './attribution-types';
+import { ATTRIBUTION_CAMPAIGN, ATTRIBUTION_LABEL, ATTRIBUTION_LIMITS as LIMITS, ATTRIBUTION_MODELS, ATTRIBUTION_PERIODS, type AttributionModel, ATTRIBUTION_WINDOW_DAYS as WINDOW, type AttributionChannel, type AttributionItem, type AttributionOther, type AttributionPeriod, type AttributionReport, type AttributionItemKind, type AttributionSettingsView, type AttributionStage, type AttributionTagResult, PROFILE_NAMES, PROFILE_PLATFORMS, type AttributionTouch } from './attribution-types';
 
 type Scope = { organizationId: string; projectId: string };
 type Settings = { value_connection_id: string | null; value_event: string | null; value_key: string | null; currency: string | null; updated_at: string };
@@ -20,6 +20,14 @@ const RYZEVO = "length(t.campaign)=13 AND t.campaign GLOB 'rz_[0-9a-f][0-9a-f][0
 // The event counts for the touch only when it came first and no more than the window before it.
 const IN_WINDOW = `e.occurred_at>=t.touched_at AND julianday(e.occurred_at)-julianday(t.touched_at)<=${WINDOW}`;
 const JOIN = 'JOIN platform_attribution_touches t ON t.organization_id=e.organization_id AND t.project_id=e.project_id AND t.entity_key=e.entity_key';
+const LOG = 'JOIN platform_attribution_touch_log t ON t.organization_id=e.organization_id AND t.project_id=e.project_id AND t.entity_key=e.entity_key';
+// first: the stored first touch; last: the person's latest logged arrival at or before the event; any: every logged
+// arrival in the window.
+const MODEL_JOIN: Record<AttributionModel, string> = {
+  first: JOIN,
+  last: `${LOG} AND t.touched_at=(SELECT MAX(l.touched_at) FROM platform_attribution_touch_log l WHERE l.organization_id=e.organization_id AND l.project_id=e.project_id AND l.entity_key=e.entity_key AND l.touched_at<=e.occurred_at)`,
+  any: LOG,
+};
 
 // The optional `attribution` of a product event: the first tagged link its person arrived through. A malformed value is
 // dropped (the event itself is still accepted), so a stray utm parameter never costs the team a signup event.
@@ -39,24 +47,46 @@ export function normalizeAttribution(value: unknown, observedAt: string): { touc
   }
   return { touch: { campaign: raw.campaign, source, medium, touchedAt }, invalid: false };
 }
+// The optional `touches` of a product event: the person's recent tagged arrivals (the snippet keeps the last five).
+// Like `attribution`, a malformed list is dropped as a whole and the event is still accepted.
+export function normalizeTouches(value: unknown, observedAt: string): { touches: AttributionTouch[]; invalid: boolean } {
+  if (value === undefined) return { touches: [], invalid: false };
+  if (!Array.isArray(value) || value.length > LIMITS.touchesPerEvent) return { touches: [], invalid: true };
+  const touches: AttributionTouch[] = [];
+  for (const item of value) {
+    const { touch, invalid } = normalizeAttribution(item, observedAt);
+    if (invalid || !touch) return { touches: [], invalid: true };
+    touches.push(touch);
+  }
+  return { touches, invalid: false };
+}
 // The same person across the project's sources (same entity type and id), without keeping the id.
 export const attributionEntity = (key: string, scope: Scope, entityType: string, externalId: string) =>
   createHmac('sha256', Buffer.from(key, 'hex')).update(JSON.stringify(['attribution-entity', scope.organizationId, scope.projectId, entityType, externalId])).digest('hex');
 
 // Runs inside the webhook transaction, right after the raw event is stored. The first touch wins: a touch reported later
 // replaces the stored one only when it happened earlier (out-of-order deliveries).
-export function recordAttribution(db: Database.Database, scope: Scope, key: string, input: { connectionId: string; entityType: string; eventId: string; eventName: string; externalId: string; observedAt: string; attributes: Record<string, string | number | boolean>; touch: AttributionTouch | null }, receivedAt: string) {
+export function recordAttribution(db: Database.Database, scope: Scope, key: string, input: { connectionId: string; entityType: string; eventId: string; eventName: string; externalId: string; observedAt: string; attributes: Record<string, string | number | boolean>; touch: AttributionTouch | null; touches?: AttributionTouch[] }, receivedAt: string) {
   const entity = attributionEntity(key, scope, input.entityType, input.externalId);
   const settings = db.prepare('SELECT value_connection_id,value_event,value_key FROM platform_attribution_settings WHERE organization_id=? AND project_id=?').get(...args(scope)) as Pick<Settings, 'value_connection_id' | 'value_event' | 'value_key'> | undefined;
   const raw = settings?.value_connection_id === input.connectionId && settings.value_event === input.eventName && settings.value_key ? input.attributes[settings.value_key] : undefined;
   const value = typeof raw === 'number' && Number.isFinite(raw) ? raw : null;
   db.prepare('INSERT INTO platform_attribution_events VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(connection_id,event_id) DO NOTHING').run(input.connectionId, input.eventId, ...args(scope), entity, input.eventName, input.observedAt, value, receivedAt);
+  for (const touch of input.touches || []) logTouch(db, scope, entity, touch, input.observedAt, receivedAt);
   if (!input.touch) return false;
   return writeTouch(db, scope, entity, input.touch, input.connectionId, input.eventId, input.observedAt, receivedAt);
 }
+// A touch cannot come after the event that reported it.
+const touchTime = (touch: AttributionTouch, observedAt: string) => touch.touchedAt && touch.touchedAt < observedAt ? touch.touchedAt : observedAt;
+// Every tagged arrival, for the last-touch and all-touches views; a person keeps the latest 20.
+function logTouch(db: Database.Database, scope: Scope, entity: string, touch: AttributionTouch, observedAt: string, receivedAt: string) {
+  db.prepare('INSERT OR IGNORE INTO platform_attribution_touch_log VALUES(?,?,?,?,?,?,?,?)').run(...args(scope), entity, touch.campaign, touch.source, touch.medium, touchTime(touch, observedAt), receivedAt);
+  db.prepare(`DELETE FROM platform_attribution_touch_log WHERE organization_id=? AND project_id=? AND entity_key=? AND rowid NOT IN
+    (SELECT rowid FROM platform_attribution_touch_log WHERE organization_id=? AND project_id=? AND entity_key=? ORDER BY touched_at DESC LIMIT ${LIMITS.touchesPerPerson})`).run(...args(scope), entity, ...args(scope), entity);
+}
 function writeTouch(db: Database.Database, scope: Scope, entity: string, touch: AttributionTouch, connectionId: string, eventId: string, observedAt: string, receivedAt: string) {
-  // A touch cannot come after the event that reported it.
-  const touchedAt = touch.touchedAt && touch.touchedAt < observedAt ? touch.touchedAt : observedAt;
+  logTouch(db, scope, entity, touch, observedAt, receivedAt);
+  const touchedAt = touchTime(touch, observedAt);
   const old = db.prepare('SELECT touched_at FROM platform_attribution_touches WHERE organization_id=? AND project_id=? AND entity_key=?').get(...args(scope), entity) as { touched_at: string } | undefined;
   if (old && old.touched_at <= touchedAt) return false;
   db.prepare(`INSERT INTO platform_attribution_touches VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id,entity_key) DO UPDATE SET campaign=excluded.campaign,source=excluded.source,medium=excluded.medium,
@@ -81,7 +111,8 @@ export function pruneAttribution(db: Database.Database, now = Date.now()) {
   return db.transaction(() => {
     const cutoff = new Date(now - LIMITS.retentionDays * DAY).toISOString(), touchCutoff = new Date(now - LIMITS.touchDays * DAY).toISOString();
     let events = db.prepare('DELETE FROM platform_attribution_events WHERE rowid IN (SELECT rowid FROM platform_attribution_events WHERE occurred_at<? LIMIT 1000)').run(cutoff).changes;
-    const touches = db.prepare('DELETE FROM platform_attribution_touches WHERE rowid IN (SELECT rowid FROM platform_attribution_touches WHERE touched_at<? LIMIT 1000)').run(touchCutoff).changes;
+    const touches = db.prepare('DELETE FROM platform_attribution_touches WHERE rowid IN (SELECT rowid FROM platform_attribution_touches WHERE touched_at<? LIMIT 1000)').run(touchCutoff).changes
+      + db.prepare('DELETE FROM platform_attribution_touch_log WHERE rowid IN (SELECT rowid FROM platform_attribution_touch_log WHERE touched_at<? LIMIT 1000)').run(touchCutoff).changes;
     // A project over its row cap loses its oldest trail first.
     for (const row of db.prepare('SELECT organization_id,project_id,COUNT(*) AS n FROM platform_attribution_events GROUP BY organization_id,project_id HAVING n>?').all(LIMITS.rowsPerProject) as { organization_id: string; project_id: string; n: number }[])
       events += db.prepare('DELETE FROM platform_attribution_events WHERE rowid IN (SELECT rowid FROM platform_attribution_events WHERE organization_id=? AND project_id=? ORDER BY occurred_at LIMIT ?)').run(row.organization_id, row.project_id, Math.min(row.n - LIMITS.rowsPerProject, 1000)).changes;
@@ -118,10 +149,11 @@ export class ProjectAttribution {
   }
   // People who reached one stage in [from, to), grouped by the touch they carried; the value sum when the stage is the
   // value event.
-  private groups(stage: AttributionStage, from: string, to: string, value: Settings | undefined, filter = '', ...extra: unknown[]): Group[] {
+  // The model picks the touch an event is credited to; each event counts once per touch, so an amount is never doubled.
+  private groups(stage: AttributionStage, from: string, to: string, value: Settings | undefined, { model = 'first', filter = '', extra = [] }: { model?: AttributionModel; filter?: string; extra?: unknown[] } = {}): Group[] {
     const isValue = Boolean(value?.value_connection_id === stage.connectionId && value.value_event === stage.eventName);
-    return this.db.prepare(`SELECT t.campaign,t.source,COUNT(DISTINCT e.entity_key) AS n,${isValue ? 'SUM(e.value)' : 'NULL'} AS value FROM platform_attribution_events e ${JOIN}
-      WHERE e.organization_id=? AND e.project_id=? AND e.connection_id=? AND e.event_name=? AND e.occurred_at>=? AND e.occurred_at<? AND ${IN_WINDOW}${filter} GROUP BY t.campaign,t.source`)
+    return this.db.prepare(`SELECT campaign,source,COUNT(DISTINCT entity_key) AS n,${isValue ? 'SUM(value)' : 'NULL'} AS value FROM (SELECT DISTINCT t.campaign,t.source,e.entity_key,e.event_id,e.value
+      FROM platform_attribution_events e ${MODEL_JOIN[model]} WHERE e.organization_id=? AND e.project_id=? AND e.connection_id=? AND e.event_name=? AND e.occurred_at>=? AND e.occurred_at<? AND ${IN_WINDOW}${filter}) GROUP BY campaign,source`)
       .all(...args(this.scope), stage.connectionId, stage.eventName, from, to, ...extra) as Group[];
   }
   private coverage(stage: AttributionStage, from: string, to: string) {
@@ -136,40 +168,47 @@ export class ProjectAttribution {
   private items() {
     const content = this.db.prepare("SELECT id,COALESCE(json_extract(payload,'$.headline'),substr(json_extract(payload,'$.content'),1,80)) AS title FROM platform_content_history WHERE organization_id=? AND project_id=?").all(...args(this.scope)) as { id: string; title: string | null }[];
     const campaigns = this.db.prepare("SELECT id,json_extract(payload,'$.name') AS title FROM platform_campaigns WHERE organization_id=? AND project_id=?").all(...args(this.scope)) as { id: string; title: string | null }[];
+    const whatsapp = this.db.prepare("SELECT id,name FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? AND mode='send'").all(...args(this.scope)) as { id: string; name: string }[];
+    // App links created before they carried the campaign's tag credit installs to the campaign id itself.
+    const appLinked = new Set((this.db.prepare('SELECT DISTINCT campaign_id FROM platform_mobile_links WHERE organization_id=? AND project_id=?').all(...args(this.scope)) as { campaign_id: string }[]).map(row => row.campaign_id));
     return new Map<string, { kind: AttributionItemKind; id: string; title: string }>([
       ...(this.project()?.productPack === 'crewin' ? crewinTaggedItems() : []),
       ...PROFILE_PLATFORMS.map(platform => [profileTag(this.scope, platform), { kind: 'profile' as const, id: `profile:${platform}`, title: PROFILE_NAMES[platform] }] as const),
       ...content.map(item => [linkTag(this.scope, 'content', item.id), { kind: 'content' as const, id: item.id, title: item.title || '' }] as const),
       ...campaigns.map(item => [linkTag(this.scope, 'campaign', item.id), { kind: 'campaign' as const, id: item.id, title: item.title || '' }] as const),
+      ...campaigns.filter(item => appLinked.has(item.id)).map(item => [item.id, { kind: 'campaign' as const, id: item.id, title: item.title || '' }] as const),
+      ...whatsapp.map(item => [linkTag(this.scope, 'whatsapp', item.id), { kind: 'whatsapp' as const, id: item.id, title: item.name }] as const),
     ]);
   }
   private hasTouches() { return Boolean(this.db.prepare('SELECT 1 FROM platform_attribution_touches WHERE organization_id=? AND project_id=? LIMIT 1').get(...args(this.scope))); }
   // Everything the Analytics panel shows for the last 30 or 90 days.
-  report(rawDays: unknown = 30): AttributionReport {
+  report(rawDays: unknown = 30, rawModel: unknown = 'first'): AttributionReport {
     this.authorize();
     const days = (ATTRIBUTION_PERIODS as readonly number[]).includes(Number(rawDays)) ? Number(rawDays) as AttributionPeriod : 30;
+    const model = (ATTRIBUTION_MODELS as readonly unknown[]).includes(rawModel) ? rawModel as AttributionModel : 'first';
     const now = Date.now(), from = new Date(now - days * DAY).toISOString(), to = new Date(now + 1000).toISOString();
-    const result = this.compute(from, to, LIMITS.items);
+    const result = this.compute(from, to, LIMITS.items, model);
     const sources = this.sources(), touch = this.db.prepare('SELECT COUNT(*) AS n,MAX(recorded_at) AS last FROM platform_attribution_touches WHERE organization_id=? AND project_id=?').get(...args(this.scope)) as { n: number; last: string | null };
     const tracking = this.db.prepare('SELECT connection_id,period_from,period_to FROM platform_link_tracking WHERE organization_id=? AND project_id=?').get(...args(this.scope)) as { connection_id: string | null; period_from: string | null; period_to: string | null } | undefined;
     const mapped = (this.db.prepare("SELECT COUNT(*) AS n FROM platform_measurement_bindings WHERE organization_id=? AND project_id=? AND provider='product_webhook'").get(...args(this.scope)) as { n: number }).n > 0;
-    return { days, from, to: new Date(now).toISOString(), windowDays: WINDOW, ...result,
+    return { days, model, from, to: new Date(now).toISOString(), windowDays: WINDOW, ...result,
       setup: { sources: sources.filter(item => item.active).length, activeSources: sources.filter(item => item.active && item.enabled).length, touches: touch.n, lastTouchAt: touch.last, stagesMapped: mapped, canManage: this.canManage() },
       site: { from: tracking?.connection_id ? tracking.period_from : null, to: tracking?.connection_id ? tracking.period_to : null } };
   }
-  private compute(from: string, to: string, limit: number) {
+  private compute(from: string, to: string, limit: number, model: AttributionModel = 'first') {
     const stages = this.stages(), settings = this.settingsRow(), items = this.items();
     const sessions = new Map((this.db.prepare('SELECT r.tag,SUM(r.sessions) AS sessions FROM platform_link_results r JOIN platform_link_tracking l ON l.organization_id=r.organization_id AND l.project_id=r.project_id AND l.connection_id IS NOT NULL WHERE r.organization_id=? AND r.project_id=? GROUP BY r.tag').all(...args(this.scope)) as { tag: string; sessions: number }[]).map(row => [row.tag, row.sessions]));
     const byItem = new Map<string, AttributionItem>(), byChannel = new Map<string, AttributionChannel>(), other = new Map<string, AttributionOther>(), unmatched = stages.map(() => 0);
     const valueStage = stages.findIndex(stage => settings?.value_connection_id === stage.connectionId && settings.value_event === stage.eventName && settings.value_key && settings.currency);
     stages.forEach((stage, index) => {
-      for (const group of this.groups(stage, from, to, settings)) {
+      for (const group of this.groups(stage, from, to, settings, { model })) {
         const zero = () => stages.map(() => 0), value = index === valueStage ? group.value || 0 : 0;
-        if (!LINK_TAG.test(group.campaign)) {
+        // Known items first: app links made before tagging carry the campaign's own id instead of a tag.
+        const item = items.get(group.campaign);
+        if (!item && !LINK_TAG.test(group.campaign)) {
           const key = `${group.campaign}\n${group.source || ''}`, row = other.get(key) || { campaign: group.campaign, source: group.source, counts: zero() };
           row.counts[index] += group.n; other.set(key, row); continue;
         }
-        const item = items.get(group.campaign);
         if (!item) { unmatched[index] += group.n; continue; }
         const row = byItem.get(group.campaign) || { tag: group.campaign, kind: item.kind, id: item.id, title: item.title, sources: [], sessions: sessions.has(group.campaign) ? sessions.get(group.campaign)! : null, counts: zero(), value: valueStage >= 0 ? 0 : null };
         row.counts[index] += group.n; if (row.value !== null) row.value += value;
@@ -197,7 +236,7 @@ export class ProjectAttribution {
     const stages = this.stages();
     if (!stages.length) return null;
     const from = new Date(Date.now() - 90 * DAY).toISOString(), to = new Date(Date.now() + 1000).toISOString();
-    const counts = stages.map(stage => this.groups(stage, from, to, undefined, source ? ' AND t.campaign=? AND t.source=?' : ' AND t.campaign=?', ...(source ? [tag, source] : [tag])).reduce((sum, group) => sum + group.n, 0));
+    const counts = stages.map(stage => this.groups(stage, from, to, undefined, { filter: source ? ' AND t.campaign=? AND t.source=?' : ' AND t.campaign=?', extra: source ? [tag, source] : [tag] }).reduce((sum, group) => sum + group.n, 0));
     return { stages: stages.map(stage => stage.label), counts, days: 90 };
   }
   // People per stage for every Ryzevo tag in [from, to), and per tag and channel: the coach's learning loop reads its own
@@ -206,7 +245,7 @@ export class ProjectAttribution {
     const stages = this.open() && this.hasTouches() ? this.stages() : [];
     const byTag = new Map<string, number[]>(), byTagSource = new Map<string, number[]>();
     stages.forEach((stage, index) => {
-      for (const group of this.groups(stage, from, to, undefined, ` AND ${RYZEVO}`)) {
+      for (const group of this.groups(stage, from, to, undefined, { filter: ` AND ${RYZEVO}` })) {
         for (const [map, key] of [[byTag, group.campaign], [byTagSource, `${group.campaign}\n${group.source || ''}`]] as const) {
           const row = map.get(key) || stages.map(() => 0); row[index] += group.n; map.set(key, row);
         }

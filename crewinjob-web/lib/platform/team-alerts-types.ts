@@ -1,6 +1,6 @@
 // Things that need the team before a deadline passes. Computed from existing records for the viewing member's rights;
 // nothing is sent to customers and no message text, contact or account name leaves the app in the email.
-export type TeamAlertKind = 'inbox_window' | 'publication_failed' | 'connection_expiring' | 'billing_period' | 'ad_error' | 'invite_pending' | 'seo_findings' | 'search_drop' | 'iys_deadline' | 'iys_sync' | 'ad_overspend' | 'ad_cpi' | 'ad_fatigue' | 'competitor_change';
+export type TeamAlertKind = 'inbox_window' | 'publication_failed' | 'connection_expiring' | 'billing_period' | 'ad_error' | 'invite_pending' | 'seo_findings' | 'search_drop' | 'iys_deadline' | 'iys_sync' | 'ad_overspend' | 'ad_cpi' | 'ad_fatigue' | 'competitor_change' | 'worker_stale';
 export type TeamAlert = {
   kind: TeamAlertKind; severity: 'urgent' | 'warning'; count: number;
   // The earliest deadline (inbox window close, access expiry, period end) or the latest event time.
@@ -21,4 +21,4 @@ export type TeamAlertsView = {
   // Phone (web push) notifications are set per browser, so only whether the server offers them is known here.
   push: { enabled: boolean };
 };
-export const TEAM_ALERT_LIMITS = { inboxWarningHours: 6, eventDays: 7, accessDays: 7, paidDays: 7, trialDays: 3, emailGapHours: 3, emailsPerDay: 6 } as const;
+export const TEAM_ALERT_LIMITS = { inboxWarningHours: 6, eventDays: 7, accessDays: 7, paidDays: 7, trialDays: 3, emailGapHours: 3, emailsPerDay: 6, workerStaleMinutes: 30, workerUrgentHours: 2 } as const;

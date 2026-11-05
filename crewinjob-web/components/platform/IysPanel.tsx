@@ -1,10 +1,10 @@
 'use client';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { RefreshCw, ShieldCheck, Unplug } from 'lucide-react';
+import { RefreshCw, ShieldCheck, Store, Trash2, Unplug } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import type { IysView } from '@/lib/platform/iys-types';
+import type { IysChannel, IysView } from '@/lib/platform/iys-types';
 import Msg from '@/components/Msg';
 
 type QueryResult = { checked: number; onay: number; ret: number; none: number; view: IysView };
@@ -15,6 +15,7 @@ export default function IysPanel({ lang, crewin = false }: { lang: Locale; crewi
   const tr = lang === 'tr', locale = localeTag(lang);
   const [view, setView] = useState<IysView | null>(null), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   const [scope, setScope] = useState<'tr' | 'none' | ''>(''), [form, setForm] = useState({ username: '', password: '', iysCode: '', brandCode: '', environment: 'production' });
+  const [merchant, setMerchant] = useState<{ channel: IysChannel; recipients: string; evidence: string }>({ channel: 'EPOSTA', recipients: '', evidence: '' }), [merchantAck, setMerchantAck] = useState(false);
   const mounted = useRef(false);
   // The status check answers with a view without Crewin's email mode; the last known one is kept.
   const apply = (value: IysView) => { setView(old => value.crewinEmail || !old?.crewinEmail ? value : { ...value, crewinEmail: old.crewinEmail }); setScope(value.scope || ''); };
@@ -88,6 +89,27 @@ export default function IysPanel({ lang, crewin = false }: { lang: Locale; crewi
           ? (tr ? 'İYS’nin daha önce bilgi verdiği Crewin WhatsApp numaraları yeniden sorgulanır (her seferde en çok 50, en eski önce). Yeni numaraları WhatsApp izinleri bölümünden sorgulayın. Alıcıya hiçbir şey gönderilmez.' : 'Crewin WhatsApp numbers IYS already reported on are checked again (up to 50 at a time, oldest first). Check new numbers from the WhatsApp consents section. Nothing is sent to the recipients.')
           : (tr ? 'Pilot listesindeki e-posta adresleri ve WhatsApp kişileri sorgulanır (her seferde en çok 50, en eski önce). Alıcıya hiçbir şey gönderilmez.' : 'The pilot list’s email addresses and the WhatsApp contacts are checked (up to 50 at a time, oldest first). Nothing is sent to the recipients.')}</p>
       </div>}
+      {!crewin && <div className="iys-merchants"><h3><Store size={14} aria-hidden="true" />{tr ? 'Tacir ve esnaf alıcılar' : 'Merchant recipients'}</h3>
+        <p className="studio-note">{tr
+          ? 'Tacir veya esnafa gönderilen ticari iletiler için önceden onay gerekmez; ancak alıcı İYS’den ret verebilir. İstisnayı açarsanız, işaretlediğiniz alıcılara onay aranmadan gönderilir, İYS’de ret varsa gönderilmez. Ret kontrolü de diğer durumlar gibi 24 saatten eski olamaz.'
+          : 'Commercial messages to merchants and tradespeople need no prior consent, but the recipient can reject through IYS. With the exemption on, marked recipients are sent to without a consent and never once IYS holds a rejection; the rejection check, like any status, must be less than 24 hours old.'}</p>
+        <p>{view.merchants.enabled ? (tr ? `İstisna açık · ${view.merchants.by || '—'} · ${time(view.merchants.at)}` : `Exemption on · ${view.merchants.by || '—'} · ${time(view.merchants.at)}`) : (tr ? 'İstisna kapalı: tüm alıcılar bireysel sayılır ve onay gerekir.' : 'Exemption off: every recipient counts as an individual and needs a consent.')}{view.merchants.total ? (tr ? ` · ${n(view.merchants.total)} işaretli alıcı` : ` · ${n(view.merchants.total)} marked recipient(s)`) : ''}</p>
+        {view.canManage && (view.merchants.enabled
+          ? <button type="button" className="studio-text-button" disabled={busy} onClick={() => void act<IysView>({ action: 'merchant_exemption', enabled: false }, () => tr ? 'Tacir istisnası kapatıldı; işaretli alıcılar için yine onay aranır.' : 'Merchant exemption turned off; marked recipients need a consent again.')}>{tr ? 'İstisnayı kapat' : 'Turn the exemption off'}</button>
+          : <><label className="automation-choice"><input type="checkbox" checked={merchantAck} onChange={event => setMerchantAck(event.target.checked)} />{tr ? 'İşaretleyeceğimiz alıcıların tacir veya esnaf olduğunu ve ticari iletinin işleriyle ilgili olduğunu teyit ediyoruz; bunu hukuk danışmanımızla kontrol ettik.' : 'We confirm the recipients we mark are merchants or tradespeople and the messages concern their business; our legal adviser checked this.'}</label>
+            <button type="button" className="studio-secondary" disabled={busy || !merchantAck} onClick={() => void act<IysView>({ action: 'merchant_exemption', enabled: true, acknowledged: true }, () => { setMerchantAck(false); return tr ? 'Tacir istisnası açıldı.' : 'Merchant exemption turned on.'; })}>{tr ? 'İstisnayı aç' : 'Turn the exemption on'}</button></>)}
+        {view.merchants.enabled && <form className="studio-form-grid" onSubmit={event => { event.preventDefault(); void act<IysView>({ action: 'merchant_add', ...merchant }, () => { setMerchant(old => ({ ...old, recipients: '' })); return tr ? 'Alıcılar tacir olarak işaretlendi. Göndermeden önce İYS durumlarını sorgulayın.' : 'Recipients marked as merchants. Check their IYS status before sending.'; }); }}>
+          <label>{tr ? 'Kanal' : 'Channel'}<select value={merchant.channel} onChange={event => setMerchant(old => ({ ...old, channel: event.target.value as IysChannel }))}><option value="EPOSTA">{tr ? 'E-posta' : 'Email'}</option><option value="MESAJ">WhatsApp</option></select></label>
+          <label>{tr ? 'Kanıt notu' : 'Evidence note'}<input required minLength={3} maxLength={200} placeholder={tr ? 'ör. ticari unvan, vergi no' : 'e.g. trade name, tax number'} value={merchant.evidence} onChange={event => setMerchant(old => ({ ...old, evidence: event.target.value }))} /></label>
+          <label className="studio-form-full">{merchant.channel === 'EPOSTA' ? (tr ? 'E-posta adresleri (satır başına bir tane)' : 'Email addresses (one per line)') : (tr ? 'Telefonlar (+90 …, satır başına bir tane)' : 'Phones (+90 …, one per line)')}<textarea required rows={3} value={merchant.recipients} onChange={event => setMerchant(old => ({ ...old, recipients: event.target.value }))} /></label>
+          <div className="studio-form-actions studio-form-full"><button className="studio-secondary" disabled={busy}>{tr ? 'Tacir olarak işaretle' : 'Mark as merchants'}</button></div>
+        </form>}
+        {view.merchants.list.length > 0 && <ul className="iys-merchant-list">{view.merchants.list.map(item => <li key={`${item.channel}:${item.key}`}>
+          <span className="coach-state">{item.channel === 'EPOSTA' ? (tr ? 'E-posta' : 'Email') : 'WhatsApp'}</span>
+          <span>{item.masked} · {item.evidence} · {item.checkedAt ? (tr ? `İYS kontrolü ${time(item.checkedAt)}` : `IYS check ${time(item.checkedAt)}`) : (tr ? 'İYS’de henüz sorgulanmadı' : 'not checked in IYS yet')}</span>
+          <button type="button" className="studio-text-button" disabled={busy} aria-label={tr ? 'Tacir işaretini kaldır' : 'Remove the merchant mark'} onClick={() => void act<IysView>({ action: 'merchant_remove', channel: item.channel, key: item.key }, () => tr ? 'Tacir işareti kaldırıldı.' : 'Merchant mark removed.')}><Trash2 size={14} /></button>
+        </li>)}</ul>}
+      </div>}
       {view.attention.length > 0 && <div className="iys-attention"><h3>{tr ? 'İlgilenmeniz gerekenler' : 'Needs attention'}</h3><ul>{view.attention.map(item => <li key={item.id}>
         <span className="coach-state">{item.channel === 'EPOSTA' ? (tr ? 'E-posta' : 'Email') : 'WhatsApp'} · {item.status === 'ONAY' ? (tr ? 'onay' : 'consent') : (tr ? 'ret' : 'opt-out')}</span>
         <span>{item.masked} · {tr ? 'son tarih' : 'deadline'} {time(item.dueAt)}</span>
@@ -96,9 +118,9 @@ export default function IysPanel({ lang, crewin = false }: { lang: Locale; crewi
       </li>)}</ul></div>}
     </>}
     <details className="iys-rules"><summary>{tr ? 'Kurallar ve sınırlar' : 'Rules and limits'}</summary><ul>
-      <li>{tr ? 'Alıcılar bireysel (BIREYSEL) sayılır; tacir istisnası kullanılmaz.' : 'Recipients count as individuals (BIREYSEL); the merchant exemption is not used.'}</li>
+      <li>{tr ? 'Alıcılar bireysel (BIREYSEL) sayılır. Tacir istisnası açıksa, işaretli alıcılar İYS’de TACIR olarak sorgulanır ve çıkışları öyle bildirilir.' : 'Recipients count as individuals (BIREYSEL). With the merchant exemption on, marked recipients are checked in IYS as TACIR and their opt-outs are reported as such.'}</li>
       <li>{tr ? 'E-posta İYS’de EPOSTA, WhatsApp MESAJ türüdür.' : 'Email is EPOSTA in IYS and WhatsApp is MESAJ.'}</li>
-      <li>{tr ? 'Bildirim süresi 3 iş günüdür; hafta sonları atlanır, resmi tatiller sayılmaz (süre hiçbir zaman yasal süreden geç bitmez). 3 iş gününden eski izinler bildirilemez; bu alıcıların İYS durumunu sorgulayın.' : 'The reporting deadline is 3 business days; weekends are skipped and public holidays are not counted (it never ends later than the legal deadline). Consents older than 3 business days cannot be reported; check those recipients in IYS instead.'}</li>
+      <li>{tr ? 'Bildirim süresi 3 iş günüdür; hafta sonları ve tam gün resmi tatiller atlanır, arife gibi yarım günler iş günü sayılır. Dini bayramlar Diyanet takvimi yayımlanmış yıllar için sayılır (şu an 2026–2027); süre hiçbir zaman yasal süreden geç bitmez. 3 iş gününden eski izinler bildirilemez; bu alıcıların İYS durumunu sorgulayın.' : 'The reporting deadline is 3 business days; weekends and full-day public holidays are skipped, half days such as eves count as business days. Religious holidays count for years whose Diyanet calendar is published (2026–2027 for now); it never ends later than the legal deadline. Consents older than 3 business days cannot be reported; check those recipients in IYS instead.'}</li>
       <li>{tr ? 'Bir alıcının İYS durumu 24 saatten eskiyse ve değişiklikler okunamıyorsa canlı ileti gitmez.' : 'If a recipient’s IYS status is older than 24 hours and changes cannot be read, no live message goes.'}</li>
       <li>{tr ? 'Provalar ve müşterinin başlattığı konuşmalara verilen gelen kutusu yanıtları bu kontrolün dışındadır.' : 'Rehearsals and inbox replies to conversations the customer started are outside this check.'}</li>
       <li>{tr ? 'Bu kuralların işletmenize uygunluğunu hukuk danışmanınızla teyit edin.' : 'Confirm with your legal adviser that these rules fit your business.'}</li>

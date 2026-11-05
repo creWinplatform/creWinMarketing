@@ -1,11 +1,11 @@
 import Database from 'better-sqlite3';
 import { createDecipheriv, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { lstat, open, readFile, realpath } from 'node:fs/promises';
+import { lstat, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { join, parse, relative, resolve, sep } from 'node:path';
 
 // Bump alongside schema changes and add any new encrypted-column AAD contracts.
-export const MAX_RECOVERY_SCHEMA = 76;
+export const MAX_RECOVERY_SCHEMA = 77;
 const MAX_DATABASE_BYTES = 4 * 1024 ** 3;
 const identifier = value => `"${value.replaceAll('"', '""')}"`;
 export class RecoveryError extends Error {
@@ -107,6 +107,7 @@ const ENCRYPTED_COLUMNS = [
   { since: 67, table: 'platform_iys_recipients', column: 'encrypted_recipient', resource: row => `iys-recipient:${row.channel}:${row.recipient_key}` },
   { since: 68, table: 'platform_channel_tokens', column: 'encrypted_refresh', resource: row => `channel-refresh:${row.connection_id}` },
   { since: 67, table: 'platform_iys_outbox', column: 'encrypted_recipient', resource: row => `iys-outbox:${row.id}` },
+  { since: 77, table: 'platform_iys_merchants', column: 'encrypted_recipient', resource: row => `iys-merchant:${row.channel}:${row.recipient_key}` },
 ];
 // Both spellings mark an encrypted field: encrypted_<name> (older tables) and <name>_encrypted (WhatsApp, inbox).
 const isEncryptedColumn = column => column.startsWith('encrypted_') || column.endsWith('_encrypted');
@@ -215,6 +216,16 @@ export async function disjointOutputRoot(backup, outputRoot) {
   const diff = relative(source, root);
   if (diff === '' || (!diff.startsWith('..' + sep) && diff !== '..' && !parse(diff).root)) fail('output_inside_backup');
   return root;
+}
+
+// Backup folders are named <ISO time>-<uuid>; the newest name is the newest backup.
+export const BACKUP_FOLDER = /^\d{4}-\d{2}-\d{2}T[\dTZ-]+-[a-f0-9-]+$/;
+export async function latestBackupFolder(root) {
+  await rejectLinks(root);
+  const folders = (await readdir(root, { withFileTypes: true })).filter(entry => BACKUP_FOLDER.test(entry.name)).sort((a, b) => b.name.localeCompare(a.name));
+  if (!folders.length) return null;
+  if (!folders[0].isDirectory() || folders[0].isSymbolicLink()) fail('invalid_backup');
+  return join(root, folders[0].name);
 }
 
 export function recoveryErrorCode(error) {

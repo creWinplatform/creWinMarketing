@@ -7,11 +7,11 @@ import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { emailAddress, emailIdentity, maskEmail } from './email-safety';
 import { IysClient, IysError, fetchTransport, type IysCredentials, type IysTransport } from './iys-client';
-import { IYS_LIMITS as LIMITS, IYS_SOURCES, iysDate, iysDueAt, iysEnabled, type IysChannel, type IysGateReason, type IysScope, type IysSource, type IysStatus, type IysView } from './iys-types';
+import { IYS_CHANNELS, IYS_LIMITS as LIMITS, IYS_SOURCES, iysDate, iysDueAt, iysEnabled, type IysChannel, type IysGateReason, type IysRecipientType, type IysScope, type IysSource, type IysStatus, type IysView } from './iys-types';
 
 type Scope = { organizationId: string; projectId: string };
-type Settings = { organization_id: string; project_id: string; scope: 'tr' | 'none' | null; declared_by: string | null; declared_at: string | null; connection_id: string | null; pull_state: 'idle' | 'ok' | 'failed'; pull_error: string | null; pulled_at: string | null; pull_cursor: string | null; next_pull_at: string | null; lease_until: string | null };
-type Outbox = { id: string; organization_id: string; project_id: string; channel: IysChannel; recipient_key: string; encrypted_recipient: string | null; status: IysStatus; source: string; consent_date: string; due_at: string; state: 'queued' | 'sent' | 'failed'; attempts: number; last_error: string | null; created_at: string };
+type Settings = { organization_id: string; project_id: string; scope: 'tr' | 'none' | null; declared_by: string | null; declared_at: string | null; connection_id: string | null; pull_state: 'idle' | 'ok' | 'failed'; pull_error: string | null; pulled_at: string | null; pull_cursor: string | null; next_pull_at: string | null; lease_until: string | null; merchant_exemption: number; merchant_by: string | null; merchant_at: string | null };
+type Outbox = { id: string; organization_id: string; project_id: string; channel: IysChannel; recipient_key: string; encrypted_recipient: string | null; status: IysStatus; source: string; consent_date: string; due_at: string; state: 'queued' | 'sent' | 'failed'; attempts: number; last_error: string | null; created_at: string; recipient_type: IysRecipientType };
 const HOUR = 3600000;
 const args = (scope: Scope) => [scope.organizationId, scope.projectId] as const;
 const E164 = /^\+[1-9]\d{7,14}$/;
@@ -27,6 +27,9 @@ const connection = (db: Database.Database, scope: Scope) => {
   const row = settings(db, scope); if (!row?.connection_id) return null;
   return db.prepare("SELECT id,encrypted_credentials,updated_at FROM platform_connections WHERE id=? AND organization_id=? AND project_id=? AND provider='iys' AND active=1").get(row.connection_id, ...args(scope)) as { id: string; encrypted_credentials: string; updated_at: string } | undefined || null;
 };
+// A recipient the team marked as a merchant, counted only while the project's exemption is on.
+const merchant = (db: Database.Database, scope: Scope, channel: IysChannel, id: string) => settings(db, scope)?.merchant_exemption
+  ? db.prepare('SELECT checked_at FROM platform_iys_merchants WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=?').get(...args(scope), channel, id) as { checked_at: string | null } | undefined : undefined;
 const credentials = (db: Database.Database, scope: Scope, key: string) => { const row = connection(db, scope); return row ? decryptCredentials<IysCredentials>(row.encrypted_credentials, key, ...args(scope), row.id) : null; };
 // Stores what İYS reported (or accepted) for one recipient and channel.
 function remember(db: Database.Database, scope: Scope, key: string, channel: IysChannel, recipient: string, status: IysStatus, origin: 'query' | 'pull' | 'upload', consentDate: string | null, source: string | null) {
@@ -44,11 +47,15 @@ export function iysGate(db: Database.Database, scope: Scope, channel: IysChannel
   if (row.scope === 'none') return null;
   if (!connection(db, scope)) return 'iys_not_connected';
   const status = db.prepare('SELECT status,checked_at FROM platform_iys_recipients WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=?').get(...args(scope), channel, key) as { status: IysStatus; checked_at: string } | undefined;
-  if (!status) return 'iys_no_consent';
-  if (status.status === 'RET') return 'iys_rejected';
+  if (status?.status === 'RET') return 'iys_rejected';
   // A status is current when it was checked in the last 24 hours, or İYS's change feed was read successfully since.
-  const fresh = Date.now() - Date.parse(status.checked_at) < LIMITS.freshHours * HOUR || row.pull_state === 'ok' && Boolean(row.pulled_at) && Date.now() - Date.parse(row.pulled_at!) < LIMITS.freshHours * HOUR;
-  return fresh ? null : 'iys_stale';
+  const recent = (at: string | null | undefined) => Boolean(at) && Date.now() - Date.parse(at!) < LIMITS.freshHours * HOUR;
+  const feed = row.pull_state === 'ok' && recent(row.pulled_at);
+  // A merchant needs no consent, only a rejection check: checked once, and current like any status.
+  const trader = merchant(db, scope, channel, key);
+  if (trader) return trader.checked_at && (recent(trader.checked_at) || recent(status?.checked_at) || feed) ? null : 'iys_stale';
+  if (!status) return 'iys_no_consent';
+  return recent(status.checked_at) || feed ? null : 'iys_stale';
 }
 // Before a live send is queued: the project must have declared, and a "Turkey" project must be connected.
 export function iysSendBlock(db: Database.Database, scope: Scope) {
@@ -71,12 +78,12 @@ export function queueIysConsent(db: Database.Database, scope: Scope, key: string
   if ((db.prepare("SELECT COUNT(*) n FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND state='queued'").get(...args(scope)) as { n: number }).n >= LIMITS.outbox) throw new MarketingStoreError('İYS kuyruk sınırına ulaşıldı.', 429);
   // The latest decision for a recipient replaces a queued one that has not been sent yet.
   db.prepare("DELETE FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=? AND state='queued'").run(...args(scope), input.channel, id);
-  const outbox = `iys_${randomUUID()}`;
+  const outbox = `iys_${randomUUID()}`, type: IysRecipientType = merchant(db, scope, input.channel, id) ? 'TACIR' : 'BIREYSEL';
   // Without the address (for example an unsubscribe whose record is gone) the item waits for a person to report it.
-  db.prepare('INSERT INTO platform_iys_outbox(id,organization_id,project_id,channel,recipient_key,encrypted_recipient,masked,status,source,consent_date,due_at,state,attempts,last_error,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)')
+  db.prepare('INSERT INTO platform_iys_outbox(id,organization_id,project_id,channel,recipient_key,encrypted_recipient,masked,status,source,consent_date,due_at,state,attempts,last_error,created_by,created_at,updated_at,recipient_type) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)')
     .run(outbox, ...args(scope), input.channel, id, value ? encryptCredentials({ recipient: value }, key, ...args(scope), `iys-outbox:${outbox}`) : null, value ? input.channel === 'EPOSTA' ? maskEmail(value) : maskPhone(value) : '—',
       input.status, input.source && (IYS_SOURCES as readonly string[]).includes(input.source) ? input.source : 'HS_WEB', new Date(input.consentDate).toISOString(), due,
-      value ? 'queued' : 'failed', value ? null : 'Alıcı adresi bulunamadı; bu kaydı İYS’ye elle bildirin.', input.actor, now.toISOString(), now.toISOString());
+      value ? 'queued' : 'failed', value ? null : 'Alıcı adresi bulunamadı; bu kaydı İYS’ye elle bildirin.', input.actor, now.toISOString(), now.toISOString(), type);
   // An opt-out stops sending at once; İYS is told within the deadline.
   if (input.status === 'RET' && value) remember(db, scope, key, input.channel, value, 'RET', 'upload', new Date(input.consentDate).toISOString(), null);
   return 'queued' as const;
@@ -101,8 +108,12 @@ export class ProjectIys {
     for (const item of this.db.prepare('SELECT channel,status,COUNT(*) n FROM platform_iys_recipients WHERE organization_id=? AND project_id=? GROUP BY channel,status').all(...args(this.scope)) as { channel: IysChannel; status: IysStatus; n: number }[]) statuses[item.channel][item.status] = item.n;
     const attention = (this.db.prepare("SELECT id,channel,status,masked,due_at,state,last_error FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND (state='failed' OR state='queued' AND due_at<=?) ORDER BY due_at LIMIT 20").all(...args(this.scope), new Date(Date.now() + 24 * HOUR).toISOString()) as { id: string; channel: IysChannel; status: IysStatus; masked: string; due_at: string; state: 'queued' | 'failed'; last_error: string | null }[])
       .map(item => ({ id: item.id, channel: item.channel, status: item.status, masked: item.masked, dueAt: item.due_at, state: item.state, error: item.last_error }));
-    const declarer = row?.declared_by ? (this.db.prepare('SELECT username FROM platform_users WHERE id=?').get(row.declared_by) as { username: string } | undefined)?.username || null : null;
-    return { scope: (row?.scope || null) as IysScope, declaredAt: row?.declared_at || null, declaredBy: declarer, canManage,
+    const user = (id: string | null | undefined) => id ? (this.db.prepare('SELECT username FROM platform_users WHERE id=?').get(id) as { username: string } | undefined)?.username || null : null, declarer = user(row?.declared_by);
+    const listed = this.can('connections.manage') || this.can('recipients.manage');
+    const merchants = { enabled: Boolean(row?.merchant_exemption), by: user(row?.merchant_by), at: row?.merchant_at || null, total: (this.db.prepare('SELECT COUNT(*) n FROM platform_iys_merchants WHERE organization_id=? AND project_id=?').get(...args(this.scope)) as { n: number }).n,
+      list: listed ? (this.db.prepare('SELECT channel,recipient_key,masked,evidence,checked_at,created_at FROM platform_iys_merchants WHERE organization_id=? AND project_id=? ORDER BY created_at DESC LIMIT 200').all(...args(this.scope)) as { channel: IysChannel; recipient_key: string; masked: string; evidence: string; checked_at: string | null; created_at: string }[])
+        .map(item => ({ channel: item.channel, key: item.recipient_key, masked: item.masked, evidence: item.evidence, checkedAt: item.checked_at, createdAt: item.created_at })) : [] };
+    return { scope: (row?.scope || null) as IysScope, declaredAt: row?.declared_at || null, declaredBy: declarer, canManage, merchants,
       connection: live ? { environment: value?.environment || 'production', iysCode: value ? value.iysCode : '', brandCode: value ? value.brandCode : '', connectedAt: live.updated_at } : null,
       pull: { state: row?.pull_state || 'idle', at: row?.pulled_at || null, error: row?.pull_error || null },
       outbox: { queued: counts('queued'), sent: counts('sent'), failed: counts('failed'), overdue: counts('queued', ` AND due_at<'${now}'`), nextDue: next.at }, statuses, attention };
@@ -113,6 +124,45 @@ export class ProjectIys {
     if (raw.scope !== 'tr' && raw.scope !== 'none') throw new MarketingStoreError('Beyan için “Evet” veya “Hayır” seçin.');
     const now = new Date().toISOString();
     this.db.transaction(() => { this.ensure(now); this.db.prepare('UPDATE platform_iys_settings SET scope=?,declared_by=?,declared_at=?,updated_at=? WHERE organization_id=? AND project_id=?').run(raw.scope, this.scope.subject, now, now, ...args(this.scope)); audit(this.db, this.scope.subject, this.scope, `iys.declare.${raw.scope}`); })();
+    return this.view();
+  }
+  // The merchant (tacir/esnaf) exemption: merchants need no prior consent but may reject through İYS. Turning it on is the
+  // project's own statement, kept with who made it; turning it off sends to marked merchants only with a consent again.
+  setMerchantExemption(raw: Record<string, unknown>) {
+    this.authorize(true);
+    if (typeof raw.enabled !== 'boolean' || raw.enabled && raw.acknowledged !== true) throw new MarketingStoreError('Tacir istisnası için açık onay gerekli.');
+    const now = new Date().toISOString();
+    this.db.transaction(() => { this.ensure(now); this.db.prepare('UPDATE platform_iys_settings SET merchant_exemption=?,merchant_by=?,merchant_at=?,updated_at=? WHERE organization_id=? AND project_id=?').run(raw.enabled ? 1 : 0, this.scope.subject, now, now, ...args(this.scope)); audit(this.db, this.scope.subject, this.scope, raw.enabled ? 'iys.merchant.on' : 'iys.merchant.off'); })();
+    return this.view();
+  }
+  // Marks email addresses or phone numbers as merchants, with the team's evidence (trade name, tax number note).
+  addMerchants(raw: Record<string, unknown>) {
+    this.authorize(); if (!this.can('connections.manage') && !this.can('recipients.manage')) throw new MarketingStoreError('Tacir alıcıları yalnız alıcı veya bağlantı yöneticileri işaretleyebilir.', 403);
+    if (!settings(this.db, this.scope)?.merchant_exemption) throw new MarketingStoreError('Alıcı işaretlemeden önce tacir istisnasını açın.', 409);
+    const channel = raw.channel as IysChannel, evidence = typeof raw.evidence === 'string' ? raw.evidence.replace(/[\x00-\x1f]/g, ' ').trim().slice(0, 200) : '';
+    if (!(IYS_CHANNELS as readonly string[]).includes(channel)) throw new MarketingStoreError('Kanal olarak e-posta veya WhatsApp seçin.');
+    if (evidence.length < 3) throw new MarketingStoreError('Tacir veya esnaf olduğunu gösteren kısa bir not girin (ör. ticari unvan, vergi no).');
+    const values = [...new Set((typeof raw.recipients === 'string' ? raw.recipients.split(/[\n,;]+/) : []).map(value => value.trim()).filter(Boolean))];
+    if (!values.length || values.length > LIMITS.merchantsPerRequest) throw new MarketingStoreError(`Bir seferde 1–${LIMITS.merchantsPerRequest} alıcı girin.`);
+    const normalized = values.map(value => normalize(channel, value));
+    if (normalized.some(value => !value)) throw new MarketingStoreError(channel === 'EPOSTA' ? 'Geçersiz e-posta adresi var.' : 'Telefonları uluslararası biçimde girin (ör. +90 532 …).');
+    const now = new Date().toISOString();
+    this.db.transaction(() => {
+      if ((this.db.prepare('SELECT COUNT(*) n FROM platform_iys_merchants WHERE organization_id=? AND project_id=?').get(...args(this.scope)) as { n: number }).n + normalized.length > LIMITS.merchants) throw new MarketingStoreError('Tacir alıcı sınırına ulaşıldı.', 429);
+      for (const value of normalized as string[]) {
+        const id = recipientKey(this.scope, this.key, channel, value);
+        this.db.prepare(`INSERT INTO platform_iys_merchants VALUES(?,?,?,?,?,?,?,NULL,?,?) ON CONFLICT(organization_id,project_id,channel,recipient_key) DO UPDATE SET evidence=excluded.evidence`)
+          .run(...args(this.scope), channel, id, encryptCredentials({ recipient: value }, this.key, ...args(this.scope), `iys-merchant:${channel}:${id}`), channel === 'EPOSTA' ? maskEmail(value) : maskPhone(value), evidence, this.scope.subject, now);
+      }
+      audit(this.db, this.scope.subject, this.scope, 'iys.merchant.add');
+    }).immediate();
+    return this.view();
+  }
+  removeMerchant(raw: Record<string, unknown>) {
+    this.authorize(); if (!this.can('connections.manage') && !this.can('recipients.manage')) throw new MarketingStoreError('Tacir alıcıları yalnız alıcı veya bağlantı yöneticileri değiştirebilir.', 403);
+    const changed = this.db.prepare('DELETE FROM platform_iys_merchants WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=?').run(...args(this.scope), raw.channel, raw.key).changes;
+    if (!changed) throw new MarketingStoreError('Tacir alıcı bulunamadı.', 404);
+    audit(this.db, this.scope.subject, this.scope, 'iys.merchant.remove');
     return this.view();
   }
   // Connects the project's İYS API user: the account must sign in and the brand code must be one of its brands.
@@ -155,8 +205,11 @@ export class ProjectIys {
       .sort((a, b) => a.at.localeCompare(b.at)).slice(0, LIMITS.queryBatch);
     const client = new IysClient(creds, this.transport), result = { checked: 0, onay: 0, ret: 0, none: 0 };
     for (const item of list) {
-      const status = await client.status(item.value, item.channel); result.checked++;
-      if (!status) { result.none++; this.db.prepare('DELETE FROM platform_iys_recipients WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=?').run(...args(this.scope), item.channel, recipientKey(this.scope, this.key, item.channel, item.value)); continue; }
+      const id = recipientKey(this.scope, this.key, item.channel, item.value), trader = Boolean(merchant(this.db, this.scope, item.channel, id));
+      const status = await client.status(item.value, item.channel, trader ? 'TACIR' : 'BIREYSEL'); result.checked++;
+      // For a merchant, "no record" and a consent both mean no rejection: the check time is what the gate needs.
+      if (trader) this.db.prepare('UPDATE platform_iys_merchants SET checked_at=? WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=?').run(new Date().toISOString(), ...args(this.scope), item.channel, id);
+      if (!status) { result.none++; this.db.prepare('DELETE FROM platform_iys_recipients WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=?').run(...args(this.scope), item.channel, id); continue; }
       remember(this.db, this.scope, this.key, item.channel, item.value, status.status, 'query', status.consentDate, status.source); if (status.status === 'ONAY') result.onay++; else result.ret++;
     }
     audit(this.db, this.scope.subject, this.scope, 'iys.query');
@@ -175,7 +228,7 @@ export async function deliverIysOutbox(db: Database.Database, key: string, trans
     const client = clients.get(project); if (!client) continue;
     const recipient = decryptCredentials<{ recipient: string }>(row.encrypted_recipient!, key, ...args(scope), `iys-outbox:${row.id}`).recipient, now = new Date().toISOString();
     try {
-      const result = await client.addConsent({ recipient, type: row.channel, status: row.status, source: row.source, consentDate: iysDate(row.consent_date) });
+      const result = await client.addConsent({ recipient, type: row.channel, status: row.status, source: row.source, consentDate: iysDate(row.consent_date), recipientType: row.recipient_type || 'BIREYSEL' });
       db.transaction(() => { db.prepare("UPDATE platform_iys_outbox SET state='sent',transaction_id=?,last_error=NULL,attempts=attempts+1,updated_at=? WHERE id=? AND state='queued'").run(result.transactionId, now, row.id); remember(db, scope, key, row.channel, recipient, row.status, 'upload', row.consent_date, row.source); })();
       sent++;
     } catch (error) {

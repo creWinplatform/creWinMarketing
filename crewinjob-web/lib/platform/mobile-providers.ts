@@ -99,8 +99,11 @@ export async function readPlayListing(app:MobileApp,config:Record<string,string>
   if(row.language!==locale)throw new Error('Locale mismatch.');
   return {title:mobileText(row.title,300),subtitle:mobileText(row.shortDescription,500,true),description:mobileText(row.fullDescription,20000,true),screenshotCount:null};
 }
-export async function createBranchLink(app:MobileApp,config:Record<string,string>,secret:MobileSecret,input:{id:string;path:string;campaignId:string},read:MobileTransport=fetch){
-  const value=await json(await request(read,'https://api2.branch.io/v1/url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({branch_key:secret.branchKey,alias:`rz-${input.id}`,channel:'ryzevo',campaign:input.campaignId,feature:'marketing',data:{$deeplink_path:input.path.slice(1),$fallback_url:app.website,...(app.appleId?{$ios_url:`https://apps.apple.com/${app.country.toLowerCase()}/app/id${app.appleId}`}:{ }),...(app.packageName?{$android_url:`https://play.google.com/store/apps/details?id=${app.packageName}`}:{})}})}));
+// campaign is the campaign's Ryzevo tag, so installs through the link count for it in the attribution report; with link
+// tagging on, the web fallback carries it too.
+export async function createBranchLink(app:MobileApp,config:Record<string,string>,secret:MobileSecret,input:{id:string;path:string;campaign:string;tagWeb:boolean},read:MobileTransport=fetch){
+  const fallback=new URL(app.website);if(input.tagWeb){fallback.searchParams.set('utm_source','app_link');fallback.searchParams.set('utm_medium','app');fallback.searchParams.set('utm_campaign',input.campaign);}
+  const value=await json(await request(read,'https://api2.branch.io/v1/url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({branch_key:secret.branchKey,alias:`rz-${input.id}`,channel:'ryzevo',campaign:input.campaign,feature:'marketing',data:{$deeplink_path:input.path.slice(1),$fallback_url:fallback.href,...(app.appleId?{$ios_url:`https://apps.apple.com/${app.country.toLowerCase()}/app/id${app.appleId}`}:{ }),...(app.packageName?{$android_url:`https://play.google.com/store/apps/details?id=${app.packageName}`}:{})}})}));
   if(typeof value.url!=='string')throw new Error('No link.');const url=new URL(value.url);
   if(url.protocol!=='https:'||url.hostname!==config.linkDomain||url.username||url.password||url.port||url.search||url.hash)throw new Error('Link domain mismatch.');return url.href;
 }

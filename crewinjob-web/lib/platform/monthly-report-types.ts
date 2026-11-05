@@ -32,7 +32,7 @@ export type MonthlyResults = {
   stages: { tr: string; en: string }[];
   coverage: { entities: number; touched: number; ryzevo: number } | null;
   value: { currency: string; eventName: string } | null;
-  items: { title: string; kind: 'content' | 'campaign' | 'profile'; sources: string[]; counts: number[]; value: number | null }[];
+  items: { title: string; kind: 'content' | 'campaign' | 'profile' | 'whatsapp'; sources: string[]; counts: number[]; value: number | null }[];
   channels: { source: string; counts: number[]; value: number | null }[];
 };
 export type ReportShare = { id: string; createdAt: string; expiresAt: string; revokedAt: string | null; views: number; lastViewedAt: string | null };

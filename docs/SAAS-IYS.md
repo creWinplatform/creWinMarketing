@@ -12,9 +12,13 @@ Setting it to `1` and restarting turns everything below back on (a production bu
 ## Decisions
 - **Duty:** İYS is mandatory for a project that declares "we send commercial messages to recipients in Turkey". Without a declaration, live email and WhatsApp stay closed; rehearsals work. A "no" is recorded with who and when.
 - **Scope:** Ryzevo projects, and Crewin's own WhatsApp and email senders. Crewin declares and connects on its own project. Its WhatsApp gate applies to Turkish (+90) numbers; its email gate applies to recipients whose nationality is TR or unknown, skips company audiences (merchant exemption) and starts in measure mode (`docs/CREWIN-WHATSAPP-CONSENT.md`).
-- **Recipients:** treated as individuals (BIREYSEL); the merchant (tacir) exemption is not used.
+- **Recipients:** treated as individuals (BIREYSEL). The merchant (tacir/esnaf) exemption is off unless the project turns it on (schema 77, below).
 - **Channels:** email is EPOSTA; WhatsApp is MESAJ.
-- **Deadline:** three business days. Weekends are skipped; public holidays are not counted as days off, so the deadline is never later than the legal one.
+- **Deadline:** three business days (`iysDueAt`).
+  - Skipped: weekends and Turkey's full-day official holidays (`TR_FIXED_HOLIDAYS`, `TR_RELIGIOUS_HOLIDAYS`).
+  - Half days (eves, 28 October) count as business days.
+  - Religious holidays count only for years whose Diyanet calendar is published (2026 and 2027 for now; add a year when it is out). A year without them skips only the fixed holidays.
+  - So the deadline is never later than the legal one.
 - **Legal confirmation:** the owner confirms with a legal adviser that WhatsApp counts as MESAJ, the deadline rule, and the exemptions below.
 
 ## How it works
@@ -66,6 +70,39 @@ Setting it to `1` and restarting turns everything below back on (a production bu
 - **Job guide:** the email job has "Declare sending consents (IYS)". The go-live checklist item points to the panel.
 - **Schema 67:** `platform_iys_settings`, `platform_iys_recipients`, `platform_iys_outbox`, `platform_whatsapp_suppressions`. The recovery contracts cover both encrypted recipient columns.
 
+## Merchant exemption (schema 77, 5 November 2026)
+
+Commercial messages to merchants and tradespeople (tacir/esnaf) need no prior consent. The recipient can still reject through İYS.
+
+**Turning it on**
+
+- The exemption is the project's statement. It is turned on with an explicit acknowledgement by a connection manager (`setMerchantExemption`).
+- Who turned it on and when is kept (`platform_iys_settings.merchant_*`). Turning it off makes marked recipients need a consent again.
+
+**Marking recipients**
+
+- Recipient or connection managers mark email addresses or phones as merchants, with an evidence note such as a trade name or tax number (`addMerchants`, `removeMerchant`).
+- Marking needs the exemption on.
+- The list is stored in `platform_iys_merchants`, encrypted and masked, with at most 2,000 per project.
+
+**The gate for a marked recipient**
+
+| Situation | Result |
+|---|---|
+| İYS holds a RET | `iys_rejected` |
+| The recipient has been checked in İYS, and the check (or the change feed) is less than 24 hours old | sent, without needing an ONAY |
+| Never checked | `iys_stale` |
+
+**İYS calls**
+
+- The status query uses `recipientType: TACIR` for marked recipients. The check time is stored even when İYS has no record.
+- Their opt-outs are queued with `recipient_type = TACIR` and uploaded as such.
+- Everyone else stays BIREYSEL.
+
+**Panel:** Project settings → Sending consents (İYS) → "Merchant recipients".
+
+**Legal confirmation:** which recipients count as merchants, and that a rejection check is enough for them, must be confirmed with a legal adviser before turning the exemption on.
+
 ## Open points
 - **API details:** the paths and fields follow İYS's service-provider API as used by public client libraries:
   - `POST /oauth2/token`;
@@ -75,9 +112,8 @@ Setting it to `1` and restarting turns everything below back on (a production bu
   - `GET .../consents/changes?after=`.
   - The official documentation could not be opened from here, so check the paths, the status query and the change-feed paging against it, ideally in the sandbox, before going live.
 - **Not built yet:**
-  - the tacir exemption;
   - SMS;
-  - a public-holiday calendar;
+  - religious holidays for 2028 onwards (add them to `TR_RELIGIOUS_HOLIDAYS` when Diyanet publishes the dates);
   - Reporting Crewin's sign-up email consents (ONAY) and backend opt-outs (RET): the panel's queue will report them once the backend exposes consent changes (`docs/CREWIN-BACKEND-IYS.md`).
   - Crewin campaigns sent by the backend's own Dispatch are not measured. In enforce mode the panel sends individual audiences itself, through the gate, until the backend applies the same rule.
   - Turkish recipients only: Crewin applies its gates to +90 numbers and to TR or unknown nationalities; Ryzevo projects still apply them to every recipient.
@@ -86,7 +122,8 @@ Setting it to `1` and restarting turns everything below back on (a production bu
 `test/platform-iys.test.cjs` uses a fake İYS transport, with no network. It covers:
 - the declaration gate, viewer and Crewin access;
 - connect and verify, with no password in views or storage;
-- queueing, the 3-business-day rule, the upload body (BIREYSEL, İYS date format) and freshness;
+- queueing, the 3-business-day rule (official holidays included), the upload body (BIREYSEL, İYS date format) and freshness;
+- the merchant exemption: opt-in, marking, the TACIR status query and opt-out upload, the rejection-only gate and turning it off;
 - opt-outs from withdrawal, unsubscribe (resolved and unresolved) and the change feed;
 - the email pilot refusal and the review check;
 - the WhatsApp source requirement, opt-out, suppression after removal and shared keys;

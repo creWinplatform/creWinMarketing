@@ -9,7 +9,9 @@
 // Reverts schema 61: the agency package marker on live orders and periods, and agency links.
 // Reverts schema 67: İYS settings, recipient statuses, the upload queue and WhatsApp suppressions.
 // Reverts schema 76: ad creative figures (and the later additions of that round).
-exports.removeCreativeStatsSchema=db=>db.exec("ALTER TABLE platform_alert_subscriptions DROP COLUMN weekly_week; ALTER TABLE platform_alert_subscriptions DROP COLUMN weekly; DROP TABLE platform_mobile_review_topics; DROP TABLE platform_mobile_competitor_snapshots; DROP TABLE platform_ad_creative_stats; ALTER TABLE platform_ad_creatives DROP COLUMN stats_checked_at; DELETE FROM platform_migrations WHERE version=76;");
+// Reverts schema 77: the attribution touch log and the İYS merchant exemption.
+exports.removeTouchLogSchema=db=>db.exec("DROP TABLE platform_iys_merchants; ALTER TABLE platform_iys_outbox DROP COLUMN recipient_type; ALTER TABLE platform_iys_settings DROP COLUMN merchant_at; ALTER TABLE platform_iys_settings DROP COLUMN merchant_by; ALTER TABLE platform_iys_settings DROP COLUMN merchant_exemption; DROP TABLE platform_attribution_touch_log; DELETE FROM platform_migrations WHERE version=77;");
+exports.removeCreativeStatsSchema=db=>{exports.removeTouchLogSchema(db);db.exec("ALTER TABLE platform_alert_subscriptions DROP COLUMN weekly_week; ALTER TABLE platform_alert_subscriptions DROP COLUMN weekly; DROP TABLE platform_mobile_review_topics; DROP TABLE platform_mobile_competitor_snapshots; DROP TABLE platform_ad_creative_stats; ALTER TABLE platform_ad_creatives DROP COLUMN stats_checked_at; DELETE FROM platform_migrations WHERE version=76;")};
 // Reverts schema 75: ad videos, TikTok ad groups and Play search terms.
 exports.removeAdVideoSchema=db=>{exports.removeCreativeStatsSchema(db);db.exec("DROP TABLE platform_tiktok_adgroups; DROP TABLE platform_mobile_play_terms; ALTER TABLE platform_ad_creatives DROP COLUMN video_ref; ALTER TABLE platform_ad_creatives DROP COLUMN video_json; DELETE FROM platform_migrations WHERE version=75;");}
 // Reverts schema 74: ad images.

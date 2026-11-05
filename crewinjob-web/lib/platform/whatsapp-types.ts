@@ -1,3 +1,4 @@
+import type { AttributionTagResult } from './attribution-types';
 // WhatsApp template sending for standard projects: client-safe types only; the store lives in whatsapp.ts.
 // Only Meta-approved templates, only contacts with their own WhatsApp consent, and only after approval and a server switch.
 export const WHATSAPP_LIMITS={contacts:500,addPerRequest:100,batchRecipients:20,sendsPerDay:50,batches:50,param:200} as const;
@@ -14,6 +15,7 @@ export type WhatsAppBatchView={
   id:string;name:string;templateName:string;templateLanguage:string;params:string[];overrides:Record<string,string[]>;extras:WhatsAppBatchExtras;contactIds:string[];digest:string;
   state:'draft'|'approved'|'queued'|'done'|'cancelled';mode:'rehearsal'|'send'|null;approved:boolean;approvedAt:string|null;queuedAt:string|null;
   counts:Partial<Record<WhatsAppMessageState,number>>;delivery:Partial<Record<WhatsAppDelivery,number>>;preview:string|null;revision:number;updatedAt:string;
+  results:AttributionTagResult;
 };
 export type WhatsAppSnapshot={
   account:WhatsAppAccountView|null;templates:WhatsAppTemplateView[];contacts:WhatsAppContactView[];batches:WhatsAppBatchView[];

@@ -4,25 +4,25 @@ import { Check, ChevronRight, Users } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import type { AttributionPeriod, AttributionReport } from '@/lib/platform/attribution-types';
+import type { AttributionModel, AttributionPeriod, AttributionReport } from '@/lib/platform/attribution-types';
 import Msg from '@/components/Msg';
 
-const CHANNELS: Record<string, [string, string]> = { linkedin: ['LinkedIn', 'LinkedIn'], facebook: ['Facebook', 'Facebook'], x: ['X', 'X'], telegram: ['Telegram', 'Telegram'], whatsapp: ['WhatsApp', 'WhatsApp'], instagram: ['Instagram', 'Instagram'], tiktok: ['TikTok', 'TikTok'], copy: ['Kopyalanan metin', 'Copied text'], email: ['E-posta', 'Email'], '': ['Kanal bilinmiyor', 'Unknown channel'] };
+const CHANNELS: Record<string, [string, string]> = { linkedin: ['LinkedIn', 'LinkedIn'], facebook: ['Facebook', 'Facebook'], x: ['X', 'X'], telegram: ['Telegram', 'Telegram'], whatsapp: ['WhatsApp', 'WhatsApp'], instagram: ['Instagram', 'Instagram'], tiktok: ['TikTok', 'TikTok'], copy: ['Kopyalanan metin', 'Copied text'], email: ['E-posta', 'Email'], app_link: ['Uygulama linki', 'App link'], '': ['Kanal bilinmiyor', 'Unknown channel'] };
 
 // Which posts and emails brought the people who signed up, activated or paid: the first tagged link each person came
 // through (reported by the team's own product events), counted per goal stage. Observations, not credited causes.
 export default function AttributionResults({ lang }: { lang: Locale }) {
   const tr = lang === 'tr', locale = localeTag(lang);
-  const [data, setData] = useState<AttributionReport | null>(null), [days, setDays] = useState<AttributionPeriod>(30), [error, setError] = useState(''), [loading, setLoading] = useState(true);
+  const [data, setData] = useState<AttributionReport | null>(null), [days, setDays] = useState<AttributionPeriod>(30), [model, setModel] = useState<AttributionModel>('first'), [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true; const controller = new AbortController(); setLoading(true); setError('');
-    projectRequest<AttributionReport>(`/api/platform/attribution?days=${days}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) })
+    projectRequest<AttributionReport>(`/api/platform/attribution?days=${days}&model=${model}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]) })
       .then(value => { if (mounted.current) setData(value); })
       .catch(reason => { if (mounted.current && !controller.signal.aborted) setError(reason instanceof Error ? reason.message : (tr ? 'Kaynak atfı okunamadı.' : 'Could not read source attribution.')); })
       .finally(() => { if (mounted.current && !controller.signal.aborted) setLoading(false); });
     return () => { mounted.current = false; controller.abort(); };
-  }, [days, tr]);
+  }, [days, model, tr]);
   if (!data) return error ? <p role="alert" className="studio-error"><Msg text={error} /></p> : null;
   const n = (value: number) => value.toLocaleString(locale, { maximumFractionDigits: 1 });
   const money = (value: number | null) => { if (value === null || !data.value) return '—'; try { return new Intl.NumberFormat(locale, { style: 'currency', currency: data.value.currency }).format(value); } catch { return `${n(value)} ${data.value.currency}`; } };
@@ -39,7 +39,9 @@ export default function AttributionResults({ lang }: { lang: Locale }) {
   return <section className="studio-band attribution-results" aria-labelledby="attribution-title" aria-busy={loading}>
     <div className="studio-section-title"><h2 id="attribution-title"><Users size={16} />{tr ? 'Hangi iş müşteri getirdi' : 'Which work brought customers'}</h2>
       <label className="attribution-period">{tr ? 'Dönem' : 'Period'} <select value={days} disabled={loading} onChange={event => setDays(Number(event.target.value) as AttributionPeriod)}>
-        <option value={30}>{tr ? 'Son 30 gün' : 'Last 30 days'}</option><option value={90}>{tr ? 'Son 90 gün' : 'Last 90 days'}</option></select></label></div>
+        <option value={30}>{tr ? 'Son 30 gün' : 'Last 30 days'}</option><option value={90}>{tr ? 'Son 90 gün' : 'Last 90 days'}</option></select></label>
+      <label className="attribution-period">{tr ? 'Sayım' : 'Count by'} <select value={model} disabled={loading} onChange={event => setModel(event.target.value as AttributionModel)}>
+        <option value="first">{tr ? 'İlk temas' : 'First touch'}</option><option value="last">{tr ? 'Son temas' : 'Last touch'}</option><option value="any">{tr ? 'Tüm temaslar' : 'All touches'}</option></select></label></div>
     <p className="studio-note">{tr
       ? 'Paylaşım ve e-postalardaki etiketli bağlantıyla sitenize ilk kez gelen kişiler, sonra ürününüzde kayıt olduğunda veya ödeme yaptığında burada sayılır. Bilgi sizin ürün olaylarınızdan gelir; kişi kimliği saklanmaz.'
       : 'People who first came to your site through a tagged link in a post or email are counted here when they later sign up or pay in your product. The figures come from your own product events; no personal id is kept.'}</p>
@@ -55,15 +57,15 @@ export default function AttributionResults({ lang }: { lang: Locale }) {
         : `In the last ${data.days} days “${stage(0)}” was reached by ${n(coverage.entities)} people; ${n(coverage.touched)} of them have a known first source and ${n(coverage.ryzevo)} came through a post or email Ryzevo tagged.`}</p>}
       {data.items.length ? <div className="studio-table-scroll" tabIndex={0} role="region" aria-label={tr ? 'Kişi getiren işler' : 'Work that brought people'}><table className="studio-table">
         <thead><tr><th scope="col">{tr ? 'Paylaşım / e-posta' : 'Post / email'}</th><th scope="col">{tr ? 'Kanal' : 'Channel'}</th>{data.stages.map((_, index) => <th scope="col" key={index}>{stage(index)}</th>)}{data.value && <th scope="col">{tr ? 'Tutar' : 'Amount'}</th>}<th scope="col">{tr ? 'Siteye oturum (GA4)' : 'Site sessions (GA4)'}</th></tr></thead>
-        <tbody>{data.items.map(item => <tr key={item.tag}><td>{item.title || (tr ? 'Adsız' : 'Untitled')}<small className="attribution-kind">{item.kind === 'content' ? (tr ? 'Paylaşım' : 'Post') : item.kind === 'profile' ? (tr ? 'Profil linki' : 'Profile link') : (tr ? 'Kampanya' : 'Campaign')}</small></td>
+        <tbody>{data.items.map(item => <tr key={item.tag}><td>{item.title || (tr ? 'Adsız' : 'Untitled')}<small className="attribution-kind">{item.kind === 'content' ? (tr ? 'Paylaşım' : 'Post') : item.kind === 'profile' ? (tr ? 'Profil linki' : 'Profile link') : item.kind === 'whatsapp' ? 'WhatsApp' : (tr ? 'Kampanya' : 'Campaign')}</small></td>
           <td>{item.sources.map(channel).join(', ') || '—'}</td>{item.counts.map((count, index) => <td key={index}>{n(count)}</td>)}{data.value && <td>{money(item.value)}</td>}<td>{item.sessions === null ? '—' : n(item.sessions)}</td></tr>)}</tbody></table></div>
         : <p className="studio-note">{tr ? `Son ${data.days} günde etiketli bir paylaşım veya e-postadan gelip bir hedef aşamasına ulaşan kişi görülmedi.` : `Nobody who came through a tagged post or email reached a goal stage in the last ${data.days} days.`}</p>}
       {data.channels.length > 0 && <p className="studio-note"><strong>{tr ? 'Kanallara göre: ' : 'By channel: '}</strong>{data.channels.map(item => `${channel(item.source)} — ${summary(item.counts)}${item.value !== null && data.value ? ` · ${money(item.value)}` : ''}`).join('; ')}</p>}
       {data.other.length > 0 && <p className="studio-note"><strong>{tr ? 'Ryzevo dışı kampanyalar: ' : 'Campaigns outside Ryzevo: '}</strong>{data.other.map(item => `${item.campaign}${item.source ? ` (${item.source})` : ''} — ${summary(item.counts)}`).join('; ')}</p>}
       {data.unmatched.some(count => count > 0) && <p className="studio-note">{tr ? `Silinmiş veya bu projeye ait olmayan Ryzevo etiketleriyle gelenler: ${summary(data.unmatched)}.` : `People with Ryzevo tags that are deleted or not in this project: ${summary(data.unmatched)}.`}</p>}
       <p className="studio-note">{tr
-        ? `Kişi, ilk geldiği etiketli bağlantıya göre sayılır (ilk temas, ${data.windowDays} gün içinde). Aynı kişi birden çok aşamada görünebilir; bir aşamada yalnız bir kez sayılır.${data.site.from && data.site.to ? ` Oturumlar Google Analytics’in ${day(data.site.from)}–${day(data.site.to)} dönemidir.` : ''} Bu bir gözlemdir, neden-sonuç kanıtı değildir.`
-        : `People are counted by the tagged link they first came through (first touch, within ${data.windowDays} days). One person can appear in several stages but is counted once per stage.${data.site.from && data.site.to ? ` Sessions are Google Analytics’ ${day(data.site.from)}–${day(data.site.to)} period.` : ''} This is an observation, not proof of cause.`}</p>
+        ? `${data.model === 'last' ? `Kişi, aşamaya ulaşmadan önceki son etiketli bağlantıya göre sayılır (son temas, ${data.windowDays} gün içinde).` : data.model === 'any' ? `Kişi, ${data.windowDays} gün içinde geldiği her etiketli bağlantı için sayılır (tüm temaslar); bu yüzden işlerin toplamı kişi sayısından büyük olabilir.` : `Kişi, ilk geldiği etiketli bağlantıya göre sayılır (ilk temas, ${data.windowDays} gün içinde).`} Aynı kişi birden çok aşamada görünebilir; bir aşamada bir işte yalnız bir kez sayılır.${data.model !== 'first' ? ' Son ve tüm temaslar, kod parçasının son beş gelişi kaydettiği olaylardan gelir.' : ''}${data.site.from && data.site.to ? ` Oturumlar Google Analytics’in ${day(data.site.from)}–${day(data.site.to)} dönemidir.` : ''} Bu bir gözlemdir, neden-sonuç kanıtı değildir.`
+        : `${data.model === 'last' ? `People are counted by the last tagged link before they reached the stage (last touch, within ${data.windowDays} days).` : data.model === 'any' ? `People are counted for every tagged link they came through within ${data.windowDays} days (all touches), so the works can add up to more than the number of people.` : `People are counted by the tagged link they first came through (first touch, within ${data.windowDays} days).`} One person can appear in several stages but is counted once per stage for each work.${data.model !== 'first' ? ' Last and all touches come from events that carry the snippet’s last five arrivals.' : ''}${data.site.from && data.site.to ? ` Sessions are Google Analytics’ ${day(data.site.from)}–${day(data.site.to)} period.` : ''} This is an observation, not proof of cause.`}</p>
     </>}
   </section>;
 }

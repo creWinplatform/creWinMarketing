@@ -117,12 +117,55 @@ For each tagged post or email: how many people who first arrived through it went
   - The earliest touch wins, as for web touches.
 - A non-Ryzevo campaign name shows under "Campaigns outside Ryzevo".
 
+## Last touch, all touches, WhatsApp and app links (schema 77, 5 November 2026)
+
+**Counting models.** The report has a "Count by" choice (`GET /api/platform/attribution?days=30&model=first|last|any`):
+
+| Model | An event counts for |
+|---|---|
+| `first` (default) | the stored first touch, as before |
+| `last` | the person's latest logged arrival at or before the event |
+| `any` | every logged arrival within the 90-day window, so one person can count for several works |
+
+- Coverage, `forTag`, the coach's learning loop and the monthly report stay on the first touch.
+- An event counts once per work, so an amount is never doubled within a work.
+
+**Arrivals.**
+
+- **Snippet:** besides `ryz_touch`, it keeps the last five tagged arrivals in `ryz_touches`. The same campaign and source twice in a row is kept once. `ryzevoTouch.all()` returns the list. Consent works as before.
+- **Event field:** an event may carry an optional `touches` array (at most 10 entries, each shaped like `attribution`).
+  - A malformed list is dropped as a whole, and counted in `attribution.ignored`. The event is kept.
+  - Events without the field keep their digest.
+- **Storage:** `platform_attribution_touch_log` keeps every arrival (first touches, `touches` entries, app installs).
+  - Each person keeps the latest 20.
+  - Arrivals are pruned with the touches (500 days).
+  - Migration 77 seeds it from the existing first touches.
+
+**WhatsApp sends.**
+
+- **What is tagged:** links to the project's own site in a batch's variables, and the URL button's dynamic ending, carry `utm_source=whatsapp&utm_medium=whatsapp&utm_campaign=linkTag(scope, 'whatsapp', batchId)`.
+- **When:**
+  - Tagging happens when the batch is saved, so the reviewed preview and the approved digest include it.
+  - Saving again does not tag twice.
+  - A value that would pass its length limit is left as written.
+- **Turned off:** with link tagging off, links stay as written.
+- **In the report:** a real send is the item kind `whatsapp`. Its card shows "First came through this send".
+
+**App links (Branch).**
+
+- **New links:** a new link's campaign is the campaign's tag, `linkTag(scope, 'campaign', id)`, instead of the raw campaign id. With link tagging on, the web fallback carries `utm_source=app_link&utm_medium=app` and the tag.
+- **Older links:** links created before this credit installs to the raw campaign id. The report still maps them to their campaign.
+
+**Files:** `lib/platform/attribution.ts`, `attribution-types.ts`, `product-webhooks.ts`, `whatsapp.ts`, `mobile-providers.ts`, `mobile-store.ts`, `components/platform/AttributionResults.tsx`, `AttributionSetup.tsx`, `ProjectWhatsApp.tsx`.
+
+**Tests:** `test/platform-attribution-touches.test.cjs`.
+
 ## Limits
-- Instagram and TikTok captions and WhatsApp button links are not tagged.
+- Instagram and TikTok captions are not tagged. WhatsApp links are tagged in standard projects (schema 77); Crewin's own WhatsApp tool does not tag them.
   - Every project gets a fixed-tag profile link per platform: `profileTag(scope, platform)`, shown in the Source tag setup.
   - In the report, the profile link is the item kind `profile`.
 - Mobile touches come only from the app's primary attribution source (AppsFlyer/Adjust/bridge). They count only when the event carries the app's customer id; it must be the backend's `entityId`, with entity type `user` (see "App installs" below).
-- First touch only; there is no multi-touch model.
+- Last and all touches need events that send `touches`; without them, every model shows the first touch.
 - Without consent the snippet keeps the touch only in memory for that page view. If the banner is accepted on a later page, the touch from the landing page is lost.
 
 ## Tests

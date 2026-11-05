@@ -10,14 +10,14 @@ import { normalizeProductRecords, productTimestamp, writeProductRecords, type Pr
 import { normalizeWebhookConfig, WEBHOOK_LIMITS, type WebhookConfig, type WebhookEventSample, type WebhookSource } from './product-webhook-types';
 import { recordEmailOptOut } from './email-safety';
 import { queueIysConsent } from './iys';
-import { normalizeAttribution, recordAttribution } from './attribution';
+import { normalizeAttribution, normalizeTouches, recordAttribution } from './attribution';
 import type { AttributionTouch } from './attribution-types';
 import { ryzevoPackSql } from './ryzevo-features';
 import { projectEventLimits } from './entitlements';
 
 type Row={connection_id:string;organization_id:string;project_id:string;version:number;config_json:string;enabled:number;paused:number;preview_at:string|null;preview_revision:string|null;last_synced_at:string|null;webhook_actor_id:string|null;account_name:string;active:number;encrypted_credentials:string;integration_id:string};
 type Consent={channel:'email';status:'opted_in'|'opted_out';evidenceRef:string;recordedAt:string};
-type Event={id:string;eventName:string;record:ProductRecord;consent:Consent|null;touch:AttributionTouch|null;ignoredTouch:boolean;digest:string};
+type Event={id:string;eventName:string;record:ProductRecord;consent:Consent|null;touch:AttributionTouch|null;touches:AttributionTouch[];ignoredTouch:boolean;digest:string};
 const dayMs=86400000,mask=(id:string)=>`...${id.slice(-4)}`;
 const query=`SELECT s.*,c.account_name,c.active,c.encrypted_credentials,c.integration_id FROM platform_product_sources s JOIN platform_connections c ON c.id=s.connection_id AND c.organization_id=s.organization_id AND c.project_id=s.project_id JOIN platform_projects p ON p.id=s.project_id AND p.organization_id=s.organization_id WHERE c.provider='product_webhook' AND ${ryzevoPackSql('product_events')}`;
 const revision=(row:Row)=>createHash('sha256').update(JSON.stringify([row.version,row.config_json,row.encrypted_credentials])).digest('hex');
@@ -52,11 +52,11 @@ function parseEvents(payload:unknown,row:Row,retentionDays:number=WEBHOOK_LIMITS
       }
       // The first tagged link the person arrived through. A malformed one is dropped, never the event; events without it
       // keep the digest they always had.
-      const {touch,invalid}=normalizeAttribution(input.attribution,record.observedAt);
-      const digest=createHash('sha256').update(JSON.stringify(touch?[input.id,input.eventName,record,consent,touch]:[input.id,input.eventName,record,consent])).digest('hex');
+      const {touch,invalid}=normalizeAttribution(input.attribution,record.observedAt),list=normalizeTouches(input.touches,record.observedAt);
+      const digest=createHash('sha256').update(JSON.stringify(list.touches.length?[input.id,input.eventName,record,consent,touch,list.touches]:touch?[input.id,input.eventName,record,consent,touch]:[input.id,input.eventName,record,consent])).digest('hex');
       const prior=unique.get(input.id);
       if(prior){if(prior.digest!==digest)throw new ProductWebhookError('event_conflict','Aynı olay kimliğinin içeriği değiştirilemez.',409);duplicates++;}
-      else unique.set(input.id,{id:input.id,eventName:input.eventName,record,consent,touch,ignoredTouch:invalid,digest});
+      else unique.set(input.id,{id:input.id,eventName:input.eventName,record,consent,touch,touches:list.touches,ignoredTouch:invalid||list.invalid,digest});
     }catch(error){if(error instanceof ProductWebhookError)throw error;throw new ProductWebhookError('event_schema',`Olay ${index+1}: kimlik, olay adı, tarih, özellik türü veya izin kanıtı geçersiz.`);}
   }
   return {events:[...unique.values()],duplicates};
@@ -110,7 +110,7 @@ export function authenticateProductWebhook(db:Database.Database,id:string,header
         if(event.consent?.status==='opted_out'){const email=recordEmailOptOut(db,scope,key,id,fresh.version,event.record.externalId,event.record.attributes);if(email)queueIysConsent(db,scope,key,{channel:'EPOSTA',recipient:email,status:'RET',source:'HS_WEB',consentDate:event.consent.recordedAt,actor:scope.subject});}
         db.prepare('INSERT INTO platform_product_events VALUES(?,?,?,?,?,?,?,?,?,?,?)').run(id,event.id,fresh.version,...args,event.record.externalId,event.eventName,JSON.stringify(event.record.attributes),event.consent?JSON.stringify(event.consent):null,event.record.observedAt,receivedAt);
         db.prepare('INSERT INTO platform_product_event_receipts VALUES(?,?,?,?,?,?)').run(id,event.id,...args,event.digest,receivedAt);
-        if(recordAttribution(db,scope,key,{connectionId:id,entityType,eventId:event.id,eventName:event.eventName,externalId:event.record.externalId,observedAt:event.record.observedAt,attributes:event.record.attributes,touch:event.touch},receivedAt))touched++;
+        if(recordAttribution(db,scope,key,{connectionId:id,entityType,eventId:event.id,eventName:event.eventName,externalId:event.record.externalId,observedAt:event.record.observedAt,attributes:event.record.attributes,touch:event.touch,touches:event.touches},receivedAt))touched++;
       }
       if(pending.length){
         db.prepare("INSERT INTO platform_usage VALUES(?,?,?,'product_events',?) ON CONFLICT(organization_id,project_id,period,resource) DO UPDATE SET count=count+excluded.count").run(...args,period,pending.length);

@@ -12,7 +12,11 @@ const FIELD = `"attribution": {
   "source": "linkedin",
   "medium": "social",
   "touchedAt": "2026-10-30T09:12:00.000Z"
-}`;
+},
+"touches": [
+  { "campaign": "rz_1a2b3c4d5e", "source": "linkedin", "medium": "social", "touchedAt": "2026-10-30T09:12:00.000Z" },
+  { "campaign": "rz_9f8e7d6c5b", "source": "email", "medium": "email", "touchedAt": "2026-11-02T18:40:00.000Z" }
+]`;
 
 // How the team's own site and server pass the first tagged link a person arrived through to Ryzevo, and which event
 // carries the amount. Nothing here sends anything: the snippet writes one first-party cookie after consent.
@@ -54,6 +58,7 @@ export default function AttributionSetup({ lang, siteDomain }: { lang: Locale; s
     <ol className="attribution-steps">
       <li>{tr ? 'Kod parçasını sitenizin tüm sayfalarına ekleyin. Çerez onayı gelmeden hiçbir şey yazmaz: onay bannerınız kabul edildiğinde ryzevoTouch.allow() çağırın. Onayı sunucuda topluyorsanız data-consent="granted" yazın. Uygulamanız alt alan adındaysa data-domain=".alanadiniz.com" ekleyin.' : 'Add the snippet to every page of your site. It writes nothing before consent: call ryzevoTouch.allow() when your consent banner is accepted. If you collect consent on the server, set data-consent="granted". If your app is on a subdomain, add data-domain=".yourdomain.com".'}</li>
       <li>{tr ? 'Kayıt olayını gönderirken çerezi okuyup olaya ekleyin (sunucu örneği).' : 'When sending the signup event, read the cookie and add it (server example).'}</li>
+      <li>{tr ? 'Son ve tüm temas sayımı için kod parçasının tuttuğu son beş gelişi de “touches” alanıyla gönderin (isteğe bağlı).' : 'For the last-touch and all-touches counts, also send the last five arrivals the snippet keeps as “touches” (optional).'}</li>
       <li>{tr ? 'Aynı kişi için tüm kaynaklarda aynı kayıt türünü ve kimliği kullanın; ödeme olayı başka bir kaynaktan gelse de eşleşir.' : 'Use the same entity type and id for the person in every source; a payment event from another source still matches.'}</li>
     </ol>
     {block('snippet', tr ? 'Site kod parçası' : 'Site snippet', attributionSnippet(siteDomain))}

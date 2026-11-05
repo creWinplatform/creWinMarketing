@@ -101,6 +101,14 @@ export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()
     if (iys?.items.length) alerts.push({ kind: 'iys_deadline', severity: iys.items.some(item => item.state === 'failed' || Date.parse(item.due_at) <= now) ? 'urgent' : 'warning', count: iys.items.length, at: iys.items[0].due_at, href: '/?tab=project&settings=iys', keys: iys.items.map(item => `iys:${item.id}:${item.state}`) });
     if (iys?.stale) alerts.push({ kind: 'iys_sync', severity: 'warning', count: 1, at: iys.pulledAt, href: '/?tab=project&settings=iys', keys: [`iys-sync:${iys.pulledAt || 'never'}`] });
   }
+  // Scheduled jobs (posts, İYS uploads, syncs, alert emails) have not completed a round lately. Only a worker that
+  // has run before counts, so a setup without one shows nothing; the server operator restarts it.
+  if (can('connections.manage')) {
+    let worker: { first_observed_at: string; last_success_at: string | null } | undefined;
+    try { worker = db.prepare("SELECT first_observed_at,last_success_at FROM platform_worker_observations WHERE component='platform-worker'").get() as typeof worker; } catch { worker = undefined; }
+    const last = worker ? Date.parse(worker.last_success_at || worker.first_observed_at) : NaN;
+    if (Number.isFinite(last) && now - last > LIMITS.workerStaleMinutes * 60000) alerts.push({ kind: 'worker_stale', severity: now - last > LIMITS.workerUrgentHours * HOUR ? 'urgent' : 'warning', count: 1, at: worker!.last_success_at, href: '/?tab=project&settings=golive', keys: [`worker:${worker!.last_success_at || 'never'}`] });
+  }
   // Invitations to other projects belong to the person, not this project; they are accepted in the portfolio.
   const invites = receivedInvites(db, scope.subject);
   if (invites.length) alerts.push({ kind: 'invite_pending', severity: 'warning', count: invites.length, at: [...invites].sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))[0].expiresAt, href: '/portfolio', keys: invites.map(item => `invite:${item.id}`) });
@@ -126,6 +134,7 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
       case 'competitor_change': return tr ? `Rakip uygulamalarda ${n(alert.count)} değişiklik var (sürüm, ad veya puan).` : `Competitor apps show ${n(alert.count)} change(s) (version, name or rating).`;
       case 'ad_fatigue': return tr ? `${n(alert.count)} reklam görselinin tıklanma oranı son günlerde belirgin düştü. Yeni bir görsel eklemeyi değerlendirin.` : `The click-through rate of ${n(alert.count)} ad image(s) fell clearly in recent days. Consider adding a new image.`;
       case 'ad_cpi': return tr ? `${n(alert.count)} yayındaki reklam planında son 7 günün yükleme başına maliyeti sınırın üstünde. Duraklatmayı değerlendirin.` : `${n(alert.count)} running ad plan(s) cost more per install than the cap over the last 7 days. Consider pausing.`;
+      case 'worker_stale': return tr ? `Zamanlanmış işler ${alert.at ? `${time(alert.at)} tarihinden beri` : 'bir süredir'} çalışmıyor. Planlı yayınlar, İYS bildirimleri ve eşitlemeler bekliyor; sunucu yöneticisine haber verin.` : `Scheduled jobs have not run ${alert.at ? `since ${time(alert.at)}` : 'for a while'}. Scheduled posts, IYS uploads and syncs are waiting; tell the server operator.`;
       case 'invite_pending': return tr ? `${n(alert.count)} proje daveti kabulünüzü bekliyor (ilk bitiş: ${time(alert.at)}).` : `${n(alert.count)} project invitation(s) are waiting for you (first expires ${time(alert.at)}).`;
       case 'seo_findings': return tr ? `Planlı site taramasında ${n(alert.count)} yeni veya yeniden görülen SEO bulgusu var.` : `The scheduled site scan found ${n(alert.count)} new or returning SEO finding(s).`;
       case 'search_drop': return tr ? `Google aramadan gelen tıklamalar son 7 günde önceki haftaya göre düştü (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).` : `Clicks from Google search fell in the last 7 days compared with the week before (${n(alert.clicks?.previous || 0)} → ${n(alert.clicks?.current || 0)}).`;

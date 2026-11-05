@@ -1617,6 +1617,32 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     ALTER TABLE platform_alert_subscriptions ADD COLUMN weekly_week TEXT;
     INSERT INTO platform_migrations(version,applied_at) VALUES(76,datetime('now'));
   `))();
+  // Every tagged arrival of a person (up to 20 kept), for the last-touch and all-touches views; seeded from first touches.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=77').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_attribution_touch_log (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, entity_key TEXT NOT NULL CHECK(length(entity_key)=64),
+      campaign TEXT NOT NULL CHECK(length(campaign) BETWEEN 1 AND 100), source TEXT CHECK(source IS NULL OR length(source) BETWEEN 1 AND 64),
+      medium TEXT CHECK(medium IS NULL OR length(medium) BETWEEN 1 AND 64), touched_at TEXT NOT NULL, recorded_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,entity_key,touched_at,campaign),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_attribution_touch_log_time ON platform_attribution_touch_log(touched_at);
+    INSERT OR IGNORE INTO platform_attribution_touch_log SELECT organization_id,project_id,entity_key,campaign,source,medium,touched_at,recorded_at FROM platform_attribution_touches;
+    -- İYS merchant (tacir/esnaf) exemption: off until the project turns it on; marked recipients need no prior consent
+    -- but are never sent to once İYS holds a rejection.
+    ALTER TABLE platform_iys_settings ADD COLUMN merchant_exemption INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE platform_iys_settings ADD COLUMN merchant_by TEXT;
+    ALTER TABLE platform_iys_settings ADD COLUMN merchant_at TEXT;
+    ALTER TABLE platform_iys_outbox ADD COLUMN recipient_type TEXT NOT NULL DEFAULT 'BIREYSEL' CHECK(recipient_type IN ('BIREYSEL','TACIR'));
+    CREATE TABLE platform_iys_merchants (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('EPOSTA','MESAJ')),
+      recipient_key TEXT NOT NULL, encrypted_recipient TEXT NOT NULL, masked TEXT NOT NULL, evidence TEXT NOT NULL CHECK(length(evidence) BETWEEN 3 AND 200),
+      checked_at TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,channel,recipient_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(77,datetime('now'));
+  `))();
   return db;
 }
 

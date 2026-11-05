@@ -81,8 +81,22 @@ With operator approval, run the registration command without `-WhatIf`. It never
 overwrites existing tasks and never starts one automatically. A partial
 registration is reported for explicit review, not silently deleted/retried.
 
-The four Local Service tasks are App and Worker at startup, Backup daily at
-03:00 server-local time, and Monitor every five minutes. Set the host clock/time
+The five Local Service tasks are App and Worker at startup, Backup daily at
+03:00 server-local time, Monitor every five minutes and Drill on Sundays at 04:00.
+An install that already has the first four adds the drill alone with
+`-Tasks Drill`.
+
+**Drill** runs `platform-restore-drill.mjs --latest`:
+
+- It restores the newest backup into `PLATFORM_DRILL_PATH` (default: a
+  `recovery-drills` folder next to the backups) and verifies the copy.
+- It then removes the copied database and key. The folder keeps only the
+  manifest, `recovery-report.json` (or `FAILED.json`) and `DO_NOT_START.txt`.
+- With `PLATFORM_DRILL_EXPECTED=1`, Monitor warns `restore_drill_failed` when the
+  newest drill failed, and `restore_drill_stale` when none passed within
+  `PLATFORM_MONITOR_DRILL_MAX_AGE_DAYS` (default 8).
+
+Scheduling details: Set the host clock/time
 zone consciously. IgnoreNew prevents concurrent instances of the SAME task;
 do not add another external worker/backup scheduler. Scheduler retries are bounded.
 Review child-process cleanup on the actual Windows host before accepting recovery.
@@ -90,9 +104,30 @@ Start App first, verify local health and authentication, then explicitly start
 Worker only after queue review. Existing uncertain-send safeguards remain.
 
 Monitor writes only status/alert codes to Application/RyzevoMonitor. This source
-is registered only through the reviewed installer. CloudWatch Agent collection,
-alarm subscription and real failure notification still require AWS operator
-configuration; a local Event Log write is NOT an external notification.
+is registered only through the reviewed installer. A local Event Log write is NOT
+an external notification.
+
+**Operator email.** With `PLATFORM_MONITOR_EMAIL_ENABLED=1` and up to five
+addresses in `PLATFORM_MONITOR_EMAIL_TO`, Monitor also emails the operators
+through the account email SES sender (`PLATFORM_AUTH_SES_*`,
+`PLATFORM_AUTH_FROM_EMAIL`).
+
+- **What it contains:** the alert codes, a plain-language line and a count for
+  each. No customer data and no provider output.
+- **When it is sent:**
+  - when the set of problems changes;
+  - as a reminder every 6 hours while a critical problem lasts, or every 24
+    hours for warnings;
+  - once when everything is clear again.
+- **State file:** `monitor-notify.json` next to the database (or
+  `PLATFORM_MONITOR_STATE_PATH`). It holds only the last status, codes and time.
+- **Failures:** a failed send is retried on the next run and never changes the
+  exit code. The Event Log entry records whether an email went out.
+- **Optional label:** `PLATFORM_MONITOR_HOST_LABEL` names the server in the
+  subject line.
+
+External HTTPS monitoring (uptime, certificate expiry) still needs its own
+service, because this email cannot report that the whole host is down.
 
 ## Proxy acceptance
 

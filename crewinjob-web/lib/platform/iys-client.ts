@@ -1,12 +1,12 @@
 import 'server-only';
-import type { IysChannel, IysEnvironment, IysSource, IysStatus } from './iys-types';
+import type { IysChannel, IysEnvironment, IysRecipientType, IysSource, IysStatus } from './iys-types';
 
 // A thin client for the İYS brand API. Paths follow İYS's published service-provider API (token, consents, status,
 // changes); check them against the current İYS documentation when the account is set up. Secrets never appear in errors.
 export const IYS_BASE: Record<IysEnvironment, string> = { production: 'https://api.iys.org.tr', sandbox: 'https://api.sandbox.iys.org.tr' };
 export type IysCredentials = { username: string; password: string; iysCode: string; brandCode: string; environment: IysEnvironment };
 export type IysTransport = (request: { method: 'GET' | 'POST'; url: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; body: unknown }>;
-export type IysConsent = { recipient: string; type: IysChannel; status: IysStatus; source: IysSource | string; consentDate: string };
+export type IysConsent = { recipient: string; type: IysChannel; status: IysStatus; source: IysSource | string; consentDate: string; recipientType?: IysRecipientType };
 export class IysError extends Error {
   constructor(public code: 'auth' | 'brand' | 'rejected' | 'unavailable' | 'format', message: string) { super(message); }
 }
@@ -52,14 +52,14 @@ export class IysClient {
     if (!list.some(item => String(record(item).brandCode) === this.credentials.brandCode)) throw new IysError('brand', 'Marka kodu bu İYS hesabında bulunamadı.');
   }
   async addConsent(consent: IysConsent) {
-    const response = await this.call('POST', this.brandPath('/consents'), { ...consent, recipientType: 'BIREYSEL' });
+    const response = await this.call('POST', this.brandPath('/consents'), { ...consent, recipientType: consent.recipientType || 'BIREYSEL' });
     if (response.status === 200 || response.status === 201) { const id = record(response.body).transactionId; return { transactionId: typeof id === 'string' || typeof id === 'number' ? String(id) : null }; }
     const errors = record(response.body).errors, first = Array.isArray(errors) ? record(errors[0]) : {}, code = typeof first.code === 'string' ? first.code : String(response.status);
     throw new IysError('rejected', `İYS kaydı kabul etmedi (${code.slice(0, 40)}).`);
   }
   // The current consent of one recipient for one channel; null when İYS has none.
-  async status(recipient: string, type: IysChannel): Promise<{ status: IysStatus; consentDate: string | null; source: string | null } | null> {
-    const response = await this.call('POST', this.brandPath('/consents/status'), { recipient, recipientType: 'BIREYSEL', type });
+  async status(recipient: string, type: IysChannel, recipientType: IysRecipientType = 'BIREYSEL'): Promise<{ status: IysStatus; consentDate: string | null; source: string | null } | null> {
+    const response = await this.call('POST', this.brandPath('/consents/status'), { recipient, recipientType, type });
     if (response.status === 404) return null;
     const body = record(response.body), status = body.status;
     if (response.status !== 200) throw new IysError('format', `İYS durumu okunamadı (${response.status}).`);

@@ -12,6 +12,7 @@ import { MOBILE_EVENT_NAMES,mobileId,mobileText,normalizeMobileApp,mobileProvide
 import { asoFindings,readAppleListing,readPlayListing,probeMobileIntegration,validateMobileIntegration,createBranchLink,type MobileTransport,type MobileSecret } from './mobile-providers';
 import type { MobileApp,MobileIntegration,MobileProvider,MobileStoreSnapshot,MobileLink } from './mobile-types';
 import { ProjectAds } from './ad-manager';
+import { linkTag,linkTrackingEnabled } from './link-tracking';
 import { AD_PROVIDERS,type AdProvider } from './ad-providers';
 
 export type MobileAppRow={id:string;organization_id:string;project_id:string;source_id:string;source_version:number;config_json:string;coverage_through:string|null;created_at:string;updated_at:string};
@@ -99,7 +100,7 @@ export class MobileGrowth {
     const digest=mobileRevision(JSON.stringify([app.id,row.connection_id,path,campaign.id]));
     const record=this.db.prepare('SELECT request_digest FROM platform_mobile_links WHERE id=? AND app_id=? AND organization_id=? AND project_id=?').get(id,app.id,...this.args()) as {request_digest:string}|undefined;if(record){if(record.request_digest!==digest)throw new MarketingStoreError('İşlem anahtarı başka bağlantıya ait.',409);return this.links(app.id).find(link=>link.id===id)||{id,status:'recorded',url:null};}
     this.db.transaction(()=>{this.quota('mobile_link',20);this.db.prepare("INSERT INTO platform_mobile_links VALUES(?,?,?,?,?,?,?,?,?,'creating',NULL,?)").run(id,...this.args(),app.id,row.connection_id,campaign.id,mobileText(raw.name,100),path,digest,new Date().toISOString());}).immediate();
-    let url:string|null=null;try{url=await createBranchLink(app,JSON.parse(row.config_json),this.secret(row),{id,path,campaignId:campaign.id},read);}catch{}
+    let url:string|null=null;try{url=await createBranchLink(app,JSON.parse(row.config_json),this.secret(row),{id,path,campaign:linkTag(this.scope,'campaign',campaign.id),tagWeb:linkTrackingEnabled(this.db,this.scope)},read);}catch{}
     this.authorize('connections.manage');if(this.app(app.id).updatedAt!==app.updatedAt||!this.integration(row.connection_id).active||mobileRevision(this.integration(row.connection_id).encrypted_credentials)!==mobileRevision(row.encrypted_credentials))url=null;
     this.db.prepare('UPDATE platform_mobile_links SET status=?,url=? WHERE id=?').run(url?'created':'uncertain',url,id);this.audit('mobile.link.result');return this.links(app.id).find(link=>link.id===id)!;
   }

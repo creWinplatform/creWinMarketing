@@ -13,7 +13,7 @@ async function handle(request:NextRequest){
     const service=new ProjectAttribution(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId});
     if(request.method==='GET'){
       const view=request.nextUrl.searchParams.get('view');
-      return NextResponse.json(view==='settings'?service.settings():service.report(request.nextUrl.searchParams.get('days')||30),{headers});
+      return NextResponse.json(view==='settings'?service.settings():service.report(request.nextUrl.searchParams.get('days')||30,request.nextUrl.searchParams.get('model')||'first'),{headers});
     }
     if(!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz istek.');

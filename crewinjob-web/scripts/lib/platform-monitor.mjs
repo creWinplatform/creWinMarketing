@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
-import { readdir, statfs } from 'node:fs/promises';
+import { readdir, readFile, statfs } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { MAX_RECOVERY_SCHEMA, rejectLinks, verifyBackup } from './platform-recovery.mjs';
+import { BACKUP_FOLDER, MAX_RECOVERY_SCHEMA, latestBackupFolder, rejectLinks, verifyBackup } from './platform-recovery.mjs';
 
 const JOB_TYPES = ['connection.verify', 'product.sync', 'email.rehearsal', 'email.pilot_send', 'measurement.sync', 'social.publish','mobile.message'];
 const option = (env, key, fallback, min, max) => {
@@ -11,13 +11,15 @@ const option = (env, key, fallback, min, max) => {
   return Number(value);
 };
 export function monitorConfiguration(env = process.env) {
-  if (!['', '0', '1', undefined].includes(env.PLATFORM_WORKER_EXPECTED)) throw new Error('invalid_monitor_configuration');
+  for (const key of ['PLATFORM_WORKER_EXPECTED', 'PLATFORM_DRILL_EXPECTED']) if (!['', '0', '1', undefined].includes(env[key])) throw new Error('invalid_monitor_configuration');
   return {
     workerExpected: env.PLATFORM_WORKER_EXPECTED === '1',
     workerStaleSeconds: option(env, 'PLATFORM_MONITOR_WORKER_STALE_SECONDS', 180, 60, 3600),
     queueDelayMinutes: option(env, 'PLATFORM_MONITOR_QUEUE_DELAY_MINUTES', 15, 1, 1440),
     backupMaxAgeHours: option(env, 'PLATFORM_MONITOR_BACKUP_MAX_AGE_HOURS', 26, 1, 168),
     minFreeMb: option(env, 'PLATFORM_MONITOR_MIN_FREE_MB', 512, 16, 1048576),
+    drillExpected: env.PLATFORM_DRILL_EXPECTED === '1',
+    drillMaxAgeDays: option(env, 'PLATFORM_MONITOR_DRILL_MAX_AGE_DAYS', 8, 1, 60),
   };
 }
 
@@ -106,14 +108,9 @@ function databaseChecks(file, options, now, alert) {
 
 async function backupChecks(root, options, now, environmentKey, databaseId, alert) {
   try {
-    await rejectLinks(root);
-    const folders = (await readdir(root, { withFileTypes: true }))
-      .filter(entry => /^\d{4}-\d{2}-\d{2}T[\dTZ-]+-[a-f0-9-]+$/.test(entry.name))
-      .sort((a, b) => b.name.localeCompare(a.name));
-    if (!folders.length) { alert('backup_missing', 'critical'); return { status: 'missing' }; }
-    const latest = folders[0];
-    if (!latest.isDirectory() || latest.isSymbolicLink()) throw new Error('invalid_backup');
-    const backup = await verifyBackup(join(root, latest.name), environmentKey);
+    const latest = await latestBackupFolder(root);
+    if (!latest) { alert('backup_missing', 'critical'); return { status: 'missing' }; }
+    const backup = await verifyBackup(latest, environmentKey);
     if (!databaseId || !backup.checks.databaseId) alert('backup_database_binding_unknown', 'warning');
     else if (backup.checks.databaseId !== databaseId) {
       alert('backup_database_mismatch', 'critical'); return { status: 'wrong_database' };
@@ -130,7 +127,31 @@ async function backupChecks(root, options, now, environmentKey, databaseId, aler
   }
 }
 
-export async function monitorPlatform({ databasePath, backupRoot, environmentKey = process.env.PLATFORM_ENCRYPTION_KEY,
+// Scheduled drills leave a recovery-report.json (or FAILED.json) per folder; only the newest one counts.
+async function drillChecks(root, options, now, alert) {
+  if (!options.drillExpected) return { status: 'not_expected' };
+  try {
+    await rejectLinks(root);
+    const folders = (await readdir(root, { withFileTypes: true })).filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && BACKUP_FOLDER.test(entry.name)).map(entry => entry.name).sort().reverse();
+    for (const name of folders) {
+      let report;
+      try { report = JSON.parse(await readFile(join(root, name, 'recovery-report.json'), 'utf8')); }
+      catch {
+        try { await readFile(join(root, name, 'FAILED.json'), 'utf8'); } catch { continue; }
+        alert('restore_drill_failed', 'warning'); return { status: 'failed' };
+      }
+      const age = now - Date.parse(report.checkedAt);
+      if (report.ok !== true || !Number.isFinite(age)) { alert('restore_drill_failed', 'warning'); return { status: 'failed' }; }
+      const stale = age > options.drillMaxAgeDays * 86400000;
+      if (stale) alert('restore_drill_stale', 'warning');
+      return { status: stale ? 'stale' : 'passed', checkedAt: report.checkedAt };
+    }
+  } catch {}
+  alert('restore_drill_stale', 'warning');
+  return { status: 'missing' };
+}
+
+export async function monitorPlatform({ databasePath, backupRoot, drillRoot = resolve(backupRoot, '..', 'recovery-drills'), environmentKey = process.env.PLATFORM_ENCRYPTION_KEY,
   options = monitorConfiguration(), now = Date.now(), diskStats = statfs }) {
   const alerts = [];
   const alert = (code, severity, count) => alerts.push({ code, severity, ...(count === undefined ? {} : { count }) });
@@ -140,6 +161,7 @@ export async function monitorPlatform({ databasePath, backupRoot, environmentKey
   catch { checks = { database: { status: 'unavailable' }, worker: { status: 'not_checked' }, queue: { status: 'not_checked' } }; alert('database_unavailable', 'critical'); }
   const { databaseId, ...publicChecks } = checks;
   const backup = await backupChecks(resolve(backupRoot), options, now, environmentKey, databaseId, alert);
+  const drill = await drillChecks(resolve(drillRoot), options, now, alert);
   let disk = { status: 'unavailable' };
   try {
     const stat = await diskStats(dirname(file));
@@ -152,5 +174,5 @@ export async function monitorPlatform({ databasePath, backupRoot, environmentKey
   alerts.sort((a, b) => a.code.localeCompare(b.code));
   const severity = alerts.some(item => item.severity === 'critical') ? 'critical' : alerts.length ? 'warning' : 'ok';
   return { checkedAt: new Date(now).toISOString(), status: severity, exitCode: severity === 'critical' ? 2 : severity === 'warning' ? 1 : 0,
-    ...publicChecks, backup, disk, alerts, http: 'not_checked', notificationsSent: false, productionReadinessAssessed: false };
+    ...publicChecks, backup, drill, disk, alerts, http: 'not_checked', notificationsSent: false, productionReadinessAssessed: false };
 }
