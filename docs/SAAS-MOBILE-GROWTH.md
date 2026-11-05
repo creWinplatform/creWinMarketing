@@ -310,6 +310,13 @@ The proposal is checked before it reaches the form:
 
 It holds counts only, never review text, authors or replies.
 
+**Google Play search terms (schema 75).** Google Play has no public search API and its search pages are not scraped. Instead:
+
+- The team downloads the search terms table of the Play Console store performance report as CSV.
+- They upload it to the ASO tab with its period: at most 3 months, ending before today. UTF-8 and UTF-16 files are read in the browser.
+- Columns are matched by name in English or Turkish: term, store listing visitors, acquisitions and conversion.
+- A second upload of the same period replaces it. The table compares each term's visitors and installs with the previous upload.
+
 **Files:**
 
 - Code: `lib/platform/mobile-reviews.ts`, `mobile-month.ts`, `mobile-aso.ts` (competitors and `suggestListing`), `components/platform/MobileReviews.tsx`.

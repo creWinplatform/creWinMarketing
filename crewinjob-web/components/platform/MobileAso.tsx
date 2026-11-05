@@ -23,7 +23,7 @@ export function MobileKeywords({lang,data,app,busy,run,post}:Props){
     if(rank===null||previous===null)return <span className="mobile-rank-flat">—</span>;const diff=previous-rank;
     return diff>0?<span className="mobile-rank-up" aria-label={t(`${diff} sıra yükseldi`,`up ${diff}`)}>▲ {diff}</span>:diff<0?<span className="mobile-rank-down" aria-label={t(`${-diff} sıra düştü`,`down ${-diff}`)}>▼ {-diff}</span>:<span className="mobile-rank-flat">=</span>;
   };
-  return <section className="studio-band">
+  return <><section className="studio-band">
     <div className="studio-section-title"><h2>{t('Anahtar kelime sırası · App Store','Keyword positions · App Store')}</h2><span className="studio-badge">{data.keywords.length} / 30</span></div>
     <p className="studio-subtitle">{t('Apple’ın herkese açık arama API’sinde, seçilen ülkedeki ilk 200 uygulama sonucu içindeki sıra. App Store uygulamasındaki kişiselleştirilmiş sıradan farklı olabilir ve reklamları içermez. Her terim günde bir kez kontrol edilir.','The position among the first 200 app results of Apple’s public search API in the chosen country. It can differ from the personalised order in the App Store app and excludes ads. Each term is checked once a day.')}</p>
     {!app.appleId?<p className="studio-data-notice">{t('Sıra takibi için uygulamaya App Store kimliğini ekleyin.','Add the App Store ID to the app to track positions.')}</p>:data.canWrite&&<form className="mobile-inline-form" onSubmit={add}>
@@ -49,7 +49,27 @@ export function MobileKeywords({lang,data,app,busy,run,post}:Props){
       </>}
       <p className="studio-note">{t('Rakiplerin sırası, sizin terimleriniz kontrol edilirken aynı arama sonuçlarından okunur; ek istek yapılmaz.','Competitor positions are read from the same search results when your terms are checked; no extra request is made.')}</p>
     </div>}
-    <p className="studio-data-notice">{t('Google Play’in herkese açık bir arama API’si yok; sıra takibi yalnız App Store için yapılır.','Google Play has no public search API; positions are tracked for the App Store only.')}</p>
+    <p className="studio-data-notice">{t('Google Play’in herkese açık bir arama API’si yok; sıra takibi yalnız App Store için yapılır. Google Play arama terimleri için Play Console raporunu aşağıdan yükleyin.','Google Play has no public search API; positions are tracked for the App Store only. For Google Play search terms, upload the Play Console report below.')}</p>
+  </section>
+  {app.packageName&&app.platform!=='ios'&&<PlayTerms lang={lang} data={data} app={app} busy={busy} run={run} post={post}/>}</>;
+}
+
+// Google Play search terms from the team's Play Console export: visitors and installs per term, against the previous upload.
+function PlayTerms({lang,data,app,busy,run,post}:Props){
+  const tr=lang==='tr',t=(a:string,b:string)=>tr?a:b,[period,setPeriod]=useState({from:'',to:''}),[csv,setCsv]=useState(''),[name,setName]=useState(''),view=data.playTerms;
+  const read=async(file:File)=>{const bytes=new Uint8Array(await file.arrayBuffer());const utf16=bytes[0]===0xff&&bytes[1]===0xfe;setCsv(new TextDecoder(utf16?'utf-16le':'utf-8').decode(bytes));setName(file.name);};
+  const delta=(now:number|null,before:number|null)=>now===null||before===null?'':now>before?` ▲${now-before}`:now<before?` ▼${before-now}`:'';
+  return <section className="studio-band">
+    <div className="studio-section-title"><h2>{t('Google Play arama terimleri','Google Play search terms')}</h2>{view&&<span className="studio-badge">{view.from} → {view.to}</span>}</div>
+    <p className="studio-subtitle">{t('Play Console → Mağaza performansı → arama terimleri tablosunu CSV olarak indirip buraya yükleyin. Her terim için mağaza sayfası ziyaretçisi ve yükleme görünür; önceki yüklemeyle karşılaştırılır. Google Play sıra bilgisi vermez.','In Play Console → Store performance, download the search terms table as CSV and upload it here. Store listing visitors and installs per term are shown and compared with the previous upload. Google Play gives no positions.')}</p>
+    {data.canWrite&&<form className="mobile-inline-form" onSubmit={event=>{event.preventDefault();void run(async()=>{await post({action:'importPlayTerms',appId:app.id,from:period.from,to:period.to,csv});setCsv('');setName('');},t('Arama terimleri yüklendi.','Search terms uploaded.'));}}>
+      <label>{t('Dönem başı','Period from')}<input type="date" required value={period.from} onChange={event=>setPeriod({...period,from:event.target.value})}/></label>
+      <label>{t('Dönem sonu','Period to')}<input type="date" required value={period.to} onChange={event=>setPeriod({...period,to:event.target.value})}/></label>
+      <label>{t('CSV dosyası','CSV file')}<input type="file" accept=".csv,text/csv" required onChange={event=>{const file=event.target.files?.[0];if(file)void read(file);}}/></label>
+      <div className="mobile-actions"><button className="studio-primary" disabled={busy||!csv}>{t('Yükle','Upload')}</button>{name&&<small>{name}</small>}</div>
+    </form>}
+    {view?<Table label={t('Google Play arama terimleri','Google Play search terms')} heads={[t('Terim','Term'),t('Ziyaretçi','Visitors'),t('Yükleme','Installs'),t('Dönüşüm','Conversion')]}>{view.terms.map(row=><tr key={row.term}><td>{row.term}</td><td>{row.visitors??'—'}<small>{delta(row.visitors,row.previousVisitors)}</small></td><td>{row.installs??'—'}<small>{delta(row.installs,row.previousInstalls)}</small></td><td>{row.conversion===null?'—':`${(row.conversion*100).toFixed(1)}%`}</td></tr>)}</Table>:<p className="studio-empty">{t('Henüz Play Console raporu yüklenmedi.','No Play Console report uploaded yet.')}</p>}
+    {view?.previous&&<p className="studio-note">{t(`Değişim, ${view.previous.from} → ${view.previous.to} dönemine göre.`,`Change against ${view.previous.from} → ${view.previous.to}.`)}</p>}
   </section>;
 }
 

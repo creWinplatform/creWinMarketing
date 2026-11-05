@@ -8,8 +8,10 @@
 // Reverts schema 60: invitations of existing accounts to a project.
 // Reverts schema 61: the agency package marker on live orders and periods, and agency links.
 // Reverts schema 67: İYS settings, recipient statuses, the upload queue and WhatsApp suppressions.
+// Reverts schema 75: ad videos, TikTok ad groups and Play search terms.
+exports.removeAdVideoSchema=db=>db.exec("DROP TABLE platform_tiktok_adgroups; DROP TABLE platform_mobile_play_terms; ALTER TABLE platform_ad_creatives DROP COLUMN video_ref; ALTER TABLE platform_ad_creatives DROP COLUMN video_json; DELETE FROM platform_migrations WHERE version=75;");
 // Reverts schema 74: ad images.
-exports.removeAdCreativeSchema=db=>db.exec("DROP TABLE platform_ad_creatives; DELETE FROM platform_migrations WHERE version=74;");
+exports.removeAdCreativeSchema=db=>{exports.removeAdVideoSchema(db);db.exec("DROP TABLE platform_ad_creatives; DELETE FROM platform_migrations WHERE version=74;");}
 // Reverts schema 73: ad spend warning thresholds.
 exports.removeAdAlertSchema=db=>{exports.removeAdCreativeSchema(db);db.exec("DROP TABLE platform_ad_alert_settings; DELETE FROM platform_migrations WHERE version=73;");}
 // Reverts schema 72: competitor apps and their positions.

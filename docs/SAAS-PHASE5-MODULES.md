@@ -485,7 +485,20 @@ The app is kept in `platform_ad_plans.app_json`. Changing it clears the approval
   - A partial failure is recorded with what was done.
   - Images sent to a provider are removed in the provider's own screen.
   - Up to 10 images per plan.
-- **Videos:** not sent yet; they are added in the provider's tool.
+- **Videos (schema 75):**
+  - A draft can carry the address of a video the team hosts (MP4 or MOV, up to 300 MB, no redirect). The address is checked with the SSRF-safe reader when the draft is saved and again before it is sent; if the file changed, nothing is sent.
+  - The image becomes the video's cover.
+  - **Meta:** fetches the video (`advideos`, `file_url`). The creative uses `video_data` once Meta reports the video `ready`. While it is still processing, the draft stays approved, and pressing Send again later finishes it without uploading anything twice.
+  - **TikTok:** fetches the video (`file/video/ad/upload/`, `UPLOAD_BY_URL`).
+- **TikTok ad group and ads (schema 75):**
+  - **Setup:** "Set up the ad group" makes, once per plan, a display identity (`identity/create/`) and a DISABLED ad group (`adgroup/create/`) from the plan's approved budget, dates and countries:
+    - placement: TikTok;
+    - optimization: click (traffic), install (app, with the app's TikTok App ID) or reach;
+    - countries: matched to TikTok's own location list (`tool/region/`). A missing country creates nothing.
+  - **Ads:** after setup, each approved video creative becomes a DISABLED `SINGLE_VIDEO` ad in that group (`ad/create/`). A video already in the library becomes an ad without a new upload.
+  - **Not covered:** TikTok shows ads with a video only, so an image alone stays in the library.
+  - **Requirements:** the same switch and acknowledgement as images, and an unchanged plan approval.
+  - **Errors:** TikTok's own error message is kept with the error, so the first real run shows what TikTok expects.
 
 **Files:**
 

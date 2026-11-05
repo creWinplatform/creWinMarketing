@@ -16,7 +16,7 @@ type Plan={app_json:string|null;id:string;provider:AdProvider;connection_id:stri
 export type AdGraph=(method:'GET'|'POST',path:string,token:string,params?:Record<string,string>)=>Promise<Record<string,unknown>>;
 const version=()=>{const value=process.env.PLATFORM_META_ADS_GRAPH_VERSION||'v25.0';return /^v\d{1,3}\.\d$/.test(value)?value:'v25.0';};
 export const metaAdsGraph:AdGraph=async(method,path,token,params={})=>{
-  if(!/^(act_\d{1,20}|\d{1,25})(\/(campaigns|adsets|insights|adimages|adcreatives|ads))?$/.test(path))throw new Error('Invalid ad path.');
+  if(!/^(act_\d{1,20}|\d{1,25})(\/(campaigns|adsets|insights|adimages|adcreatives|ads|advideos))?$/.test(path))throw new Error('Invalid ad path.');
   const url=new URL(`https://graph.facebook.com/${version()}/${path}`);if(method==='GET')for(const [key,value] of Object.entries(params))url.searchParams.set(key,value);
   const response=await fetch(url,{method,headers:{Authorization:`Bearer ${token}`,Accept:'application/json',...(method==='POST'?{'Content-Type':'application/x-www-form-urlencoded'}:{})},body:method==='POST'?new URLSearchParams(params):undefined,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(12000)});
   const text=await response.text();let payload:Record<string,unknown>={};try{payload=JSON.parse(text.slice(0,65536));}catch{payload={};}
@@ -182,7 +182,7 @@ export class ProjectAds{
   async planAccess(id:unknown){
     this.authorize('manage');const row=this.row(id);if(!row.provider_campaign_id)throw new MarketingStoreError('Plan reklam sağlayıcısında oluşturulmamış.',409);
     const {connection,credentials}=this.credentials(row.connection_id);
-    return {plan:{id:row.id,name:row.name,objective:row.objective,link_url:row.link_url,provider_adset_id:row.provider_adset_id,app:planApp(row)},adAccountId:credentials.adAccountId,token:this.provider==='meta'?credentials.accessToken:await this.token(connection,credentials)};
+    return {plan:{id:row.id,name:row.name,objective:row.objective,link_url:row.link_url,provider_adset_id:row.provider_adset_id,provider_campaign_id:row.provider_campaign_id,app:planApp(row),approved:this.approvedNow(row),currency:row.currency,daily_budget_minor:row.daily_budget_minor,start_date:row.start_date,end_date:row.end_date,countries:JSON.parse(row.countries_json) as string[]},adAccountId:credentials.adAccountId,token:this.provider==='meta'?credentials.accessToken:await this.token(connection,credentials)};
   }
   private row(id:unknown){const row=typeof id==='string'?this.db.prepare('SELECT * FROM platform_ad_plans WHERE id=? AND organization_id=? AND project_id=? AND provider=?').get(id,...this.args(),this.provider) as Plan|undefined:undefined;if(!row)throw new MarketingStoreError('Reklam planı bulunamadı.',404);return row;}
   private approvedNow(row:Plan){return row.approved_digest===row.digest&&Boolean(row.approved_by&&this.repo.can(row.approved_by,...this.args(),'campaign.approve'));}

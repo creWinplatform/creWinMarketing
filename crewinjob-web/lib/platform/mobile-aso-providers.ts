@@ -128,6 +128,20 @@ export function parseSkanCsv(text:string):{rows:SkanRow[];columns:string[]}{
     return [{day,mediaSource:text_(row,at.media,100)||'unknown',campaign:text_(row,at.campaign,200),country:text_(row,at.country,2).toUpperCase(),installs:Math.round(installs),clicks:number(row,at.clicks),impressions:number(row,at.impressions),revenue:number(row,at.revenue),cost:number(row,at.cost),converted:number(row,at.converted)}];});
   return {rows,columns};
 }
+// Google Play has no public search API. The team exports the "search terms" table of the Play Console store
+// performance report (CSV) and uploads it; columns are matched by name in English or Turkish.
+export type PlayTerm={term:string;visitors:number|null;installs:number|null;conversion:number|null};
+export function parsePlayTermsCsv(text:string):PlayTerm[]{
+  const rows=csvRows(text.replace(/^\uFEFF/,''));const headIndex=rows.findIndex(row=>row.some(cell=>/search term|arama terim|^term$|terim/i.test(cell.trim())));if(headIndex<0)throw new Error('columns');
+  const head=rows[headIndex].map(cell=>cell.trim().toLowerCase()),find=(...patterns:RegExp[])=>head.findIndex(cell=>patterns.some(pattern=>pattern.test(cell)));
+  const at={term:find(/search term/,/arama terim/,/^term$/,/terim/),visitors:find(/visitor/,/ziyaret/),installs:find(/acquisition/,/installer/,/edinim/,/yükleyen/,/yükleme/),conversion:find(/conversion/,/dönüşüm/)};
+  if(at.term<0||at.visitors<0&&at.installs<0)throw new Error('columns');
+  const number=(row:string[],index:number)=>{if(index<0)return null;const value=(row[index]||'').trim().replace(/%$/,'').replace(/\s/g,'');if(!value||value==='-')return null;const parsed=Number(value.includes(',')&&!value.includes('.')?value.replace(',','.'):value.replace(/,/g,''));return Number.isFinite(parsed)&&parsed>=0?parsed:null;};
+  const seen=new Set<string>(),terms:PlayTerm[]=[];
+  for(const row of rows.slice(headIndex+1)){const term=(row[at.term]||'').normalize('NFC').trim().replace(/\s+/g,' ').toLowerCase().replace(/i̇/g,'i');if(!term||term.length>100||/[\x00-\x1f]/.test(term)||seen.has(term))continue;seen.add(term);
+    const conversion=number(row,at.conversion);terms.push({term,visitors:number(row,at.visitors)===null?null:Math.round(number(row,at.visitors)!),installs:number(row,at.installs)===null?null:Math.round(number(row,at.installs)!),conversion:conversion===null?null:conversion>1?Math.round(conversion*100)/10000:conversion});if(terms.length>=500)break;}
+  return terms;
+}
 export async function readSkanReport(config:Record<string,string>,secret:MobileSecret,from:string,to:string,read:MobileTransport=fetch){
   const response=await mobileRequest(read,`https://hq1.appsflyer.com/api/skadnetworks/v3/data/app/${config.externalAppId}?${new URLSearchParams({start_date:from,end_date:to,view_type:'unified'})}`,{headers:{Authorization:`Bearer ${secret.apiToken}`,Accept:'text/csv, text/plain'}});
   if(!response.ok){await response.body?.cancel();throw new Error(`appsflyer_${response.status}`);}

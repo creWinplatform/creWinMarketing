@@ -13,7 +13,9 @@ export type AdPlanView={
   approved:boolean;approvedAt:string|null;providerCampaignId:string|null;lastError:string|null;spendMinor:number|null;impressions:number|null;clicks:number|null;spendCheckedAt:string|null;revision:number;updatedAt:string;
 };
 // An ad image of a created Meta or TikTok plan (ad-creatives.ts); the thumbnail is a small JPEG data URL.
-export type AdCreativeView={id:string;planId:string;thumbnail:string;width:number;height:number;headline:string;primaryText:string;cta:string;pageId:string;state:'draft'|'approved'|'uploading'|'uploaded'|'failed';approved:boolean;revision:number;imageRef:string|null;adRef:string|null;lastError:string|null;uploadedAt:string|null;updatedAt:string};
+export type AdCreativeView={id:string;planId:string;thumbnail:string;width:number;height:number;headline:string;primaryText:string;cta:string;pageId:string;videoUrl:string|null;videoBytes:number|null;videoRef:string|null;state:'draft'|'approved'|'uploading'|'uploaded'|'failed';approved:boolean;revision:number;imageRef:string|null;adRef:string|null;lastError:string|null;uploadedAt:string|null;updatedAt:string};
+// The TikTok ad group and identity Ryzevo sets up once per plan, so video ads can be made in it.
+export type TikTokAdSetupView={ready:boolean;adgroupId:string|null;displayName:string|null;needsAppId:boolean;createdAt:string|null};
 export type AdsSnapshot={
   account:AdAccountView|null;policy:AdPolicyView|null;plans:AdPlanView[];minorUnit:number;
   plannedActiveMinor:number;launchEnabled:boolean;canWrite:boolean;canManage:boolean;canApprove:boolean;

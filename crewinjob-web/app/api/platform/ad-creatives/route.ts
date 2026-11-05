@@ -25,6 +25,7 @@ async function handle(request:NextRequest){
       case 'approve':result=creatives.approve(raw);break;
       case 'delete':result=creatives.remove(raw);break;
       case 'upload':result=await creatives.upload(raw);break;
+      case 'setupTikTok':result=await creatives.setupTikTok(raw);break;
       default:throw new MarketingStoreError('Geçersiz reklam görseli işlemi.');
     }
     return NextResponse.json(result,{headers});

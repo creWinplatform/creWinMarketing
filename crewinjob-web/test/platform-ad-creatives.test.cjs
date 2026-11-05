@@ -69,3 +69,65 @@ test('TikTok: an approved image goes to the ad account’s library as a signed f
   const file=Buffer.from(await upload.body.get('image_file').arrayBuffer());assert.equal(upload.body.get('image_signature'),crypto.createHash('md5').update(file).digest('hex'),'the signature is the file’s MD5');
   assert.equal(f.db.prepare("SELECT image_ref r FROM platform_ad_creatives WHERE id=?").get(creative.id).r,'ad-image-7788');
 }));
+
+// Disposable video host: answers the header check; nothing is downloaded.
+const videoHost=(etag='"v1"')=>async url=>({status:200,headers:new Headers({'content-type':'video/mp4','content-length':'1000000',etag}),finalUrl:url,cancel:async()=>{}});
+test('Meta video: Meta fetches the team’s video, the image is its cover; a video still processing waits for another Send',env(async f=>{
+  let ready=false;const base=graph(),g=async(method,path,token,params={})=>{if(path.endsWith('/advideos')){base.calls.push({method,path,token,params});return {id:'770001'};}if(method==='GET'&&path==='770001'){base.calls.push({method,path,token,params});return {status:{video_status:ready?'ready':'processing'}};}return base(method,path,token,params);};g.calls=base.calls;
+  const item=await metaPlan(f,g),host=videoHost(),creatives=new AdCreatives(f.db,f.scope,KEY,'meta',g,undefined,host,async()=>{});
+  await assert.rejects(creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},primaryText:'x',pageId:'1234567890',videoUrl:'http://example.com/v.mp4'}),/https/);
+  let creative=(await creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},headline:'Stüdyo turu',primaryText:'Dövme stüdyomuzu gezin.',pageId:'1234567890',videoUrl:'https://cdn.example.com/tur.mp4'})).creatives[0];
+  assert.equal(creative.videoUrl,'https://cdn.example.com/tur.mp4');assert.equal(creative.videoBytes,1000000);
+  creative=creatives.approve({id:creative.id,expectedRevision:creative.revision}).creatives[0];process.env.PLATFORM_AD_CREATIVES_ENABLED='1';
+  creative=(await creatives.upload({id:creative.id,acknowledged:true})).creatives[0];
+  assert.equal(creative.state,'approved','still approved while Meta processes the video');assert.match(creative.lastError,/işleniyor/);assert.equal(creative.videoRef,'770001');
+  const upload=g.calls.find(call=>call.path.endsWith('/advideos'));assert.equal(upload.params.file_url,'https://cdn.example.com/tur.mp4');
+  ready=true;const before=g.calls.length;creative=(await creatives.upload({id:creative.id,acknowledged:true})).creatives[0];assert.equal(creative.state,'uploaded');
+  const later=g.calls.slice(before);assert.equal(later.some(call=>call.path.endsWith('/advideos')||call.path.endsWith('/adimages')),false,'the image and video are not sent twice');
+  const story=JSON.parse(later.find(call=>call.path.endsWith('/adcreatives')).params.object_story_spec);
+  assert.deepEqual(plain(story.video_data),{video_id:'770001',image_hash:'a1b2c3d4e5f60718293a4b5c6d7e8f90',message:'Dövme stüdyomuzu gezin.',title:'Stüdyo turu',call_to_action:{type:'LEARN_MORE',value:{link:'https://example.com/ink'}}});
+  // A video that changes after approval is never sent.
+  let changed=(await creatives.save({planId:item.id,image:{data:await png(1080,1080),mime:'image/png'},primaryText:'İkinci',pageId:'1234567890',videoUrl:'https://cdn.example.com/iki.mp4'})).creatives[1];changed=creatives.approve({id:changed.id,expectedRevision:changed.revision}).creatives[1];
+  await assert.rejects(new AdCreatives(f.db,f.scope,KEY,'meta',g,undefined,videoHost('"v2"'),async()=>{}).upload({id:changed.id,acknowledged:true}),/değişti/);
+}));
+test('TikTok: the ad group is made once from the approved plan with TikTok’s own locations; a video becomes a DISABLED ad in it',env(async f=>{
+  const base=tiktokHttp(),calls=base.calls,ok=payload=>({status:200,header:()=>null,payload});let regions=[{location_id:'298795',region_code:'TR',level:'COUNTRY'},{location_id:'2921044',region_code:'DE',level:'COUNTRY'}];
+  const h=async request=>{const url=new URL(request.url);
+    if(url.pathname.endsWith('/tool/region/')){calls.push({...request,url});return ok({code:0,data:{region_info:regions}});}
+    if(url.pathname.endsWith('/identity/create/')){calls.push({...request,url,json:JSON.parse(request.body)});return ok({code:0,data:{identity_id:'ident-55'}});}
+    if(url.pathname.endsWith('/adgroup/create/')){calls.push({...request,url,json:JSON.parse(request.body)});return ok({code:0,data:{adgroup_id:'1700000000000077'}});}
+    if(url.pathname.endsWith('/file/video/ad/upload/')){calls.push({...request,url,json:JSON.parse(request.body)});return ok({code:0,data:[{video_id:'v10000'}]});}
+    if(url.pathname.endsWith('/ad/create/')){calls.push({...request,url,json:JSON.parse(request.body)});return ok({code:0,data:{ad_ids:['1600000000000088']}});}
+    return base(request);};h.calls=calls;
+  const ads=()=>new ProjectAds(f.db,f.scope,KEY,undefined,'tiktok',h);await ads().connect({adAccountId:'7000000000000001',accessToken:TIKTOK});ads().setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});
+  let item=ads().savePlan(plan({objective:'OUTCOME_APP_PROMOTION',countries:['TR','DE'],app:{store:'apple',appId:'1234567890',storeUrl:'https://apps.apple.com/tr/app/qa/id1234567890'}})).plans[0];item=ads().approve({id:item.id,expectedRevision:item.revision}).plans[0];item=(await ads().create({id:item.id})).plans[0];
+  const creatives=new AdCreatives(f.db,f.scope,KEY,'tiktok',undefined,h,videoHost(),async()=>{});
+  // A video uploaded before the ad group exists stays in the library.
+  let early=(await creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},primaryText:'Dövme fikirleri',videoUrl:'https://cdn.example.com/ink.mp4'})).creatives[0];early=creatives.approve({id:early.id,expectedRevision:early.revision}).creatives[0];
+  process.env.PLATFORM_AD_CREATIVES_ENABLED='1';early=(await creatives.upload({id:early.id,acknowledged:true})).creatives[0];assert.equal(early.state,'uploaded');assert.equal(early.adRef,null);assert.equal(early.videoRef,'v10000');
+  assert.deepEqual(plain(calls.find(call=>call.url.pathname.endsWith('/file/video/ad/upload/')).json),{advertiser_id:'7000000000000001',upload_type:'UPLOAD_BY_URL',video_url:'https://cdn.example.com/ink.mp4',file_name:`ryzevo-${early.id.slice(0,8)}`});
+  await assert.rejects(creatives.setupTikTok({planId:item.id,displayName:'QA Ink',acknowledged:true}),/App ID/,'app plans need the TikTok app id');
+  regions=[{location_id:'298795',region_code:'TR',level:'COUNTRY'}];
+  await assert.rejects(creatives.setupTikTok({planId:item.id,displayName:'QA Ink',tiktokAppId:'7300000001',acknowledged:true}),/konum listesinde/);
+  assert.equal(calls.some(call=>call.url.pathname.endsWith('/adgroup/create/')),false,'an unknown country creates nothing');
+  regions=[{location_id:'298795',region_code:'TR',level:'COUNTRY'},{location_id:'2921044',region_code:'DE',level:'COUNTRY'}];
+  const list=await creatives.setupTikTok({planId:item.id,displayName:'QA Ink',tiktokAppId:'7300000001',acknowledged:true});assert.equal(list.tiktok.ready,true);assert.equal(list.tiktok.adgroupId,'1700000000000077');
+  const group=calls.find(call=>call.url.pathname.endsWith('/adgroup/create/')).json;
+  assert.equal(group.operation_status,'DISABLE');assert.equal(group.promotion_type,'APP_IOS');assert.equal(group.app_id,'7300000001');assert.deepEqual(plain(group.location_ids),['298795','2921044']);assert.equal(group.budget,20);assert.equal(group.optimization_goal,'INSTALL');
+  assert.equal(group.schedule_start_time,`${day(1)} 00:00:00`);assert.equal(group.campaign_id,'1800000000000009');
+  assert.equal(f.db.prepare('SELECT provider_adset_id id FROM platform_ad_plans WHERE id=?').get(item.id).id,'1700000000000077');
+  await assert.rejects(creatives.setupTikTok({planId:item.id,displayName:'QA Ink',tiktokAppId:'7300000001',acknowledged:true}),/zaten kurulu/);
+  // The video already in the library becomes an ad now, without a second upload.
+  const before=calls.length;early=(await creatives.upload({id:early.id,acknowledged:true})).creatives[0];assert.equal(early.adRef,'1600000000000088');
+  assert.equal(calls.slice(before).some(call=>call.url.pathname.includes('/file/')),false);
+  const ad=calls.slice(before).find(call=>call.url.pathname.endsWith('/ad/create/')).json;
+  assert.equal(ad.operation_status,'DISABLE');assert.equal(ad.adgroup_id,'1700000000000077');assert.deepEqual(plain(ad.creatives[0]),{ad_name:`Ink installs · ${early.id.slice(0,8)}`,identity_type:'CUSTOMIZED_USER',identity_id:'ident-55',ad_format:'SINGLE_VIDEO',video_id:'v10000',image_ids:['ad-image-7788'],ad_text:'Dövme fikirleri',call_to_action:'DOWNLOAD_NOW'});
+}));
+test('Google Play search terms: the Play Console CSV is read by column name, per period, against the previous upload',()=>{
+  const {parsePlayTermsCsv}=load('mobile-aso-providers.ts');
+  const english=parsePlayTermsCsv('﻿Search term,Store listing visitors,Store listing acquisitions,Conversion rate\ntattoo ideas,1200,96,8.0%\n"dövme, fikir",300,12,4%\nTattoo Ideas,5,1,20%\n');
+  assert.deepEqual(plain(english),[{term:'tattoo ideas',visitors:1200,installs:96,conversion:0.08},{term:'dövme, fikir',visitors:300,installs:12,conversion:0.04}],'duplicates after normalising are dropped');
+  const turkish=parsePlayTermsCsv('Rapor,Mağaza performansı\nArama terimi,Mağaza girişi ziyaretçileri,Mağaza girişi edinimleri\ndövme,"1,5",3\n');
+  assert.deepEqual(plain(turkish),[{term:'dövme',visitors:2,installs:3,conversion:null}],'a title row is skipped; Turkish headers and decimal commas are read');
+  assert.throws(()=>parsePlayTermsCsv('foo,bar\n1,2\n'),/columns/);
+});

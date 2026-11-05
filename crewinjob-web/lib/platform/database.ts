@@ -1577,6 +1577,24 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_ad_creative_plan ON platform_ad_creatives(plan_id,created_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(74,datetime('now'));
   `))();
+  // Ad videos (the team's own address, fetched by the provider), the TikTok ad group and identity Ryzevo sets up per
+  // plan, and Google Play search terms imported from the team's Play Console report.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=75').get())db.transaction(()=>db.exec(`
+    ALTER TABLE platform_ad_creatives ADD COLUMN video_json TEXT;
+    ALTER TABLE platform_ad_creatives ADD COLUMN video_ref TEXT;
+    CREATE TABLE platform_tiktok_adgroups (
+      plan_id TEXT PRIMARY KEY REFERENCES platform_ad_plans(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      adgroup_id TEXT NOT NULL, identity_id TEXT NOT NULL, display_name TEXT NOT NULL, tiktok_app_id TEXT NOT NULL,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE TABLE platform_mobile_play_terms (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, app_id TEXT NOT NULL, period_from TEXT NOT NULL, period_to TEXT NOT NULL,
+      term TEXT NOT NULL, visitors INTEGER, installs INTEGER, conversion REAL, imported_by TEXT NOT NULL, imported_at TEXT NOT NULL,
+      PRIMARY KEY(app_id,period_from,period_to,term),
+      FOREIGN KEY(app_id,organization_id,project_id) REFERENCES platform_mobile_apps(id,organization_id,project_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(75,datetime('now'));
+  `))();
   return db;
 }
 

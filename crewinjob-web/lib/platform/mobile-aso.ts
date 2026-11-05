@@ -5,7 +5,7 @@ import { MarketingStoreError } from './errors';
 import { assertProjectDelivery,assertProjectWork,projectEntitlement } from './entitlements';
 import { mobileDay,mobileId,mobileRecord } from './mobile-validation';
 import { mobileGoogleAccess,readPlayListing,type MobileSecret,type MobileTransport } from './mobile-providers';
-import { ANDROID_FIELDS,IOS_FIELDS,appStoreLookup,appStoreRank,readAppStoreListing,readSkanReport,writeAppStoreListing,writePlayListing,type SkanRow } from './mobile-aso-providers';
+import { ANDROID_FIELDS,IOS_FIELDS,parsePlayTermsCsv,appStoreLookup,appStoreRank,readAppStoreListing,readSkanReport,writeAppStoreListing,writePlayListing,type SkanRow } from './mobile-aso-providers';
 import { mobileRevision,type MobileGrowth } from './mobile-store';
 import { maskPersonal } from './messaging-sources';
 import { COACH_BANNED,coachClip,coachObject,type CoachGenerator } from './coach';
@@ -24,7 +24,7 @@ type Rank={rank:number|null;resultCount:number;leaders:{id:string;name:string}[]
 const competitorIds=(db:Database.Database,appId:string)=>(db.prepare('SELECT apple_id FROM platform_mobile_competitors WHERE app_id=? ORDER BY created_at,apple_id').all(appId) as {apple_id:string}[]).map(row=>row.apple_id);
 
 export function normalizeTerm(value:unknown){
-  const term=typeof value==='string'?value.normalize('NFC').trim().replace(/\s+/g,' ').toLocaleLowerCase('tr'):'';
+  const term=typeof value==='string'?value.normalize('NFC').trim().replace(/\s+/g,' ').toLowerCase().replace(/i̇/g,'i'):'';
   if(!term||[...term].length>100||/[\x00-\x1f]/.test(term))throw new MarketingStoreError('Anahtar kelime 1–100 karakter olmalı.');return term;
 }
 function recordRank(db:Database.Database,keywordId:string,result:Rank|null){
@@ -233,6 +233,27 @@ Tracked App Store search terms with the app's current position (null = not in th
       if(!Object.keys(fields).length||COACH_BANNED.test(text)||/https?:\/\/|www\./i.test(text)||maskPersonal(text)!==text||rivals.some(name=>text.toLocaleLowerCase('tr').includes(name.toLocaleLowerCase('tr'))))throw fail();
       return fields;
     },fields=>{this.mobile.authorize('content.write');this.mobile.audit('mobile.listing.ai');return {store,locale,fields,checks:listingChecks(store,fields)};});
+  }
+  // Google Play search terms from the team's Play Console export for one period; a second upload of the same period
+  // replaces it. Positions are not available on Google Play; visitors and installs per term are.
+  importPlayTerms(raw:Record<string,unknown>){
+    this.mobile.authorize('content.write');assertProjectWork(this.db,this.mobile.scope);const app=this.mobile.app(String(raw.appId));if(!app.packageName)throw new MarketingStoreError('Bu uygulamanın Android paket adı yok.',409);
+    const from=mobileDay(raw.from),to=mobileDay(raw.to);if(from>to||to>today()||(Date.parse(to)-Date.parse(from))/86400000>92)throw new MarketingStoreError('Rapor dönemi en çok 3 ay olmalı ve bugünden önce bitmeli.');
+    if(typeof raw.csv!=='string'||!raw.csv.trim()||raw.csv.length>2_000_000)throw new MarketingStoreError('Play Console’dan indirdiğiniz arama terimleri CSV dosyasını seçin (en çok 2 MB).');
+    let terms;try{terms=parsePlayTermsCsv(raw.csv);}catch{throw new MarketingStoreError('Dosyada arama terimi ve ziyaretçi veya yükleme sütunu bulunamadı. Play Console’daki arama terimleri tablosunu CSV olarak indirin.');}
+    if(!terms.length)throw new MarketingStoreError('Dosyada arama terimi satırı yok.');
+    return this.db.transaction(()=>{this.mobile.authorize('content.write');const now=new Date().toISOString();
+      this.db.prepare('DELETE FROM platform_mobile_play_terms WHERE app_id=? AND period_from=? AND period_to=?').run(app.id,from,to);
+      const insert=this.db.prepare('INSERT INTO platform_mobile_play_terms VALUES(?,?,?,?,?,?,?,?,?,?,?)');for(const term of terms)insert.run(...this.args(),app.id,from,to,term.term,term.visitors,term.installs,term.conversion,this.mobile.scope.subject,now);
+      this.db.prepare('DELETE FROM platform_mobile_play_terms WHERE app_id=? AND period_to<?').run(app.id,dayOffset(-ASO_LIMITS.historyDays));
+      this.mobile.audit('mobile.aso.play_terms');return {imported:terms.length,playTerms:this.playTerms(app.id)};}).immediate();
+  }
+  playTerms(appId:string){
+    this.mobile.rawApp(appId);const periods=this.db.prepare('SELECT period_from,period_to,MAX(imported_at) imported_at FROM platform_mobile_play_terms WHERE app_id=? AND organization_id=? AND project_id=? GROUP BY period_from,period_to ORDER BY period_to DESC,period_from DESC LIMIT 2').all(appId,...this.args()) as {period_from:string;period_to:string;imported_at:string}[];
+    if(!periods.length)return null;const rows=(period:{period_from:string;period_to:string})=>this.db.prepare('SELECT term,visitors,installs,conversion FROM platform_mobile_play_terms WHERE app_id=? AND period_from=? AND period_to=? ORDER BY COALESCE(installs,-1) DESC,COALESCE(visitors,-1) DESC,term LIMIT 100').all(appId,period.period_from,period.period_to) as {term:string;visitors:number|null;installs:number|null;conversion:number|null}[];
+    const current=rows(periods[0]),previous=periods[1]?new Map(rows(periods[1]).map(row=>[row.term,row])):null;
+    return {from:periods[0].period_from,to:periods[0].period_to,importedAt:periods[0].imported_at,previous:periods[1]?{from:periods[1].period_from,to:periods[1].period_to}:null,
+      terms:current.map(row=>({...row,previousInstalls:previous?previous.get(row.term)?.installs??null:null,previousVisitors:previous?previous.get(row.term)?.visitors??null:null}))};
   }
   // Reads the store's current text into the form. Nothing is saved.
   async currentListing(raw:Record<string,unknown>,read?:MobileTransport,getToken:(secret:MobileSecret,scope:string)=>Promise<string>=mobileGoogleAccess){
