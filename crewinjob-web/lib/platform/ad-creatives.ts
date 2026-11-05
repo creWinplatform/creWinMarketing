@@ -11,6 +11,7 @@ import { normalizePublicationImage } from './publication-image';
 import { checkPublicationVideo,normalizeContentVideo,readVideoHeaders,sameVideo,type PublicationVideo,type VideoReader } from './social-video';
 import type { MarketingScope } from './marketing-store';
 import type { AdCreativeView,TikTokAdSetupView } from './ad-types';
+import { CREATIVE_STATS,count,creativeStats,spendMinor,storeCreativeDays } from './ad-creative-stats';
 
 // Ad images and videos for created plans. The team adds an image (the cover of a video) and its text, optionally the
 // address of a video it hosts; an approver accepts the exact content, and only then is it sent:
@@ -22,7 +23,7 @@ export const AD_CREATIVE_LIMITS={perPlan:10,headline:40,text:500,tiktokText:100,
 export const AD_CTAS=['LEARN_MORE','SHOP_NOW','SIGN_UP','BOOK_NOW','CONTACT_US','DOWNLOAD','INSTALL_MOBILE_APP'] as const;
 const TIKTOK_CTA:Record<string,string>={LEARN_MORE:'LEARN_MORE',SHOP_NOW:'SHOP_NOW',SIGN_UP:'SIGN_UP',BOOK_NOW:'BOOK_NOW',CONTACT_US:'CONTACT_US',DOWNLOAD:'DOWNLOAD_NOW',INSTALL_MOBILE_APP:'DOWNLOAD_NOW'};
 export const adCreativesEnabled=()=>process.env.PLATFORM_AD_CREATIVES_ENABLED==='1';
-type Row={id:string;plan_id:string;provider:AdProvider;image:Buffer;thumb:Buffer;width:number;height:number;sha256:string;headline:string;primary_text:string;cta:string;page_id:string;digest:string;state:AdCreativeView['state'];revision:number;approved_digest:string|null;approved_at:string|null;image_ref:string|null;creative_ref:string|null;ad_ref:string|null;last_error:string|null;uploaded_at:string|null;updated_at:string;video_json:string|null;video_ref:string|null};
+type Row={stats_checked_at:string|null;id:string;plan_id:string;provider:AdProvider;image:Buffer;thumb:Buffer;width:number;height:number;sha256:string;headline:string;primary_text:string;cta:string;page_id:string;digest:string;state:AdCreativeView['state'];revision:number;approved_digest:string|null;approved_at:string|null;image_ref:string|null;creative_ref:string|null;ad_ref:string|null;last_error:string|null;uploaded_at:string|null;updated_at:string;video_json:string|null;video_ref:string|null};
 type Setup={plan_id:string;adgroup_id:string;identity_id:string;display_name:string;tiktok_app_id:string;created_at:string};
 const videoOf=(row:Pick<Row,'video_json'>)=>row.video_json?JSON.parse(row.video_json) as PublicationVideo:null;
 const digestOf=(row:Pick<Row,'plan_id'|'sha256'|'headline'|'primary_text'|'cta'|'page_id'|'video_json'>)=>{const video=videoOf(row);return createHash('sha256').update(JSON.stringify([row.plan_id,row.sha256,row.headline,row.primary_text,row.cta,row.page_id,...(video?[[video.url,video.bytes,video.contentType,video.etag,video.lastModified]]:[])])).digest('hex');};
@@ -51,7 +52,10 @@ export class AdCreatives{
   list(planId:unknown):{creatives:AdCreativeView[];enabled:boolean;canWrite:boolean;canApprove:boolean;canUpload:boolean;ctas:readonly string[];tiktok:TikTokAdSetupView|null}{
     this.authorize();const plan=this.plan(planId),setup=this.provider==='tiktok'?this.setup(plan.id):undefined;
     const rows=this.db.prepare('SELECT * FROM platform_ad_creatives WHERE plan_id=? AND organization_id=? AND project_id=? ORDER BY created_at,id').all(plan.id,...this.args()) as Row[];
-    return {creatives:rows.map(row=>{const video=videoOf(row);return {id:row.id,planId:row.plan_id,thumbnail:`data:image/jpeg;base64,${row.thumb.toString('base64')}`,width:row.width,height:row.height,headline:row.headline,primaryText:row.primary_text,cta:row.cta,pageId:row.page_id,videoUrl:video?.url||null,videoBytes:video?.bytes||null,state:row.state,approved:row.state==='approved'&&row.approved_digest===row.digest,revision:row.revision,imageRef:row.image_ref,videoRef:row.video_ref,adRef:row.ad_ref,lastError:row.last_error,uploadedAt:row.uploaded_at,updatedAt:row.updated_at};}),
+    const currency=(this.db.prepare('SELECT currency FROM platform_ad_plans WHERE id=?').get(plan.id) as {currency:string}).currency,stats=new Map(rows.map(row=>[row.id,creativeStats(this.db,row.id,currency)]));
+    // The best click-through rate among creatives with enough impressions, for the comparison.
+    const ranked=[...stats.entries()].filter(([,value])=>value&&value.impressions>=CREATIVE_STATS.minImpressions&&value.ctr!==null).sort((a,b)=>b[1]!.ctr!-a[1]!.ctr!),best=ranked.length>1?ranked[0][0]:null;
+    return {creatives:rows.map(row=>{const video=videoOf(row);return {stats:stats.get(row.id)||null,best:row.id===best,statsCheckedAt:row.stats_checked_at,id:row.id,planId:row.plan_id,thumbnail:`data:image/jpeg;base64,${row.thumb.toString('base64')}`,width:row.width,height:row.height,headline:row.headline,primaryText:row.primary_text,cta:row.cta,pageId:row.page_id,videoUrl:video?.url||null,videoBytes:video?.bytes||null,state:row.state,approved:row.state==='approved'&&row.approved_digest===row.digest,revision:row.revision,imageRef:row.image_ref,videoRef:row.video_ref,adRef:row.ad_ref,lastError:row.last_error,uploadedAt:row.uploaded_at,updatedAt:row.updated_at};}),
       enabled:adCreativesEnabled(),canWrite:this.can('content.write'),canApprove:this.can('campaign.approve'),canUpload:this.can('connections.manage')&&this.can('campaign.approve'),ctas:plan.objective==='OUTCOME_APP_PROMOTION'?['INSTALL_MOBILE_APP']:AD_CTAS.filter(item=>item!=='INSTALL_MOBILE_APP'),
       tiktok:this.provider==='tiktok'?{ready:Boolean(setup),adgroupId:setup?.adgroup_id||null,displayName:setup?.display_name||null,needsAppId:plan.objective==='OUTCOME_APP_PROMOTION',createdAt:setup?.created_at||null}:null};
   }
@@ -135,6 +139,29 @@ export class AdCreatives{
     }
     return this.list(plan.id);
   }
+  // Daily figures of the plan's sent ads for the last 14 days, as the provider reports them. A read; nothing changes.
+  async refreshStats(raw:Record<string,unknown>){
+    this.authorize('connections.manage');const plan=this.plan(raw.planId);
+    const rows=this.db.prepare("SELECT id,ad_ref FROM platform_ad_creatives WHERE plan_id=? AND organization_id=? AND project_id=? AND state='uploaded' AND ad_ref IS NOT NULL").all(plan.id,...this.args()) as {id:string;ad_ref:string}[];
+    if(!rows.length)throw new MarketingStoreError('Bu planda sağlayıcıda reklama dönüşmüş görsel yok.',409);
+    this.db.transaction(()=>{const period=new Date().toISOString().slice(0,10),old=this.db.prepare("SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource='ad_creative_stats'").get(...this.args(),period) as {count:number}|undefined;if((old?.count||0)>=40)throw new MarketingStoreError('Günlük performans okuma sınırına ulaşıldı.',429);this.db.prepare("INSERT INTO platform_usage VALUES(?,?,?,'ad_creative_stats',1) ON CONFLICT(organization_id,project_id,period,resource) DO UPDATE SET count=count+1").run(...this.args(),period);}).immediate();
+    const access=await new ProjectAds(this.db,this.scope,this.key,this.graph,this.provider,this.http).planAccess(plan.id),currency=access.plan.currency,app=access.plan.objective==='OUTCOME_APP_PROMOTION';
+    const since=new Date(Date.now()-(CREATIVE_STATS.days-1)*86400000).toISOString().slice(0,10),until=new Date().toISOString().slice(0,10),days:{creative_id:string;day:string;impressions:number;clicks:number;spend_minor:number;conversions:number|null}[]=[];
+    try{
+      if(this.provider==='meta')for(const row of rows){
+        const value=await this.graph('GET',`${row.ad_ref}/insights`,access.token,{fields:'spend,impressions,clicks,actions,date_start',time_increment:'1',time_range:JSON.stringify({since,until}),limit:'100'});
+        for(const item of (Array.isArray(value.data)?value.data:[]) as Record<string,unknown>[]){const day=String(item.date_start||'');if(!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
+          const actions=(Array.isArray(item.actions)?item.actions:[]) as {action_type?:unknown;value?:unknown}[],installs=actions.filter(action=>['mobile_app_install','app_install','omni_app_install'].includes(String(action.action_type))).reduce((total,action)=>total+count(action.value),0);
+          days.push({creative_id:row.id,day,impressions:count(item.impressions),clicks:count(item.clicks),spend_minor:spendMinor(item.spend,currency),conversions:app?installs:null});}
+      }else{
+        const value=await this.tiktok('report/integrated/get/',access.token,{advertiser_id:access.adAccountId,report_type:'BASIC',data_level:'AUCTION_AD',dimensions:['ad_id','stat_time_day'],metrics:['spend','impressions','clicks','conversion'],start_date:since,end_date:until,filtering:[{field_name:'ad_ids',filter_type:'IN',filter_value:JSON.stringify(rows.map(row=>row.ad_ref))}],page_size:1000},'GET');
+        for(const item of (Array.isArray(value.list)?value.list:[]) as {dimensions?:Record<string,unknown>;metrics?:Record<string,unknown>}[]){const creative=rows.find(row=>row.ad_ref===String(item.dimensions?.ad_id)),day=String(item.dimensions?.stat_time_day||'').slice(0,10);if(!creative||!/^\d{4}-\d{2}-\d{2}$/.test(day))continue;
+          days.push({creative_id:creative.id,day,impressions:count(item.metrics?.impressions),clicks:count(item.metrics?.clicks),spend_minor:spendMinor(item.metrics?.spend,currency),conversions:app?count(item.metrics?.conversion):null});}
+      }
+    }catch(failure){throw new MarketingStoreError(`${this.provider==='meta'?'Meta':'TikTok'} reklam performansı okunamadı${failure instanceof ProviderError?failure.detail:''}.`,502);}
+    this.db.transaction(()=>{storeCreativeDays(this.db,days);this.db.prepare('UPDATE platform_ad_creatives SET stats_checked_at=? WHERE plan_id=? AND ad_ref IS NOT NULL').run(new Date().toISOString(),plan.id);this.audit('ads.creative.stats');}).immediate();
+    return this.list(plan.id);
+  }
   // Sends an approved image: the server switch, an explicit acknowledgement and an unchanged approval. Steps already done
   // (an uploaded image or video) are not repeated when the team presses Send again.
   async upload(raw:Record<string,unknown>){
@@ -186,3 +213,15 @@ export class AdCreatives{
       this.audit(error?(retry?'ads.creative.waiting':'ads.creative.failed'):'ads.creative.uploaded');return this.list(row.plan_id);}).immediate();
   }
 }
+
+// Worker step: the figures of one plan's sent ads are read once a day, as the plan's approver.
+export async function refreshDueCreativeStats(db:Database.Database,key:string,make?:(scope:MarketingScope,provider:AdProvider)=>{refreshStats:(raw:Record<string,unknown>)=>Promise<unknown>}){
+  const cutoff=new Date(Date.now()-86400000).toISOString();
+  const due=db.prepare(`SELECT p.id,p.provider,p.organization_id,p.project_id,p.approved_by FROM platform_ad_plans p JOIN platform_projects x ON x.id=p.project_id AND x.organization_id=p.organization_id AND x.product_pack='standard'
+    WHERE p.state IN ('active','paused') AND p.approved_by IS NOT NULL AND EXISTS(SELECT 1 FROM platform_ad_creatives c WHERE c.plan_id=p.id AND c.state='uploaded' AND c.ad_ref IS NOT NULL AND (c.stats_checked_at IS NULL OR c.stats_checked_at<?))
+    ORDER BY p.updated_at LIMIT 1`).get(cutoff) as {id:string;provider:AdProvider;organization_id:string;project_id:string;approved_by:string}|undefined;
+  if(!due)return 0;const scope={subject:due.approved_by,organizationId:due.organization_id,projectId:due.project_id};
+  try{await (make?make(scope,due.provider):new AdCreatives(db,scope,key,due.provider)).refreshStats({planId:due.id});return 1;}
+  catch{db.prepare('UPDATE platform_ad_creatives SET stats_checked_at=? WHERE plan_id=?').run(new Date().toISOString(),due.id);return 0;}
+}
+

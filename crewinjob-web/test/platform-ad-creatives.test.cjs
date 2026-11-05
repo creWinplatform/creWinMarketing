@@ -131,3 +131,28 @@ test('Google Play search terms: the Play Console CSV is read by column name, per
   assert.deepEqual(plain(turkish),[{term:'dövme',visitors:2,installs:3,conversion:null}],'a title row is skipped; Turkish headers and decimal commas are read');
   assert.throws(()=>parsePlayTermsCsv('foo,bar\n1,2\n'),/columns/);
 });
+
+test('creative figures: daily provider numbers per sent ad, the best click-through rate and a fatigue warning',env(async f=>{
+  const {teamAlerts}=load('team-alerts.ts'),{refreshDueCreativeStats}=load('ad-creatives.ts');
+  const ago=offset=>new Date(Date.now()-offset*86400000).toISOString().slice(0,10);
+  // Ad 1 falls from 2% to 0.8% CTR over its last 3 days; ad 2 holds 1.8%.
+  const daily=ad=>Array.from({length:8},(_,i)=>({date_start:ago(7-i),impressions:'1000',clicks:String(ad==='ad1'?(i<5?20:8):18),spend:'5.00',actions:[{action_type:'link_click',value:'9'}]}));
+  let ids=[];const base=graph(),g=async(method,path,token,params={})=>{const insight=path.match(/^(\d+)\/insights$/);if(insight){base.calls.push({method,path,token,params});return {data:daily(insight[1]===ids[0]?'ad1':'ad2')};}return base(method,path,token,params);};g.calls=base.calls;
+  const item=await metaPlan(f,g),creatives=new AdCreatives(f.db,f.scope,KEY,'meta',g);process.env.PLATFORM_AD_CREATIVES_ENABLED='1';
+  for(const height of [1080,1350]){let row=(await creatives.save({planId:item.id,image:{data:await png(1080,height),mime:'image/png'},primaryText:`Görsel ${height}`,pageId:'1234567890'})).creatives.at(-1);row=creatives.approve({id:row.id,expectedRevision:row.revision}).creatives.find(value=>value.id===row.id);await creatives.upload({id:row.id,acknowledged:true});}
+  ids=creatives.list(item.id).creatives.map(row=>row.adRef);assert.equal(ids.every(Boolean),true,JSON.stringify(creatives.list(item.id).creatives.map(row=>[row.state,row.lastError])));
+  await assert.rejects(new AdCreatives(f.db,{...f.scope,subject:f.member('editor').subject},KEY,'meta',g).refreshStats({planId:item.id}),e=>e.status===403);
+  const list=await creatives.refreshStats({planId:item.id});const [first,second]=list.creatives;
+  const call=g.calls.find(value=>value.path===`${ids[0]}/insights`);assert.equal(call.method,'GET');assert.equal(call.params.time_increment,'1');
+  assert.equal(first.stats.impressions,8000);assert.equal(first.stats.clicks,124);assert.equal(first.stats.spendMinor,4000);assert.equal(first.stats.conversions,null,'a traffic plan has no installs');
+  assert.deepEqual(plain(first.stats.fatigue),{recentCtr:0.008,earlierCtr:0.02});assert.equal(second.stats.fatigue,null);
+  assert.equal(second.best,true);assert.equal(first.best,false);
+  // The falling ad needs the plan to be running or paused for the team alert.
+  f.db.prepare("UPDATE platform_ad_plans SET state='paused' WHERE id=?").run(item.id);
+  const alert=plain(teamAlerts(f.db,f.scope)).find(value=>value.kind==='ad_fatigue');assert.equal(alert.count,1);assert.equal(alert.severity,'warning');
+  // Worker: once a day, as the approver.
+  const made=[];f.db.prepare('UPDATE platform_ad_creatives SET stats_checked_at=NULL').run();f.db.prepare('UPDATE platform_ad_plans SET approved_by=? WHERE id=?').run(f.scope.subject,item.id);
+  assert.equal(await refreshDueCreativeStats(f.db,KEY,(scope,provider)=>({refreshStats:async raw=>{made.push({scope,provider,raw});f.db.prepare('UPDATE platform_ad_creatives SET stats_checked_at=?').run(new Date().toISOString());}})),1);
+  assert.equal(made[0].scope.subject,f.scope.subject);assert.equal(made[0].raw.planId,item.id);
+  assert.equal(await refreshDueCreativeStats(f.db,KEY,()=>({refreshStats:async()=>{throw new Error('again');}})),0,'checked within a day');
+}));

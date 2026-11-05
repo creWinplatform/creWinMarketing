@@ -15,6 +15,7 @@ async function handle(request:NextRequest){
     if(!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz istek.');
     if(input.action==='subscribe')return NextResponse.json(service.subscribe(input),{headers});
+    if(input.action==='weekly')return NextResponse.json(service.setWeekly(input),{headers});
     if(input.action==='unsubscribe')return NextResponse.json(service.unsubscribe(),{headers});
     throw new MarketingStoreError('Geçersiz işlem.');
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Uyarılar alınamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}

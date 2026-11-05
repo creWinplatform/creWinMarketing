@@ -4,9 +4,11 @@ import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ConnectionJobs,settleUnauthorizedConnectionJob } from '@/lib/platform/connection-jobs';
 import { pruneProductEvents } from '@/lib/platform/product-webhooks';
-import { refreshDueKeywordRanks } from '@/lib/platform/mobile-aso';
+import { refreshDueCompetitors,refreshDueKeywordRanks } from '@/lib/platform/mobile-aso';
 import { syncDueReviews } from '@/lib/platform/mobile-reviews';
 import { refreshDueAdSpend } from '@/lib/platform/ad-spend-refresh';
+import { refreshDueCreativeStats } from '@/lib/platform/ad-creatives';
+import { deliverNextWeeklySummary } from '@/lib/platform/weekly-summary';
 import { pruneAttribution } from '@/lib/platform/attribution';
 import { deliverIysOutbox, pullIysChanges } from '@/lib/platform/iys';
 import { crewinIysEmailBackfill } from '@/lib/crewin-iys-email';
@@ -109,6 +111,8 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const linkResults=Date.now()-startedAt<20000?await syncDueLinkResults(db,credentialEncryptionKey()).catch(()=>0):0;
   // Opted-in members hear about new deadline-sensitive records by email; one subscriber is looked at per tick.
   const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
+  // The Monday summary for members who opted in, one per tick.
+  const weeklySummary=Date.now()-startedAt<25000?await deliverNextWeeklySummary(db).catch(()=>false):false;
   // Phone notifications carry no data: a fixed notice that something new needs the person, at most every 30 minutes.
   const pushes=Date.now()-startedAt<25000?await deliverDuePushes(db,credentialEncryptionKey()).catch(()=>0):0;
   // İYS: consents and opt-outs are reported a few per tick; the change feed is read every 30 minutes per project.
@@ -118,9 +122,13 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const crewinIysEmail=Date.now()-startedAt<20000?await crewinIysEmailBackfill(db,credentialEncryptionKey()).catch(()=>({checked:0})):{checked:0};
   // ASO: tracked App Store search terms are checked once a day, five per tick (Apple's public search API).
   const keywordRanks=Date.now()-startedAt<20000?await refreshDueKeywordRanks(db).catch(()=>0):0;
+  // Competitor apps: their public store details are read once a day, five per tick.
+  const competitors=Date.now()-startedAt<20000?await refreshDueCompetitors(db).catch(()=>0):0;
   // Store reviews: one connected store per tick, once a day each, as the person who set up the connection.
   const storeReviews=Date.now()-startedAt<20000?await syncDueReviews(db,credentialEncryptionKey()).catch(()=>0):0;
   // Ad spend: one running plan per tick is read from its provider every 6 hours, for the spend warnings.
   const adSpend=Date.now()-startedAt<20000?await refreshDueAdSpend(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, storeReviews, adSpend };
+  // Ad image and video figures: one plan per tick, once a day, for the comparison and the fatigue warning.
+  const creativeStats=Date.now()-startedAt<20000?await refreshDueCreativeStats(db,credentialEncryptionKey()).catch(()=>0):0;
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, creativeStats, weeklySummary };
 }

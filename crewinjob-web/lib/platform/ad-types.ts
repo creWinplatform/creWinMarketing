@@ -12,8 +12,10 @@ export type AdPlanView={
   app:{store:'apple'|'google';appId:string;storeUrl:string;metaApplicationId?:string;targetCostMinor?:number}|null;
   approved:boolean;approvedAt:string|null;providerCampaignId:string|null;lastError:string|null;spendMinor:number|null;impressions:number|null;clicks:number|null;spendCheckedAt:string|null;revision:number;updatedAt:string;
 };
+// The last 14 days a provider reported for one sent ad; fatigue compares the last 3 delivery days with the days before.
+export type AdCreativeStats={from:string;to:string;impressions:number;clicks:number;spendMinor:number;currency:string;conversions:number|null;ctr:number|null;cpaMinor:number|null;fatigue:{recentCtr:number;earlierCtr:number}|null;days:{day:string;impressions:number;clicks:number;spendMinor:number}[]};
 // An ad image of a created Meta or TikTok plan (ad-creatives.ts); the thumbnail is a small JPEG data URL.
-export type AdCreativeView={id:string;planId:string;thumbnail:string;width:number;height:number;headline:string;primaryText:string;cta:string;pageId:string;videoUrl:string|null;videoBytes:number|null;videoRef:string|null;state:'draft'|'approved'|'uploading'|'uploaded'|'failed';approved:boolean;revision:number;imageRef:string|null;adRef:string|null;lastError:string|null;uploadedAt:string|null;updatedAt:string};
+export type AdCreativeView={id:string;planId:string;thumbnail:string;width:number;height:number;headline:string;primaryText:string;cta:string;pageId:string;videoUrl:string|null;videoBytes:number|null;videoRef:string|null;state:'draft'|'approved'|'uploading'|'uploaded'|'failed';approved:boolean;revision:number;imageRef:string|null;adRef:string|null;lastError:string|null;uploadedAt:string|null;updatedAt:string;stats:AdCreativeStats|null;best:boolean;statsCheckedAt:string|null};
 // The TikTok ad group and identity Ryzevo sets up once per plan, so video ads can be made in it.
 export type TikTokAdSetupView={ready:boolean;adgroupId:string|null;displayName:string|null;needsAppId:boolean;createdAt:string|null};
 export type AdsSnapshot={

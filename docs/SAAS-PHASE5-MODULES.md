@@ -505,6 +505,66 @@ The app is kept in `platform_ad_plans.app_json`. Changing it clears the approval
 - Code: `lib/platform/ad-alerts.ts`, `ad-spend-refresh.ts`, `ad-creatives.ts`, `app/api/platform/ad-creatives`, `components/platform/AdCreatives.tsx`.
 - **Tests:** `test/platform-ad-alerts.test.cjs`, `test/platform-ad-creatives.test.cjs`.
 
+## 16. Go-live panel, ad creative figures, review topics, competitor watch and the weekly summary (schema 76, 5 November 2026)
+
+**Go-live panel (Project settings → Go-live).**
+
+- **Who sees it:** connection managers of standard projects.
+- **What it lists**, from the project's own records and the server's switches:
+  - **social channels:** a connected account, its grant, and whether the channel's app is set on the server;
+  - **ad accounts:** connected, budget caps, plans on the provider;
+  - **mobile:** per app, its attribution source, store connections and push provider. Webhook sources count as ready once an event has arrived; other connections once they are verified;
+  - **messages:** email sender, WhatsApp, the İYS declaration;
+  - **measurement:** GA4, Search Console;
+  - **every server switch**, reported as on or off.
+- **What is counted:** channels the project does not use are not counted.
+- **"Verify":**
+  - Ad accounts: the account is read again with the stored access (`ProjectAds.verify`). TikTok also lists its locations.
+  - Mobile connections: the existing connection check runs.
+  - Nothing is spent or sent, and no setting value or secret is shown.
+
+**Ad creative figures.**
+
+- **Reading:** the last 14 days per sent ad (Meta `insights` per day, TikTok `report/integrated/get` at ad level): impressions, clicks, spend and installs for app plans. They are kept 90 days (`platform_ad_creative_stats`).
+- **When:** the worker reads one plan per day as its approver; "Update figures" reads now.
+- **What is shown:** the card shows the figures, CTR and CPI, and marks the best click-through rate among creatives with at least 1000 impressions.
+- **Fatigue:** the CTR of the last 3 delivery days fell by 30% or more against the days before, with 1000 or more impressions on each side.
+  - It becomes an `ad_fatigue` team alert with a suggestion to add a new image.
+  - Nothing is paused.
+
+**Review topics.**
+
+- **What is grouped:** "Find topics with AI" groups the last 90 days of reviews (up to 200, at least 5) into at most 8 topics: problem, praise or request.
+- **What the model does:** it names the topics and lists the review numbers in each.
+- **What Ryzevo computes:** the counts, averages and stores, from those reviews. Repeated or out-of-range numbers are dropped, and a review belongs to one topic.
+- **Privacy:** contact details are masked and authors are not sent to the model.
+- **Tasks:** a problem or request topic becomes a work task. The note carries the topic, the count and the average, never review text.
+
+**Competitor watch.**
+
+- **What is read:** the worker reads each competitor's public App Store details once a day, five per tick: name, rating, rating count, version, release date and notes. They are kept 180 days.
+- **What counts as a change:** a version, a name, or a rating moved by 0.1 or more over the last 30 days. Changes are shown under each competitor.
+- **Alert:** the last week's changes become a `competitor_change` team alert.
+- **Failed reads:** a failed read marks the day without inventing a change.
+
+**Weekly summary.**
+
+- **Who gets it:** members who receive alert emails can also turn on a Monday summary in the "Needs attention" card. It is sent from 06:00 UTC, once per ISO week, one member per tick.
+- **What it covers**, for the last 7 days against the 7 before:
+  - posts;
+  - spend and plans at a warning threshold;
+  - installs, new reviews and their average, and unanswered reviews per app;
+  - App Store keywords up and down;
+  - competitor changes;
+  - what needs attention now.
+- **Privacy:** counts only, for the team.
+- **Delivery:** it is marked before the email call and not retried.
+
+**Files:**
+
+- Code: `lib/platform/go-live.ts`, `ad-creative-stats.ts`, `weekly-summary.ts`, `mobile-reviews.ts` (topics), `mobile-aso.ts` (competitor watch), `components/platform/GoLivePanel.tsx`.
+- **Tests:** `test/platform-go-live.test.cjs`, `test/platform-weekly-summary.test.cjs`, and the ad creative, review and ASO tests.
+
 ## Tests and verification
 
 - **Tests (in `test:platform`):**

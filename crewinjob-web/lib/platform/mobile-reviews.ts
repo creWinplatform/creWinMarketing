@@ -8,9 +8,10 @@ import { mobileGoogleAccess,type MobileSecret,type MobileTransport } from './mob
 import { REPLY_LIMITS,readAppStoreReviews,readPlayReviews,replyAppStoreReview,replyPlayReview,type StoreReview } from './mobile-aso-providers';
 import { MobileGrowth,mobileRevision } from './mobile-store';
 import { maskPersonal } from './messaging-sources';
+import { ProjectOperations } from './operations';
 import { COACH_BANNED,coachClip,coachObject,coachText,type CoachGenerator } from './coach';
 import { parseCoachJson,runCoachAi } from './coach-ai';
-import type { MobileReviewView,MobileReviewsSnapshot } from './mobile-types';
+import type { MobileReviewTopic,MobileReviewView,MobileReviewsSnapshot } from './mobile-types';
 
 export const REVIEW_LIMITS={perApp:1000,keepDays:400,syncEveryHours:24,list:50} as const;
 export const reviewRepliesEnabled=()=>process.env.PLATFORM_MOBILE_REVIEW_REPLY_ENABLED==='1';
@@ -59,7 +60,41 @@ export class MobileReviews{
     }).filter(item=>item.count||item.syncedAt);
     const reviews:MobileReviewView[]=rows.map(row=>({id:row.id,store:row.store,rating:row.rating,title:row.title,body:row.body,author:row.author,territory:row.territory,language:row.language,appVersion:row.app_version,reviewedAt:row.reviewed_at,storeReply:row.store_reply,storeReplyAt:row.store_reply_at,
       reply:row.reply_state?{text:row.reply_text!,source:row.reply_source!,state:row.reply_state,revision:row.reply_revision!,approved:row.reply_state==='approved'&&row.reply_approved_digest===row.reply_digest,lastError:row.reply_error,sentAt:row.reply_sent_at}:null}));
-    return {reviews,stats,repliesEnabled:reviewRepliesEnabled(),limits:REPLY_LIMITS};
+    return {topics:this.topics(appId),reviews,stats,repliesEnabled:reviewRepliesEnabled(),limits:REPLY_LIMITS};
+  }
+  topics(appId:string){
+    const row=this.db.prepare('SELECT review_count,topics_json,generated_at FROM platform_mobile_review_topics WHERE app_id=? AND organization_id=? AND project_id=?').get(appId,...this.args()) as {review_count:number;topics_json:string;generated_at:string}|undefined;
+    return row?{generatedAt:row.generated_at,reviewCount:row.review_count,items:JSON.parse(row.topics_json) as MobileReviewTopic[]}:null;
+  }
+  // AI groups the last 90 days of reviews (up to 200) into at most 8 topics. The model only names topics and says which
+  // reviews belong to each; counts, averages and stores are computed here from those reviews, never taken from the model.
+  async generateTopics(raw:Record<string,unknown>,generator?:CoachGenerator){
+    this.mobile.authorize('content.write');assertProjectWork(this.db,this.mobile.scope);if(!generator)throw new MarketingStoreError('Bu platform için AI sağlayıcısı ve model henüz yapılandırılmadı.',503);
+    const appId=String(raw.appId),app=this.mobile.app(appId),project=this.mobile.repo.workspace(this.mobile.scope.subject,...this.args())!.project;
+    const rows=this.db.prepare('SELECT id,store,rating,title,body FROM platform_mobile_reviews WHERE app_id=? AND organization_id=? AND project_id=? AND reviewed_at>=? ORDER BY reviewed_at DESC,id LIMIT 200').all(appId,...this.args(),new Date(Date.now()-90*86400000).toISOString()) as {id:string;store:Store;rating:number;title:string;body:string}[];
+    if(rows.length<5)throw new MarketingStoreError('Konu çıkarmak için son 90 günde en az 5 yorum gerekir.',409);
+    const lines=rows.map((row,index)=>`${index+1}. [${row.rating}★] ${maskPersonal(`${row.title} ${row.body}`.replace(/\s+/g,' ').trim()).slice(0,300)}`).join('\n');
+    const prompt=`Group these ${rows.length} app store reviews of the app "${app.name}" into at most 8 topics, in ${project.language==='en'?'English':'Turkish'}. Each topic has a short label (at most 60 characters, a concrete issue or theme, no names of people), a kind (problem, praise or request) and the numbers of the reviews that belong to it (a review can be in at most one topic; leave out reviews that fit no topic). Do not count or summarise ratings. Answer only as JSON: {"topics":[{"label":"...","kind":"problem","reviews":[1,4]}]}\nReviews:\n${lines}`;
+    return runCoachAi(this.db,this.mobile.scope,generator,prompt,output=>{
+      const fail=()=>new MarketingStoreError('AI yanıtı okunamadı veya kurallara uymadı. Tekrar deneyin.',422);
+      let topics:unknown;try{topics=coachObject(parseCoachJson(output)).topics;}catch{throw fail();}if(!Array.isArray(topics)||!topics.length)throw fail();
+      const used=new Set<number>(),items:MobileReviewTopic[]=[];
+      for(const value of topics.slice(0,8)){const topic=coachObject(value),kind=['problem','praise','request'].includes(String(topic.kind))?String(topic.kind) as MobileReviewTopic['kind']:null;
+        let label:string;try{label=coachClip(coachText(topic.label,200),60).trim();}catch{continue;}
+        if(!kind||!label||maskPersonal(label)!==label||/https?:\/\//i.test(label))continue;
+        const members=[...new Set((Array.isArray(topic.reviews)?topic.reviews:[]).map(Number))].filter(index=>Number.isInteger(index)&&index>=1&&index<=rows.length&&!used.has(index));members.forEach(index=>used.add(index));if(!members.length)continue;
+        const list=members.map(index=>rows[index-1]);
+        items.push({id:createHash('sha256').update(`${kind}:${label}`).digest('hex').slice(0,16),label,kind,count:list.length,average:Math.round(list.reduce((total,row)=>total+row.rating,0)/list.length*100)/100,stores:[...new Set(list.map(row=>row.store))],examples:list.filter(row=>row.title).slice(0,3).map(row=>({title:row.title.slice(0,120),rating:row.rating}))});}
+      if(!items.length)throw fail();return items.sort((a,b)=>b.count-a.count);
+    },items=>{this.mobile.authorize('content.write');const now=new Date().toISOString();
+      this.db.prepare('INSERT INTO platform_mobile_review_topics VALUES(?,?,?,?,?,?,?) ON CONFLICT(app_id) DO UPDATE SET review_count=excluded.review_count,topics_json=excluded.topics_json,generated_by=excluded.generated_by,generated_at=excluded.generated_at').run(appId,...this.args(),rows.length,JSON.stringify(items),this.mobile.scope.subject,now);
+      this.mobile.audit('mobile.review.topics');return this.snapshot(appId,raw.filter);});
+  }
+  // A topic becomes a task in the work calendar; the task note carries the topic, never review text.
+  topicTask(raw:Record<string,unknown>){
+    this.mobile.authorize('content.write');const appId=String(raw.appId),app=this.mobile.app(appId),topic=this.topics(appId)?.items.find(item=>item.id===raw.topicId);if(!topic)throw new MarketingStoreError('Konu bulunamadı.',404);
+    const marker=`mobile-review-topic:${appId}:${topic.id}`,operations=new ProjectOperations(this.db,this.mobile.scope),existing=operations.tasks().find(item=>item.note.includes(marker)&&!['completed','cancelled'].includes(item.status));if(existing)return existing;
+    return operations.saveTask({title:`${app.name} · ${topic.label}`.slice(0,160),dueAt:new Date(Date.now()+3*86400000).toISOString(),note:`${marker}\n${topic.kind==='problem'?'Yorumlarda sorun':topic.kind==='request'?'Yorumlarda istek':'Yorumlarda övgü'}: ${topic.count} yorum, ortalama ${topic.average}★.`,status:'planned'});
   }
   // Reviews are stored as the store reports them; a later read updates the text, rating and the store's own reply.
   private keep(appId:string,store:Store,reviews:StoreReview[]){

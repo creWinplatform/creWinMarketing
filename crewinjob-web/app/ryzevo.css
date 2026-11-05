@@ -605,3 +605,12 @@ html:not(.dark) .workspace-shell .bg-red-100.text-red-600{color:#b91c1c}
 .attribution-setup-panel{display:grid;gap:12px}.attribution-setup-panel .studio-section-title{margin-bottom:0}.attribution-steps{margin:0;padding-left:20px;font-size:12px;line-height:1.7;display:grid;gap:4px}.attribution-code pre{max-height:320px;overflow:auto}
 .iys-panel{display:grid;gap:12px}.iys-declare{display:grid;gap:8px;border:1px solid var(--studio-border);border-radius:6px;padding:12px}.iys-declare legend{font-weight:650;font-size:13px;padding:0 4px}.iys-declare label{display:flex;gap:8px;align-items:center;font-size:13px}
 .iys-connection,.iys-status{display:grid;gap:8px}.iys-attention ul{display:grid;gap:6px;margin:0;padding:0;list-style:none}.iys-attention li{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;padding:8px 10px;border:1px solid var(--studio-border);border-radius:6px}.iys-rules ul{display:grid;gap:4px;font-size:12px;line-height:1.6;padding-left:18px}
+/* Go-live panel. */
+.golive-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:16px;margin:12px 0 18px}.golive-summary>div{border-bottom:2px solid var(--studio-border);padding:8px 0 12px;min-width:0}.golive-summary span{display:block;font-size:12px;color:var(--studio-muted)}.golive-summary strong{display:block;font-size:26px;font-variant-numeric:tabular-nums}.golive-summary small{color:#b4483c}
+.golive-toggle{display:flex;gap:8px;align-items:center;font-size:13px;margin-bottom:8px}.golive-group{margin-top:18px}.golive-group h3{font-size:14px;margin:0 0 6px}.golive-group ul{list-style:none;margin:0;padding:0}
+.golive-item{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px 0;border-bottom:1px solid var(--studio-border)}.golive-item p{margin:4px 0 0;color:var(--studio-muted);overflow-wrap:anywhere}.golive-state{margin-left:8px;font-size:12px;color:var(--studio-muted)}
+.golive-ready .golive-icon{color:#2f7d4f}.golive-action .golive-icon{color:#b4483c}.golive-off .golive-icon{color:#b8860b}.golive-optional .golive-icon{color:var(--studio-muted)}
+.golive-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.golive-notice{margin:8px 0;color:#2f7d4f}
+@media(max-width:600px){.golive-item{grid-template-columns:24px minmax(0,1fr)}.golive-actions{grid-column:2;justify-content:flex-start}}
+.team-alert-weekly{display:flex;gap:8px;align-items:center;font-size:13px;margin:8px 0}
+

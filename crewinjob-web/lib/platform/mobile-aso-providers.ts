@@ -17,6 +17,14 @@ export async function appStoreRank(app:MobileApp,term:string,country:string,read
   const place=(id:string)=>{const found=results.findIndex(row=>String(row.trackId)===id);return found<0?null:found+1;};
   return {rank:index<0?null:index+1,resultCount:results.length,leaders:results.slice(0,3).map(row=>({id:String(row.trackId||''),name:String(row.trackName||'').replace(/[\x00-\x1f]/g,'').slice(0,120)})),competitors:Object.fromEntries(competitors.map(id=>[id,place(id)]))};
 }
+// A competitor's public store details for the daily watch: name, rating, rating count and the current version.
+export async function appStoreDetails(id:string,country:string,read:MobileTransport=fetch){
+  const rows=(await mobileJson(await mobileRequest(read,`https://itunes.apple.com/lookup?${new URLSearchParams({id,country:country.toLowerCase(),entity:'software'})}`))).results;
+  const row=Array.isArray(rows)?rec(rows[0]):{};if(String(row.trackId)!==id||typeof row.trackName!=='string')throw new Error('Not found.');
+  const clean=(value:unknown,max:number)=>typeof value==='string'?value.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'').slice(0,max):null;
+  const rating=Number(row.averageUserRating),ratings=Number(row.userRatingCount);
+  return {name:clean(row.trackName,120)!,rating:Number.isFinite(rating)&&rating>=0&&rating<=5?Math.round(rating*100)/100:null,ratingCount:Number.isSafeInteger(ratings)&&ratings>=0?ratings:null,version:clean(row.version,40),releasedAt:clean(row.currentVersionReleaseDate,40),notes:clean(row.releaseNotes,1000)};
+}
 // The public name of an App Store app, to track it as a competitor.
 export async function appStoreLookup(id:string,country:string,read:MobileTransport=fetch){
   const rows=(await mobileJson(await mobileRequest(read,`https://itunes.apple.com/lookup?${new URLSearchParams({id,country:country.toLowerCase(),entity:'software'})}`))).results;

@@ -170,7 +170,7 @@ test('competitor apps: looked up once, read from the same searches, limited to f
   await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'123456789'},lookup),/Kendi uygulamanız/);
   await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'abc'},lookup),/yalnız rakam/);
   await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'99999'},lookup),e=>e.status===404);
-  let value=await f.aso.addCompetitor({appId:f.app.id,appleId:'5550001'},lookup);assert.deepEqual(plain(value.competitors),[{id:'5550001',name:'InkRival Pro'}]);
+  let value=await f.aso.addCompetitor({appId:f.app.id,appleId:'5550001'},lookup);assert.deepEqual(plain(value.competitors.map(({id,name})=>({id,name}))),[{id:'5550001',name:'InkRival Pro'}]);
   await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'5550001'},lookup),e=>e.status===409);
   const search=transport(call=>call.url.searchParams.get('term')==='dövme'?{results:[{wrapperType:'software',trackId:5550001,trackName:'InkRival Pro'},{wrapperType:'software',trackId:123456789,trackName:'QA Ink'}]}:{results:[{wrapperType:'software',trackId:7,trackName:'Other'}]});
   const checked=await f.aso.checkRanks(f.app.id,search);assert.equal(search.calls.length,2,'no extra request for competitors');
@@ -180,4 +180,24 @@ test('competitor apps: looked up once, read from the same searches, limited to f
   await assert.rejects(f.aso.addCompetitor({appId:f.app.id,appleId:'66666'},lookup),e=>e.status===429);
   value=f.aso.removeCompetitor(f.app.id,'5550001');assert.equal(value.competitors.some(item=>item.id==='5550001'),false);assert.equal(value.keywords[0].competitors.length,0,'a removed competitor disappears from the table');
   assert.throws(()=>f.as(f.other).competitors(f.app.id),e=>e.status===404);
+}));
+
+test('competitor watch: daily public details, changes of version, name and rating, and a team alert',withMobile(async f=>{
+  const {refreshDueCompetitors}=load('mobile-aso.ts'),{teamAlerts}=load('team-alerts.ts');
+  f.db.prepare('INSERT INTO platform_mobile_competitors VALUES(?,?,?,?,?,?,?)').run(f.scope.organizationId,f.scope.projectId,f.app.id,'5550001','InkRival',f.scope.subject,new Date().toISOString());
+  let details={trackId:5550001,trackName:'InkRival',averageUserRating:4.51,userRatingCount:1200,version:'2.0',currentVersionReleaseDate:'2026-10-01T00:00:00Z',releaseNotes:'Hata düzeltmeleri'};
+  const lookup=()=>transport(call=>call.url.pathname==='/lookup'?{results:[details]}:undefined);
+  let read=lookup();assert.equal(await refreshDueCompetitors(f.db,read),1);assert.equal(read.calls[0].url.searchParams.get('country'),'tr');
+  assert.equal(await refreshDueCompetitors(f.db,lookup()),0,'once a day');
+  // Yesterday's snapshot, then today’s with a new version, a new name and a lower rating.
+  f.db.prepare("UPDATE platform_mobile_competitor_snapshots SET checked_on=?").run(day(-1));
+  details={...details,trackName:'InkRival: Dövme',averageUserRating:4.3,version:'2.1',releaseNotes:'Yeni randevu ekranı'};
+  assert.equal(await refreshDueCompetitors(f.db,lookup()),1);
+  const [rival]=plain(f.aso.competitors(f.app.id));assert.equal(rival.name,'InkRival: Dövme');assert.deepEqual(rival.latest,{checkedOn:day(0),rating:4.3,ratingCount:1200,version:'2.1',releasedAt:'2026-10-01T00:00:00Z'});
+  assert.deepEqual(rival.changes.map(change=>change.kind).sort(),['name','rating','version']);assert.equal(rival.changes.find(change=>change.kind==='version').notes,'Yeni randevu ekranı');
+  const alert=plain(teamAlerts(f.db,f.scope)).find(item=>item.kind==='competitor_change');assert.equal(alert.count,3);assert.deepEqual(alert.plans,['InkRival: Dövme']);
+  // A failed read marks the day without inventing a change.
+  f.db.prepare("UPDATE platform_mobile_competitor_snapshots SET checked_on=? WHERE checked_on=?").run(day(-2),day(-1));f.db.prepare("UPDATE platform_mobile_competitor_snapshots SET checked_on=? WHERE checked_on=?").run(day(-1),day(0));
+  assert.equal(await refreshDueCompetitors(f.db,transport(()=>new Response('down',{status:503}))),0);
+  assert.equal(plain(f.aso.competitors(f.app.id))[0].changes.filter(change=>change.day===day(0)).length,0);
 }));

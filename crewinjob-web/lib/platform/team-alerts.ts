@@ -15,6 +15,8 @@ import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from
 import { ryzevoFeature } from './ryzevo-features';
 import { iysAttention } from './iys';
 import { adWarnings } from './ad-alerts';
+import { fatiguedCreatives } from './ad-creative-stats';
+import { recentCompetitorChanges } from './mobile-aso';
 
 type Lang = 'tr' | 'en';
 type Scope = { subject: string; organizationId: string; projectId: string };
@@ -73,8 +75,16 @@ export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()
       const list = warnings.filter(item => item.kind === (kind === 'ad_overspend' ? 'overspend' : 'cpi'));
       if (list.length) alerts.push({ kind, severity: 'urgent', count: list.length, at: null, href: '/?tab=campaigns&campaignView=ads', plans: [...new Set(list.map(item => item.name))].slice(0, 5), keys: list.map(item => `${kind}:${item.planId}:${item.day}`) });
     }
+    // Sent ad images or videos whose click-through rate is falling: a new image is suggested.
+    const tired = fatiguedCreatives(db, scope, now);
+    if (tired.length) alerts.push({ kind: 'ad_fatigue', severity: 'warning', count: tired.length, at: null, href: '/?tab=campaigns&campaignView=ads', plans: [...new Set(tired.map(item => item.planName))].slice(0, 5), keys: tired.map(item => `ad_fatigue:${item.creativeId}:${item.day}`) });
   }
   // New or returning findings from a scheduled site scan (a scan someone starts by hand is looked at right away).
+  // Competitor apps that shipped a version, changed their name or moved in rating in the last week.
+  if (can('content.write')) {
+    const changes = recentCompetitorChanges(db, scope, now);
+    if (changes.length) alerts.push({ kind: 'competitor_change', severity: 'warning', count: changes.length, at: null, href: '/?tab=mobile&mobileSection=aso', plans: [...new Set(changes.map(item => item.name))].slice(0, 5), keys: changes.map(item => `competitor:${item.appleId}:${item.kind}:${item.day}`) });
+  }
   if (can('content.write')) {
     const rows = db.prepare("SELECT e.finding_id,MAX(e.at) at FROM platform_seo_finding_events e JOIN platform_seo_findings f ON f.id=e.finding_id JOIN platform_seo_scans s ON s.id=e.scan_id WHERE e.organization_id=? AND e.project_id=? AND e.kind IN ('detected','reopened') AND e.at>=? AND f.state='open' AND s.started_via='schedule' GROUP BY e.finding_id ORDER BY at DESC LIMIT 100")
       .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { finding_id: string; at: string }[];
@@ -113,6 +123,8 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
       case 'iys_deadline': return tr ? `${n(alert.count)} izin veya ret kaydının İYS bildirim süresi doluyor ya da gönderilemedi (ilk son tarih: ${time(alert.at)}).` : `${n(alert.count)} consent or opt-out record(s) are close to their IYS deadline or could not be sent (first deadline: ${time(alert.at)}).`;
       case 'iys_sync': return tr ? 'İYS değişiklikleri 6 saattir okunamadı; okunana kadar durumu eski alıcılara canlı gönderim yapılmaz.' : 'IYS changes have not been read for 6 hours; until they are, live messages skip recipients with an old status.';
       case 'ad_overspend': return tr ? `${n(alert.count)} yayındaki reklam planı harcama eşiğini aştı. Duraklatmayı değerlendirin; Ryzevo kendiliğinden duraklatmaz.` : `${n(alert.count)} running ad plan(s) are above the spend threshold. Consider pausing; Ryzevo never pauses on its own.`;
+      case 'competitor_change': return tr ? `Rakip uygulamalarda ${n(alert.count)} değişiklik var (sürüm, ad veya puan).` : `Competitor apps show ${n(alert.count)} change(s) (version, name or rating).`;
+      case 'ad_fatigue': return tr ? `${n(alert.count)} reklam görselinin tıklanma oranı son günlerde belirgin düştü. Yeni bir görsel eklemeyi değerlendirin.` : `The click-through rate of ${n(alert.count)} ad image(s) fell clearly in recent days. Consider adding a new image.`;
       case 'ad_cpi': return tr ? `${n(alert.count)} yayındaki reklam planında son 7 günün yükleme başına maliyeti sınırın üstünde. Duraklatmayı değerlendirin.` : `${n(alert.count)} running ad plan(s) cost more per install than the cap over the last 7 days. Consider pausing.`;
       case 'invite_pending': return tr ? `${n(alert.count)} proje daveti kabulünüzü bekliyor (ilk bitiş: ${time(alert.at)}).` : `${n(alert.count)} project invitation(s) are waiting for you (first expires ${time(alert.at)}).`;
       case 'seo_findings': return tr ? `Planlı site taramasında ${n(alert.count)} yeni veya yeniden görülen SEO bulgusu var.` : `The scheduled site scan found ${n(alert.count)} new or returning SEO finding(s).`;
@@ -133,12 +145,12 @@ export class TeamAlerts {
     if (!this.repo.can(this.scope.subject, ...args(this.scope), 'read') || !ryzevoFeature(this.repo.workspace(this.scope.subject, ...args(this.scope))?.project.productPack, 'alerts')) throw new MarketingStoreError('Uyarılar için standart proje erişimi gerekli.', 403);
   }
   private email() { return (this.db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(this.scope.subject) as { email: string } | undefined)?.email || null; }
-  private subscription() { return this.db.prepare('SELECT language FROM platform_alert_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(this.scope.subject, ...args(this.scope)) as { language: Lang } | undefined; }
+  private subscription() { return this.db.prepare('SELECT language,weekly FROM platform_alert_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(this.scope.subject, ...args(this.scope)) as { language: Lang; weekly: number } | undefined; }
   private audit(operation: string) { this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), operation, new Date().toISOString()); }
   read(): TeamAlertsView {
     this.authorize(); const subscription = this.subscription();
     return { alerts: teamAlerts(this.db, this.scope), timezone: this.repo.workspace(this.scope.subject, ...args(this.scope))!.project.timezone,
-      email: { enabled: Boolean(alertEmailConfiguration()), subscribed: Boolean(subscription), language: subscription?.language || null, hasVerifiedEmail: Boolean(this.email()) }, push: { enabled: Boolean(webPushConfiguration()) } };
+      email: { enabled: Boolean(alertEmailConfiguration()), subscribed: Boolean(subscription), language: subscription?.language || null, hasVerifiedEmail: Boolean(this.email()), weekly: Boolean(subscription?.weekly) }, push: { enabled: Boolean(webPushConfiguration()) } };
   }
   // Opting in marks what is already open as seen, so the first email is about something new.
   subscribe(raw: Record<string, unknown>) {
@@ -151,6 +163,13 @@ export class TeamAlerts {
       if (fresh) { const seen = this.db.prepare('INSERT OR IGNORE INTO platform_alert_notices(user_id,organization_id,project_id,alert_key,notified_at) VALUES(?,?,?,?,?)'); for (const key of teamAlerts(this.db, this.scope).flatMap(item => item.keys)) seen.run(this.scope.subject, ...args(this.scope), key, now); }
       this.audit('alerts.subscribe');
     }).immediate();
+    return this.read();
+  }
+  // The weekly summary rides on the alert email subscription.
+  setWeekly(raw: Record<string, unknown>) {
+    this.authorize(); if (typeof raw.enabled !== 'boolean') throw new MarketingStoreError('Geçersiz uyarı ayarı.');
+    if (!this.subscription()) throw new MarketingStoreError('Haftalık özet için önce e-posta uyarılarını açın.', 409);
+    this.db.prepare('UPDATE platform_alert_subscriptions SET weekly=? WHERE user_id=? AND organization_id=? AND project_id=?').run(raw.enabled ? 1 : 0, this.scope.subject, ...args(this.scope)); this.audit(raw.enabled ? 'alerts.weekly.on' : 'alerts.weekly.off');
     return this.read();
   }
   unsubscribe() {

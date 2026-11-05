@@ -40,6 +40,8 @@ async function handle(request:NextRequest){
       case 'approveReviewReply':result=reviews.approveReply(raw);break;
       case 'aiReviewReply':result=await reviews.aiReply(raw,coachGemini(600));break;
       case 'sendReviewReply':result=await reviews.sendReply(raw);break;
+      case 'reviewTopics':result=await reviews.generateTopics(raw,coachGemini(2000));break;
+      case 'reviewTopicTask':result=reviews.topicTask(raw);break;
       case 'importPlayTerms':result=aso.importPlayTerms(raw);break;
       case 'addCompetitor':result=await aso.addCompetitor(raw);break;
       case 'removeCompetitor':result=aso.removeCompetitor(String(raw.appId),String(raw.appleId));break;

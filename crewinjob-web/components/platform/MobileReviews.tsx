@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { RefreshCw,Sparkles,Save,Check,Send,Trash2,Star } from 'lucide-react';
+import { RefreshCw,Sparkles,Save,Check,Send,Trash2,Plus } from 'lucide-react';
 import { localeTag } from '@/lib/i18n/shared';
 import { translateMessage } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/platform/catalog';
@@ -32,6 +32,14 @@ export default function MobileReviews({lang,data,app,busy,run,post}:Props){
         <p className="studio-note">{t('Son 30 gün','Last 30 days')}: {item.recentAverage===null?'—':`${item.recentAverage} · ${item.recentCount}`} · {t('Yanıtsız','Unanswered')}: {item.unanswered}{item.syncedAt?` · ${t('Son okuma','Last read')} ${new Date(item.syncedAt).toLocaleString(localeTag(lang))}`:''}</p>
       </article>)}</div>}
     </section>
+    {view.stats.length>0&&<section className="studio-band">
+      <div className="studio-section-title"><h2>{t('Yorum konuları','Review topics')}</h2>{data.canWrite&&<button className="studio-secondary" disabled={busy} onClick={()=>act({action:'reviewTopics'},t('Konular çıkarıldı.','Topics found.'))}><Sparkles size={15}/>{view.topics?t('Yeniden çıkar','Find again'):t('AI ile konuları çıkar','Find topics with AI')}</button>}</div>
+      <p className="studio-subtitle">{t('Son 90 günün yorumları (en çok 200) konulara ayrılır. Konuyu ve hangi yorumların ona ait olduğunu AI söyler; sayılar ve ortalamalar yorumlardan hesaplanır. Bir gözlemdir.','The last 90 days of reviews (up to 200) are grouped into topics. AI names each topic and the reviews in it; counts and averages are computed from those reviews. It is an observation.')}</p>
+      {view.topics?<><ul className="mobile-review-topics">{view.topics.items.map(topic=><li key={topic.id} className={`mobile-topic-${topic.kind}`}><div><span className="studio-badge">{({problem:t('Sorun','Problem'),praise:t('Övgü','Praise'),request:t('İstek','Request')})[topic.kind]}</span><strong>{topic.label}</strong><small>{t(`${topic.count} yorum · ortalama ${topic.average}★`,`${topic.count} reviews · average ${topic.average}★`)} · {topic.stores.map(store=>store==='ios'?'App Store':'Google Play').join(', ')}</small>{topic.examples.length>0&&<small className="mobile-topic-examples">{topic.examples.map(example=>`“${example.title}” (${example.rating}★)`).join(' · ')}</small>}</div>
+        {data.canWrite&&topic.kind!=='praise'&&<button className="studio-text-button" disabled={busy} onClick={()=>void run(()=>post({action:'reviewTopicTask',appId:app.id,topicId:topic.id}),t('İş takvimine eklendi.','Added to the work calendar.'))}><Plus size={14}/>{t('İşe dönüştür','Create task')}</button>}</li>)}</ul>
+        <p className="studio-note">{t(`${view.topics.reviewCount} yorumdan · ${new Date(view.topics.generatedAt).toLocaleString(localeTag(lang))}`,`From ${view.topics.reviewCount} reviews · ${new Date(view.topics.generatedAt).toLocaleString(localeTag(lang))}`)}</p></>
+      :<p className="studio-empty">{t('Henüz konu çıkarılmadı.','No topics yet.')}</p>}
+    </section>}
     {view.stats.length>0&&<section className="studio-band">
       <div className="studio-section-title"><h2>{t('Son yorumlar','Latest reviews')}</h2><label className="mobile-review-filter">{t('Göster','Show')}<select value={filter} onChange={event=>changeFilter(event.target.value)}><option value="all">{t('Tümü','All')}</option><option value="unanswered">{t('Yanıtsız','Unanswered')}</option><option value="low">{t('1–3 yıldız','1–3 stars')}</option></select></label></div>
       {!view.reviews.length?<p className="studio-empty">{t('Bu filtrede yorum yok.','No reviews for this filter.')}</p>:view.reviews.map(review=>{const draft=drafts[review.id]??review.reply?.text??'',reply=review.reply,editable=!reply||['draft','approved','failed'].includes(reply.state),changed=draft!==(reply?.text??'');

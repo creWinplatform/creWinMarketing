@@ -98,3 +98,20 @@ test('the monthly report carries the month’s mobile figures as counts only',wi
   assert.deepEqual(app.reviews,[{store:'ios',count:2,average:3.5,replied:1,overallAverage:3.5,overallCount:2}]);
   const facts=new MonthlyReports(f.db,f.scope).facts(month);assert.equal(facts.mobile[0].name,'QA Ink');assert.doesNotMatch(JSON.stringify(facts),/Gizli|gizli-kişi|Teşekkürler/,'no review text, author or reply text');
 }));
+
+test('review topics: AI names the topics and their reviews; counts and averages are computed here; a topic becomes a task',withMobile(async f=>{
+  const at=ago(2),insert=(id,rating,title,store='ios')=>f.db.prepare('INSERT INTO platform_mobile_reviews(id,organization_id,project_id,app_id,store,provider_id,rating,title,body,author,territory,language,app_version,reviewed_at,fetched_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id,f.scope.organizationId,f.scope.projectId,f.app.id,store,`p-${id}`,rating,title,'Detay ayse@example.com','kisi','TUR','','',at,new Date().toISOString());
+  insert('a',1,'Randevu ekranı çöküyor');insert('b',2,'Randevu alınmıyor','android');insert('c',5,'Tasarımlar harika');insert('d',4,'Güzel fikirler');
+  await assert.rejects(f.reviews.generateTopics({appId:f.app.id},async()=>'{}'),/en az 5 yorum/);
+  insert('e',3,'Fiyat göstersin');insert('g',1,'Yine çöktü');
+  let prompt='';const ai=value=>async text=>{prompt=text;return JSON.stringify(value);};
+  await assert.rejects(f.reviews.generateTopics({appId:f.app.id}),e=>e.status===503);
+  const snapshot=await f.reviews.generateTopics({appId:f.app.id},ai({topics:[{label:'Randevu ekranında çökme',kind:'problem',reviews:[1,2,6,6,99]},{label:'Tasarım fikirleri',kind:'praise',reviews:[3,4,1]},{label:'https://spam.example',kind:'problem',reviews:[5]},{label:'Fiyat bilgisi',kind:'wish',reviews:[5]}]}));
+  assert.doesNotMatch(prompt,/ayse@example\.com/,'contact details are masked before the review text goes to AI');assert.doesNotMatch(prompt,/kisi/,'authors are not sent');
+  const [crash,praise]=snapshot.topics.items;assert.equal(snapshot.topics.items.length,2,'a link label and an unknown kind are dropped');
+  assert.equal(crash.label,'Randevu ekranında çökme');assert.equal(crash.count,3,'review numbers are de-duplicated and bounded');assert.equal(crash.average,1.33);assert.deepEqual(plain(crash.stores).sort(),['android','ios']);
+  assert.equal(praise.count,2,'a review belongs to one topic only');assert.equal(praise.average,4.5);
+  const task=f.reviews.topicTask({appId:f.app.id,topicId:crash.id});assert.match(task.title,/Randevu ekranında çökme/);assert.match(task.note,/3 yorum, ortalama 1.33★/);assert.doesNotMatch(task.note,/çöktü|ayse/,'no review text in the task');
+  assert.equal(f.reviews.topicTask({appId:f.app.id,topicId:crash.id}).id,task.id,'one open task per topic');
+  assert.throws(()=>f.reviews.topicTask({appId:f.app.id,topicId:'nope'}),e=>e.status===404);
+}));

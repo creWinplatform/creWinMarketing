@@ -1595,6 +1595,28 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(75,datetime('now'));
   `))();
+  // Daily figures per sent ad image or video, read from Meta and TikTok for comparison and the fatigue warning.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=76').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_ad_creative_stats (
+      creative_id TEXT NOT NULL REFERENCES platform_ad_creatives(id), day TEXT NOT NULL,
+      impressions INTEGER NOT NULL, clicks INTEGER NOT NULL, spend_minor INTEGER NOT NULL, conversions INTEGER,
+      PRIMARY KEY(creative_id,day)
+    );
+    ALTER TABLE platform_ad_creatives ADD COLUMN stats_checked_at TEXT;
+    CREATE TABLE platform_mobile_review_topics (
+      app_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, review_count INTEGER NOT NULL,
+      topics_json TEXT NOT NULL, generated_by TEXT NOT NULL, generated_at TEXT NOT NULL,
+      FOREIGN KEY(app_id,organization_id,project_id) REFERENCES platform_mobile_apps(id,organization_id,project_id)
+    );
+    CREATE TABLE platform_mobile_competitor_snapshots (
+      app_id TEXT NOT NULL, apple_id TEXT NOT NULL, checked_on TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      name TEXT NOT NULL, rating REAL, rating_count INTEGER, version TEXT, released_at TEXT, notes TEXT, checked_at TEXT NOT NULL,
+      PRIMARY KEY(app_id,apple_id,checked_on)
+    );
+    ALTER TABLE platform_alert_subscriptions ADD COLUMN weekly INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE platform_alert_subscriptions ADD COLUMN weekly_week TEXT;
+    INSERT INTO platform_migrations(version,applied_at) VALUES(76,datetime('now'));
+  `))();
   return db;
 }
 

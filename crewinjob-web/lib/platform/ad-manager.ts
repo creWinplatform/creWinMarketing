@@ -178,6 +178,17 @@ export class ProjectAds{
       this.audit('ads.plan.update');return this.read();
     }).immediate();
   }
+  // A read-only check of the connected account for the go-live panel: the account is read again with the stored access.
+  // TikTok also lists its locations, which ad group setup needs. Nothing is stored or changed on the provider.
+  async verify(){
+    this.authorize('manage');const {connection,credentials}=this.credentials();
+    try{
+      if(this.provider==='meta'){const account=await this.graph('GET',credentials.adAccountId,credentials.accessToken,{fields:'name,currency,account_status'});if(typeof account.currency!=='string')throw new Error();return {ok:true,name:String(account.name||credentials.name),currency:account.currency};}
+      const token=await this.token(connection,credentials),client=this.client(credentials,token),account=await client.account();
+      if(client instanceof TikTokAdsClient){const result=await this.http({method:'GET',url:`https://business-api.tiktok.com/open_api/v1.3/tool/region/?${new URLSearchParams({advertiser_id:credentials.adAccountId,placements:JSON.stringify(['PLACEMENT_TIKTOK']),objective_type:'TRAFFIC'})}`,headers:{'Access-Token':token}});if(result.status!==200||result.payload.code!==0)throw new Error();}
+      return {ok:true,name:account.name,currency:account.currency};
+    }catch(error){if(error instanceof MarketingStoreError)throw error;throw new MarketingStoreError(`${PROVIDER_NAME[this.provider]} hesabı okunamadı. Erişim anahtarını, izinleri ve hesaptaki rolünüzü kontrol edin.`,502);}
+  }
   // Provider access for a plan already created on the provider (ad images): the plan, its account id and a token.
   async planAccess(id:unknown){
     this.authorize('manage');const row=this.row(id);if(!row.provider_campaign_id)throw new MarketingStoreError('Plan reklam sağlayıcısında oluşturulmamış.',409);

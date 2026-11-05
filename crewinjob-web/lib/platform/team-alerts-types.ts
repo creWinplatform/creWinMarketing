@@ -1,6 +1,6 @@
 // Things that need the team before a deadline passes. Computed from existing records for the viewing member's rights;
 // nothing is sent to customers and no message text, contact or account name leaves the app in the email.
-export type TeamAlertKind = 'inbox_window' | 'publication_failed' | 'connection_expiring' | 'billing_period' | 'ad_error' | 'invite_pending' | 'seo_findings' | 'search_drop' | 'iys_deadline' | 'iys_sync' | 'ad_overspend' | 'ad_cpi';
+export type TeamAlertKind = 'inbox_window' | 'publication_failed' | 'connection_expiring' | 'billing_period' | 'ad_error' | 'invite_pending' | 'seo_findings' | 'search_drop' | 'iys_deadline' | 'iys_sync' | 'ad_overspend' | 'ad_cpi' | 'ad_fatigue' | 'competitor_change';
 export type TeamAlert = {
   kind: TeamAlertKind; severity: 'urgent' | 'warning'; count: number;
   // The earliest deadline (inbox window close, access expiry, period end) or the latest event time.
@@ -16,7 +16,8 @@ export type TeamAlert = {
 };
 export type TeamAlertsView = {
   alerts: TeamAlert[]; timezone: string;
-  email: { enabled: boolean; subscribed: boolean; language: 'tr' | 'en' | null; hasVerifiedEmail: boolean };
+  // weekly: the member also gets the Monday summary (weekly-summary.ts).
+  email: { enabled: boolean; subscribed: boolean; language: 'tr' | 'en' | null; hasVerifiedEmail: boolean; weekly: boolean };
   // Phone (web push) notifications are set per browser, so only whether the server offers them is known here.
   push: { enabled: boolean };
 };

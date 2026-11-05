@@ -5,7 +5,7 @@ import { MarketingStoreError } from './errors';
 import { assertProjectDelivery,assertProjectWork,projectEntitlement } from './entitlements';
 import { mobileDay,mobileId,mobileRecord } from './mobile-validation';
 import { mobileGoogleAccess,readPlayListing,type MobileSecret,type MobileTransport } from './mobile-providers';
-import { ANDROID_FIELDS,IOS_FIELDS,parsePlayTermsCsv,appStoreLookup,appStoreRank,readAppStoreListing,readSkanReport,writeAppStoreListing,writePlayListing,type SkanRow } from './mobile-aso-providers';
+import { ANDROID_FIELDS,IOS_FIELDS,parsePlayTermsCsv,appStoreDetails,appStoreLookup,appStoreRank,readAppStoreListing,readSkanReport,writeAppStoreListing,writePlayListing,type SkanRow } from './mobile-aso-providers';
 import { mobileRevision,type MobileGrowth } from './mobile-store';
 import { maskPersonal } from './messaging-sources';
 import { COACH_BANNED,coachClip,coachObject,type CoachGenerator } from './coach';
@@ -23,6 +23,44 @@ type DraftRow={id:string;app_id:string;store:'ios'|'android';locale:string;field
 type Rank={rank:number|null;resultCount:number;leaders:{id:string;name:string}[];competitors?:Record<string,number|null>};
 const competitorIds=(db:Database.Database,appId:string)=>(db.prepare('SELECT apple_id FROM platform_mobile_competitors WHERE app_id=? ORDER BY created_at,apple_id').all(appId) as {apple_id:string}[]).map(row=>row.apple_id);
 
+// Competitor watch: the latest store details and what changed in the last 30 days (version, name, rating ±0.1).
+export type CompetitorChange={day:string;kind:'version'|'name'|'rating';from:string;to:string;notes?:string|null};
+export function competitorWatch(db:Database.Database,appId:string,appleId:string,now=Date.now()){
+  if(!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='platform_mobile_competitor_snapshots'").get())return {latest:null,changes:[] as CompetitorChange[]};
+  const rows=db.prepare('SELECT checked_on,name,rating,rating_count,version,released_at,notes FROM platform_mobile_competitor_snapshots WHERE app_id=? AND apple_id=? AND checked_on>=? ORDER BY checked_on').all(appId,appleId,new Date(now-31*86400000).toISOString().slice(0,10)) as {checked_on:string;name:string;rating:number|null;rating_count:number|null;version:string|null;released_at:string|null;notes:string|null}[];
+  const changes:CompetitorChange[]=[];
+  for(let i=1;i<rows.length;i++){const before=rows[i-1],after=rows[i];
+    if(after.version&&before.version&&after.version!==before.version)changes.push({day:after.checked_on,kind:'version',from:before.version,to:after.version,notes:after.notes?.slice(0,300)||null});
+    if(after.name!==before.name)changes.push({day:after.checked_on,kind:'name',from:before.name,to:after.name});
+    if(after.rating!==null&&before.rating!==null&&Math.abs(after.rating-before.rating)>=0.1)changes.push({day:after.checked_on,kind:'rating',from:String(before.rating),to:String(after.rating)});}
+  const last=rows.at(-1);
+  return {latest:last?{checkedOn:last.checked_on,rating:last.rating,ratingCount:last.rating_count,version:last.version,releasedAt:last.released_at}:null,changes:changes.reverse()};
+}
+// Worker step: each competitor's store details are read once a day, five per tick (Apple's public lookup).
+export async function refreshDueCompetitors(db:Database.Database,read:MobileTransport=fetch,limit=5){
+  if(!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='platform_mobile_competitor_snapshots'").get())return 0;
+  const day=today(),due=db.prepare(`SELECT c.app_id,c.apple_id,c.organization_id,c.project_id,a.config_json FROM platform_mobile_competitors c JOIN platform_mobile_apps a ON a.id=c.app_id JOIN platform_projects p ON p.id=c.project_id AND p.organization_id=c.organization_id AND p.product_pack='standard'
+    WHERE NOT EXISTS(SELECT 1 FROM platform_mobile_competitor_snapshots s WHERE s.app_id=c.app_id AND s.apple_id=c.apple_id AND s.checked_on=?) ORDER BY c.created_at LIMIT ?`).all(day,limit) as {app_id:string;apple_id:string;organization_id:string;project_id:string;config_json:string}[];
+  let checked=0;
+  for(const row of due){
+    let details:Awaited<ReturnType<typeof appStoreDetails>>|null=null;
+    try{if(projectEntitlement(db,{organizationId:row.organization_id,projectId:row.project_id}).active)details=await appStoreDetails(row.apple_id,(JSON.parse(row.config_json) as {country:string}).country||'TR',read);}catch{details=null;}
+    // A failed read still marks the day, with the last known name, so the tick moves on; it is not shown as a change.
+    const previous=db.prepare('SELECT name,rating,rating_count,version,released_at,notes FROM platform_mobile_competitor_snapshots WHERE app_id=? AND apple_id=? ORDER BY checked_on DESC LIMIT 1').get(row.app_id,row.apple_id) as {name:string;rating:number|null;rating_count:number|null;version:string|null;released_at:string|null;notes:string|null}|undefined;
+    const value=details?{name:details.name,rating:details.rating,rating_count:details.ratingCount,version:details.version,released_at:details.releasedAt,notes:details.notes}:previous||{name:(db.prepare('SELECT name FROM platform_mobile_competitors WHERE app_id=? AND apple_id=?').get(row.app_id,row.apple_id) as {name:string}).name,rating:null,rating_count:null,version:null,released_at:null,notes:null};
+    db.prepare('INSERT INTO platform_mobile_competitor_snapshots VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(app_id,apple_id,checked_on) DO NOTHING').run(row.app_id,row.apple_id,day,row.organization_id,row.project_id,value.name,value.rating,value.rating_count,value.version,value.released_at,value.notes,new Date().toISOString());
+    db.prepare('DELETE FROM platform_mobile_competitor_snapshots WHERE app_id=? AND apple_id=? AND checked_on<?').run(row.app_id,row.apple_id,dayOffset(-180));
+    if(details){db.prepare('UPDATE platform_mobile_competitors SET name=? WHERE app_id=? AND apple_id=?').run(details.name,row.app_id,row.apple_id);checked++;}
+  }
+  return checked;
+}
+// Competitor changes of the last 7 days for the team alert.
+export function recentCompetitorChanges(db:Database.Database,scope:{organizationId:string;projectId:string},now=Date.now()){
+  if(!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='platform_mobile_competitor_snapshots'").get())return [];
+  const since=new Date(now-7*86400000).toISOString().slice(0,10);
+  return (db.prepare('SELECT app_id,apple_id,name FROM platform_mobile_competitors WHERE organization_id=? AND project_id=?').all(scope.organizationId,scope.projectId) as {app_id:string;apple_id:string;name:string}[])
+    .flatMap(row=>competitorWatch(db,row.app_id,row.apple_id,now).changes.filter(change=>change.day>=since).map(change=>({...change,name:row.name,appleId:row.apple_id})));
+}
 export function normalizeTerm(value:unknown){
   const term=typeof value==='string'?value.normalize('NFC').trim().replace(/\s+/g,' ').toLowerCase().replace(/i̇/g,'i'):'';
   if(!term||[...term].length>100||/[\x00-\x1f]/.test(term))throw new MarketingStoreError('Anahtar kelime 1–100 karakter olmalı.');return term;
@@ -89,7 +127,7 @@ export class MobileAso{
       return {id:row.id,term:row.term,country:row.country,checkedOn:row.checked_on,rank:ranks[0]?.rank??null,previousRank:ranks[1]?.rank??null,resultCount:ranks[0]?.result_count??null,leaders:ranks[0]?JSON.parse(ranks[0].leaders_json):[],history:ranks.map(item=>({day:item.day,rank:item.rank})).reverse(),competitors:rivals.map(rival=>({id:rival.id,name:rival.name,rank:rival.id in positions?positions[rival.id]:undefined})).filter(item=>item.rank!==undefined) as {id:string;name:string;rank:number|null}[]};
     });
   }
-  competitors(appId:string){this.mobile.rawApp(appId);return (this.db.prepare('SELECT apple_id id,name FROM platform_mobile_competitors WHERE app_id=? AND organization_id=? AND project_id=? ORDER BY created_at,apple_id').all(appId,...this.args()) as {id:string;name:string}[]);}
+  competitors(appId:string){this.mobile.rawApp(appId);return (this.db.prepare('SELECT apple_id id,name FROM platform_mobile_competitors WHERE app_id=? AND organization_id=? AND project_id=? ORDER BY created_at,apple_id').all(appId,...this.args()) as {id:string;name:string}[]).map(item=>({...item,...competitorWatch(this.db,appId,item.id)}));}
   // Up to five competitor apps; their positions are read in the same searches as the app's own terms (no extra request).
   async addCompetitor(raw:Record<string,unknown>,read?:MobileTransport){
     this.mobile.authorize('content.write');assertProjectWork(this.db,this.mobile.scope);const app=this.mobile.app(String(raw.appId)),id=typeof raw.appleId==='string'?raw.appleId.trim():'';

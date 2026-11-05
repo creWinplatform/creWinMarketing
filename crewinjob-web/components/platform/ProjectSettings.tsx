@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck } from 'lucide-react';
+import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck, Rocket } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { localeTag } from '@/lib/i18n/shared';
 import TeamAdministration from './TeamAdministration';
@@ -10,6 +10,7 @@ import ProjectProfileEditor from './ProjectProfileEditor';
 import AccountSettings from './AccountSettings';
 import CoachBrandStudio from './CoachBrandStudio';
 import IysPanel from './IysPanel';
+import GoLivePanel from './GoLivePanel';
 import { iysEnabled } from '@/lib/platform/iys-types';
 import { ryzevoFeature } from '@/lib/platform/ryzevo-features';
 const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
@@ -41,6 +42,8 @@ export default function ProjectSettings({
       (workspace.accessMode === 'platform_account' || crewin) &&
       workspace.permissions?.includes('connections.manage'),
     dataOpen = canConnections && (project.productPack === 'standard' || (crewin && ryzevoFeature(project.productPack, 'product_events'))),
+    // The go-live panel: connection managers of standard projects.
+    goLiveOpen = Boolean(canConnections) && workspace.accessMode === 'platform_account' && project.productPack === 'standard',
     canTeam = workspace.permissions?.includes('members.manage'),
     // The deployment administrator (the team running Ryzevo) also gets the operator console.
     canOperate = workspace.accessMode === 'legacy_single_account' && canTeam;
@@ -58,6 +61,7 @@ export default function ProjectSettings({
     else if (dataOpen && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
     else if(brandOpen&&requested==='brand')setSection('brand');
+    else if(goLiveOpen&&requested==='golive')setSection('golive');
     else if(iysOpen&&requested==='iys')setSection('iys');
     else if (canOperate && requested === 'operations') setSection('operations');
     else if (
@@ -114,6 +118,10 @@ export default function ProjectSettings({
           {
             id:'brand',Icon:Palette,label:tr?'Marka dili & rakipler':'Brand voice & competitors',
             visible:brandOpen,
+          },
+          {
+            id:'golive',Icon:Rocket,label:tr?'Canlıya geçiş':'Go-live',
+            visible:goLiveOpen,
           },
           {
             id:'iys',Icon:ShieldCheck,label:tr?'Gönderim izinleri (İYS)':'Sending consents (IYS)',
@@ -264,6 +272,7 @@ export default function ProjectSettings({
         </div>
       )}
       {section === 'data' && dataOpen && <ProductDataSources key={project.id} lang={lang} webhookOnly={crewin} />}
+      {section==='golive'&&goLiveOpen&&<div className="mt-6"><GoLivePanel key={'golive-'+project.id} lang={lang}/></div>}
       {section==='iys'&&iysOpen&&<div className="mt-6"><IysPanel key={'iys-'+project.id} lang={lang} crewin={crewin}/></div>}
       {section==='brand'&&brandOpen&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}
