@@ -1,6 +1,6 @@
 import { win32 } from 'node:path';
 
-export const WINDOWS_MODES = ['preflight', 'app', 'worker', 'backup', 'monitor', 'drill'];
+export const WINDOWS_MODES = ['preflight', 'app', 'worker', 'backup', 'monitor', 'drill', 'offsite'];
 const absolute = value => typeof value === 'string' && /^[a-z]:\\/i.test(value) && !value.includes('\0');
 export function insideWindowsPath(parent, child) {
   if (!absolute(parent) || !absolute(child)) return false;

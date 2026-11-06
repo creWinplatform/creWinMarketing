@@ -6,7 +6,7 @@ production server uses `deployment/windows/Register-RyzevoTasks.ps1` and
 
 ## Scheduled tasks
 
-`scripts/local-autostart.ps1` registers four tasks under `\Ryzevo Local\`.
+`scripts/local-autostart.ps1` registers five tasks under `\Ryzevo Local\`.
 They run as the signed-in user, with limited rights.
 
 | Task | When | Runs |
@@ -15,6 +15,7 @@ They run as the signed-in user, with limited rights.
 | Worker | at sign-in, after 2 minutes | `npm run worker:local` |
 | Backup | daily at 03:00 | `npm run backup:platform` |
 | Drill | Sundays at 04:00 | `npm run restore:drill -- --latest` |
+| Offsite | daily at 03:30 | `npm run offsite:platform` (does nothing until S3 is set up) |
 
 **Behaviour:**
 
@@ -37,8 +38,8 @@ powershell -ExecutionPolicy Bypass -File scripts/local-autostart.ps1 -Action Sta
 powershell -ExecutionPolicy Bypass -File scripts/local-autostart.ps1 -Action Remove
 ```
 
-- `-Action Install` registers the tasks again after a removal. It never
-  overwrites a task and never starts one.
+- `-Action Install` adds the tasks that are missing (for example Offsite on an
+  older install). It never overwrites a task and never starts one.
 - `-Action Remove` removes the tasks but does not stop running processes.
 
 ## Before adding a migration

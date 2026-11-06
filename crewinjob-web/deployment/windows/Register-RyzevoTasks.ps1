@@ -4,7 +4,7 @@ param(
     [Parameter(Mandatory = $true)][string]$NodeExe,
     [Parameter(Mandatory = $true)][string]$EnvFile,
     # An existing install adds only the new task, e.g. -Tasks Drill.
-    [ValidateSet('App', 'Worker', 'Backup', 'Monitor', 'Drill')][string[]]$Tasks = @('App', 'Worker', 'Backup', 'Monitor', 'Drill')
+    [ValidateSet('App', 'Worker', 'Backup', 'Monitor', 'Drill', 'Offsite')][string[]]$Tasks = @('App', 'Worker', 'Backup', 'Monitor', 'Drill', 'Offsite')
 )
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Windows Task Scheduler is required.' }
@@ -46,6 +46,7 @@ try {
         $trigger = switch ($mode) {
             'Backup' { New-ScheduledTaskTrigger -Daily -At '03:00' }
             'Drill' { New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At '04:00' }
+            'Offsite' { New-ScheduledTaskTrigger -Daily -At '03:30' }
             'Monitor' { New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) }
             default { New-ScheduledTaskTrigger -AtStartup }
         }

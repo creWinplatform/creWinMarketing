@@ -10,6 +10,7 @@ try {
     databasePath,
     backupRoot,
     drillRoot: process.env.PLATFORM_DRILL_PATH || resolve(backupRoot, '..', 'recovery-drills'),
+    offsiteStatePath: process.env.PLATFORM_OFFSITE_STATE_PATH || join(dirname(resolve(databasePath)), 'offsite-state.json'),
     options: monitorConfiguration(),
   });
   // The operator email is optional and never changes the exit code.

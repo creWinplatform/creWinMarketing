@@ -36,6 +36,9 @@ const EXPLAIN = {
   backup_timestamp_invalid: 'Son yedeğin tarihi geçersiz.',
   restore_drill_stale: 'Geri yükleme provası bir haftadan uzun süredir yapılmadı.',
   restore_drill_failed: 'Son geri yükleme provası başarısız oldu.',
+  offsite_copy_missing: 'Yedeğin bilgisayar dışı (S3) kopyası hiç alınmadı.',
+  offsite_copy_stale: 'Yedeğin bilgisayar dışı (S3) kopyası çok eski.',
+  offsite_copy_failed: 'Son S3 yedek kopyası başarısız oldu.',
   disk_space_low: 'Diskte yer azaldı.',
   disk_check_unavailable: 'Disk alanı okunamadı.',
 };

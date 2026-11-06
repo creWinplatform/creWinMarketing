@@ -62,7 +62,7 @@ COPY --from=verification --chown=nextjs:nodejs /repo/crewinjob-web/.next/static 
 COPY --from=verification --chown=nextjs:nodejs /repo/crewinjob-agent                 /crewinjob-agent
 
 # Private operator entry points, not UI fixtures or test loaders.
-COPY --from=verification --chown=nextjs:nodejs /repo/crewinjob-web/scripts/platform-backup.mjs /repo/crewinjob-web/scripts/platform-verify-backup.mjs /repo/crewinjob-web/scripts/platform-restore-drill.mjs /repo/crewinjob-web/scripts/platform-monitor.mjs /repo/crewinjob-web/scripts/platform-worker.mjs /repo/crewinjob-web/scripts/platform-runtime-check.mjs ./scripts/
+COPY --from=verification --chown=nextjs:nodejs /repo/crewinjob-web/scripts/platform-backup.mjs /repo/crewinjob-web/scripts/platform-verify-backup.mjs /repo/crewinjob-web/scripts/platform-restore-drill.mjs /repo/crewinjob-web/scripts/platform-offsite.mjs /repo/crewinjob-web/scripts/platform-monitor.mjs /repo/crewinjob-web/scripts/platform-worker.mjs /repo/crewinjob-web/scripts/platform-runtime-check.mjs ./scripts/
 COPY --from=verification --chown=nextjs:nodejs /repo/crewinjob-web/scripts/lib ./scripts/lib
 # CLI-only imports are outside Next's route tracing graph.
 COPY --from=verification --chown=nextjs:nodejs /repo/crewinjob-web/node_modules/@next/env ./node_modules/@next/env

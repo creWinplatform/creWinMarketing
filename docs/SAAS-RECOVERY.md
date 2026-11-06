@@ -112,12 +112,77 @@ policy; there is no automatic recursive deletion or retention scheduler here.
    tests before enabling ingress or one selected transport. This tooling does not
    perform that replacement or declare the resulting service ready.
 
+## Off-host copy to S3 (6 November 2026)
+
+`npm run offsite:platform` (`scripts/platform-offsite.mjs`, `scripts/lib/platform-offsite.mjs`) copies the newest backup to a private S3 bucket.
+
+**What is copied, and how**
+
+1. **Verification:** the backup is checked with `verifyBackup` first.
+2. **Upload:** only `platform.sqlite` and `manifest.json` are uploaded, the manifest last.
+   - A `platform-credentials.key` file is never uploaded. Keep the key in a separate vault.
+   - Objects go to `<prefix>/<database id>/<backup folder>/`.
+   - Each one is written once (`If-None-Match: *`), with server-side encryption (`AES256`, or `aws:kms` with `PLATFORM_OFFSITE_KMS_KEY_ID`) and an `x-amz-checksum-sha256` that S3 verifies.
+3. **Read-back:** each object is read back with HEAD. Size and checksum must match.
+4. **Run state:** a folder already copied is skipped. A retry after a lost state file accepts objects that are already there only when they match.
+5. **No deletion:** the script never deletes anything. Set retention with an S3 lifecycle rule.
+
+**Requests and credentials**
+
+- Requests are signed with AWS Signature V4 by the script itself (no new package). The test compares the signature with the AWS reference signer.
+- Credentials can be:
+  - a dedicated IAM user (`PLATFORM_OFFSITE_AWS_ACCESS_KEY_ID` / `_SECRET_ACCESS_KEY`, optional `_SESSION_TOKEN`);
+  - or, on EC2, the instance role through IMDSv2 (`PLATFORM_OFFSITE_USE_INSTANCE_ROLE=1`).
+
+**Settings**
+
+| Setting | Meaning |
+|---|---|
+| `PLATFORM_OFFSITE_ENABLED=1` | turns it on (off by default) |
+| `PLATFORM_OFFSITE_S3_BUCKET` | lowercase, no dots |
+| `PLATFORM_OFFSITE_S3_REGION` | e.g. `eu-central-1` |
+| `PLATFORM_OFFSITE_S3_PREFIX` | default `ryzevo-backups` |
+| `PLATFORM_OFFSITE_KMS_KEY_ID` | optional KMS key |
+| `PLATFORM_OFFSITE_EXPECTED=1` | the monitor checks the copy |
+| `PLATFORM_MONITOR_OFFSITE_MAX_AGE_HOURS` | default 50 |
+
+**Least-privilege policy** (replace the bucket and prefix):
+
+```json
+{ "Version": "2012-10-17", "Statement": [
+  { "Effect": "Allow", "Action": ["s3:PutObject", "s3:GetObject"], "Resource": "arn:aws:s3:::BUCKET/PREFIX/*" }
+] }
+```
+
+`s3:GetObject` is needed for the HEAD read-back. With KMS, also allow `kms:GenerateDataKey` and `kms:Decrypt` on that key.
+
+**Bucket setup:**
+
+- Block public access, turn on versioning and add a lifecycle rule for old versions.
+- Optionally add Object Lock, so a stolen key cannot delete copies.
+
+**Monitoring and schedule**
+
+- **State file:** `offsite-state.json` next to the database (or `PLATFORM_OFFSITE_STATE_PATH`). It keeps the last folder, times and an error code; no credentials.
+- **Monitor alerts:**
+
+| Alert | Severity | When |
+|---|---|---|
+| `offsite_copy_missing` | critical | no successful copy yet |
+| `offsite_copy_stale` | critical | the last copy is older than the limit |
+| `offsite_copy_failed` | warning | the last attempt failed |
+
+  The operator email explains them.
+- **Schedule:**
+  - Windows server: the `Offsite` task runs daily at 03:30, after the 03:00 backup.
+  - This PC: `\Ryzevo Local\Offsite` does nothing until the settings are in `.env.local`.
+
 ## Remaining production gates
 
 This snapshot covers the Ryzevo SQLite monolith and its credential key only. It
 does not archive environment secrets, uploaded/static files, Crewin's legacy JSON
 stores/agent data, external ABP data or provider state. Deployment backup coverage,
-encrypted off-host storage/retention, alerting, measured RPO/RTO, container execution,
+off-host storage acceptance (the S3 copy above exists; bucket policy, retention and a restore from the off-host copy still need the AWS account), alerting, measured RPO/RTO, container execution,
 restart supervision, load/abuse tests, and an authorized non-Crewin customer pilot
 remain separate work. No uptime or recovery-time promise is inferred from a local
 drill. PayTR merchant/USD acceptance is still pending; all real payments stay off.

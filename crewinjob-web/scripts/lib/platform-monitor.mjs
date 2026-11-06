@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { readdir, readFile, statfs } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { BACKUP_FOLDER, MAX_RECOVERY_SCHEMA, latestBackupFolder, rejectLinks, verifyBackup } from './platform-recovery.mjs';
+import { offsiteChecks } from './platform-offsite.mjs';
 
 const JOB_TYPES = ['connection.verify', 'product.sync', 'email.rehearsal', 'email.pilot_send', 'measurement.sync', 'social.publish','mobile.message'];
 const option = (env, key, fallback, min, max) => {
@@ -11,7 +12,7 @@ const option = (env, key, fallback, min, max) => {
   return Number(value);
 };
 export function monitorConfiguration(env = process.env) {
-  for (const key of ['PLATFORM_WORKER_EXPECTED', 'PLATFORM_DRILL_EXPECTED']) if (!['', '0', '1', undefined].includes(env[key])) throw new Error('invalid_monitor_configuration');
+  for (const key of ['PLATFORM_WORKER_EXPECTED', 'PLATFORM_DRILL_EXPECTED', 'PLATFORM_OFFSITE_EXPECTED']) if (!['', '0', '1', undefined].includes(env[key])) throw new Error('invalid_monitor_configuration');
   return {
     workerExpected: env.PLATFORM_WORKER_EXPECTED === '1',
     workerStaleSeconds: option(env, 'PLATFORM_MONITOR_WORKER_STALE_SECONDS', 180, 60, 3600),
@@ -20,6 +21,8 @@ export function monitorConfiguration(env = process.env) {
     minFreeMb: option(env, 'PLATFORM_MONITOR_MIN_FREE_MB', 512, 16, 1048576),
     drillExpected: env.PLATFORM_DRILL_EXPECTED === '1',
     drillMaxAgeDays: option(env, 'PLATFORM_MONITOR_DRILL_MAX_AGE_DAYS', 8, 1, 60),
+    offsiteExpected: env.PLATFORM_OFFSITE_EXPECTED === '1',
+    offsiteMaxAgeHours: option(env, 'PLATFORM_MONITOR_OFFSITE_MAX_AGE_HOURS', 50, 2, 720),
   };
 }
 
@@ -151,7 +154,7 @@ async function drillChecks(root, options, now, alert) {
   return { status: 'missing' };
 }
 
-export async function monitorPlatform({ databasePath, backupRoot, drillRoot = resolve(backupRoot, '..', 'recovery-drills'), environmentKey = process.env.PLATFORM_ENCRYPTION_KEY,
+export async function monitorPlatform({ databasePath, backupRoot, drillRoot = resolve(backupRoot, '..', 'recovery-drills'), offsiteStatePath = join(dirname(resolve(databasePath)), 'offsite-state.json'), environmentKey = process.env.PLATFORM_ENCRYPTION_KEY,
   options = monitorConfiguration(), now = Date.now(), diskStats = statfs }) {
   const alerts = [];
   const alert = (code, severity, count) => alerts.push({ code, severity, ...(count === undefined ? {} : { count }) });
@@ -162,6 +165,7 @@ export async function monitorPlatform({ databasePath, backupRoot, drillRoot = re
   const { databaseId, ...publicChecks } = checks;
   const backup = await backupChecks(resolve(backupRoot), options, now, environmentKey, databaseId, alert);
   const drill = await drillChecks(resolve(drillRoot), options, now, alert);
+  const offsite = await offsiteChecks(offsiteStatePath, { expected: options.offsiteExpected, maxAgeHours: options.offsiteMaxAgeHours }, now, alert);
   let disk = { status: 'unavailable' };
   try {
     const stat = await diskStats(dirname(file));
@@ -174,5 +178,5 @@ export async function monitorPlatform({ databasePath, backupRoot, drillRoot = re
   alerts.sort((a, b) => a.code.localeCompare(b.code));
   const severity = alerts.some(item => item.severity === 'critical') ? 'critical' : alerts.length ? 'warning' : 'ok';
   return { checkedAt: new Date(now).toISOString(), status: severity, exitCode: severity === 'critical' ? 2 : severity === 'warning' ? 1 : 0,
-    ...publicChecks, backup, drill, disk, alerts, http: 'not_checked', notificationsSent: false, productionReadinessAssessed: false };
+    ...publicChecks, backup, drill, offsite, disk, alerts, http: 'not_checked', notificationsSent: false, productionReadinessAssessed: false };
 }

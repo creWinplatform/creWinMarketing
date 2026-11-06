@@ -1,7 +1,7 @@
 # Runs one local Ryzevo job for the "Ryzevo Local" scheduled tasks (local-autostart.ps1), output into data\logs.
 # Not for the production server: that uses deployment\windows\Register-RyzevoTasks.ps1.
 [CmdletBinding()]
-param([Parameter(Mandatory = $true)][ValidateSet('panel', 'worker', 'backup', 'drill')][string]$Mode)
+param([Parameter(Mandatory = $true)][ValidateSet('panel', 'worker', 'backup', 'drill', 'offsite')][string]$Mode)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location -LiteralPath $root
@@ -26,6 +26,7 @@ $command = switch ($Mode) {
     'worker' { 'npm run worker:local' }
     'backup' { 'npm run backup:platform' }
     'drill' { 'npm run restore:drill -- --latest' }
+    'offsite' { 'npm run offsite:platform' }
 }
 Add-Content -LiteralPath $log -Value "$stamp start: $command"
 & cmd.exe /d /c "$command >> `"$log`" 2>&1"

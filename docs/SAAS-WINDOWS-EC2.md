@@ -84,7 +84,8 @@ registration is reported for explicit review, not silently deleted/retried.
 The five Local Service tasks are App and Worker at startup, Backup daily at
 03:00 server-local time, Monitor every five minutes and Drill on Sundays at 04:00.
 An install that already has the first four adds the drill alone with
-`-Tasks Drill`.
+`-Tasks Drill`. A sixth task, **Offsite** (daily 03:30), copies the newest backup to
+S3 (`SAAS-RECOVERY.md`, "Off-host copy to S3"); add it with `-Tasks Offsite`.
 
 **Drill** runs `platform-restore-drill.mjs --latest`:
 

@@ -7,7 +7,7 @@
 param([Parameter(Mandatory = $true)][ValidateSet('Install', 'Remove', 'Status')][string]$Action)
 $ErrorActionPreference = 'Stop'
 $path = '\Ryzevo Local\'
-$names = @('Panel', 'Worker', 'Backup', 'Drill')
+$names = @('Panel', 'Worker', 'Backup', 'Drill', 'Offsite')
 if ($Action -eq 'Status') {
     foreach ($name in $names) {
         $task = Get-ScheduledTask -TaskPath $path -TaskName $name -ErrorAction SilentlyContinue
@@ -26,14 +26,13 @@ if ($Action -eq 'Remove') {
 }
 $runner = Join-Path $PSScriptRoot 'local-run.ps1'
 if (-not (Test-Path -LiteralPath $runner -PathType Leaf)) { throw 'scripts\local-run.ps1 is missing.' }
-foreach ($name in $names) {
-    if (Get-ScheduledTask -TaskPath $path -TaskName $name -ErrorAction SilentlyContinue) { throw "Task $name exists. Run -Action Remove first; this script never overwrites tasks." }
-}
+# Existing tasks are kept as they are; Install only adds the missing ones (for example Offsite on an older install).
+$missing = @($names | Where-Object { -not (Get-ScheduledTask -TaskPath $path -TaskName $_ -ErrorAction SilentlyContinue) })
 $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
 $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
 $shell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $registered = @()
-foreach ($name in $names) {
+foreach ($name in $missing) {
     $mode = $name.ToLowerInvariant()
     $taskAction = New-ScheduledTaskAction -Execute $shell -Argument ('-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $runner + '" -Mode ' + $mode) -WorkingDirectory (Split-Path -Parent $PSScriptRoot)
     $trigger = switch ($name) {
@@ -41,14 +40,16 @@ foreach ($name in $names) {
         'Worker' { $t = New-ScheduledTaskTrigger -AtLogOn -User $user; $t.Delay = 'PT2M'; $t }
         'Backup' { New-ScheduledTaskTrigger -Daily -At '03:00' }
         'Drill' { New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At '04:00' }
+        # Does nothing until PLATFORM_OFFSITE_ENABLED=1 and the S3 settings are in .env.local.
+        'Offsite' { New-ScheduledTaskTrigger -Daily -At '03:30' }
     }
     $long = $name -in @('Panel', 'Worker')
     $limit = if ($long) { [TimeSpan]::Zero } else { New-TimeSpan -Minutes 30 }
     # A missed backup or drill (PC off at night) runs at the next start; laptops keep running on battery.
     $settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -ExecutionTimeLimit $limit -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     if ($PSCmdlet.ShouldProcess("$path$name", 'Register task (not start)')) {
-        Register-ScheduledTask -TaskPath $path -TaskName $name -Action $taskAction -Trigger $trigger -Settings $settings -Principal $principal -Description 'Ryzevo local panel, worker, backup and drill (scripts\local-autostart.ps1)' | Out-Null
+        Register-ScheduledTask -TaskPath $path -TaskName $name -Action $taskAction -Trigger $trigger -Settings $settings -Principal $principal -Description 'Ryzevo local panel, worker, backup, drill and off-host copy (scripts\local-autostart.ps1)' | Out-Null
         $registered += $name
     }
 }
-Write-Output ('Registered: ' + ($registered -join ', ') + '. Nothing was started; Panel and Worker start at the next sign-in, logs go to data\logs.')
+Write-Output ('Registered: ' + $(if ($registered.Count) { $registered -join ', ' } else { 'nothing new' }) + '. Nothing was started; Panel and Worker start at the next sign-in, logs go to data\logs.')
