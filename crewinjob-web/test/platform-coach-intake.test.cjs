@@ -32,6 +32,8 @@ test('page facts, key pages and robots rules are read from HTML alone',()=>{
  assert.match(home.title,/Defter Pro/);assert.match(home.description,/ön muhasebe yazılımıdır/);assert.deepEqual(plain(home.schemaTypes),['SoftwareApplication']);
  assert.ok(!home.text.includes('gtag'),'scripts are not page text');
  assert.deepEqual(plain(intakeLinks(home)),['https://defter.example/hakkimizda','https://defter.example/fiyatlar','https://defter.example/ozellikler'],'same site only, in order of preference');
+ const legal=pageFacts('<a href="/about/termsofservices">Terms of Service</a><a href="/gizlilik">Gizlilik</a><a href="/hizmetler">Hizmetlerimiz</a>','https://crew.example/');
+ assert.deepEqual(plain(intakeLinks(legal)),['https://crew.example/hizmetler'],'legal pages are not key pages');
  assert.equal(robotsDisallows('User-agent: *\nDisallow: /',''),false,'an empty path is never matched');
  assert.equal(robotsDisallows('User-agent: *\nDisallow: /','/'),true);
  assert.equal(robotsDisallows('User-agent: Googlebot\nDisallow: /\n\nUser-agent: *\nDisallow: /private','/'),false,'another bot’s rule does not apply');
@@ -75,7 +77,12 @@ test('AI suggestions keep only valid choices that name a page read; the page tex
  assert.deepEqual(plain(failed.notes),['ai_failed']);assert.equal(failed.mode,'template');assert.equal(f.aiUsage(),before+1,'a failed call is refunded');
  const missing=await intake(f,{mode:'ai'});assert.deepEqual(plain(missing.notes),['ai_unavailable']);
  assert.deepEqual(plain(parseIntake(JSON.stringify({offer:'x',evidence:{offer:'description'}}),0,true).evidence),{offer:{page:null}});
- assert.match(intakePrompt([],'Sadece tanıtım','en'),/<description>\nSadece tanıtım\n<\/description>/);
+ // The page as Gemini actually wrote it on a real site ("page 0"), and the other spellings models use.
+ const spelled=parseIntake(JSON.stringify({offer:'a',customer:'b',market:'both',sales:'online',price:'mid',evidence:{offer:'page 0',customer:'0',market:{page:1},sales:'Page 1',price:'page 9'}}),2,false);
+ assert.deepEqual(plain(spelled.evidence),{offer:{page:0},customer:{page:0},market:{page:1},sales:{page:1}});assert.equal(spelled.answers.price,undefined);
+ assert.match(intakePrompt([],'Sadece tanıtım','en'),/<team_note>\nSadece tanıtım\n<\/team_note>/);
+ assert.deepEqual(plain(parseIntake(JSON.stringify({offer:'x',evidence:{offer:'team_note'}}),1,true).evidence),{offer:{page:null}});
+ assert.match(intakePrompt([pageFacts(HOME,'https://defter.example/')],'','tr'),/Meta description: Defter Pro/,'the site’s own description is not called the team note');
 }));
 
 test('reading needs the write right, a valid address and stays within the rate limit',coachRun(async f=>{
