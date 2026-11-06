@@ -616,4 +616,7 @@ html:not(.dark) .workspace-shell .bg-red-100.text-red-600{color:#b91c1c}
 .team-alert-weekly{display:flex;gap:8px;align-items:center;font-size:13px;margin:8px 0}
 .iys-merchants{margin-top:16px;display:grid;gap:8px}.iys-merchants h3{display:flex;gap:6px;align-items:center}
 .iys-merchant-list{list-style:none;padding:0;display:grid;gap:6px}.iys-merchant-list li{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.coach-intake{border:1px solid var(--rz-line);border-radius:12px;padding:14px;margin:0 0 18px;display:grid;gap:10px}.coach-intake h3{display:flex;gap:6px;align-items:center;margin:0}
+.coach-intake-fields{display:grid;gap:10px}.coach-intake>button{justify-self:start}.coach-intake-result{display:grid;gap:6px}.coach-intake-result ul{margin:6px 0;padding-left:18px}
+.coach-from-site{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:var(--rz-lime-soft);color:var(--rz-ink)}
 

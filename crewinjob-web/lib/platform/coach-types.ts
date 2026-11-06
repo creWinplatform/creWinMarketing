@@ -30,6 +30,19 @@ export type CoachAnswers={
   /** Missing only in answers saved before the budget question existed (treated as no ad budget). */
   budget?:typeof COACH_BUDGETS[number];
 };
+// "Start from your website": answers suggested from the project's public pages or a short description. Nothing is
+// stored; the team reviews the filled form and runs the diagnosis as usual. page: index into pages (0 = home page),
+// null = from the description.
+export type CoachIntakeField='goal'|'offer'|'customer'|'market'|'price'|'sales'|'current';
+export type CoachIntakeNote='robots_blocked'|'site_unreadable'|'ai_failed'|'ai_unavailable';
+export type CoachIntake={
+  mode:'ai'|'template';pages:{url:string;title:string}[];
+  answers:Partial<Pick<CoachAnswers,CoachIntakeField>>;
+  evidence:Partial<Record<CoachIntakeField,{page:number|null}>>;
+  findings:{priority:'high'|'medium'|'low';title:string;recommendation:string}[];
+  notes:CoachIntakeNote[];
+};
+export const COACH_INTAKE_LIMITS={pages:4,pageBytes:600_000,pageText:4000,description:600,perWindow:5,windowMinutes:10} as const;
 // goalId/stage: the goal stage the action is expected to move (optional; the learning view checks it against real results).
 export type CoachPlanItem={week:number;title:string;why:string;how:string;minutes:number;tool:CoachTool;channel:CoachChannel|null;goalId?:string|null;stage?:number|null};
 export type CoachBrief={

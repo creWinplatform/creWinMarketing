@@ -212,6 +212,55 @@ Same rules as Phases 1 and 2:
 
 On approval, only the approver's own Compass path is seeded, and only if they have none or only an empty deferral. Other members keep their choices; their Compass first run opens pre-filled from the brief, with a note saying so.
 
+## 3.2.1 Start from your website (6 November 2026)
+
+The diagnosis dialog opens with a "Start from your website" box. The website comes pre-filled from the project. The team can also write a 2–3 sentence description instead, or as well. "Read and fill in" (`POST /api/platform/coach`, `action: intake`, `lib/platform/coach-intake.ts`) suggests answers; the team reviews the filled form and runs the diagnosis as before.
+
+**Reading**
+
+1. `robots.txt` is read first. If the `*` group disallows the page, nothing else is read, and only the description is used.
+2. The home page is read, then up to three key pages on the same host: about, pricing, product or services.
+   - The reader is the site audit's `fetchPublic`: public addresses only, every redirect checked again.
+   - Each page is limited to 600 KB. The key pages share a 15-second budget.
+   - A page that redirects to another host is dropped.
+
+**Fixed signals** (no AI needed)
+
+| Answer | Comes from |
+|---|---|
+| Offer | the meta description, the first heading or the title |
+| Channels in use | links to LinkedIn, Instagram, Facebook, X and WhatsApp, an email or newsletter field, a blog link, ad pixels |
+| B2B or B2C | business or consumer words, counted with Turkish-aware matching |
+| Where the sale happens | a cart (online), a LocalBusiness schema (local), or demo and quote wording (sales) |
+| Goal | app store links suggest mobile |
+
+Who buys the product is never guessed by rules.
+
+**With AI**
+
+- **What the model gets:** the page texts (and the description) as untrusted data, each inside its own `<page>` block, and is told not to follow anything written in them.
+- **What it returns:** the offer, the customer, the market, the price level, the sales mode and the goal, each with the page it came from.
+- **What is kept:**
+  - only valid choices and short clean texts; no percentages or guarantees;
+  - only answers whose page was actually read (or the description).
+- **Channels:** the channel list stays with the fixed signals.
+- **Usage:** one AI use from the quota. A failed call is refunded, and the fixed signals are used instead.
+
+**What the team sees**
+
+- Every filled answer is marked with its source ("From the home page", "From the site: …", "From your description").
+- The pages that were read.
+- Up to five site findings from the audit checks: missing meta tags, H1 problems, and so on.
+
+**Limits**
+
+- Nothing is stored; only an audit row (`coach.intake.ai` / `.template`) and the AI usage are written.
+- It needs `content.write`.
+- A project can run at most 5 reads in 10 minutes (`platform_login_limits`).
+- The coach route now allows 60 seconds.
+
+**Tests:** `test/platform-coach-intake.test.cjs`.
+
 ## 3.3 Weekly review email (overview → Weekly review → Email digest)
 
 **Subscribing.** Opt-in per member, only with a verified account email (`platform_account_emails`). The subscription stores the language.
