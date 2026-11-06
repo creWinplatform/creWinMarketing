@@ -11,7 +11,7 @@ They run as the signed-in user, with limited rights.
 
 | Task | When | Runs |
 |---|---|---|
-| Panel | at sign-in | `npm run dev` (port 3033) |
+| Panel | at sign-in | the production build: `npm run start` with `NEXT_DIST_DIR=.next-local` (port 3033), built first when missing |
 | Worker | at sign-in, after 2 minutes | `npm run worker:local` |
 | Backup | daily at 03:00 | `npm run backup:platform` |
 | Drill | Sundays at 04:00 | `npm run restore:drill -- --latest` |
@@ -41,6 +41,33 @@ powershell -ExecutionPolicy Bypass -File scripts/local-autostart.ps1 -Action Rem
 - `-Action Install` adds the tasks that are missing (for example Offsite on an
   older install). It never overwrites a task and never starts one.
 - `-Action Remove` removes the tasks but does not stop running processes.
+
+## Production build (6 November 2026)
+
+The Panel task serves a production build from `.next-local` instead of the development server.
+
+- **Why:** pages load faster. The development server sent unoptimised code, so data requests only started after about 2.8 seconds, and it ran every data request twice.
+- **Safer migrations:** a running production build never hot-reloads, so it cannot pick up a half-written migration.
+
+**After a code change**
+
+1. Stop the panel: end its `next start` process, or stop the Panel task.
+2. Rebuild:
+
+   ```bash
+   powershell -ExecutionPolicy Bypass -File scripts/local-run.ps1 -Mode build
+   ```
+
+   It refuses to run while port 3033 is in use.
+3. Start the Panel task again from Task Scheduler.
+
+**Developing with hot reload**
+
+```bash
+powershell -ExecutionPolicy Bypass -File scripts/local-run.ps1 -Mode panel-dev
+```
+
+This runs `npm run dev` on the usual `.next` folder.
 
 ## Before adding a migration
 
