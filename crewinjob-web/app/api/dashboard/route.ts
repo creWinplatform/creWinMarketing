@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { agentModule } from '@/lib/agent-bridge';
+import { cachedAllData, cachedBreakdown } from '@/lib/agent-bridge';
 import type { AllData, BreakdownData } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -8,14 +8,10 @@ export const fetchCache = 'force-no-store';
 
 export async function GET() {
   try {
-    const api = agentModule<{
-      fetchAllData:    () => Promise<AllData>;
-      getBreakdownData: () => Promise<BreakdownData>;
-    }>('modules/api.js');
-
-    const [allData, breakdown] = await Promise.all([
-      api.fetchAllData(),
-      api.getBreakdownData(),
+    // The last good figures at once; the Crewin backend is asked again in the background.
+    const [allData, breakdown]: [AllData, BreakdownData] = await Promise.all([
+      cachedAllData(),
+      cachedBreakdown<BreakdownData>(),
     ]);
 
     // Son 7 günlük günlük kayıt eğrisi

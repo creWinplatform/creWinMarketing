@@ -5,6 +5,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { AllData } from './types';
+import { sharedStaleCache } from './platform/stale-cache';
 
 // eval('require') → webpack'in statik analiz etmesini engeller
 const nativeRequire = eval('require') as NodeRequire;
@@ -47,6 +48,14 @@ export async function fetchAllData(): Promise<AllData> {
   const api = agentModule<{ fetchAllData: () => Promise<AllData> }>('modules/api.js');
   return api.fetchAllData();
 }
+
+// Panel screens: the last good figures are shown at once and refreshed in the background, so a page load never waits
+// for the Crewin backend once it has answered. Up to 15 minutes old; fetchedAt in the answer says how old.
+export const cachedAllData = () => sharedStaleCache('crewin:allData', fetchAllData, { freshMs: 90_000, staleMs: 15 * 60_000, keep: data => Boolean(data?.isRealData) })();
+export const cachedBreakdown = <T extends { countries: unknown[]; errors?: Record<string, unknown> }>() => sharedStaleCache<T>('crewin:breakdown', () => agentModule<{ getBreakdownData: () => Promise<T> }>('modules/api.js').getBreakdownData(),
+  { freshMs: 5 * 60_000, staleMs: 60 * 60_000, keep: data => Array.isArray(data?.countries) && data.countries.length > 0 && !Object.values(data.errors || {}).some(Boolean) })();
+// Short reads behind the job guide's step states: a minute fresh, ten minutes at most.
+export const cachedAgentRead = <T>(key: string, load: () => Promise<T>) => sharedStaleCache<T>(`crewin:${key}`, load, { freshMs: 60_000, staleMs: 10 * 60_000 })();
 
 /** İçerik üretiminde kullanılan tek generate çağrısı */
 export async function generateContent(

@@ -38,6 +38,15 @@ interface HistoryItem {
 
 // Dosya büyük (görseller base64) → her read-modify-write withFileLock(FILE) altında, await'ten sonra
 // yeniden okunarak yapılır; GET yalnızca birleşik veri gerçekten değiştiyse yazar.
+// ?lite=1: the list without image data (the file holds base64 images, ~20 MB), for views that show only text and
+// figures; hasImage says an image exists.
+function lite(request: NextRequest, items: HistoryItem[]) {
+  if (request.nextUrl.searchParams.get('lite') !== '1') return items;
+  return items.map(({ imageData, rawBgData, ...rest }) => {
+    const { images, ...item } = rest as HistoryItem & { images?: unknown[] };
+    return { ...item, hasImage: Boolean(imageData || images?.length || rawBgData) };
+  });
+}
 function load(): HistoryItem[] {
   // bozuk yerel yedek backend verisini engellememeli → readJson hata yerine [] döner
   const list = readJson<HistoryItem[]>(FILE, []);
@@ -180,9 +189,9 @@ export async function GET(req: NextRequest) {
       if (!sameList(next, current)) save(next);
       return next;
     });
-    return NextResponse.json(merged);
+    return NextResponse.json(lite(req, merged));
   } catch {
-    return NextResponse.json(load());
+    return NextResponse.json(lite(req, load()));
   }
 }
 

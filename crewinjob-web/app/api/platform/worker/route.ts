@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { hasValidCronSecret } from '@/lib/auth';
+import { cachedAllData, cachedBreakdown } from '@/lib/agent-bridge';
 import { platformDatabase } from '@/lib/platform/database';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ConnectionJobs,settleUnauthorizedConnectionJob } from '@/lib/platform/connection-jobs';
@@ -52,6 +53,9 @@ export async function POST(request: NextRequest) {
 
 async function runTick(db: ReturnType<typeof platformDatabase>) {
   const startedAt = Date.now();
+  // Keeps the Crewin figures warm for the panel (shown from cache, refreshed in the background); not awaited, and a
+  // missing Crewin agent or backend is simply skipped.
+  void cachedAllData().catch(() => {}); void cachedBreakdown().catch(() => {});
   const pruned = { ...pruneProductEvents(db), attribution: pruneAttribution(db) };
   const expiredEmailTokens = pruneEmailTokens(db);
   const scheduledMeasurements = scheduleMeasurements(db, credentialEncryptionKey());

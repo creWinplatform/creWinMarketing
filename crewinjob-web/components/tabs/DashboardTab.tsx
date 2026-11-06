@@ -26,7 +26,7 @@ export default function DashboardTab({ onNavigate, focus, guide }: { onNavigate?
     setLoading(true);
     fetch('/api/dashboard',{cache:'no-store',signal:AbortSignal.timeout(30000)}).then(async response => { if(!response.ok) throw new Error(); return response.json(); }).then(setData).catch(() => setData({error:tr?'Canlı veriler alınamadı.':"Couldn't load live data."})).finally(() => setLoading(false));
     setHistoryError('');
-    Promise.all([getContentHistory(),getPostHistory()]).then(([content,posts]) => {
+    Promise.all([getContentHistory({lite:true}),getPostHistory()]).then(([content,posts]) => {
       setContentCount(content.length); setPostCount(posts.length); setRecentPosts(posts.slice(0,4));
       const counts:Record<string,number> = {};
       [...content,...posts].forEach(item => { counts[item.platform]=(counts[item.platform] || 0)+1; });

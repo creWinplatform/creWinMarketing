@@ -39,6 +39,8 @@ export interface HistoryItem {
   starter?: boolean;
   /** Draft adapted from another draft for this channel (its id); saved as a separate, unpublished draft. */
   repurposedFrom?: string;
+  /** Only in a lite list (getHistory({ lite: true })): the item has an image that was left out. */
+  hasImage?: boolean;
 }
 
 /** Görselle birlikte saklanan yeniden düzenleme verisi. */
@@ -71,9 +73,10 @@ export async function saveToHistory(item: Omit<HistoryItem, 'id' | 'timestamp'>)
   return getHistory();
 }
 
-export async function getHistory(): Promise<HistoryItem[]> {
+// lite: without image data, for views that do not show images (the full list carries every base64 image).
+export async function getHistory({ lite = false }: { lite?: boolean } = {}): Promise<HistoryItem[]> {
   try {
-    const res = await fetch(BASE, { cache: 'no-store' });
+    const res = await fetch(lite ? `${BASE}?lite=1` : BASE, { cache: 'no-store' });
     return await res.json() as HistoryItem[];
   } catch { return []; }
 }

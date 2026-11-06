@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { agentModule } from '@/lib/agent-bridge';
+import { cachedAllData } from '@/lib/agent-bridge';
 import type { AllData } from '@/lib/types';
 
 // Sunucu tarafında her request'te taze veri — Next.js static cache'ini devre dışı bırak
@@ -17,8 +17,8 @@ function safeApiErrors(value: unknown): string[] {
 
 export async function GET() {
   try {
-    const api  = agentModule<{ fetchAllData: () => Promise<AllData> }>('modules/api.js');
-    const data = await api.fetchAllData();
+    // The last good figures at once; the Crewin backend is asked again in the background.
+    const data: AllData = await cachedAllData();
     const apiErrors = safeApiErrors(data.apiErrors);
     return NextResponse.json({
       seafarers:  data.seafarers,
