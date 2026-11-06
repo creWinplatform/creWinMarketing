@@ -170,6 +170,15 @@ export default function Home() {
       .finally(() => setStatsLoading(false));
     return () => controller.abort();
   }, [isCrewin]);
+  // While the workspace loads, the page's shape is drawn (menu, heading, first cards) instead of an empty spinner.
+  if (!workspace && !workspaceError)
+    return (
+      <main className="workspace-skeleton" aria-busy="true">
+        <div className="workspace-skeleton-side" aria-hidden="true"><span /><span /><span /><span /><span /><span /></div>
+        <div className="workspace-skeleton-main" aria-hidden="true"><span className="ws-bar" /><span className="ws-title" /><span className="ws-card" /><span className="ws-row"><span /><span /><span /></span></div>
+        <p role="status" className="sr-only">{tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…'}</p>
+      </main>
+    );
   if (!workspace)
     return (
       <main className="workspace-loading">

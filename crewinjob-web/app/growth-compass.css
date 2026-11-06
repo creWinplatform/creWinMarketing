@@ -142,3 +142,6 @@
 .go-live-checklist input{margin-top:3px;width:16px;height:16px;flex:none}
 .go-live-checklist label>span{display:grid;gap:2px}.go-live-checklist strong{font-size:13px}.go-live-checklist small{font-size:12px;line-height:1.6;color:var(--studio-muted)}
 .go-live-checklist li.done strong{color:var(--studio-muted);text-decoration:line-through}.go-live-checklist .go-live-done{color:var(--rz-good,#3e7d2c)}
+.guided-start-waiting{display:flex;gap:6px;align-items:flex-start;margin:10px 0 0;font-size:12px;color:var(--rz-muted)}.guided-start-waiting svg{flex:none;margin-top:2px}
+.guided-start-site{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.guided-start-site input{flex:1 1 220px;min-width:0;min-height:42px;padding:0 12px;border:1px solid var(--rz-line-2);border-radius:var(--rz-r-control,10px);background:var(--rz-surface);color:var(--rz-ink);font:inherit}
+

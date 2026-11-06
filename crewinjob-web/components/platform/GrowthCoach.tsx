@@ -44,6 +44,7 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
   const [data,setData]=useState<CoachSnapshot|null>(null),[error,setError]=useState(''),[dialogError,setDialogError]=useState(''),[notice,setNotice]=useState(''),[calendarNotice,setCalendarNotice]=useState(false),[libraryNotice,setLibraryNotice]=useState(false),[busy,setBusy]=useState('');
   const [opened,setOpened]=useState(false),[view,setView]=useState<'questions'|'review'|'brief'>('questions'),[answers,setAnswers]=useState<CoachAnswers>(emptyAnswers),[language,setLanguage]=useState<'tr'|'en'>(workspace.project.language||lang),[edit,setEdit]=useState<EditBrief|null>(null);
   const [intake,setIntake]=useState<CoachIntake|null>(null),[site,setSite]=useState(workspace.project.website||''),[about,setAbout]=useState(''),[intakeNotice,setIntakeNotice]=useState('');
+  const pendingRead=useRef<string|null>(null),[allActions,setAllActions]=useState(false);
   const dialog=useRef<HTMLDialogElement>(null),previousFocus=useRef<HTMLElement|null>(null),request=useRef<AbortController|null>(null),refreshCompass=useCompassRefresh(),firstStart=useRef(false);
   const show=(value:string|LocalizedText)=>typeof value==='string'?value:value[lang];
   const load=useCallback(()=>{
@@ -52,7 +53,8 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
   },[]);
   useEffect(()=>{void load();return()=>request.current?.abort();},[load]);
   useEffect(()=>{
-    const open=()=>{if(!data||opened)return;if(data.draft)openReview(data.draft);else if(data.canWrite)openQuestions();};
+    // A website in the event (the overview's first step) opens the questions and reads the site right away.
+    const open=(event:Event)=>{if(!data||opened)return;if(data.draft){openReview(data.draft);return;}if(!data.canWrite)return;openQuestions();const website=(event as CustomEvent<{website?:string}>).detail?.website;if(website){setSite(website);pendingRead.current=website;}};
     window.addEventListener('ryzevo:coach-open',open);return()=>window.removeEventListener('ryzevo:coach-open',open);
   },[data,opened]);
   useEffect(()=>{
@@ -75,9 +77,9 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
     catch(reason){setDialogError(fail(reason));void load();}finally{setBusy('');}
   };
   // Reads the site (or the short description) and fills the form; the team still reviews every answer before the draft.
-  const runIntake=async()=>{
+  const runIntake=async(website=site)=>{
     if(!data||busy)return;setBusy('intake');setDialogError('');
-    try{const value=await projectRequest<CoachIntake>('/api/platform/coach',{method:'POST',body:JSON.stringify({action:'intake',mode:data.aiConfigured?'ai':'template',language,website:site,description:about}),signal:AbortSignal.timeout(58000)});
+    try{const value=await projectRequest<CoachIntake>('/api/platform/coach',{method:'POST',body:JSON.stringify({action:'intake',mode:data.aiConfigured?'ai':'template',language,website,description:about}),signal:AbortSignal.timeout(58000)});
       setIntake(value);setAnswers(old=>({...old,...value.answers,current:value.answers.current?.length?value.answers.current:old.current}));}
     catch(reason){setDialogError(fail(reason));}finally{setBusy('');}
   };
@@ -89,6 +91,7 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
   };
   // The voice start goes to the brand voice form through this browser session; that form saves nothing until the team does.
   const carryVoice=()=>{try{sessionStorage.setItem(COACH_VOICE_PREFILL_KEY,JSON.stringify({...intake?.voice,at:Date.now()}));setIntakeNotice(tr?'Ton önerisi marka dili formuna aktarılmak üzere hazırlandı: Proje ayarları → Marka dili & rakipler.':'The voice start is ready for the brand voice form: Project settings → Brand voice & competitors.');}catch{setIntakeNotice(tr?'Tarayıcı bu öneriyi saklayamadı; ton önerisini formda elle yazabilirsiniz.':'The browser could not keep this suggestion; you can type it in the form yourself.');}};
+  useEffect(()=>{if(!opened||view!=='questions'||!pendingRead.current)return;const website=pendingRead.current;pendingRead.current=null;void runIntake(website);},[opened,view]); // eslint-disable-line react-hooks/exhaustive-deps
   const fromSite=(field:CoachIntakeField)=>{const proof=intake?.evidence[field];if(!proof)return null;const page=proof.page===null?null:intake!.pages[proof.page];
     return <span className="coach-from-site" title={page?page.url:undefined}>{proof.page===null?(tr?'Tanıtımınızdan':'From your description'):proof.page===0?(tr?'Ana sayfadan':'From the home page'):(tr?`Siteden: ${page?.title||page?.url}`:`From the site: ${page?.title||page?.url}`)}</span>;};
   const saveBrief=async(action:'save'|'approve')=>{
@@ -152,7 +155,7 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
     </div>}
     {data&&pending&&!cardHidden&&<div className="coach-pending" role="status"><div><strong>{brief?(tr?'Güncellenmiş bir brief taslağı onay bekliyor.':'A revised brief draft is waiting for approval.'):(tr?'Strateji briefi taslağınız inceleme bekliyor.':'Your strategy brief draft is waiting for review.')}</strong><span>{data.draftSource==='ai'?(tr?'AI önerisi':'AI suggestion'):(tr?'Yanıtlarınızdan kural tabanlı başlangıç':'Rule-based starter from your answers')}{data.draftAt?` · ${date(data.draftAt)}`:''}</span></div><button type="button" className="studio-secondary" onClick={()=>openReview(pending)}>{tr?'Taslağı incele':'Review draft'}<ArrowRight size={15}/></button></div>}
     {data&&brief&&<>
-      {data.actions.length>0?<ol className="coach-actions">{data.actions.map(actionCard)}</ol>:<div className="studio-empty"><Check size={24}/><p>{data.remaining===0&&data.resolved.length===0?(tr?'Plandaki tüm eylemler tamamlandı. Gelecek ay için yeni bir teşhis yapabilirsiniz.':'Every plan action is handled. You can run a new diagnosis for next month.'):(tr?'Bu haftanın eylemleri tamamlandı veya ertelendi.':'This week’s actions are done or deferred.')}</p>{data.canWrite&&<button type="button" className="studio-text-button" onClick={openQuestions}>{tr?'Yeni teşhis':'New diagnosis'}<ArrowRight size={14}/></button>}</div>}
+      {data.actions.length>0?<><ol className="coach-actions">{(allActions?data.actions:data.actions.slice(0,3)).map(actionCard)}</ol>{data.actions.length>3&&<button type="button" className="studio-text-button coach-more" aria-expanded={allActions} onClick={()=>setAllActions(value=>!value)}>{allActions?(tr?'Daha az göster':'Show fewer'):(tr?`Bu haftanın tüm işlerini gör (${data.actions.length})`:`See all of this week’s actions (${data.actions.length})`)}</button>}</>:<div className="studio-empty"><Check size={24}/><p>{data.remaining===0&&data.resolved.length===0?(tr?'Plandaki tüm eylemler tamamlandı. Gelecek ay için yeni bir teşhis yapabilirsiniz.':'Every plan action is handled. You can run a new diagnosis for next month.'):(tr?'Bu haftanın eylemleri tamamlandı veya ertelendi.':'This week’s actions are done or deferred.')}</p>{data.canWrite&&<button type="button" className="studio-text-button" onClick={openQuestions}>{tr?'Yeni teşhis':'New diagnosis'}<ArrowRight size={14}/></button>}</div>}
       {data.resolved.length>0&&<details className="coach-resolved"><summary>{tr?`Bu hafta ele alınanlar (${data.resolved.length})`:`Handled this week (${data.resolved.length})`}</summary><ul>{data.resolved.map(action=><li key={action.id}><span className={`coach-state ${action.state}`}>{action.state==='done'?(tr?'Tamamlandı':'Done'):(tr?'Atlandı':'Skipped')}</span><span>{show(action.title)}</span>{data.canWrite&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void act(action,'open')}><Undo2 size={14}/>{tr?'Geri al':'Undo'}</button>}</li>)}</ul></details>}
       <CoachWeeklyPack lang={lang}/>
       <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Bunlar öneridir; hiçbir şey otomatik yayınlanmaz veya gönderilmez.':'These are suggestions; nothing is published or sent automatically.'}</p>
@@ -171,7 +174,7 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
               <label className="coach-field"><span>{tr?'Site adresi':'Website'}</span><input type="url" inputMode="url" maxLength={300} placeholder="https://ornek.com" value={site} disabled={Boolean(busy)} onChange={event=>setSite(event.target.value)}/></label>
               <label className="coach-field"><span>{tr?'veya kısaca tanıtın (isteğe bağlı)':'or describe it briefly (optional)'}</span><small>{tr?'Siteniz yoksa ya da tek sayfaysa: ne sattığınızı ve kime sattığınızı 2–3 cümleyle yazın.':'If you have no site or a one-page site: what you sell and to whom, in 2–3 sentences.'}</small><textarea rows={2} maxLength={600} value={about} disabled={Boolean(busy)} onChange={event=>setAbout(event.target.value)}/></label>
             </div>
-            <button type="button" className="studio-secondary" disabled={Boolean(busy)||!site.trim()&&!about.trim()} onClick={()=>void runIntake()}>{busy==='intake'?(tr?'Siteniz okunuyor…':'Reading your site…'):(tr?'Oku ve doldur':'Read and fill in')}</button>
+            <button type="button" className="studio-secondary" disabled={Boolean(busy)||!site.trim()&&!about.trim()} onClick={()=>void runIntake(site)}>{busy==='intake'?(tr?'Siteniz okunuyor…':'Reading your site…'):(tr?'Oku ve doldur':'Read and fill in')}</button>
             {intake&&<div className="coach-intake-result" role="status">
               <p><strong>{Object.keys(intake.answers).length?(tr?`${Object.keys(intake.answers).length} yanıt dolduruldu; nereden geldiği yanında yazan yanıtları kontrol edin.`:`${Object.keys(intake.answers).length} answer(s) filled in; check the ones marked with where they came from.`):(tr?'Sitede bu sorulara açık bir yanıt bulunamadı; soruları kendiniz yanıtlayın.':'No clear answers were found on the site; please answer the questions yourself.')}</strong>{intake.mode==='ai'?(tr?' AI önerisidir.':' This is an AI suggestion.'):''}</p>
               {intake.pages.length>0&&<p className="coach-note">{tr?'Okunan sayfalar: ':'Pages read: '}{intake.pages.map(page=>page.title||page.url).join(' · ')}</p>}

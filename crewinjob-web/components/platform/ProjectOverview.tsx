@@ -66,10 +66,10 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
       {/* What is waiting right now (new messages, open findings, reports to approve), one line; each opens its job. */}
       <JobGuideHighlights lang={lang}/>
       {error && <div className="studio-error" role="alert"><Msg text={error}/><button className="icon-button" title={tr ? 'Yeniden dene' : 'Retry'} aria-label={tr ? 'Yeniden dene' : 'Retry'} onClick={load}><RefreshCw size={17} /></button></div>}
-      {!data && !error && !waiting && <div className="studio-skeleton" role="status">{tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…'}</div>}
-      {guided && waiting && <NextStepCard lang={lang}/>}
+      {!data && !error && !waiting && <div className="overview-skeleton" aria-busy="true"><span className="ws-card" aria-hidden="true" /><span className="ws-row" aria-hidden="true"><span /><span /><span /></span><p role="status" className="sr-only">{tr ? 'Çalışma alanı yükleniyor…' : 'Loading workspace…'}</p></div>}
+      {guided && waiting && <NextStepCard lang={lang} website={workspace.project.website||''}/>}
       {data && !waiting && <>
-        {guided && <NextStepCard lang={lang}/>}
+        {guided && <NextStepCard lang={lang} website={workspace.project.website||''}/>}
         {!guided && <div className="ryz-focus-bar"><div><h2>{tasks.length ? (tr ? `${tasks.length} iş sıradaki adımını bekliyor.` : (tasks.length === 1 ? '1 task is ready for the next step.' : `${tasks.length} tasks are ready for the next step.`)) : (tr ? 'Bugünün yönünü sen belirle.' : 'Set the direction for today.')}</h2><p>{tasks.length ? tasks[0].title : (tr ? 'Bir taslakla başla veya büyüme hedefini netleştir.' : 'Start with a draft or refine your growth goal.')}</p></div><button className="studio-text-button" disabled={!enabled(tasks.length ? 'calendar' : 'project')} onClick={() => onNavigate(tasks.length ? 'calendar' : 'project')}>{tr ? 'Devam et' : 'Continue'}<ArrowRight size={15} /></button></div>}
         {!setup && (!guided || anyRecords) && <div className="studio-stats">{[
           { label: tr ? 'Kampanya taslağı' : 'Campaign drafts', value:data.campaigns, Icon:Megaphone, tab:'campaigns' },

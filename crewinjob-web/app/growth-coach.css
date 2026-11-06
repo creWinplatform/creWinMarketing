@@ -79,6 +79,10 @@
   .coach-channel-row{grid-template-columns:1fr auto}.coach-channel-row>label:nth-child(2){grid-column:1/-1;grid-row:2}
   .coach-plan-item{grid-template-columns:1fr 1fr}
   .coach-action-buttons .studio-secondary{flex:1 1 100%}
+  /* The three follow-up buttons share one line on phones instead of stacking. */
+  .coach-action .coach-action-buttons{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+  .coach-action .coach-action-buttons>.studio-secondary,.coach-action .coach-action-buttons>.coach-muted{grid-column:1/-1}
+  .coach-action .coach-action-buttons .studio-text-button{font-size:12px;padding:0 4px;gap:4px;justify-content:center;text-align:center;white-space:normal;line-height:1.2}
   .coach-footer-buttons{width:100%}.coach-footer-buttons>button{flex:1 1 auto}
 }
 /* Faz 2 · aylık içerik planı (Takvim → İçerik planı) */

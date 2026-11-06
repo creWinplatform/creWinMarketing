@@ -116,3 +116,15 @@ test('schema30 is additive and preferences survive reopening and offline recover
   new GrowthCompass(db,f.scope,f.KEY).save(f.defaults);db.close();db=load('database.ts').openPlatformDatabase(file);assert.equal(new GrowthCompass(db,f.scope,f.KEY).read().preferences.revision,1);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
   const {inspectSnapshot}=await import('../scripts/lib/platform-recovery.mjs');assert.equal(inspectSnapshot(file,f.KEY,78).integrity,'ok');fs.rmSync(folder,{recursive:true,force:true});
 }));
+
+test('the next step is one the member can do now; steps waiting for the operator are listed apart',run(f=>{
+  const saved=f.compass.save(f.defaults),linkedin=saved.providers.find(item=>item.id==='linkedin_company');
+  assert.equal(linkedin.state,'operator_setup','this test server has no LinkedIn organization app');
+  assert.ok(saved.waitingStepIds.includes('connection:linkedin_company'));
+  assert.notEqual(saved.nextStepId,'connection:linkedin_company','the operator’s step does not take the hero');
+  const next=step(saved,saved.nextStepId);assert.ok(next&&next.state!=='done'&&next.canAct);
+  // A viewer cannot do any step: the first open one is still shown, and every open step waits for someone else.
+  const viewer=f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'compass-viewer',password:'fixture-password-123',role:'viewer'});
+  const seen=new GrowthCompass(f.db,{...f.scope,subject:viewer.userId},f.KEY).read();
+  assert.equal(seen.nextStepId,seen.steps.find(item=>item.state!=='done')?.id??null);
+}));
