@@ -41,7 +41,16 @@ export type CoachIntake={
   evidence:Partial<Record<CoachIntakeField,{page:number|null}>>;
   findings:{priority:'high'|'medium'|'low';title:string;recommendation:string}[];
   notes:CoachIntakeNote[];
+  // A brand voice start read from the site's own copy; the team carries it to Brand voice & competitors and edits it there.
+  voice:Partial<Pick<CoachVoiceAnswers,'traits'|'address'|'useWords'|'example'>>;
 };
+// Competitor websites read once a week (competitor-sites.ts): what changed, by fixed rules.
+export type CompetitorSiteChange={id:string;kind:'title'|'description'|'headings'|'new_pages'|'pricing';detail:Record<string,unknown>;detectedAt:string};
+export type CompetitorSiteView={key:string;name:string;url:string;status:'ok'|'blocked'|'unreadable'|null;checkedAt:string|null;changes:CompetitorSiteChange[]};
+// Monday pack (coach-weekly-pack.ts): on when an approver turned it on; readyThisWeek = coach drafts of this week not saved yet.
+export type CoachWeeklyPackView={enabled:boolean;enabledBy:string|null;enabledAt:string|null;lastWeek:string|null;lastRunAt:string|null;lastDrafts:number;lastAi:number;note:string|null;readyThisWeek:number;available:boolean;canManage:boolean;aiConfigured:boolean};
+// Session hand-off from the website start to the brand voice form (only empty fields are filled; nothing is saved).
+export const COACH_VOICE_PREFILL_KEY='ryzevo.coach.voice-prefill';
 export const COACH_INTAKE_LIMITS={pages:4,pageBytes:600_000,pageText:4000,description:600,perWindow:5,windowMinutes:10} as const;
 // goalId/stage: the goal stage the action is expected to move (optional; the learning view checks it against real results).
 export type CoachPlanItem={week:number;title:string;why:string;how:string;minutes:number;tool:CoachTool;channel:CoachChannel|null;goalId?:string|null;stage?:number|null};

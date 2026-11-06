@@ -9,6 +9,7 @@ import { PUBLICATION_LABELS, PUBLICATION_REASONS, type Publication, type Publica
 import PublicationEngagement from './PublicationEngagement';
 import PublicationSite from './PublicationSite';
 import LinkTrackingPanel from './LinkTrackingPanel';
+import PostingTimes from './PostingTimes';
 import Msg from '@/components/Msg';
 
 export default function SocialPublicationCenter({workspace,lang}:{workspace:WorkspaceContext;lang:Locale}){
@@ -65,6 +66,7 @@ export default function SocialPublicationCenter({workspace,lang}:{workspace:Work
   return <section className="social-publications">
     <header className="studio-page-heading"><div><p className="studio-eyebrow">{tr?'YAYIN TAKVİMİ':'PUBLISHING CALENDAR'}</p><h1>{tr?'Sosyal yayınlar':'Social publications'}</h1><p className="studio-subtitle">LinkedIn · Facebook · X · Instagram</p></div><button className="icon-button" aria-label={tr?'Yayınları yenile':'Refresh publications'} title={tr?'Yayınları yenile':'Refresh publications'} disabled={busy} onClick={()=>void load()}><RefreshCw size={18}/></button></header>
     {error&&<p role="alert" className="studio-error"><Msg text={error}/></p>}{notice&&<p role="status" className="studio-success"><Msg text={notice}/></p>}
+    <PostingTimes lang={lang}/>
     {!data&&busy&&<p role="status">{tr?'Yayınlar yükleniyor…':'Loading publications…'}</p>}
     {data&&<LinkTrackingPanel lang={lang} onChange={()=>{setAck(false);void load();}}/>}
     {data&&!data.publishingEnabled&&<p className="studio-data-notice">{tr?'Gerçek yayın sunucuda kapalı. Prova paylaşım yapmaz.':'Live publishing is disabled on the server. Rehearsals do not post.'}</p>}

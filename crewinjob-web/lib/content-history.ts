@@ -37,6 +37,8 @@ export interface HistoryItem {
   story?: boolean;
   /** Starter draft prepared by the growth coach after approval; dropped when the team saves the item. */
   starter?: boolean;
+  /** Monday pack: the week (its Monday) the coach drafted this for (coach-weekly-pack.ts). */
+  coachWeek?: string;
   /** Draft adapted from another draft for this channel (its id); saved as a separate, unpublished draft. */
   repurposedFrom?: string;
   /** Only in a lite list (getHistory({ lite: true })): the item has an image that was left out. */

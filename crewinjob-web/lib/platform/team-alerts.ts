@@ -17,6 +17,9 @@ import { iysAttention } from './iys';
 import { adWarnings } from './ad-alerts';
 import { fatiguedCreatives } from './ad-creative-stats';
 import { recentCompetitorChanges } from './mobile-aso';
+import { ProjectMarketingStore } from './marketing-store';
+import { coachWeekKey } from './coach';
+import { recentCompetitorSiteChanges } from './competitor-sites';
 
 type Lang = 'tr' | 'en';
 type Scope = { subject: string; organizationId: string; projectId: string };
@@ -101,6 +104,17 @@ export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()
     if (iys?.items.length) alerts.push({ kind: 'iys_deadline', severity: iys.items.some(item => item.state === 'failed' || Date.parse(item.due_at) <= now) ? 'urgent' : 'warning', count: iys.items.length, at: iys.items[0].due_at, href: '/?tab=project&settings=iys', keys: iys.items.map(item => `iys:${item.id}:${item.state}`) });
     if (iys?.stale) alerts.push({ kind: 'iys_sync', severity: 'warning', count: 1, at: iys.pulledAt, href: '/?tab=project&settings=iys', keys: [`iys-sync:${iys.pulledAt || 'never'}`] });
   }
+  // Competitor websites that changed in the last week (title, headings, new pages, pricing).
+  if (can('content.write')) {
+    let changes: ReturnType<typeof recentCompetitorSiteChanges> = []; try { changes = recentCompetitorSiteChanges(db, scope, now); } catch { changes = []; }
+    if (changes.length) alerts.push({ kind: 'competitor_site', severity: 'warning', count: changes.length, at: changes[0].detected_at, href: '/?tab=project&settings=brand', plans: [...new Set(changes.map(item => item.name))].slice(0, 5), keys: changes.map(item => `competitor-site:${item.id}`) });
+  }
+  // The Monday pack's drafts for this week that nobody has read and saved yet.
+  if (can('content.write') && project.productPack === 'standard') {
+    const week = coachWeekKey(new Date(now), project.timezone);
+    let ready = 0; try { ready = new ProjectMarketingStore(db, { ...scope, subject: scope.subject }).history().filter(item => item.starter && item.coachWeek === week).length; } catch { ready = 0; }
+    if (ready) alerts.push({ kind: 'weekly_pack', severity: 'warning', count: ready, at: null, href: '/?tab=library', keys: [`weekly:${week}`] });
+  }
   // Scheduled jobs (posts, İYS uploads, syncs, alert emails) have not completed a round lately. Only a worker that
   // has run before counts, so a setup without one shows nothing; the server operator restarts it.
   if (can('connections.manage')) {
@@ -134,6 +148,8 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
       case 'competitor_change': return tr ? `Rakip uygulamalarda ${n(alert.count)} değişiklik var (sürüm, ad veya puan).` : `Competitor apps show ${n(alert.count)} change(s) (version, name or rating).`;
       case 'ad_fatigue': return tr ? `${n(alert.count)} reklam görselinin tıklanma oranı son günlerde belirgin düştü. Yeni bir görsel eklemeyi değerlendirin.` : `The click-through rate of ${n(alert.count)} ad image(s) fell clearly in recent days. Consider adding a new image.`;
       case 'ad_cpi': return tr ? `${n(alert.count)} yayındaki reklam planında son 7 günün yükleme başına maliyeti sınırın üstünde. Duraklatmayı değerlendirin.` : `${n(alert.count)} running ad plan(s) cost more per install than the cap over the last 7 days. Consider pausing.`;
+      case 'competitor_site': return tr ? `Rakip sitelerinde ${n(alert.count)} değişiklik var (başlık, yeni sayfa veya fiyat).` : `Competitor websites show ${n(alert.count)} change(s) (title, new pages or pricing).`;
+      case 'weekly_pack': return tr ? `Koç bu haftanın ${n(alert.count)} taslağını hazırladı. Okuyup düzenleyin ve onaylayın; hiçbiri kendiliğinden yayınlanmaz.` : `The coach prepared ${n(alert.count)} draft(s) for this week. Read, edit and approve them; none is published on its own.`;
       case 'worker_stale': return tr ? `Zamanlanmış işler ${alert.at ? `${time(alert.at)} tarihinden beri` : 'bir süredir'} çalışmıyor. Planlı yayınlar, İYS bildirimleri ve eşitlemeler bekliyor; sunucu yöneticisine haber verin.` : `Scheduled jobs have not run ${alert.at ? `since ${time(alert.at)}` : 'for a while'}. Scheduled posts, IYS uploads and syncs are waiting; tell the server operator.`;
       case 'invite_pending': return tr ? `${n(alert.count)} proje daveti kabulünüzü bekliyor (ilk bitiş: ${time(alert.at)}).` : `${n(alert.count)} project invitation(s) are waiting for you (first expires ${time(alert.at)}).`;
       case 'seo_findings': return tr ? `Planlı site taramasında ${n(alert.count)} yeni veya yeniden görülen SEO bulgusu var.` : `The scheduled site scan found ${n(alert.count)} new or returning SEO finding(s).`;

@@ -26,7 +26,9 @@ import { deliverNextCoachDigest } from '@/lib/platform/coach-digest';
 import { deliverNextContractEmail } from '@/lib/platform/billing-contract';
 import { advanceSeoScans, runSeoSchedules } from '@/lib/platform/seo-operations';
 import { runAiVisibilityChecks } from '@/lib/platform/ai-visibility';
-import { visibilityGemini } from '../coach/shared';
+import { coachGemini, visibilityGemini } from '../coach/shared';
+import { deliverNextWeeklyPack } from '@/lib/platform/coach-weekly-pack';
+import { refreshDueCompetitorSites } from '@/lib/platform/competitor-sites';
 import { evaluateDueAutomations } from '@/lib/platform/automations';
 import { readDueMessagingSources } from '@/lib/platform/messaging-sources';
 import { deliverWhatsAppBatches } from '@/lib/platform/whatsapp';
@@ -117,6 +119,10 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
   // The Monday summary for members who opted in, one per tick.
   const weeklySummary=Date.now()-startedAt<25000?await deliverNextWeeklySummary(db).catch(()=>false):false;
+  // The Monday pack of one project per tick (drafts only; nothing is published).
+  // One competitor website a tick, once a week each (public pages only).
+  const competitorSites=Date.now()-startedAt<20000?await refreshDueCompetitorSites(db).then(result=>result?1:0).catch(()=>0):0;
+  const weeklyPack=Date.now()-startedAt<20000?await deliverNextWeeklyPack(db,coachGemini(1500)).then(result=>result?result.drafts:0).catch(()=>0):0;
   // Phone notifications carry no data: a fixed notice that something new needs the person, at most every 30 minutes.
   const pushes=Date.now()-startedAt<25000?await deliverDuePushes(db,credentialEncryptionKey()).catch(()=>0):0;
   // İYS: consents and opt-outs are reported a few per tick; the change feed is read every 30 minutes per project.
@@ -134,5 +140,5 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const adSpend=Date.now()-startedAt<20000?await refreshDueAdSpend(db,credentialEncryptionKey()).catch(()=>0):0;
   // Ad image and video figures: one plan per tick, once a day, for the comparison and the fatigue warning.
   const creativeStats=Date.now()-startedAt<20000?await refreshDueCreativeStats(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, creativeStats, weeklySummary };
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, creativeStats, weeklySummary, weeklyPack, competitorSites };
 }

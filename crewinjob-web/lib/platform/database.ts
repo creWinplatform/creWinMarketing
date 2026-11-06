@@ -1643,6 +1643,29 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(77,datetime('now'));
   `))();
+  // Monday pack (weekly coach drafts, off until an approver turns it on) and the weekly read of competitor websites.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=78').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_coach_weekly_pack (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, enabled_by TEXT, enabled_at TEXT,
+      last_week TEXT, last_run_at TEXT, last_drafts INTEGER NOT NULL DEFAULT 0, last_ai INTEGER NOT NULL DEFAULT 0, last_note TEXT,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_competitor_sites (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, site_key TEXT NOT NULL, url TEXT NOT NULL, name TEXT NOT NULL,
+      checked_on TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('ok','blocked','unreadable')),
+      snapshot_json TEXT, checked_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,site_key,checked_on),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_competitor_site_changes (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, site_key TEXT NOT NULL, name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('title','description','headings','new_pages','pricing')), detail_json TEXT NOT NULL, detected_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_competitor_site_changes_recent ON platform_competitor_site_changes(organization_id,project_id,detected_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(78,datetime('now'));
+  `))();
   return db;
 }
 

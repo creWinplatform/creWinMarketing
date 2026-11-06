@@ -259,6 +259,17 @@ Who buys the product is never guessed by rules.
 - A project can run at most 5 reads in 10 minutes (`platform_login_limits`).
 - The coach route now allows 60 seconds.
 
+**From reading to first work (6 November 2026)**
+
+- **Site findings → tasks:** "Add these to the Calendar as tasks" (`action: intake_tasks`) turns the listed findings into planned tasks titled "Site: …".
+  - Due dates: important ones tomorrow, medium in 3 days, low in 7.
+  - An open task with the same title is not added twice.
+  - It needs `content.write`; the site itself is never changed.
+- **Brand voice start:**
+  - **From fixed signals:** how the Turkish copy addresses the reader ("siz", "sen" or both) and a heading as an example sentence.
+  - **With AI:** also three tone adjectives and phrases the site uses often, under the same rules (no guarantees, no percentages).
+  - **Hand-off:** "Carry to the brand voice form" keeps it in this browser session (`COACH_VOICE_PREFILL_KEY`, 30 minutes). Brand voice & competitors fills only the empty fields; the team still prepares and applies the draft. Nothing is saved by the hand-off.
+
 **Tests:** `test/platform-coach-intake.test.cjs`.
 
 ## 3.3 Weekly review email (overview → Weekly review → Email digest)
@@ -291,6 +302,85 @@ Who buys the product is never guessed by rules.
 **Positioning.** The comparison (their claim from your notes vs. your angle) suggests a positioning. Applying it to the approved brief needs `campaign.approve`, uses the coach `expectedRevision` and is stored as a `positioning` brief version.
 
 **Schema 37:** `platform_coach_brand` (one row per project, optimistic `revision`).
+
+## 3.5 Monday pack (overview → This week, 6 November 2026)
+
+Once a week the coach drafts this week's content plan items, so the team only reads, edits and approves (`lib/platform/coach-weekly-pack.ts`, `components/platform/CoachWeeklyPack.tsx`).
+
+**Turning it on**
+
+- Off until a member with `campaign.approve` turns it on (`POST /api/platform/coach`, `action: weekly_pack`), because each draft uses one AI use.
+- That member's rights are used for the run. If they can no longer write content, nothing is drafted and the reason is recorded.
+- Needs an approved brief. It does not run in the Crewin workspace, which has its own library.
+
+**When it runs**
+
+The worker (`deliverNextWeeklyPack`) handles one project per tick, once per week, from Monday 06:00 in the project's time zone. A Monday that was missed is still prepared later in the week.
+
+**What it drafts**
+
+- At most three content plan items of this week: one per channel first, email left out, items that already have a draft skipped. A week spanning two months reads both months' plans.
+- **With AI:** the draft follows the brand voice and the approved brief.
+  - The data goes in as data, and no facts, figures, prices or guarantees are invented.
+  - Specific examples are left as `{{…}}` placeholders the team fills in. Publishing refuses text that still holds them.
+  - Each draft must fit its channel (X 280 characters, LinkedIn 1300, Instagram and Facebook 1000, blog 3000) and pass `COACH_BANNED`.
+- **Without AI** (no AI configured, quota used up, or a failed or refused draft): the item gets the usual starter frame. A failed AI use is refunded.
+
+**Where the drafts go**
+
+- Into the content library with `starter: true` and `coachWeek` (the week's Monday), shown as "Coach's draft for this week".
+- Nothing is published or scheduled.
+- The `weekly_pack` team alert counts this week's drafts that nobody has saved yet.
+
+## 3.6 Competitor websites (Brand voice & competitors, 6 November 2026)
+
+The address of each competitor the team lists is now read once a week (`lib/platform/competitor-sites.ts`, `components/platform/CompetitorSiteWatch.tsx`).
+
+**What is read**
+
+- `robots.txt` first; the `*` group's Disallow is respected.
+- The public home page, and the pricing page when it is linked from the home page on the same host.
+- The reader is the site audit's public fetcher.
+
+**What is kept**
+
+A snapshot per site and day (`platform_competitor_sites`): title, description, the first 12 headings, the internal links (legal and login pages left out), and the pricing page's text hash with a 300-character excerpt. Snapshots are kept 180 days; each site keeps its newest.
+
+**What counts as a change**
+
+Changes are found by fixed rules, with no AI. The first read is only a baseline.
+
+| Change | Rule |
+|---|---|
+| Title or description | it differs from the last read |
+| Headings | two or more added or removed (one rotating heading is not news) |
+| New pages | new content-looking pages: blog, news, product, service, features, cases |
+| Pricing | the pricing page's text changed |
+
+**Where the team sees it**
+
+- Changes are stored in `platform_competitor_site_changes` for a year.
+- Each change is shown with a suggested next step.
+- The `competitor_site` team alert covers the last week's changes.
+
+**Schedule and limits**
+
+- The worker (`refreshDueCompetitorSites`) reads one site per tick, the one read longest ago, once it is a week old.
+- "Check now" needs `content.write` and is limited to three reads per project an hour.
+- Nothing is sent to the competitor.
+
+## 3.7 When to post (Calendar → Social publications, 6 November 2026)
+
+A note on top of the social publication queue says when the team's own posts did best (`lib/platform/posting-times.ts`, `GET /api/platform/posting-times`).
+
+**How it is computed**
+
+- **Input:** live posts of the last 180 days with measured engagement (likes, comments, shares, clicks, bookmarks, quotes).
+- **Grouping:** per channel, by time slot in the project's time zone: morning 06–11, midday 11–14, afternoon 14–18, evening 18–23, night.
+- **Suggestion:** a slot is suggested only when the channel has at least 8 measured posts, the slot at least 3, and its median beats the channel's overall median.
+- **Weekdays or weekend:** this is added only when both have at least 3 posts and their medians differ.
+
+It is labelled as an observation, not a rule. It reads only; nothing is scheduled.
 
 ## Phase 3 permissions
 

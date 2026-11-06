@@ -3,16 +3,19 @@ import { MarketingStoreError } from '@/lib/platform/errors';
 import { GrowthCoach } from '@/lib/platform/coach';
 import { seedCoachFirstWeek } from '@/lib/platform/coach-first-week';
 import { CoachIntakeService } from '@/lib/platform/coach-intake';
+import { CoachWeeklyPack } from '@/lib/platform/coach-weekly-pack';
 import { coachBody,coachGemini,coachRoute } from './shared';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
 const handle=coachRoute(async(scope,request)=>{
   const coach=new GrowthCoach(platformDatabase(),scope);coach.authorize();
-  if(request.method==='GET')return coach.read();
+  if(request.method==='GET')return request.nextUrl.searchParams.get('view')==='weekly'?new CoachWeeklyPack(platformDatabase(),scope).view():coach.read();
   const raw=await coachBody(request);
   if(raw.action==='diagnose')return coach.diagnose(raw,raw.mode==='ai'?coachGemini():undefined);
   // Suggested answers from the project's public site or a short description; nothing is saved here.
   if(raw.action==='intake')return new CoachIntakeService(platformDatabase(),scope).run(raw,{generator:raw.mode==='ai'?coachGemini(1500):undefined});
+  if(raw.action==='intake_tasks')return new CoachIntakeService(platformDatabase(),scope).addTasks(raw);
+  if(raw.action==='weekly_pack')return new CoachWeeklyPack(platformDatabase(),scope).setEnabled(raw);
   if(raw.action==='save')return coach.saveDraft(raw);
   // After approval the first week is ready: this month's starter plan and a few drafts to edit. Nothing is published.
   if(raw.action==='approve'){coach.approve(raw);try{seedCoachFirstWeek(platformDatabase(),scope);}catch{/* the approval stands without starter drafts */}return coach.read();}

@@ -734,7 +734,7 @@ export default function ProjectDrafts({
                         </span>
                         {history?.starter && (
                           <span className="studio-badge coach-starter-badge">
-                            {tr ? 'Başlangıç taslağı · okuyup düzenleyin' : 'Starter draft · read and edit'}
+                            {history.coachWeek ? (tr ? 'Koçun bu haftaki taslağı · okuyup düzenleyin' : 'Coach’s draft for this week · read and edit') : (tr ? 'Başlangıç taslağı · okuyup düzenleyin' : 'Starter draft · read and edit')}
                           </span>
                         )}
                       </div>

@@ -92,3 +92,24 @@ test('reading needs the write right, a valid address and stays within the rate l
  for(let i=0;i<5;i++)await intake(f);
  await assert.rejects(intake(f),error=>error.status===429);
 }));
+
+test('a voice start comes from the site wording, and the AI voice keeps only clean values',()=>{
+ const formal=pageFacts(page('Size en uygun planı seçin','Sizin için hazırladık. Sizinle çalışmak isteriz. Size destek oluyoruz. Sizi bekliyoruz.'),'https://defter.example/');
+ const {voice}=templateIntake([formal],'');assert.equal(voice.address,'formal');assert.equal(voice.example,'Size en uygun planı seçin');
+ assert.equal(templateIntake([pageFacts('<html><body><h1>Hi</h1><p>We build tools for you.</p></body></html>','https://e.example/')],'').voice.address,undefined,'English copy says nothing about siz/sen');
+ const ai=parseIntake(JSON.stringify({voice:{traits:'sakin, açık, yardımsever',address:'informal',useWords:'%100 garanti, hızlı'}}),1,false).voice;
+ assert.deepEqual(plain(ai),{traits:'sakin, açık, yardımsever',address:'informal'},'a guarantee claim is dropped');
+ assert.deepEqual(plain(parseIntake(JSON.stringify({voice:{address:'shouting'}}),1,false).voice),{});
+});
+
+test('site findings become planned Calendar tasks once, with the right and valid input only',coachRun(async f=>{
+ const findings=[{priority:'high',title:'Meta description yok',recommendation:'Sayfa faydasını anlatan bir açıklama ekleyin.'},{priority:'low',title:'Canonical bağlantı yok',recommendation:'Kopya URL riskini azaltın.'}];
+ const service=new CoachIntakeService(f.db,f.scope);
+ assert.deepEqual(plain(service.addTasks({findings})),{created:2,skipped:0});
+ const tasks=f.db.prepare("SELECT title,status,due_at,note FROM platform_work_items WHERE organization_id=? AND project_id=? ORDER BY due_at").all(f.a.organizationId,f.a.projectId);
+ assert.deepEqual(tasks.map(task=>task.title),['Site: Meta description yok','Site: Canonical bağlantı yok']);assert.ok(tasks.every(task=>task.status==='planned'&&task.note.startsWith('coach-intake:site')));
+ assert.ok(Date.parse(tasks[0].due_at)-Date.now()<1.1*86400000,'an important fix is due tomorrow');
+ assert.deepEqual(plain(service.addTasks({findings})),{created:0,skipped:2},'an open task is not added twice');
+ for(const bad of [[],Array.from({length:6},()=>findings[0]),[{...findings[0],priority:'urgent'}],[{...findings[0],title:''}]])assert.throws(()=>service.addTasks({findings:bad}),JSON.stringify(bad).slice(0,40));
+ assert.throws(()=>new CoachIntakeService(f.db,f.member('viewer')).addTasks({findings}),error=>error.status===403);
+}));

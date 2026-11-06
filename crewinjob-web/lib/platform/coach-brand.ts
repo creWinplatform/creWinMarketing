@@ -15,7 +15,8 @@ export function normalizeVoiceAnswers(raw:unknown):CoachVoiceAnswers{
   const input=coachObject(raw);
   return {traits:coachText(input.traits,120),avoid:coachText(input.avoid,120),address:coachChoice(['formal','informal','mixed'] as const,input.address),useWords:coachText(input.useWords,200,false),avoidWords:coachText(input.avoidWords,200,false),example:coachText(input.example,300,false)};
 }
-// Competitors are only what the team writes down; the URL is a label and is never visited.
+// Competitors are what the team writes down; a URL is read once a week by the competitor site watch (competitor-sites.ts:
+// public pages only, robots.txt respected). The positioning analysis below still uses only the team's notes.
 export function normalizeCompetitors(raw:unknown):CoachCompetitor[]{
   if(!Array.isArray(raw)||raw.length>5)throw new MarketingStoreError('En fazla beş rakip ekleyin.');
   return raw.map(item=>{const value=coachObject(item),url=coachText(value.url,300,false);

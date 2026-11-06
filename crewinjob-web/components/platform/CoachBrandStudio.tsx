@@ -3,8 +3,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Check, Plus, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
-import type { CoachBrandSnapshot, CoachCompetitor, CoachVoiceAnswers } from '@/lib/platform/coach-types';
+import { COACH_VOICE_PREFILL_KEY, type CoachBrandSnapshot, type CoachCompetitor, type CoachVoiceAnswers } from '@/lib/platform/coach-types';
 import Msg from '@/components/Msg';
+import CompetitorSiteWatch from './CompetitorSiteWatch';
 
 const emptyVoice:CoachVoiceAnswers={traits:'',avoid:'',address:'formal',useWords:'',avoidWords:'',example:''};
 const emptyCompetitor:CoachCompetitor={name:'',url:'',says:'',strengths:'',weaknesses:''};
@@ -16,7 +17,15 @@ export default function CoachBrandStudio({workspace,lang,onUpdate}:{workspace:Wo
   const [data,setData]=useState<CoachBrandSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState('');
   const [answers,setAnswers]=useState<CoachVoiceAnswers>(emptyVoice),[draft,setDraft]=useState(''),[competitors,setCompetitors]=useState<CoachCompetitor[]>([]),[difference,setDifference]=useState(''),[positioning,setPositioning]=useState('');
   const apply=(value:CoachBrandSnapshot)=>{setData(value);setAnswers(value.voiceAnswers||emptyVoice);setDraft(value.voiceDraft||'');setCompetitors(value.competitors);setDifference(value.difference);setPositioning(value.analysis?.positioning||'');};
-  const load=useCallback(()=>{projectRequest<CoachBrandSnapshot>('/api/platform/coach/brand').then(apply).catch(reason=>setError(reason.message));},[]);
+  // A voice start carried from "Start from your website" (this browser session, at most 30 minutes old) fills only the
+  // empty fields once; the team still prepares and applies the draft itself.
+  const carried=(value:CoachBrandSnapshot)=>{let start:Partial<CoachVoiceAnswers>&{at?:number}|null=null;
+    try{start=JSON.parse(sessionStorage.getItem(COACH_VOICE_PREFILL_KEY)||'null');sessionStorage.removeItem(COACH_VOICE_PREFILL_KEY);}catch{start=null;}
+    if(!start||!value.canWrite||typeof start.at!=='number'||Date.now()-start.at>30*60000)return;
+    const text=(key:'traits'|'useWords'|'example',max:number)=>typeof start![key]==='string'?String(start![key]).slice(0,max):'';
+    setAnswers(old=>({...old,traits:old.traits||text('traits',120),useWords:old.useWords||text('useWords',200),example:old.example||text('example',300),address:!value.voiceAnswers&&['formal','informal','mixed'].includes(start!.address as string)?start!.address as CoachVoiceAnswers['address']:old.address}));
+    setNotice(tr?'Sitenizden okunan ton önerisi boş alanlara eklendi. Kontrol edip taslağı hazırlayın; kaydedene kadar hiçbir şey değişmez.':'The voice start read from your site was added to the empty fields. Check it and prepare the draft; nothing changes until you save.');};
+  const load=useCallback(()=>{projectRequest<CoachBrandSnapshot>('/api/platform/coach/brand').then(value=>{apply(value);carried(value);}).catch(reason=>setError(reason.message));},[]);
   useEffect(()=>{load();},[load]);
   const run=async(key:string,body:object,message:string)=>{if(busy||!data)return false;setBusy(key);setError('');setNotice('');try{const value=await projectRequest<CoachBrandSnapshot>('/api/platform/coach/brand',{method:'POST',body:JSON.stringify({...body,expectedRevision:data.revision}),signal:AbortSignal.timeout(45000)});apply(value);setNotice(message);return value;}catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));load();return false;}finally{setBusy('');}};
   if(error&&!data)return <p className="studio-error" role="alert"><Msg text={error}/></p>;
@@ -54,7 +63,7 @@ export default function CoachBrandStudio({workspace,lang,onUpdate}:{workspace:Wo
       <form className="coach-competitors" onSubmit={event=>{event.preventDefault();void run('competitors',{action:'competitors',competitors,difference},tr?'Rakip notları kaydedildi.':'Competitor notes saved.');}}>
         {competitors.map((item,index)=><fieldset key={index} className="coach-plan-item" disabled={!data.canWrite}>
           <label className="coach-field"><span>{tr?'Rakip adı':'Competitor name'}</span><input aria-label={tr?'Rakip adı':'Competitor name'} required maxLength={80} value={item.name} onChange={event=>setCompetitors(competitors.map((value,i)=>i===index?{...value,name:event.target.value}:value))}/></label>
-          <label className="coach-field"><span>{tr?'Adres (isteğe bağlı, ziyaret edilmez)':'Address (optional, never visited)'}</span><input aria-label={tr?'Rakip adresi':'Competitor address'} type="url" maxLength={300} value={item.url} onChange={event=>setCompetitors(competitors.map((value,i)=>i===index?{...value,url:event.target.value}:value))}/></label>
+          <label className="coach-field"><span>{tr?'Adres (isteğe bağlı; herkese açık sayfaları haftada bir okunur)':'Address (optional; its public pages are read once a week)'}</span><input aria-label={tr?'Rakip adresi':'Competitor address'} type="url" maxLength={300} value={item.url} onChange={event=>setCompetitors(competitors.map((value,i)=>i===index?{...value,url:event.target.value}:value))}/></label>
           <label className="coach-field coach-span"><span>{tr?'Kendilerini nasıl anlatıyorlar?':'How do they describe themselves?'}</span><textarea aria-label={tr?'Kendilerini nasıl anlatıyorlar?':'How do they describe themselves?'} rows={2} maxLength={300} value={item.says} onChange={event=>setCompetitors(competitors.map((value,i)=>i===index?{...value,says:event.target.value}:value))}/></label>
           <label className="coach-field"><span>{tr?'Güçlü yanları (sizin gözleminiz)':'Strengths (your view)'}</span><textarea aria-label={tr?'Güçlü yanları':'Strengths'} rows={2} maxLength={300} value={item.strengths} onChange={event=>setCompetitors(competitors.map((value,i)=>i===index?{...value,strengths:event.target.value}:value))}/></label>
           <label className="coach-field"><span>{tr?'Zayıf yanları (sizin gözleminiz)':'Weaknesses (your view)'}</span><textarea aria-label={tr?'Zayıf yanları':'Weaknesses'} rows={2} maxLength={300} value={item.weaknesses} onChange={event=>setCompetitors(competitors.map((value,i)=>i===index?{...value,weaknesses:event.target.value}:value))}/></label>
@@ -64,6 +73,7 @@ export default function CoachBrandStudio({workspace,lang,onUpdate}:{workspace:Wo
         <label className="coach-field"><span>{tr?'Sizi farklı kılan ne?':'What makes you different?'}</span><small>{tr?'Kendi kelimelerinizle, kanıtlayabileceğiniz şeyler.':'In your words, things you can back up.'}</small><textarea aria-label={tr?'Sizi farklı kılan ne?':'What makes you different?'} rows={2} maxLength={400} value={difference} onChange={event=>setDifference(event.target.value)} disabled={!data.canWrite}/></label>
         {data.canWrite&&<div className="coach-footer-buttons"><button className="studio-secondary" disabled={Boolean(busy)}>{tr?'Notları kaydet':'Save the notes'}</button><button type="button" className="studio-primary" disabled={Boolean(busy)||!data.competitors.length||JSON.stringify(competitors)!==JSON.stringify(data.competitors)||difference!==data.difference} onClick={()=>void run('analyze',{action:'analyze',mode},tr?'Karşılaştırma hazır. Konumlandırma önerisini inceleyin.':'The comparison is ready. Review the positioning suggestion.')}><Sparkles size={15}/>{busy==='analyze'?(tr?'Hazırlanıyor…':'Preparing…'):(tr?'Karşılaştırma öner':'Suggest a comparison')}</button></div>}
       </form>
+      <CompetitorSiteWatch lang={lang} canWrite={data.canWrite} reloadKey={JSON.stringify(data.competitors.map(item=>item.url))}/>
       {data.analysis&&<div className="coach-brand-draft">
         <div className="coach-action-meta">{data.analysisSource&&<span className="studio-badge">{sources[data.analysisSource][idx]}</span>}</div>
         <div className="studio-table-scroll"><table className="coach-keywords"><thead><tr><th>{tr?'Rakip':'Competitor'}</th><th>{tr?'Onların söylediği (notlarınız)':'What they say (your notes)'}</th><th>{tr?'Sizin açınız':'Your angle'}</th></tr></thead><tbody>{data.analysis.rows.map((row,index)=><tr key={index}><td>{row.name}</td><td data-label={tr?'Onlar':'They'}>{row.theirClaim}</td><td data-label={tr?'Siz':'You'}>{row.ourAngle||'—'}</td></tr>)}</tbody></table></div>

@@ -4,11 +4,12 @@ import { ArrowRight, CalendarPlus, Check, ChevronLeft, Clock3, Globe, Lightbulb,
 import type { LocalizedText, Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
-import { COACH_BUDGETS, COACH_CHANNELS, COACH_CURRENT, COACH_HOURS, COACH_GOALS, COACH_MARKETS, COACH_OBSTACLES, COACH_PREFILL_KEY, COACH_PRICES, COACH_SALES, COACH_SKILLS, COACH_TOOLS, diffBriefs, type CoachAction, type CoachAnswers, type CoachIntake, type CoachIntakeField, type CoachGoal, type CoachBrief, type CoachChannel, type CoachSnapshot, type CoachTool } from '@/lib/platform/coach-types';
+import { COACH_BUDGETS, COACH_CHANNELS, COACH_CURRENT, COACH_HOURS, COACH_GOALS, COACH_MARKETS, COACH_OBSTACLES, COACH_PREFILL_KEY, COACH_PRICES, COACH_SALES, COACH_SKILLS, COACH_TOOLS, COACH_VOICE_PREFILL_KEY, diffBriefs, type CoachAction, type CoachAnswers, type CoachIntake, type CoachIntakeField, type CoachGoal, type CoachBrief, type CoachChannel, type CoachSnapshot, type CoachTool } from '@/lib/platform/coach-types';
 import Msg from '@/components/Msg';
 import { briefChangeLines } from './coach-changes';
 import { useCompassRefresh } from './GrowthCompass';
 import CoachAssign from './CoachAssign';
+import CoachWeeklyPack from './CoachWeeklyPack';
 
 type Pair=[string,string];
 type EditBrief=Omit<CoachBrief,'icp'>&{icp:{summary:string;pains:string}};
@@ -42,7 +43,7 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
   const [data,setData]=useState<CoachSnapshot|null>(null),[error,setError]=useState(''),[dialogError,setDialogError]=useState(''),[notice,setNotice]=useState(''),[calendarNotice,setCalendarNotice]=useState(false),[libraryNotice,setLibraryNotice]=useState(false),[busy,setBusy]=useState('');
   const [opened,setOpened]=useState(false),[view,setView]=useState<'questions'|'review'|'brief'>('questions'),[answers,setAnswers]=useState<CoachAnswers>(emptyAnswers),[language,setLanguage]=useState<'tr'|'en'>(workspace.project.language||lang),[edit,setEdit]=useState<EditBrief|null>(null);
-  const [intake,setIntake]=useState<CoachIntake|null>(null),[site,setSite]=useState(workspace.project.website||''),[about,setAbout]=useState('');
+  const [intake,setIntake]=useState<CoachIntake|null>(null),[site,setSite]=useState(workspace.project.website||''),[about,setAbout]=useState(''),[intakeNotice,setIntakeNotice]=useState('');
   const dialog=useRef<HTMLDialogElement>(null),previousFocus=useRef<HTMLElement|null>(null),request=useRef<AbortController|null>(null),refreshCompass=useCompassRefresh(),firstStart=useRef(false);
   const show=(value:string|LocalizedText)=>typeof value==='string'?value:value[lang];
   const load=useCallback(()=>{
@@ -63,7 +64,7 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
   useEffect(()=>{if(!opened)return;dialog.current?.querySelector<HTMLElement>('#coach-title')?.focus();dialog.current?.querySelector<HTMLElement>('.compass-scroll')?.scrollTo(0,0);},[opened,view]);
   const post=async<T,>(body:object)=>projectRequest<T>('/api/platform/coach',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(45000)});
   const fail=(reason:unknown)=>reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.');
-  const openQuestions=()=>{setIntake(null);setAnswers(data?.answers||emptyAnswers);setLanguage(data?.draft?.language||data?.brief?.language||workspace.project.language||lang);setDialogError('');setView('questions');setOpened(true);};
+  const openQuestions=()=>{setIntake(null);setIntakeNotice('');setAnswers(data?.answers||emptyAnswers);setLanguage(data?.draft?.language||data?.brief?.language||workspace.project.language||lang);setDialogError('');setView('questions');setOpened(true);};
   const openReview=(brief:CoachBrief)=>{setEdit(toEdit(brief));setDialogError('');setView('review');setOpened(true);};
   const openBrief=()=>{setDialogError('');setView('brief');setOpened(true);};
   // Closing the guided first start without a diagnosis defers the Compass first run, like closing the Compass itself.
@@ -80,6 +81,14 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
       setIntake(value);setAnswers(old=>({...old,...value.answers,current:value.answers.current?.length?value.answers.current:old.current}));}
     catch(reason){setDialogError(fail(reason));}finally{setBusy('');}
   };
+  // The chosen site findings become planned Calendar tasks; nothing on the site changes.
+  const addSiteTasks=async()=>{
+    if(!intake?.findings.length||busy)return;setBusy('intake-tasks');setDialogError('');
+    try{const value=await post<{created:number;skipped:number}>({action:'intake_tasks',language,findings:intake.findings});setIntakeNotice(tr?`${value.created} iş Takvim’e eklendi${value.skipped?`; ${value.skipped} iş zaten açıktı`:''}.`:`${value.created} task(s) added to the Calendar${value.skipped?`; ${value.skipped} were already open`:''}.`);onChange?.();}
+    catch(reason){setDialogError(fail(reason));}finally{setBusy('');}
+  };
+  // The voice start goes to the brand voice form through this browser session; that form saves nothing until the team does.
+  const carryVoice=()=>{try{sessionStorage.setItem(COACH_VOICE_PREFILL_KEY,JSON.stringify({...intake?.voice,at:Date.now()}));setIntakeNotice(tr?'Ton önerisi marka dili formuna aktarılmak üzere hazırlandı: Proje ayarları → Marka dili & rakipler.':'The voice start is ready for the brand voice form: Project settings → Brand voice & competitors.');}catch{setIntakeNotice(tr?'Tarayıcı bu öneriyi saklayamadı; ton önerisini formda elle yazabilirsiniz.':'The browser could not keep this suggestion; you can type it in the form yourself.');}};
   const fromSite=(field:CoachIntakeField)=>{const proof=intake?.evidence[field];if(!proof)return null;const page=proof.page===null?null:intake!.pages[proof.page];
     return <span className="coach-from-site" title={page?page.url:undefined}>{proof.page===null?(tr?'Tanıtımınızdan':'From your description'):proof.page===0?(tr?'Ana sayfadan':'From the home page'):(tr?`Siteden: ${page?.title||page?.url}`:`From the site: ${page?.title||page?.url}`)}</span>;};
   const saveBrief=async(action:'save'|'approve')=>{
@@ -145,6 +154,7 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
     {data&&brief&&<>
       {data.actions.length>0?<ol className="coach-actions">{data.actions.map(actionCard)}</ol>:<div className="studio-empty"><Check size={24}/><p>{data.remaining===0&&data.resolved.length===0?(tr?'Plandaki tüm eylemler tamamlandı. Gelecek ay için yeni bir teşhis yapabilirsiniz.':'Every plan action is handled. You can run a new diagnosis for next month.'):(tr?'Bu haftanın eylemleri tamamlandı veya ertelendi.':'This week’s actions are done or deferred.')}</p>{data.canWrite&&<button type="button" className="studio-text-button" onClick={openQuestions}>{tr?'Yeni teşhis':'New diagnosis'}<ArrowRight size={14}/></button>}</div>}
       {data.resolved.length>0&&<details className="coach-resolved"><summary>{tr?`Bu hafta ele alınanlar (${data.resolved.length})`:`Handled this week (${data.resolved.length})`}</summary><ul>{data.resolved.map(action=><li key={action.id}><span className={`coach-state ${action.state}`}>{action.state==='done'?(tr?'Tamamlandı':'Done'):(tr?'Atlandı':'Skipped')}</span><span>{show(action.title)}</span>{data.canWrite&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void act(action,'open')}><Undo2 size={14}/>{tr?'Geri al':'Undo'}</button>}</li>)}</ul></details>}
+      <CoachWeeklyPack lang={lang}/>
       <p className="compass-safety"><ShieldCheck size={15}/>{tr?'Bunlar öneridir; hiçbir şey otomatik yayınlanmaz veya gönderilmez.':'These are suggestions; nothing is published or sent automatically.'}</p>
     </>}
 
@@ -168,7 +178,10 @@ export default function GrowthCoach({workspace,lang,onChange,guided=false}:{work
               {intake.notes.includes('robots_blocked')&&<p className="coach-note">{tr?'Siteniz robots.txt ile okunmaya kapalı; yalnız tanıtımınız kullanıldı.':'Your site’s robots.txt closes it to reading; only your description was used.'}</p>}
               {intake.notes.includes('site_unreadable')&&<p className="coach-note">{tr?'Siteniz okunamadı; yalnız tanıtımınız kullanıldı.':'Your site could not be read; only your description was used.'}</p>}
               {intake.notes.includes('ai_failed')&&<p className="coach-note">{tr?'AI önerisi alınamadı; yalnız sitedeki sabit bilgiler kullanıldı ve AI hakkınız iade edildi.':'The AI suggestion failed; only fixed facts from the site were used and the AI use was refunded.'}</p>}
-              {intake.findings.length>0&&<details><summary>{tr?`Sitenizde fark ettiklerimiz (${intake.findings.length})`:`What we noticed on your site (${intake.findings.length})`}</summary><ul>{intake.findings.map((item,index)=><li key={index}><span className={`coach-state ${item.priority==='high'?'warn':''}`}>{item.priority==='high'?(tr?'Önemli':'Important'):item.priority==='medium'?(tr?'Orta':'Medium'):(tr?'Düşük':'Low')}</span> <Msg text={item.title}/> — <Msg text={item.recommendation}/></li>)}</ul><p className="coach-note">{tr?'Tam tarama için SEO & Blog ekranını kullanın.':'Use SEO & Blog for a full scan.'}</p></details>}
+              {intake.findings.length>0&&<details><summary>{tr?`Sitenizde fark ettiklerimiz (${intake.findings.length})`:`What we noticed on your site (${intake.findings.length})`}</summary><ul>{intake.findings.map((item,index)=><li key={index}><span className={`coach-state ${item.priority==='high'?'warn':''}`}>{item.priority==='high'?(tr?'Önemli':'Important'):item.priority==='medium'?(tr?'Orta':'Medium'):(tr?'Düşük':'Low')}</span> <Msg text={item.title}/> — <Msg text={item.recommendation}/></li>)}</ul><p className="coach-note">{tr?'Tam tarama için SEO & Blog ekranını kullanın.':'Use SEO & Blog for a full scan.'}</p><button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={()=>void addSiteTasks()}>{busy==='intake-tasks'?(tr?'Ekleniyor…':'Adding…'):(tr?'Bunları Takvim’e iş olarak ekle':'Add these to the Calendar as tasks')}</button></details>}
+              {Object.keys(intake.voice||{}).length>0&&<div className="coach-intake-voice"><p><strong>{tr?'Marka diliniz için başlangıç: ':'A start for your brand voice: '}</strong>{[intake.voice.traits&&(tr?`ton: ${intake.voice.traits}`:`tone: ${intake.voice.traits}`),intake.voice.address&&(tr?`hitap: ${({formal:'“siz”',informal:'“sen”',mixed:'kanala göre'} as const)[intake.voice.address]}`:`address: ${({formal:'formal',informal:'informal',mixed:'by channel'} as const)[intake.voice.address]}`),intake.voice.useWords&&(tr?`sık ifadeler: ${intake.voice.useWords}`:`common words: ${intake.voice.useWords}`)].filter(Boolean).join(' · ')}</p>
+                <a className="studio-text-button" href="/?tab=project&settings=brand" onClick={carryVoice}>{tr?'Marka dili formuna aktar':'Carry to the brand voice form'}</a></div>}
+              {intakeNotice&&<p className="studio-success" role="status">{intakeNotice}</p>}
             </div>}
           </section>
           <fieldset disabled={Boolean(busy)}>
