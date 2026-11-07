@@ -11,18 +11,24 @@ They run as the signed-in user, with limited rights.
 
 | Task | When | Runs |
 |---|---|---|
-| Panel | at sign-in | the production build: `npm run start` with `NEXT_DIST_DIR=.next-local` (port 3033), built first when missing |
-| Worker | at sign-in, after 2 minutes | `npm run worker:local` |
+| Panel | on demand (`npm run local:start`) | the production build: `npm run start` with `NEXT_DIST_DIR=.next-local` (port 3033), built first when missing |
+| Worker | on demand, with the Panel | `npm run worker:local` |
 | Backup | daily at 03:00 | `npm run backup:platform` |
-| Drill | Sundays at 04:00 | `npm run restore:drill -- --latest` |
+| Drill | Sundays at 04:00, when the PC is idle | `npm run restore:drill -- --latest` |
 | Offsite | daily at 03:30 | `npm run offsite:platform` (does nothing until S3 is set up) |
 
-**Behaviour:**
+**Behaviour (7 November 2026):**
 
-- A Backup or Drill missed because the PC was off runs at the next start.
+- **No window.** Every task runs through `conhost.exe --headless`. Before, `-WindowStyle Hidden` still opened an
+  empty Windows Terminal window when Terminal was the default console, and closing that window stopped the panel.
+- **Nothing at sign-in.** Panel and Worker no longer start with Windows, so they cannot slow the PC down while it
+  boots. Run `npm run local:start` when you need the panel and `npm run local:stop` when you are done.
+  `-Action Install -AutoStart` brings back the sign-in start, delayed 3 minutes (Panel) and 5 minutes (Worker).
+- **Below-normal priority** for every task, so they yield to what you are doing.
+- A Backup missed because the PC was off runs at the next start (it takes a few seconds). A missed Drill waits
+  until the PC has been idle for 10 minutes.
 - Laptops keep running the tasks on battery.
-- Panel and Worker skip themselves when one is already running, for example
-  in a terminal. They are retried three times when they fail.
+- Panel and Worker skip themselves when one is already running, for example in a terminal.
 - Each task writes to `data/logs/<task>.log`. A log over 10 MB is moved to
   `<task>.old.log`.
 - The drill restores the newest backup into `data/recovery-drills`, verifies
@@ -38,8 +44,11 @@ powershell -ExecutionPolicy Bypass -File scripts/local-autostart.ps1 -Action Sta
 powershell -ExecutionPolicy Bypass -File scripts/local-autostart.ps1 -Action Remove
 ```
 
-- `-Action Install` adds the tasks that are missing (for example Offsite on an
-  older install). It never overwrites a task and never starts one.
+- `-Action Install` registers all five tasks again, so it also updates an older
+  install. It never starts one.
+- `-Action Start` / `-Action Stop` (also `npm run local:start` / `local:stop`)
+  start or stop the Panel and Worker. Stop ends the runners, whatever listens on
+  3033 and the local worker.
 - `-Action Remove` removes the tasks but does not stop running processes.
 
 ## Production build (6 November 2026)
