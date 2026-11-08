@@ -147,6 +147,39 @@ and 377 transactions call the database synchronously today.
 - **Phase 4:** the data copy (trial, then real, with approval) and the switch (`PLATFORM_DATABASE_PROVIDER=mssql`).
 - **Speed:** hot paths that run dozens of statements are batched. The panel is fastest in the same AWS region as RDS.
 
+## Phase 4: the platform data copy (8 November)
+
+- **Tool:** `npm run db:copy` (`scripts/mssql-copy.cjs`).
+  1. It takes a consistent snapshot of `data/platform.sqlite` (SQLite online backup) and checks that its schema
+     version matches `lib/db/mssql-schema.sql`.
+  2. It refuses a target database that already has tables.
+  3. In one transaction it creates the schema, copies every row in rowid order with explicit ids kept, re-seeds
+     AUTOINCREMENT tables, and re-validates every foreign key and CHECK constraint (`WITH CHECK`) before the
+     commit. A failure leaves the target empty.
+  4. It compares each table's row count and a hash of every value with the snapshot.
+  - `--database <name> --create` copies into another database on the same server. `--verify-only` compares an
+    existing copy with the source again.
+- **Done:** the platform data (schema 78, 152 tables, 101 rows) was copied into `Ryzevo` and verified. The
+  repository's `workspace()` returns the same result on both databases.
+- **Not yet:** the Crewin `data/*.json` files (phase 2). The panel still runs on SQLite, so writes made after the
+  copy are not in `Ryzevo`. The copy has to be redone, or the difference moved, at the switch.
+
+## The test database: `Ryzevo_Trial`
+
+- `Ryzevo_Trial` on the same RDS instance holds the same copy and is **the database for all SQL Server tests**.
+  `Ryzevo` is never used for tests.
+- `crewinjob-web/appsettings.Test.json` (git-ignored) points at it. Create it from `appsettings.json` with the
+  database name swapped to `Ryzevo_Trial`.
+- Using it:
+  - `node --test test/db-client.test.cjs` runs the SQL Server half against it (it creates a `zz_client` table there);
+  - `PLATFORM_APPSETTINGS_PATH=appsettings.Test.json npm run db:audit` compiles every statement against it;
+  - a panel started with `PLATFORM_DATABASE_PROVIDER=mssql PLATFORM_APPSETTINGS_PATH=appsettings.Test.json`
+    runs on it.
+- `npm run db:smoke` drops and recreates its database, so it still refuses any non-local server, this one
+  included. It needs the local Docker test server.
+- To reset the trial copy, drop its tables (or the database) and run
+  `node scripts/mssql-copy.cjs --database Ryzevo_Trial --create`.
+
 ## Open questions
 
 - Will the panel keep running on this PC, or move to AWS (eu-west-1) next to RDS?

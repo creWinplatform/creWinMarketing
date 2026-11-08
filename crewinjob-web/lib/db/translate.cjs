@@ -492,7 +492,12 @@ let schema = null;
 function tableInfo(table) {
   if (!schema) {
     schema = new Map();
-    const ddl = require('node:fs').readFileSync(require('node:path').join(__dirname, 'mssql-schema.sql'), 'utf8');
+    // Next bundles this file into .next/server/chunks, where __dirname no longer holds the schema; fall back to the
+    // source tree. A Windows checkout may have CRLF line ends, which the table regex below does not expect.
+    const fs = require('node:fs'), path = require('node:path');
+    const file = [path.join(__dirname, 'mssql-schema.sql'), path.join(process.cwd(), 'lib', 'db', 'mssql-schema.sql')].find(f => fs.existsSync(f));
+    if (!file) throw new Error('lib/db/mssql-schema.sql not found (run the server from crewinjob-web).');
+    const ddl = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
     for (const m of ddl.matchAll(/CREATE TABLE \[(\w+)\] \(\n([\s\S]*?)\n\);/g)) {
       const lines = m[2].split('\n'), columns = [], info = { columns, identity: null, key: [], syntheticRowid: false };
       for (const line of lines) {

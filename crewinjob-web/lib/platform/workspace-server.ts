@@ -6,9 +6,22 @@ import type { WorkspacePermission } from './access';
 import { securityVersion } from './account';
 import { isLegacyScope } from './access';
 
+// The legacy administrator rows are ensured once per process and username, not on every request: on SQL Server the
+// per-request upsert transaction made concurrent requests deadlock on the same rows and added five round trips each.
+const legacyReady = globalThis as typeof globalThis & { __ryzevoLegacyBootstrap?: Map<string, Promise<void>> };
 export async function platformRepository() {
   const repository = new PlatformRepository(platformDatabase());
-  if (process.env.ADMIN_USERNAME) await repository.bootstrapLegacy(process.env.ADMIN_USERNAME);
+  const username = process.env.ADMIN_USERNAME;
+  if (username) {
+    const done = legacyReady.__ryzevoLegacyBootstrap ??= new Map();
+    let ready = done.get(username);
+    if (!ready) {
+      ready = repository.bootstrapLegacy(username);
+      done.set(username, ready);
+      ready.catch(() => done.delete(username));
+    }
+    await ready;
+  }
   return repository;
 }
 
