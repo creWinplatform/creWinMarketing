@@ -4,35 +4,35 @@ const {load}=require('./platform-loader.cjs');
 const {coachRun}=require('./coach-fixture.cjs');
 const {seedCoachFirstWeek,coachStarterDraft}=load('coach-first-week.ts'),{ProjectMarketingStore}=load('marketing-store.ts'),{CoachContentPlan}=load('coach-content.ts'),{GrowthCompass}=load('guidance.ts');
 // Ready first week: after approval the starter plan and a few drafts exist; nothing is published or counted as the team's work.
-const starters=f=>new ProjectMarketingStore(f.db,f.scope).history().filter(item=>item.starter);
+const starters=async f=>(await new ProjectMarketingStore(f.db,f.scope).history()).filter(item=>item.starter);
 
 test('approving the brief leads to this month’s starter plan and three drafts in the library',coachRun(async f=>{
   await f.approve({goal:'social',market:'b2c',current:['website','instagram']});
-  assert.equal(seedCoachFirstWeek(f.db,f.scope).drafts,3);
-  const drafts=starters(f),plan=new CoachContentPlan(f.db,f.scope).read();
+  assert.equal((await seedCoachFirstWeek(f.db,f.scope)).drafts,3);
+  const drafts=await starters(f),plan=await new CoachContentPlan(f.db,f.scope).read();
   assert.equal(drafts.length,3);assert.ok(plan.items.length>=3,'the month’s plan was prepared');
   assert.ok(drafts.every(item=>/^content:/.test(item.coachRef)&&plan.items.some(p=>`content:${p.id}`===item.coachRef)),'each draft points to its plan item');
   assert.ok(drafts.every(item=>item.content.includes('https://example.com')&&item.prompt.length>0),'the team’s instructions stay in the brief field, not in the post');
   assert.equal(new Set(drafts.map(item=>item.content.split('\n\n')[0])).size,3,'each draft starts with its own topic');
   assert.ok(new Set(drafts.map(item=>item.platform)).size>=2,'the first week spreads over the brief’s channels');
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_social_publications').get().n,0,'nothing is published or queued');
-  assert.equal(f.coach.read().starterDrafts,3);
-  assert.equal(seedCoachFirstWeek(f.db,f.scope).drafts,0,'running it again adds nothing');
-  assert.equal(starters(f).length,3);
+  assert.equal((await f.coach.read()).starterDrafts,3);
+  assert.equal((await seedCoachFirstWeek(f.db,f.scope)).drafts,0,'running it again adds nothing');
+  assert.equal((await starters(f)).length,3);
 }));
 
 test('starter drafts do not complete the Compass “first content” step or the learning view until the team saves them',coachRun(async f=>{
-  await f.approve({goal:'social',market:'b2c',current:['website','instagram']});seedCoachFirstWeek(f.db,f.scope);
-  const compass=new GrowthCompass(f.db,f.scope,'00'.repeat(32)),draftStep=()=>compass.read().steps.find(step=>step.id==='draft');
-  assert.notEqual(draftStep()?.state,'done','a draft the team never touched is not their first content');
-  const store=new ProjectMarketingStore(f.db,f.scope),first=starters(f)[0];
+  await f.approve({goal:'social',market:'b2c',current:['website','instagram']});await seedCoachFirstWeek(f.db,f.scope);
+  const compass=new GrowthCompass(f.db,f.scope,'00'.repeat(32)),draftStep=async ()=>(await compass.read()).steps.find(step=>step.id==='draft');
+  assert.notEqual((await draftStep())?.state,'done','a draft the team never touched is not their first content');
+  const store=new ProjectMarketingStore(f.db,f.scope),first=(await starters(f))[0];
   // The editor rebuilds the item from known fields only (contentInput), so a saved draft no longer carries the flag.
   const source=require('node:fs').readFileSync(require('node:path').join(__dirname,'..','lib','platform','marketing-routes.ts'),'utf8');
   const input=source.slice(source.indexOf('async function contentInput'),source.indexOf('\n}',source.indexOf('async function contentInput')));
   assert.ok(input.length>100);assert.doesNotMatch(input,/starter/,'contentInput never copies the starter flag');
-  const {starter:_drop,...saved}=first;store.saveContent({...saved,content:first.content+' (edited by the team)'},false);
-  assert.equal(starters(f).length,2);
-  assert.equal(draftStep()?.state,'done','once the team saves a draft on the chosen channel, the step is theirs');
+  const {starter:_drop,...saved}=first;await store.saveContent({...saved,content:first.content+' (edited by the team)'},false);
+  assert.equal((await starters(f)).length,2);
+  assert.equal((await draftStep())?.state,'done','once the team saves a draft on the chosen channel, the step is theirs');
 }));
 
 test('a starter is a frame the team fills in: it cannot be published untouched and fits X’s limit',()=>{
@@ -50,8 +50,8 @@ test('a starter is a frame the team fills in: it cannot be published untouched a
 });
 
 test('no brief, no write right or a full library: approval still stands and no starter is forced',coachRun(async f=>{
-  assert.equal(seedCoachFirstWeek(f.db,f.scope).drafts,0,'nothing before approval');
+  assert.equal((await seedCoachFirstWeek(f.db,f.scope)).drafts,0,'nothing before approval');
   await f.approve({goal:'leads'});
-  const viewer=f.member('viewer');assert.equal(seedCoachFirstWeek(f.db,viewer).drafts,0);
-  assert.equal(starters(f).length,0);
+  const viewer=await f.member('viewer');assert.equal((await seedCoachFirstWeek(f.db,viewer)).drafts,0);
+  assert.equal((await starters(f)).length,0);
 }));

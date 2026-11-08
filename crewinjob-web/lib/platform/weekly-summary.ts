@@ -1,3 +1,5 @@
+import { mapSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -15,24 +17,24 @@ type Lang='tr'|'en';
 const DAY=86400000;
 export type WeeklyFacts={from:string;to:string;posts:number;previousPosts:number;spend:{currency:string;amount:number}[];adWarnings:number;
   apps:{name:string;installs:number|null;previousInstalls:number|null;reviews:number;average:number|null;unanswered:number;improved:number;declined:number}[];competitorChanges:number;alerts:string[]};
-export function weeklyFacts(db:Database.Database,scope:Scope,lang:Lang,now=Date.now()):WeeklyFacts{
+export async function weeklyFacts(db:Db,scope:Scope,lang:Lang,now=Date.now()):Promise<WeeklyFacts>{
   const args=[scope.organizationId,scope.projectId] as const,to=new Date(Math.floor(now/DAY)*DAY),from=new Date(to.getTime()-7*DAY),before=new Date(from.getTime()-7*DAY),iso=(value:Date)=>value.toISOString(),day=(value:Date)=>iso(value).slice(0,10);
-  const has=(table:string)=>Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
-  const posts=(a:Date,b:Date)=>(db.prepare("SELECT COUNT(*) n FROM platform_social_publications WHERE organization_id=? AND project_id=? AND mode='publish' AND state='accepted' AND COALESCE(submitted_at,scheduled_at)>=? AND COALESCE(submitted_at,scheduled_at)<?").get(...args,iso(a),iso(b)) as {n:number}).n;
-  const spend=has('platform_mobile_costs')?(db.prepare("SELECT currency,ROUND(SUM(amount),2) amount FROM platform_mobile_costs WHERE organization_id=? AND project_id=? AND day>=? AND day<? GROUP BY currency ORDER BY currency").all(...args,day(from),day(to)) as {currency:string;amount:number}[]):[];
-  const apps=has('platform_mobile_apps')?(db.prepare('SELECT id,source_version,config_json FROM platform_mobile_apps WHERE organization_id=? AND project_id=? ORDER BY created_at,id').all(...args) as {id:string;source_version:number;config_json:string}[]).map(app=>{
+  const has=async (table:string)=>Boolean(await db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
+  const posts=async (a:Date,b:Date)=>(await db.prepare("SELECT COUNT(*) n FROM platform_social_publications WHERE organization_id=? AND project_id=? AND mode='publish' AND state='accepted' AND COALESCE(submitted_at,scheduled_at)>=? AND COALESCE(submitted_at,scheduled_at)<?").get(...args,iso(a),iso(b)) as {n:number}).n;
+  const spend=await has('platform_mobile_costs')?(await db.prepare("SELECT currency,ROUND(SUM(amount),2) amount FROM platform_mobile_costs WHERE organization_id=? AND project_id=? AND day>=? AND day<? GROUP BY currency ORDER BY currency").all(...args,day(from),day(to)) as {currency:string;amount:number}[]):[];
+  const apps=await has('platform_mobile_apps')?await mapSeries((await db.prepare('SELECT id,source_version,config_json FROM platform_mobile_apps WHERE organization_id=? AND project_id=? ORDER BY created_at,id').all(...args) as {id:string;source_version:number;config_json:string}[]), async app=>{
     const config=JSON.parse(app.config_json) as {name:string;attributionProvider:string};
-    const installs=(a:Date,b:Date)=>(db.prepare("SELECT COUNT(DISTINCT e.entity_id) n FROM platform_product_events e JOIN platform_mobile_event_details d ON d.source_id=e.connection_id AND d.event_id=e.event_id AND d.organization_id=e.organization_id AND d.project_id=e.project_id WHERE d.app_id=? AND e.organization_id=? AND e.project_id=? AND d.kind='install' AND d.provider=? AND COALESCE(json_extract(d.details_json,'$.environment'),'')<>'sandbox' AND e.occurred_at>=? AND e.occurred_at<?").get(app.id,...args,config.attributionProvider,iso(a),iso(b)) as {n:number}).n;
-    const reviews=has('platform_mobile_reviews')?db.prepare('SELECT COUNT(*) n,AVG(rating) average FROM platform_mobile_reviews WHERE app_id=? AND reviewed_at>=? AND reviewed_at<?').get(app.id,iso(from),iso(to)) as {n:number;average:number|null}:{n:0,average:null};
-    const unanswered=has('platform_mobile_reviews')?(db.prepare("SELECT COUNT(*) n FROM platform_mobile_reviews r LEFT JOIN platform_mobile_review_replies p ON p.review_id=r.id WHERE r.app_id=? AND r.store_reply IS NULL AND (p.state IS NULL OR p.state<>'sent')").get(app.id) as {n:number}).n:0;
-    const moves=has('platform_mobile_keywords')?(db.prepare('SELECT (SELECT rank FROM platform_mobile_keyword_ranks r WHERE r.keyword_id=k.id AND r.day>=? AND r.day<? ORDER BY r.day LIMIT 1) first,(SELECT rank FROM platform_mobile_keyword_ranks r WHERE r.keyword_id=k.id AND r.day>=? AND r.day<? ORDER BY r.day DESC LIMIT 1) last FROM platform_mobile_keywords k WHERE k.app_id=?').all(day(from),day(to),day(from),day(to),app.id) as {first:number|null;last:number|null}[]):[];
+    const installs=async (a:Date,b:Date)=>(await db.prepare("SELECT COUNT(DISTINCT e.entity_id) n FROM platform_product_events e JOIN platform_mobile_event_details d ON d.source_id=e.connection_id AND d.event_id=e.event_id AND d.organization_id=e.organization_id AND d.project_id=e.project_id WHERE d.app_id=? AND e.organization_id=? AND e.project_id=? AND d.kind='install' AND d.provider=? AND COALESCE(json_extract(d.details_json,'$.environment'),'')<>'sandbox' AND e.occurred_at>=? AND e.occurred_at<?").get(app.id,...args,config.attributionProvider,iso(a),iso(b)) as {n:number}).n;
+    const reviews=await has('platform_mobile_reviews')?await db.prepare('SELECT COUNT(*) n,AVG(rating) average FROM platform_mobile_reviews WHERE app_id=? AND reviewed_at>=? AND reviewed_at<?').get(app.id,iso(from),iso(to)) as {n:number;average:number|null}:{n:0,average:null};
+    const unanswered=await has('platform_mobile_reviews')?(await db.prepare("SELECT COUNT(*) n FROM platform_mobile_reviews r LEFT JOIN platform_mobile_review_replies p ON p.review_id=r.id WHERE r.app_id=? AND r.store_reply IS NULL AND (p.state IS NULL OR p.state<>'sent')").get(app.id) as {n:number}).n:0;
+    const moves=await has('platform_mobile_keywords')?(await db.prepare('SELECT (SELECT rank FROM platform_mobile_keyword_ranks r WHERE r.keyword_id=k.id AND r.day>=? AND r.day<? ORDER BY r.day LIMIT 1) first,(SELECT rank FROM platform_mobile_keyword_ranks r WHERE r.keyword_id=k.id AND r.day>=? AND r.day<? ORDER BY r.day DESC LIMIT 1) last FROM platform_mobile_keywords k WHERE k.app_id=?').all(day(from),day(to),day(from),day(to),app.id) as {first:number|null;last:number|null}[]):[];
     const moved=(row:{first:number|null;last:number|null})=>row.first!==null&&row.last!==null?row.first-row.last:row.first===null&&row.last!==null?1:row.first!==null&&row.last===null?-1:0;
     // Installs kept for 90 days are always within reach of a weekly summary.
-    return {name:config.name,installs:installs(from,to),previousInstalls:installs(before,from),reviews:reviews.n,average:reviews.average===null?null:Math.round(reviews.average*100)/100,unanswered,improved:moves.filter(row=>moved(row)>0).length,declined:moves.filter(row=>moved(row)<0).length};
+    return {name:config.name,installs:await installs(from,to),previousInstalls:await installs(before,from),reviews:reviews.n,average:reviews.average===null?null:Math.round(reviews.average*100)/100,unanswered,improved:moves.filter(row=>moved(row)>0).length,declined:moves.filter(row=>moved(row)<0).length};
   }):[];
-  const repo=new PlatformRepository(db),project=repo.workspace(scope.subject,...args)!.project,alerts=teamAlerts(db,scope,now);
+  const repo=new PlatformRepository(db),project=(await repo.workspace(scope.subject,...args))!.project,alerts=await teamAlerts(db,scope,now);
   const lines=alertMessage(alerts,lang,project,'').text.split('\n').filter(line=>line.startsWith('- ')).map(line=>line.slice(2));
-  return {from:day(from),to:day(new Date(to.getTime()-DAY)),posts:posts(from,to),previousPosts:posts(before,from),spend,adWarnings:repo.can(scope.subject,...args,'connections.manage')?adWarnings(db,scope,now).length:0,apps,competitorChanges:recentCompetitorChanges(db,scope,now).length,alerts:lines};
+  return {from:day(from),to:day(new Date(to.getTime()-DAY)),posts:await posts(from,to),previousPosts:await posts(before,from),spend,adWarnings:await repo.can(scope.subject,...args,'connections.manage')?(await adWarnings(db,scope,now)).length:0,apps,competitorChanges:(await recentCompetitorChanges(db,scope,now)).length,alerts:lines};
 }
 export function weeklyMessage(facts:WeeklyFacts,lang:Lang,project:{name:string},origin:string):Pick<DigestMail,'subject'|'text'>{
   const tr=lang==='tr',n=(value:number)=>value.toLocaleString(tr?'tr-TR':'en-GB'),change=(now:number|null,before:number|null)=>now===null||before===null?'':before===now?(tr?' (değişmedi)':' (unchanged)'):` (${tr?'önceki hafta':'week before'}: ${n(before)})`;
@@ -52,20 +54,20 @@ export function weeklyMessage(facts:WeeklyFacts,lang:Lang,project:{name:string},
 const isoWeek=(now:number)=>{const date=new Date(Math.floor(now/DAY)*DAY),dayOfWeek=(date.getUTCDay()+6)%7;date.setUTCDate(date.getUTCDate()-dayOfWeek+3);const first=new Date(Date.UTC(date.getUTCFullYear(),0,4));return `${date.getUTCFullYear()}-W${String(1+Math.round(((date.getTime()-first.getTime())/DAY-3+((first.getUTCDay()+6)%7))/7)).padStart(2,'0')}`;};
 // Worker step: on Mondays from 06:00 UTC, one opted-in member per tick gets the summary, once per week. It is marked
 // before the provider call and not retried.
-export async function deliverNextWeeklySummary(db:Database.Database,deliver:DigestDelivery=deliverCoachDigest,configuration=alertEmailConfiguration(),now=Date.now()){
+export async function deliverNextWeeklySummary(db:Db,deliver:DigestDelivery=deliverCoachDigest,configuration=alertEmailConfiguration(),now=Date.now()){
   if(!configuration)return false;const date=new Date(now);if(date.getUTCDay()!==1||date.getUTCHours()<6)return false;
   const week=isoWeek(now);
-  const claimed=db.transaction(()=>{
-    const row=db.prepare('SELECT user_id,organization_id,project_id,language FROM platform_alert_subscriptions WHERE weekly=1 AND (weekly_week IS NULL OR weekly_week<>?) ORDER BY user_id LIMIT 1').get(week) as {user_id:string;organization_id:string;project_id:string;language:Lang}|undefined;
-    if(!row)return null;db.prepare('UPDATE platform_alert_subscriptions SET weekly_week=? WHERE user_id=? AND organization_id=? AND project_id=?').run(week,row.user_id,row.organization_id,row.project_id);
-    const repo=new PlatformRepository(db),workspace=repo.can(row.user_id,row.organization_id,row.project_id,'read')?repo.workspace(row.user_id,row.organization_id,row.project_id):null;
-    const email=(db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as {email:string}|undefined)?.email;
+  const claimed=await db.transaction(async ()=>{
+    const row=await db.prepare('SELECT user_id,organization_id,project_id,language FROM platform_alert_subscriptions WHERE weekly=1 AND (weekly_week IS NULL OR weekly_week<>?) ORDER BY user_id LIMIT 1').get(week) as {user_id:string;organization_id:string;project_id:string;language:Lang}|undefined;
+    if(!row)return null;await db.prepare('UPDATE platform_alert_subscriptions SET weekly_week=? WHERE user_id=? AND organization_id=? AND project_id=?').run(week,row.user_id,row.organization_id,row.project_id);
+    const repo=new PlatformRepository(db),workspace=await repo.can(row.user_id,row.organization_id,row.project_id,'read')?await repo.workspace(row.user_id,row.organization_id,row.project_id):null;
+    const email=(await db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as {email:string}|undefined)?.email;
     if(!workspace||!ryzevoFeature(workspace.project.productPack,'alerts')||!email)return null;
     const scope={subject:row.user_id,organizationId:row.organization_id,projectId:row.project_id},id=`weekly_${randomUUID()}`,at=new Date(now).toISOString();
-    db.prepare("INSERT INTO platform_alert_deliveries(id,organization_id,project_id,user_id,state,alert_count,created_at,updated_at) VALUES(?,?,?,?,'submitted',0,?,?)").run(id,row.organization_id,row.project_id,row.user_id,at,at);
-    return {id,mail:{to:email,...weeklyMessage(weeklyFacts(db,scope,row.language,now),row.language,workspace.project,configuration.origin)}};
-  }).immediate();
+    await db.prepare("INSERT INTO platform_alert_deliveries(id,organization_id,project_id,user_id,state,alert_count,created_at,updated_at) VALUES(?,?,?,?,'submitted',0,?,?)").run(id,row.organization_id,row.project_id,row.user_id,at,at);
+    return {id,mail:{to:email,...weeklyMessage(await weeklyFacts(db,scope,row.language,now),row.language,workspace.project,configuration.origin)}};
+  });
   if(!claimed)return false;
   let state:'sent'|'uncertain'='sent';try{await deliver(claimed.mail,configuration);}catch{state='uncertain';}
-  db.prepare('UPDATE platform_alert_deliveries SET state=?,updated_at=? WHERE id=?').run(state,new Date().toISOString(),claimed.id);return true;
+  await db.prepare('UPDATE platform_alert_deliveries SET state=?,updated_at=? WHERE id=?').run(state,new Date().toISOString(),claimed.id);return true;
 }

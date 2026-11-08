@@ -16,7 +16,7 @@ export const checkXPublishing:PublishCheck = async(token,accountId,credentials) 
 export const publishXText:PublishTransport = async(token,accountId,text,reserve) => {
   if(!xPostId(accountId)||!xText(text).valid||/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)||!token||token.length>16384||/[\r\n\x00]/.test(token))return {state:'blocked',postId:null};
   xConfiguration();
-  if(!reserve())return {state:'blocked',postId:null};
+  if(!(await reserve()))return {state:'blocked',postId:null};
   try {
     const response=await fetch('https://api.x.com/2/tweets',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({text}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)});
     if([400,401,402,403,404,405,409,422,429].includes(response.status)){await response.body?.cancel();return {state:'rejected',postId:null};}

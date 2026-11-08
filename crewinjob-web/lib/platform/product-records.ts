@@ -1,3 +1,5 @@
+import { filterSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
@@ -33,19 +35,19 @@ export function normalizeProductRecords(items:unknown[],config:Pick<ProductSourc
   return {records,errors};
 }
 // Call inside the source/job transaction so projections and receipt/checkpoint stay atomic.
-export function writeProductRecords(db:Database.Database,scope:MarketingScope,id:string,version:number,entityType:string,records:ProductRecord[],receivedAt:string) {
+export async function writeProductRecords(db:Db,scope:MarketingScope,id:string,version:number,entityType:string,records:ProductRecord[],receivedAt:string) {
   const args=[scope.organizationId,scope.projectId] as const;
-  const current=(db.prepare('SELECT COUNT(*) AS n FROM platform_product_records WHERE organization_id=? AND project_id=?').get(...args) as {n:number}).n;
+  const current=(await db.prepare('SELECT COUNT(*) AS n FROM platform_product_records WHERE organization_id=? AND project_id=?').get(...args) as {n:number}).n;
   const existing=db.prepare('SELECT attributes_json,observed_at FROM platform_product_records WHERE connection_id=? AND version=? AND external_id=?');
   const ids=new Set(records.map(item=>item.externalId));
-  const additional=[...ids].filter(externalId=>!existing.get(id,version,externalId)).length;
+  const additional=(await filterSeries([...ids], async externalId=>!await existing.get(id,version,externalId))).length;
   if(current+additional>PRODUCT_SOURCE_LIMITS.records)throw new MarketingStoreError('Pilot ürün verisi sınırına ulaşıldı.',429);
   let written=0;
   for(const item of records){
-    const old=existing.get(id,version,item.externalId) as {attributes_json:string;observed_at:string}|undefined;
+    const old=await existing.get(id,version,item.externalId) as {attributes_json:string;observed_at:string}|undefined;
     const attributes=JSON.stringify(item.attributes);
     if(old?.observed_at===item.observedAt&&old.attributes_json!==attributes)throw new MarketingStoreError('Kaynak aynı zamanda çelişen özellikler döndürdü.',422);
-    written+=db.prepare(`INSERT INTO platform_product_records VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(connection_id,version,external_id) DO UPDATE SET attributes_json=excluded.attributes_json,observed_at=excluded.observed_at,received_at=excluded.received_at WHERE platform_product_records.observed_at<excluded.observed_at`).run(id,version,...args,item.externalId,entityType,attributes,item.observedAt,receivedAt).changes;
+    written+=(await db.prepare(`INSERT INTO platform_product_records VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(connection_id,version,external_id) DO UPDATE SET attributes_json=excluded.attributes_json,observed_at=excluded.observed_at,received_at=excluded.received_at WHERE platform_product_records.observed_at<excluded.observed_at`).run(id,version,...args,item.externalId,entityType,attributes,item.observedAt,receivedAt)).changes;
   }
   return written;
 }

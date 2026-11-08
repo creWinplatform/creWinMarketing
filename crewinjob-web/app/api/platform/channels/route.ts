@@ -24,7 +24,7 @@ export async function POST(request:NextRequest) {
     if(!isChannelPlatform(platform))throw new MarketingStoreError('Kanal geçersiz.');
     let redirect:URL;try{redirect=new URL(channelConfiguration(platform).redirectUri);}catch{throw new MarketingStoreError('Bu kanal sunucuda yapılandırılmamış.',503);}
     if(request.headers.get('origin')!==redirect.origin)throw new MarketingStoreError('Panel adresi kanal dönüş adresiyle eşleşmiyor.');
-    const result=new ProjectChannelOAuth(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},credentialEncryptionKey()).start({platform,accountName:input.accountName,boardId:input.boardId});
+    const result=await new ProjectChannelOAuth(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},credentialEncryptionKey()).start({platform,accountName:input.accountName,boardId:input.boardId});
     const response=NextResponse.json({authorizationUrl:result.authorizationUrl},{headers:{'Cache-Control':'private, no-store'}});
     response.cookies.set(CHANNEL_BROWSER_COOKIE,result.browser,{httpOnly:true,sameSite:'lax',secure:redirect.protocol==='https:',path:CHANNEL_CALLBACK,maxAge:600});
     return response;

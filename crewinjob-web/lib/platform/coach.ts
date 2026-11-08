@@ -1,3 +1,5 @@
+import { mapSeries, someSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -183,8 +185,8 @@ export function coachDraftRules(brief:CoachBrief,answers:CoachAnswers):CoachBrie
   return {...brief,channels:[channels[first],...channels.filter((_,index)=>index!==first)],plan};
 }
 // Approved brief as product context for AI content generation. Data, never instructions; null until approved.
-export function approvedCoachContext(db:Database.Database,scope:Pick<MarketingScope,'organizationId'|'projectId'>){
-  const row=db.prepare('SELECT brief_json FROM platform_growth_coach WHERE organization_id=? AND project_id=? AND brief_json IS NOT NULL').get(scope.organizationId,scope.projectId) as {brief_json:string}|undefined;
+export async function approvedCoachContext(db:Db,scope:Pick<MarketingScope,'organizationId'|'projectId'>){
+  const row=await db.prepare('SELECT brief_json FROM platform_growth_coach WHERE organization_id=? AND project_id=? AND brief_json IS NOT NULL').get(scope.organizationId,scope.projectId) as {brief_json:string}|undefined;
   if(!row)return null;const brief=JSON.parse(row.brief_json) as CoachBrief;
   return {audience:brief.icp.summary.slice(0,500),positioning:brief.positioning.slice(0,400),priorityChannels:brief.channels.map(item=>item.id)};
 }
@@ -204,102 +206,102 @@ const toolHref=(tool:CoachTool,channel:CoachChannel|null)=>OWN_VIEW[tool]?OWN_VI
 
 export class GrowthCoach{
   repo:PlatformRepository;
-  constructor(public db:Database.Database,public scope:MarketingScope){this.repo=new PlatformRepository(db);}
+  constructor(public db:Db,public scope:MarketingScope){this.repo=new PlatformRepository(db);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  crewin(){return isCrewinProject(this.db,this.args());}
-  can(permission:WorkspacePermission){return this.repo.can(this.scope.subject,...this.args(),permission);}
-  authorize(permission:WorkspacePermission='read',denied?:string){
-    if(!this.can('read')||!ryzevoFeature(this.repo.workspace(this.scope.subject,...this.args())?.project.productPack,'coach'))throw new MarketingStoreError('Büyüme koçu için standart proje erişimi gerekli.',403);
-    if(!this.can(permission))throw new MarketingStoreError(denied||(permission==='campaign.approve'?'Strateji briefini yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.'),403);
+  async crewin(){return await isCrewinProject(this.db,this.args());}
+  async can(permission:WorkspacePermission){return await this.repo.can(this.scope.subject,...this.args(),permission);}
+  async authorize(permission:WorkspacePermission='read',denied?:string){
+    if(!await this.can('read')||!ryzevoFeature((await this.repo.workspace(this.scope.subject,...this.args()))?.project.productPack,'coach'))throw new MarketingStoreError('Büyüme koçu için standart proje erişimi gerekli.',403);
+    if(!await this.can(permission))throw new MarketingStoreError(denied||(permission==='campaign.approve'?'Strateji briefini yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.'),403);
   }
   // Applies an accepted weekly-review adjustment to the approved plan; same approval right as approving the brief.
-  adjustPlan(expectedRevision:unknown,mutate:(brief:CoachBrief)=>CoachBrief,operation:string){
-    this.authorize('campaign.approve');
-    return this.db.transaction(()=>{
-      this.authorize('campaign.approve');const row=this.expect(expectedRevision);if(!row?.brief_json)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);
+  async adjustPlan(expectedRevision:unknown,mutate:(brief:CoachBrief)=>CoachBrief,operation:string){
+    await this.authorize('campaign.approve');
+    return await this.db.transaction(async ()=>{
+      await this.authorize('campaign.approve');const row=await this.expect(expectedRevision);if(!row?.brief_json)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);
       const brief=normalizeCoachBrief(mutate(JSON.parse(row.brief_json) as CoachBrief)),now=new Date().toISOString();
-      this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),now,this.scope.subject,...this.args());
-      this.version(row.revision+1,brief,operation==='coach.positioning'?'positioning':'adjust',now);
-      this.audit(operation);return row.revision+1;
-    }).immediate();
+      await this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),now,this.scope.subject,...this.args());
+      await this.version(row.revision+1,brief,operation==='coach.positioning'?'positioning':'adjust',now);
+      await this.audit(operation);return row.revision+1;
+    });
   }
   // Monthly renewal: replaces the approved brief and restarts the 30-day plan. Runs inside the caller's transaction.
-  renew(expectedRevision:unknown,proposed:CoachBrief){
-    this.authorize('campaign.approve');const row=this.expect(expectedRevision);if(!row?.brief_json)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);
+  async renew(expectedRevision:unknown,proposed:CoachBrief){
+    await this.authorize('campaign.approve');const row=await this.expect(expectedRevision);if(!row?.brief_json)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);
     const brief=normalizeCoachBrief(proposed),now=new Date().toISOString();
-    this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,approved_by=?,approved_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),this.scope.subject,now,now,this.scope.subject,...this.args());
-    this.version(row.revision+1,brief,'refresh',now);this.audit('coach.refresh.approve');return row.revision+1;
+    await this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,approved_by=?,approved_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),this.scope.subject,now,now,this.scope.subject,...this.args());
+    await this.version(row.revision+1,brief,'refresh',now);await this.audit('coach.refresh.approve');return row.revision+1;
   }
-  timeZone(){return this.repo.workspace(this.scope.subject,...this.args())?.project.timezone||'UTC';}
+  async timeZone(){return (await this.repo.workspace(this.scope.subject,...this.args()))?.project.timezone||'UTC';}
   // Approved brief and diagnosis answers for the Phase 2 coach tools (content plan, SEO, weekly review).
-  approved(){this.authorize();const row=this.row(),brief=row?.brief_json?JSON.parse(row.brief_json) as CoachBrief:null;return {brief,answers:row?JSON.parse(row.answers_json) as CoachAnswers:null,revision:row?.revision||0,approvedAt:row?.approved_at||null,week:brief&&row?.approved_at?planWeek(row.approved_at,this.timeZone()):null};}
-  private row(){return this.db.prepare('SELECT revision,answers_json,draft_json,draft_source,draft_at,brief_json,approved_at FROM platform_growth_coach WHERE organization_id=? AND project_id=?').get(...this.args()) as Row|undefined;}
-  private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
-  private expect(raw:unknown){const row=this.row();if(!Number.isSafeInteger(raw)||raw!==(row?.revision||0))throw new MarketingStoreError('Strateji briefi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);return row;}
+  async approved(){await this.authorize();const row=await this.row(),brief=row?.brief_json?JSON.parse(row.brief_json) as CoachBrief:null;return {brief,answers:row?JSON.parse(row.answers_json) as CoachAnswers:null,revision:row?.revision||0,approvedAt:row?.approved_at||null,week:brief&&row?.approved_at?planWeek(row.approved_at,await this.timeZone()):null};}
+  private async row(){return await this.db.prepare('SELECT revision,answers_json,draft_json,draft_source,draft_at,brief_json,approved_at FROM platform_growth_coach WHERE organization_id=? AND project_id=?').get(...this.args()) as Row|undefined;}
+  private async audit(operation:string){await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
+  private async expect(raw:unknown){const row=await this.row();if(!Number.isSafeInteger(raw)||raw!==(row?.revision||0))throw new MarketingStoreError('Strateji briefi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);return row;}
   async diagnose(raw:Record<string,unknown>,generator?:CoachGenerator){
-    this.authorize('content.write');
+    await this.authorize('content.write');
     const answers=normalizeCoachAnswers(raw.answers),language=choice(['tr','en'] as const,raw.language),mode=choice(['ai','template'] as const,raw.mode);
     if(mode==='ai'&&!generator)throw new MarketingStoreError('Bu platform için AI sağlayıcısı ve model henüz yapılandırılmadı.',503);
-    const project=this.repo.workspace(this.scope.subject,...this.args())!.project;
-    const revision=this.db.transaction(()=>{
-      this.authorize('content.write');const row=this.expect(raw.expectedRevision),now=new Date().toISOString(),next=(row?.revision||0)+1;
-      this.db.prepare('INSERT INTO platform_growth_coach(organization_id,project_id,revision,answers_json,created_at,updated_at,updated_by) VALUES(?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id) DO UPDATE SET revision=excluded.revision,answers_json=excluded.answers_json,updated_at=excluded.updated_at,updated_by=excluded.updated_by').run(...this.args(),next,JSON.stringify(answers),now,now,this.scope.subject);
-      this.audit('coach.answers');return next;
-    }).immediate();
-    const operations=new ProjectOperations(this.db,this.scope),reservation=mode==='ai'?operations.reserveAi():undefined;let completed=false;
+    const project=(await this.repo.workspace(this.scope.subject,...this.args()))!.project;
+    const revision=await this.db.transaction(async ()=>{
+      await this.authorize('content.write');const row=await this.expect(raw.expectedRevision),now=new Date().toISOString(),next=(row?.revision||0)+1;
+      await this.db.prepare('INSERT INTO platform_growth_coach(organization_id,project_id,revision,answers_json,created_at,updated_at,updated_by) VALUES(?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id) DO UPDATE SET revision=excluded.revision,answers_json=excluded.answers_json,updated_at=excluded.updated_at,updated_by=excluded.updated_by').run(...this.args(),next,JSON.stringify(answers),now,now,this.scope.subject);
+      await this.audit('coach.answers');return next;
+    });
+    const operations=new ProjectOperations(this.db,this.scope),reservation=mode==='ai'?await operations.reserveAi():undefined;let completed=false;
     try{
       const output=mode==='ai'?await generator!(coachPrompt(answers,language,project)):null,usage=output&&typeof output!=='string'?output.usage||null:null;
       const draft=output!==null?coachDraftRules(parseCoachDraft(typeof output==='string'?output:output.text,language),answers):coachStarterBrief(answers,language,project.name);
-      this.db.transaction(()=>{
-        this.authorize('content.write');const row=this.row();if(row?.revision!==revision)throw new MarketingStoreError('Strateji briefi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
-        const now=new Date().toISOString();this.db.prepare('UPDATE platform_growth_coach SET revision=?,draft_json=?,draft_source=?,draft_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(revision+1,JSON.stringify(draft),mode,now,now,this.scope.subject,...this.args());
-        if(reservation){operations.completeAi(reservation);completed=true;if(usage)recordAiUsage(this.db,this.scope,reservation,usage);}this.audit(mode==='ai'?'coach.draft.ai':'coach.draft.template');
-      }).immediate();
+      await this.db.transaction(async ()=>{
+        await this.authorize('content.write');const row=await this.row();if(row?.revision!==revision)throw new MarketingStoreError('Strateji briefi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
+        const now=new Date().toISOString();await this.db.prepare('UPDATE platform_growth_coach SET revision=?,draft_json=?,draft_source=?,draft_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(revision+1,JSON.stringify(draft),mode,now,now,this.scope.subject,...this.args());
+        if(reservation){await operations.completeAi(reservation);completed=true;if(usage)await recordAiUsage(this.db,this.scope,reservation,usage);}await this.audit(mode==='ai'?'coach.draft.ai':'coach.draft.template');
+      });
     }catch(error){
-      if(reservation&&!completed){try{operations.refundAi(reservation);}catch{console.error('platform_usage_release_failed');}}
+      if(reservation&&!completed){try{await operations.refundAi(reservation);}catch{console.error('platform_usage_release_failed');}}
       throw error instanceof MarketingStoreError?error:new MarketingStoreError('AI strateji taslağı hazırlanamadı. Başlangıç şablonunu kullanabilir veya tekrar deneyebilirsiniz.',502);
     }
-    return this.read();
+    return await this.read();
   }
-  private goals(){return this.repo.workspace(this.scope.subject,this.scope.organizationId,this.scope.projectId)?.project.goals||[];}
-  saveDraft(raw:Record<string,unknown>){
-    this.authorize('content.write');const brief=normalizeCoachBrief(raw.brief,'human',this.goals());
-    return this.db.transaction(()=>{
-      this.authorize('content.write');const row=this.expect(raw.expectedRevision);if(!row)throw new MarketingStoreError('Önce büyüme teşhisini tamamlayın.',404);
-      const now=new Date().toISOString();this.db.prepare("UPDATE platform_growth_coach SET revision=?,draft_json=?,draft_source=COALESCE(draft_source,'template'),draft_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?").run(row.revision+1,JSON.stringify(brief),now,now,this.scope.subject,...this.args());
-      this.audit('coach.draft.edit');return this.read();
-    }).immediate();
+  private async goals(){return (await this.repo.workspace(this.scope.subject,this.scope.organizationId,this.scope.projectId))?.project.goals||[];}
+  async saveDraft(raw:Record<string,unknown>){
+    await this.authorize('content.write');const brief=normalizeCoachBrief(raw.brief,'human',await this.goals());
+    return await this.db.transaction(async ()=>{
+      await this.authorize('content.write');const row=await this.expect(raw.expectedRevision);if(!row)throw new MarketingStoreError('Önce büyüme teşhisini tamamlayın.',404);
+      const now=new Date().toISOString();await this.db.prepare("UPDATE platform_growth_coach SET revision=?,draft_json=?,draft_source=COALESCE(draft_source,'template'),draft_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?").run(row.revision+1,JSON.stringify(brief),now,now,this.scope.subject,...this.args());
+      await this.audit('coach.draft.edit');return await this.read();
+    });
   }
-  approve(raw:Record<string,unknown>){
-    this.authorize('campaign.approve');const brief=normalizeCoachBrief(raw.brief,'human',this.goals());
-    return this.db.transaction(()=>{
-      this.authorize('campaign.approve');const row=this.expect(raw.expectedRevision);if(!row)throw new MarketingStoreError('Önce büyüme teşhisini tamamlayın.',404);
-      const now=new Date().toISOString();this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,draft_json=NULL,draft_source=NULL,draft_at=NULL,approved_by=?,approved_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),this.scope.subject,now,now,this.scope.subject,...this.args());
-      this.version(row.revision+1,brief,'approve',now);this.audit('coach.approve');
+  async approve(raw:Record<string,unknown>){
+    await this.authorize('campaign.approve');const brief=normalizeCoachBrief(raw.brief,'human',await this.goals());
+    return await this.db.transaction(async ()=>{
+      await this.authorize('campaign.approve');const row=await this.expect(raw.expectedRevision);if(!row)throw new MarketingStoreError('Önce büyüme teşhisini tamamlayın.',404);
+      const now=new Date().toISOString();await this.db.prepare('UPDATE platform_growth_coach SET revision=?,brief_json=?,draft_json=NULL,draft_source=NULL,draft_at=NULL,approved_by=?,approved_at=?,updated_at=?,updated_by=? WHERE organization_id=? AND project_id=?').run(row.revision+1,JSON.stringify(brief),this.scope.subject,now,now,this.scope.subject,...this.args());
+      await this.version(row.revision+1,brief,'approve',now);await this.audit('coach.approve');
       // One guided start: the approver's Compass path follows the approved brief unless they already chose one.
-      seedCompassFromBrief(this.db,this.scope.subject,...this.args(),compassFromBrief(brief,JSON.parse(row.answers_json) as CoachAnswers,this.repo.workspace(this.scope.subject,...this.args())!.project.goals));
-      return this.read();
-    }).immediate();
+      await seedCompassFromBrief(this.db,this.scope.subject,...this.args(),compassFromBrief(brief,JSON.parse(row.answers_json) as CoachAnswers,(await this.repo.workspace(this.scope.subject,...this.args()))!.project.goals));
+      return await this.read();
+    });
   }
   // Append-only brief history: every approval or approved plan change keeps the version it produced.
-  private version(revision:number,brief:CoachBrief,kind:CoachBriefKind,at:string){this.db.prepare('INSERT INTO platform_growth_coach_briefs(organization_id,project_id,coach_revision,kind,brief_json,approved_by,approved_at) VALUES(?,?,?,?,?,?,?)').run(...this.args(),revision,kind,JSON.stringify(brief),this.scope.subject,at);}
-  versions(limit=10){return (this.db.prepare('SELECT coach_revision,kind,brief_json,approved_at FROM platform_growth_coach_briefs WHERE organization_id=? AND project_id=? ORDER BY id DESC LIMIT ?').all(...this.args(),limit) as {coach_revision:number;kind:CoachBriefKind;brief_json:string;approved_at:string}[]).map(row=>({revision:row.coach_revision,kind:row.kind,approvedAt:row.approved_at,brief:JSON.parse(row.brief_json) as CoachBrief}));}
-  private actionRows(){return new Map((this.db.prepare('SELECT action_id,state,week,task_id FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=?').all(...this.args()) as ActionRow[]).map(row=>[row.action_id,row]));}
+  private async version(revision:number,brief:CoachBrief,kind:CoachBriefKind,at:string){await this.db.prepare('INSERT INTO platform_growth_coach_briefs(organization_id,project_id,coach_revision,kind,brief_json,approved_by,approved_at) VALUES(?,?,?,?,?,?,?)').run(...this.args(),revision,kind,JSON.stringify(brief),this.scope.subject,at);}
+  async versions(limit=10){return (await this.db.prepare('SELECT coach_revision,kind,brief_json,approved_at FROM platform_growth_coach_briefs WHERE organization_id=? AND project_id=? ORDER BY id DESC LIMIT ?').all(...this.args(),limit) as {coach_revision:number;kind:CoachBriefKind;brief_json:string;approved_at:string}[]).map(row=>({revision:row.coach_revision,kind:row.kind,approvedAt:row.approved_at,brief:JSON.parse(row.brief_json) as CoachBrief}));}
+  private async actionRows(){return new Map((await this.db.prepare('SELECT action_id,state,week,task_id FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=?').all(...this.args()) as ActionRow[]).map(row=>[row.action_id,row]));}
   // Saved active connections by coach channel name; any of the three ad providers counts as "ads".
-  private connected(){const saved=new Set<string|null>((this.db.prepare('SELECT c.provider,s.platform FROM platform_connections c LEFT JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1').all(...this.args()) as {provider:string;platform:string|null}[]).map(item=>item.provider==='social'?item.platform:AD_PROVIDERS.includes(item.provider)?'ads':item.provider));if(this.crewin())for(const channel of crewinConnectedChannels())saved.add(channel);return saved;}
-  private candidates(brief:CoachBrief,week:number,connected:Set<string|null>):Candidate[]{
-    const project=this.repo.workspace(this.scope.subject,...this.args())!.project,list:Candidate[]=[],planned=(tool:CoachTool,channel?:CoachChannel)=>brief.plan.some(item=>item.tool===tool&&(!channel||item.channel===channel));
-    const drafts=draftTotal(this.db,this.args());
+  private async connected(){const saved=new Set<string|null>((await this.db.prepare('SELECT c.provider,s.platform FROM platform_connections c LEFT JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1').all(...this.args()) as {provider:string;platform:string|null}[]).map(item=>item.provider==='social'?item.platform:AD_PROVIDERS.includes(item.provider)?'ads':item.provider));if(await this.crewin())for(const channel of crewinConnectedChannels())saved.add(channel);return saved;}
+  private async candidates(brief:CoachBrief,week:number,connected:Set<string|null>):Promise<Candidate[]>{
+    const project=(await this.repo.workspace(this.scope.subject,...this.args()))!.project,list:Candidate[]=[],planned=(tool:CoachTool,channel?:CoachChannel)=>brief.plan.some(item=>item.tool===tool&&(!channel||item.channel===channel));
+    const drafts=await draftTotal(this.db,this.args());
     if(!project.goals.length)list.push({id:'setup:goal',kind:'setup',week:null,title:l('Bir büyüme hedefi tanımlayın','Define a growth goal'),why:l('Projede henüz hedef yok. Hedef olmadan kampanyalar ve ölçümler bir sonuca bağlanamaz.','The project has no goal yet. Without one, campaigns and measurements can’t be tied to an outcome.'),how:l('Proje ayarları → Ürün profili’nde tek bir hedef ve 2–4 aşama ekleyin.','In Project settings → Product profile, add one goal with 2–4 stages.'),minutes:15,tool:'project',channel:null});
     const missing=brief.channels.find(item=>item.id!=='seo'&&!connected.has(item.id)&&!planned('connections',item.id));
     if(missing)list.push({id:`setup:connect:${missing.id}`,kind:'setup',week:null,title:missing.id==='email'?l('E-posta gönderenini kurun','Set up the email sender'):missing.id==='ads'?l('Reklam hesabınızı bağlayın','Connect your ad account'):l(`${channelName(missing.id,'tr')} bağlantısını kurun`,`Connect ${channelName(missing.id,'en')}`),why:l('Öncelikli kanallarınızdan biri için kayıtlı bir bağlantı yok. Bağlantı kurmak hiçbir şey yayınlamaz.','One of your priority channels has no saved connection. Connecting publishes nothing.'),how:l('Rehberdeki adımları izleyin; hesap sahibinden kendi hesabınıza erişim isteyin. Parola veya token paylaşmayın.','Follow the guide; ask the account owner for access for your own account. Never share passwords or tokens.'),minutes:15,tool:'connections',channel:missing.id});
     if(brief.channels.some(item=>item.id==='seo')){
-      const receipt=compassSiteReceipt(project.website),audit=(this.db.prepare('SELECT MAX(created_at) at FROM platform_audit WHERE organization_id=? AND project_id=? AND operation=?').get(...this.args(),receipt) as {at:string|null}).at;
-      const clean=audit&&this.db.prepare('SELECT 1 FROM platform_audit WHERE organization_id=? AND project_id=? AND operation=? AND created_at=?').get(...this.args(),receipt+':clean',audit);
+      const receipt=compassSiteReceipt(project.website),audit=(await this.db.prepare('SELECT MAX(created_at) at FROM platform_audit WHERE organization_id=? AND project_id=? AND operation=?').get(...this.args(),receipt) as {at:string|null}).at;
+      const clean=audit&&await this.db.prepare('SELECT 1 FROM platform_audit WHERE organization_id=? AND project_id=? AND operation=? AND created_at=?').get(...this.args(),receipt+':clean',audit);
       if(!audit&&!planned('seo'))list.push({id:'setup:audit',kind:'setup',week:null,title:l('Web sitenizi denetleyin','Audit your website'),why:l('Arama önceliğiniz var ama sitenin herkese açık denetimi henüz yapılmadı.','Search is a priority, but the public site audit hasn’t been run yet.'),how:l('SEO operasyon merkezinde ana sayfayı denetleyin. Sonuç indeksleme veya hız başarısı değildir.','Audit the home page in the SEO operations hub. A result is not indexing or speed success.'),minutes:15,tool:'seo',channel:'seo'});
-      else if(audit&&!clean&&!new ProjectOperations(this.db,this.scope).tasks().some(task=>task.createdAt>=audit!))list.push({id:'setup:audit-task',kind:'setup',week:null,title:l('Denetim bulgusunu iş kartına dönüştürün','Turn an audit finding into a work item'),why:l('Son denetimde bulgu çıktı ve sonrasında takvimde yeni bir iş açılmadı.','The latest audit had findings and no new task was planned afterwards.'),how:l('SEO operasyon merkezinde bir bulguyu seçip Takvim’e ekleyin. İş kaydı siteyi değiştirmez.','In the SEO operations hub, pick a finding and add it to the Calendar. A task does not change the site.'),minutes:20,tool:'seo',channel:'seo'});
+      else if(audit&&!clean&&!(await new ProjectOperations(this.db,this.scope).tasks()).some(task=>task.createdAt>=audit!))list.push({id:'setup:audit-task',kind:'setup',week:null,title:l('Denetim bulgusunu iş kartına dönüştürün','Turn an audit finding into a work item'),why:l('Son denetimde bulgu çıktı ve sonrasında takvimde yeni bir iş açılmadı.','The latest audit had findings and no new task was planned afterwards.'),how:l('SEO operasyon merkezinde bir bulguyu seçip Takvim’e ekleyin. İş kaydı siteyi değiştirmez.','In the SEO operations hub, pick a finding and add it to the Calendar. A task does not change the site.'),minutes:20,tool:'seo',channel:'seo'});
     }
-    const measured=(this.db.prepare('SELECT MAX(observed_at) at FROM platform_metric_entries WHERE organization_id=? AND project_id=?').get(...this.args()) as {at:string|null}).at;
+    const measured=(await this.db.prepare('SELECT MAX(observed_at) at FROM platform_metric_entries WHERE organization_id=? AND project_id=?').get(...this.args()) as {at:string|null}).at;
     if(week>=3&&project.goals.length&&(!measured||Date.now()-Date.parse(measured)>3*WEEK))list.push({id:'setup:measure',kind:'setup',week:null,title:l('Hedefiniz için güncel bir ölçüm kaydedin','Record a current measurement for your goal'),why:l('Planın son haftalarındasınız ve son üç haftada ölçüm kaydı yok. Veri yoksa sıfır sayılmaz.','You’re in the last weeks of the plan and nothing was measured in the past three weeks. No data is not zero.'),how:l('Analitik’te hedef aşamaları için tarihli bir değer girin.','In Analytics, enter a dated value for the goal stages.'),minutes:15,tool:'analytics',channel:null});
     // Plan items: current and overdue weeks first, then upcoming ones; with no drafts yet, drafting comes first.
     const rank=(item:CoachPlanItem)=>(item.week<=week?0:10)+item.week+(drafts===0&&item.tool==='library'&&item.week<=week?-20:0);
@@ -307,50 +309,50 @@ export class GrowthCoach{
     // At most two setup prerequisites so the approved plan always reaches this week's list.
     return [...list.slice(0,2),...plan.map(({item})=>({id:coachPlanId(item),kind:'plan' as const,week:item.week,title:item.title,why:item.why,how:item.how,minutes:item.minutes,tool:item.tool,channel:item.channel}))];
   }
-  private derive(){
-    const row=this.row(),brief=row?.brief_json?JSON.parse(row.brief_json) as CoachBrief:null,week=brief&&row?.approved_at?planWeek(row.approved_at,this.timeZone()):null,weekKey=coachWeekKey(new Date(),this.timeZone());
+  private async derive(){
+    const row=await this.row(),brief=row?.brief_json?JSON.parse(row.brief_json) as CoachBrief:null,week=brief&&row?.approved_at?planWeek(row.approved_at,await this.timeZone()):null,weekKey=coachWeekKey(new Date(),await this.timeZone());
     if(!brief||!week)return {row,brief,week,weekKey,all:[] as CoachAction[]};
-    const states=this.actionRows(),tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task])),modules=this.repo.workspace(this.scope.subject,...this.args())!.modules;
-    const assignments=coachAssignmentRows(this.db,...this.args(),'action',zonedDateKey(new Date(),this.timeZone()),this.scope.subject);
-    const connected=this.connected(),all=this.candidates(brief,Math.min(week,4),connected).map((item):CoachAction=>{
-      const stored=states.get(item.id),task=stored?.task_id?tasks.get(stored.task_id):undefined,href=this.crewin()?crewinHref(item.tool,item.channel):toolHref(item.tool,item.channel);
+    const states=await this.actionRows(),tasks=new Map((await new ProjectOperations(this.db,this.scope).tasks()).map(task=>[task.id,task])),modules=(await this.repo.workspace(this.scope.subject,...this.args()))!.modules;
+    const assignments=await coachAssignmentRows(this.db,...this.args(),'action',zonedDateKey(new Date(),await this.timeZone()),this.scope.subject);
+    const connected=await this.connected(),all=await mapSeries((await this.candidates(brief,Math.min(week,4),connected)), async (item):Promise<CoachAction>=>{
+      const stored=states.get(item.id),task=stored?.task_id?tasks.get(stored.task_id):undefined,href=await this.crewin()?crewinHref(item.tool,item.channel):toolHref(item.tool,item.channel);
       // Done comes from the team's own mark, a completed linked Calendar task, or (for connection items) a saved active connection.
       const state=stored?.state==='done'||task?.status==='completed'||item.kind==='plan'&&item.tool==='connections'&&connected.has(item.channel)?'done':stored?.state==='skipped'&&stored.week===weekKey?'skipped':'open';
       const pick=(value:string|LocalizedText)=>typeof value==='string'?value:value[brief.language];
       const prefill=item.tool==='library'||item.tool==='campaigns'?{brief:`${pick(item.title)}\n${pick(item.why)}`.slice(0,3000),channel:item.tool==='campaigns'?isCoachContentChannel(item.channel)&&item.channel!=='seo'?item.channel:'email':coachDraftChannel(item.channel),name:pick(item.title).slice(0,140),ref:item.id}:null;
       const assigned=assignments.get(item.id),assignment=assigned?{...assigned,overdue:assigned.overdue&&state==='open'}:null;
-      return {...item,href,canAct:modules.some(module=>module.id===(this.crewin()?CREWIN_TAB:TOOL_TAB)[item.tool])&&this.can(TOOL_PERMISSION[item.tool]),prefill,state,taskId:task&&!['cancelled'].includes(task.status)?task.id:null,assignment};
+      return {...item,href,canAct:await someSeries(modules, async module=>module.id===(await this.crewin()?CREWIN_TAB:TOOL_TAB)[item.tool])&&await this.can(TOOL_PERMISSION[item.tool]),prefill,state,taskId:task&&!['cancelled'].includes(task.status)?task.id:null,assignment};
     });
     return {row,brief,week,weekKey,all};
   }
-  read():CoachSnapshot{
-    this.authorize();const {row,brief,week,weekKey,all}=this.derive(),states=this.actionRows(),open=all.filter(item=>item.state==='open'),versions=this.versions(2);
+  async read():Promise<CoachSnapshot>{
+    await this.authorize();const {row,brief,week,weekKey,all}=await this.derive(),states=await this.actionRows(),open=all.filter(item=>item.state==='open'),versions=await this.versions(2);
     return {revision:row?.revision||0,answers:row?JSON.parse(row.answers_json):null,draft:row?.draft_json?JSON.parse(row.draft_json):null,draftSource:row?.draft_source||null,draftAt:row?.draft_at||null,brief,approvedAt:row?.approved_at||null,week,weekKey,
       actions:open.slice(0,3),resolved:all.filter(item=>item.state!=='open'&&states.get(item.id)?.week===weekKey),remaining:open.length,
-      aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.can('content.write'),canApprove:this.can('campaign.approve'),previousBrief:versions[1]?.brief||null,versions:versions.length,starterDrafts:(this.db.prepare("SELECT COUNT(*) n FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.starter')=1").get(...this.args()) as {n:number}).n};
+      aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:await this.can('content.write'),canApprove:await this.can('campaign.approve'),previousBrief:versions[1]?.brief||null,versions:versions.length,starterDrafts:(await this.db.prepare("SELECT COUNT(*) n FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.starter')=1").get(...this.args()) as {n:number}).n};
   }
   // Every current action (setup and plan), for assignment and renewal; read access only.
-  actions(){this.authorize();return this.derive().all;}
-  private action(id:unknown){const action=this.derive().all.find(item=>item.id===id);if(typeof id!=='string'||!action)throw new MarketingStoreError('Bu hafta için böyle bir eylem bulunamadı.',404);return action;}
-  act(raw:Record<string,unknown>){
-    this.authorize('content.write');const state=choice(['open','done','skipped'] as const,raw.state);
-    return this.db.transaction(()=>{
-      this.authorize('content.write');const action=this.action(raw.actionId),now=new Date().toISOString();
-      this.db.prepare('INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,?,?,NULL,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET state=excluded.state,week=excluded.week,actor_id=excluded.actor_id,updated_at=excluded.updated_at').run(...this.args(),action.id,state,coachWeekKey(new Date(),this.timeZone()),this.scope.subject,now);
-      this.audit(`coach.action.${state}`);return this.read();
-    }).immediate();
+  async actions(){await this.authorize();return (await this.derive()).all;}
+  private async action(id:unknown){const action=(await this.derive()).all.find(item=>item.id===id);if(typeof id!=='string'||!action)throw new MarketingStoreError('Bu hafta için böyle bir eylem bulunamadı.',404);return action;}
+  async act(raw:Record<string,unknown>){
+    await this.authorize('content.write');const state=choice(['open','done','skipped'] as const,raw.state);
+    return await this.db.transaction(async ()=>{
+      await this.authorize('content.write');const action=await this.action(raw.actionId),now=new Date().toISOString();
+      await this.db.prepare('INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,?,?,NULL,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET state=excluded.state,week=excluded.week,actor_id=excluded.actor_id,updated_at=excluded.updated_at').run(...this.args(),action.id,state,coachWeekKey(new Date(),await this.timeZone()),this.scope.subject,now);
+      await this.audit(`coach.action.${state}`);return await this.read();
+    });
   }
   // Explicit handoff to the existing Calendar; deduplicated while the linked task stays open. Sends nothing.
-  schedule(raw:Record<string,unknown>){
-    this.authorize('content.write');
-    return this.db.transaction(()=>{
-      this.authorize('content.write');const action=this.action(raw.actionId),operations=new ProjectOperations(this.db,this.scope),stored=this.actionRows().get(action.id),current=stored?.task_id?operations.tasks().find(task=>task.id===stored.task_id&&!['completed','cancelled'].includes(task.status)):undefined;
-      if(current)return {task:current,created:false,snapshot:this.read()};
-      const brief=this.derive().brief!,pick=(value:string|LocalizedText)=>typeof value==='string'?value:value[brief.language];
-      const task=operations.saveTask({title:pick(action.title).slice(0,160),dueAt:new Date(Date.now()+86400000).toISOString(),status:'planned',note:[`coach:${action.id}`,pick(action.why),pick(action.how),`${action.minutes} min · ${action.href}`].join('\n').slice(0,2000)});
-      this.db.prepare("INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,'open',?,?,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET task_id=excluded.task_id,actor_id=excluded.actor_id,updated_at=excluded.updated_at").run(...this.args(),action.id,coachWeekKey(new Date(),this.timeZone()),task.id,this.scope.subject,new Date().toISOString());
-      this.audit('coach.action.schedule');return {task,created:true,snapshot:this.read()};
-    }).immediate();
+  async schedule(raw:Record<string,unknown>){
+    await this.authorize('content.write');
+    return await this.db.transaction(async ()=>{
+      await this.authorize('content.write');const action=await this.action(raw.actionId),operations=new ProjectOperations(this.db,this.scope),stored=(await this.actionRows()).get(action.id),current=stored?.task_id?(await operations.tasks()).find(task=>task.id===stored.task_id&&!['completed','cancelled'].includes(task.status)):undefined;
+      if(current)return {task:current,created:false,snapshot:await this.read()};
+      const brief=(await this.derive()).brief!,pick=(value:string|LocalizedText)=>typeof value==='string'?value:value[brief.language];
+      const task=await operations.saveTask({title:pick(action.title).slice(0,160),dueAt:new Date(Date.now()+86400000).toISOString(),status:'planned',note:[`coach:${action.id}`,pick(action.why),pick(action.how),`${action.minutes} min · ${action.href}`].join('\n').slice(0,2000)});
+      await this.db.prepare("INSERT INTO platform_growth_coach_actions(organization_id,project_id,action_id,state,week,task_id,actor_id,updated_at) VALUES(?,?,?,'open',?,?,?,?) ON CONFLICT(organization_id,project_id,action_id) DO UPDATE SET task_id=excluded.task_id,actor_id=excluded.actor_id,updated_at=excluded.updated_at").run(...this.args(),action.id,coachWeekKey(new Date(),await this.timeZone()),task.id,this.scope.subject,new Date().toISOString());
+      await this.audit('coach.action.schedule');return {task,created:true,snapshot:await this.read()};
+    });
   }
 }
 export {object as coachObject,text as coachText,choice as coachChoice,integer as coachInteger,clip as coachClip,BANNED as COACH_BANNED,channelName as coachChannelName,toolHref as coachToolHref};

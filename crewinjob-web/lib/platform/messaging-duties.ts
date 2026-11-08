@@ -1,3 +1,5 @@
+import { everySeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { PlatformRepository } from './repository';
@@ -11,16 +13,16 @@ export const DUTY_BASE:Record<MessagingDuty,readonly WorkspacePermission[]>={
   suggest:['content.write'],
   publish:['connections.manage','campaign.approve','campaign.dispatch'],
 };
-export function dutyEligible(repo:PlatformRepository,subject:string,organizationId:string,projectId:string,duty:MessagingDuty){
-  return DUTY_BASE[duty].every(permission=>repo.can(subject,organizationId,projectId,permission));
+export async function dutyEligible(repo:PlatformRepository,subject:string,organizationId:string,projectId:string,duty:MessagingDuty){
+  return await everySeries(DUTY_BASE[duty], async permission=>await repo.can(subject,organizationId,projectId,permission));
 }
 // Owners hold every duty they are eligible for; everyone else, admins included, needs it given on purpose.
-export function isProjectOwner(db:Database.Database,subject:string,organizationId:string,projectId:string){
-  return Boolean(db.prepare("SELECT 1 FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE m.user_id=? AND m.organization_id=? AND m.project_id=? AND m.role='owner' AND m.active=1 AND u.active=1").get(subject,organizationId,projectId));
+export async function isProjectOwner(db:Db,subject:string,organizationId:string,projectId:string){
+  return Boolean(await db.prepare("SELECT 1 FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE m.user_id=? AND m.organization_id=? AND m.project_id=? AND m.role='owner' AND m.active=1 AND u.active=1").get(subject,organizationId,projectId));
 }
-export function hasMessagingDuty(db:Database.Database,subject:string,organizationId:string,projectId:string,duty:MessagingDuty){
+export async function hasMessagingDuty(db:Db,subject:string,organizationId:string,projectId:string,duty:MessagingDuty){
   const repo=new PlatformRepository(db);
-  if(!dutyEligible(repo,subject,organizationId,projectId,duty))return false;
-  if(isProjectOwner(db,subject,organizationId,projectId))return true;
-  return Boolean(db.prepare('SELECT 1 FROM platform_messaging_duties WHERE organization_id=? AND project_id=? AND user_id=? AND duty=?').get(organizationId,projectId,subject,duty));
+  if(!await dutyEligible(repo,subject,organizationId,projectId,duty))return false;
+  if(await isProjectOwner(db,subject,organizationId,projectId))return true;
+  return Boolean(await db.prepare('SELECT 1 FROM platform_messaging_duties WHERE organization_id=? AND project_id=? AND user_id=? AND duty=?').get(organizationId,projectId,subject,duty));
 }

@@ -5,10 +5,10 @@ import { coachBody,coachRoute } from '../shared';
 export const dynamic='force-dynamic';
 const handle=coachRoute(async(scope,request)=>{
   const review=new CoachWeeklyReview(platformDatabase(),scope);
-  if(request.method==='GET')return review.read();
+  if(request.method==='GET')return await review.read();
   const raw=await coachBody(request);
-  if(raw.action==='generate')return review.generate();
-  if(raw.action==='decide')return review.decide(raw);
+  if(raw.action==='generate')return await review.generate();
+  if(raw.action==='decide')return await review.decide(raw);
   throw new MarketingStoreError('Geçersiz haftalık özet işlemi.');
 });
 export const GET=handle,POST=handle;

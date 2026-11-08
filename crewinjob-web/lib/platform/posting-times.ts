@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { PlatformRepository } from './repository';
@@ -36,11 +37,11 @@ export function postingTimes(rows: { platform: string; at: string; interactions:
 
 export class PostingTimes {
   private repo: PlatformRepository;
-  constructor(private db: Database.Database, private scope: MarketingScope) { this.repo = new PlatformRepository(db); }
-  view(now = Date.now()): PostingTimesView {
-    const project = this.repo.can(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'read') ? this.repo.workspace(this.scope.subject, this.scope.organizationId, this.scope.projectId)?.project : undefined;
+  constructor(private db: Db, private scope: MarketingScope) { this.repo = new PlatformRepository(db); }
+  async view(now = Date.now()): Promise<PostingTimesView> {
+    const project = await this.repo.can(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'read') ? (await this.repo.workspace(this.scope.subject, this.scope.organizationId, this.scope.projectId))?.project : undefined;
     if (!project || !ryzevoFeature(project.productPack, 'coach')) throw new MarketingStoreError('Paylaşım zamanı önerisi için proje erişimi gerekli.', 403);
-    const rows = (this.db.prepare(`SELECT s.platform,COALESCE(p.submitted_at,p.scheduled_at) at,e.counts_json FROM platform_social_publications p
+    const rows = (await this.db.prepare(`SELECT s.platform,COALESCE(p.submitted_at,p.scheduled_at) at,e.counts_json FROM platform_social_publications p
       JOIN platform_social_engagement e ON e.job_id=p.job_id JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id
       JOIN platform_social_accounts s ON s.connection_id=j.connection_id
       WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state='accepted' AND e.state='ready' AND e.observed_at IS NOT NULL AND COALESCE(p.submitted_at,p.scheduled_at)>=?`)

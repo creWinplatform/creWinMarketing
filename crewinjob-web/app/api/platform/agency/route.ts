@@ -16,10 +16,10 @@ export async function POST(request:NextRequest){
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input)||typeof input.homeOrganizationId!=='string'||typeof input.homeProjectId!=='string')throw new MarketingStoreError('Geçersiz ajans isteği.');
     const db=platformDatabase(),agency=new AgencyPackage(db,{subject:access.subject,organizationId:input.homeOrganizationId,projectId:input.homeProjectId});
     let created:{organizationId:string;projectId:string}|null=null;
-    if(input.action==='create')created=agency.createProject(input);
-    else if(input.action==='link')agency.requestLink(input);
-    else if(input.action==='unlink')agency.removeLink(input);
+    if(input.action==='create')created=await agency.createProject(input);
+    else if(input.action==='link')await agency.requestLink(input);
+    else if(input.action==='unlink')await agency.removeLink(input);
     else throw new MarketingStoreError('Geçersiz ajans işlemi.');
-    return NextResponse.json({created,portfolio:portfolio(db,access.subject,{organizationId:access.identity.organizationId,projectId:access.identity.projectId})},{headers});
+    return NextResponse.json({created,portfolio:await portfolio(db,access.subject,{organizationId:access.identity.organizationId,projectId:access.identity.projectId})},{headers});
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Ajans işlemi tamamlanamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

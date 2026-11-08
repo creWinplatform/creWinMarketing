@@ -7,14 +7,14 @@ import type { MobileReport } from './mobile-types';
 
 type Observation={entity_id:string;event_id:string;occurred_at:string;provider:string;kind:string;details_json:string};
 const dayMs=86400000,day=(time:string)=>time.slice(0,10),nextDay=(date:string,offset=1)=>new Date(Date.parse(date+'T00:00:00Z')+offset*dayMs).toISOString().slice(0,10);
-export function mobileReport(service:MobileGrowth,appId:string,fromInput?:unknown,toInput?:unknown,now=Date.now()):MobileReport {
-  const app=service.app(appId),to=mobileDay(toInput||new Date(now-dayMs).toISOString().slice(0,10)),from=mobileDay(fromInput||new Date(Date.parse(to)-29*dayMs).toISOString().slice(0,10));
+export async function mobileReport(service:MobileGrowth,appId:string,fromInput?:unknown,toInput?:unknown,now=Date.now()):Promise<MobileReport> {
+  const app=await service.app(appId),to=mobileDay(toInput||new Date(now-dayMs).toISOString().slice(0,10)),from=mobileDay(fromInput||new Date(Date.parse(to)-29*dayMs).toISOString().slice(0,10));
   if(from>to||Date.parse(to)-Date.parse(from)>89*dayMs||Date.parse(from)<now-90*dayMs||Date.parse(to)>=Date.parse(new Date(now).toISOString().slice(0,10)))throw new MarketingStoreError('Son 90 günde kapanmış günlerden bir aralık seçin.');
-  const source=service.db.prepare('SELECT event_coverage_from FROM platform_product_sources WHERE connection_id=? AND version=?').get(app.sourceId,app.sourceVersion) as {event_coverage_from:string|null}|undefined;
+  const source=await service.db.prepare('SELECT event_coverage_from FROM platform_product_sources WHERE connection_id=? AND version=?').get(app.sourceId,app.sourceVersion) as {event_coverage_from:string|null}|undefined;
   const complete=(date:string)=>app.sourceState==='active'&&Boolean(source?.event_coverage_from&&Date.parse(source.event_coverage_from)<=Date.parse(date+'T00:00:00Z')&&app.coverageThrough&&Date.parse(app.coverageThrough)>=Date.parse(nextDay(date)+'T00:00:00Z'));
   // The plan's stored-event limit bounds what one report reads (projectEventLimits).
-  const stored=projectEventLimits(service.db,service.scope).stored;
-  const rows=service.db.prepare(`SELECT e.entity_id,e.event_id,e.occurred_at,d.provider,d.kind,d.details_json FROM platform_product_events e JOIN platform_mobile_event_details d ON d.source_id=e.connection_id AND d.event_id=e.event_id AND d.organization_id=e.organization_id AND d.project_id=e.project_id WHERE d.app_id=? AND e.organization_id=? AND e.project_id=? AND e.version=? AND e.occurred_at>=? ORDER BY e.occurred_at,e.event_id LIMIT ?`).all(app.id,...service.args(),app.sourceVersion,new Date(now-90*dayMs).toISOString(),stored+1) as Observation[];
+  const stored=(await projectEventLimits(service.db,service.scope)).stored;
+  const rows=await service.db.prepare(`SELECT e.entity_id,e.event_id,e.occurred_at,d.provider,d.kind,d.details_json FROM platform_product_events e JOIN platform_mobile_event_details d ON d.source_id=e.connection_id AND d.event_id=e.event_id AND d.organization_id=e.organization_id AND d.project_id=e.project_id WHERE d.app_id=? AND e.organization_id=? AND e.project_id=? AND e.version=? AND e.occurred_at>=? ORDER BY e.occurred_at,e.event_id LIMIT ?`).all(app.id,...service.args(),app.sourceVersion,new Date(now-90*dayMs).toISOString(),stored+1) as Observation[];
   const warnings:string[]=[],installs=new Map<string,Observation>(),sessions=new Map<string,Set<string>>();let uncertainIdentity=false;
   for(const row of rows){const details=JSON.parse(row.details_json);if(details.environment==='sandbox')continue;
     if(row.kind==='install'&&row.provider===app.attributionProvider){if(!installs.has(row.entity_id))installs.set(row.entity_id,row);if(details.identity!=='customer')uncertainIdentity=true;}
@@ -42,7 +42,7 @@ export function mobileReport(service:MobileGrowth,appId:string,fromInput?:unknow
     if(!money.has(detail.currency))money.set(detail.currency,{spend:null,purchaseRevenue:null,refunds:null});const value=money.get(detail.currency)!;
     if(row.kind==='purchase')value.purchaseRevenue=(value.purchaseRevenue||0)+detail.amount;else value.refunds=(value.refunds||0)+detail.amount;
   }
-  const spend=service.db.prepare('SELECT amount,currency,day,attribution_campaign,campaign_id FROM platform_mobile_costs WHERE organization_id=? AND project_id=? AND app_id=? AND day>=? AND day<=?').all(...service.args(),app.id,from,to) as {amount:number;currency:string;day:string;attribution_campaign:string;campaign_id:string}[];
+  const spend=await service.db.prepare('SELECT amount,currency,day,attribution_campaign,campaign_id FROM platform_mobile_costs WHERE organization_id=? AND project_id=? AND app_id=? AND day>=? AND day<=?').all(...service.args(),app.id,from,to) as {amount:number;currency:string;day:string;attribution_campaign:string;campaign_id:string}[];
   for(const row of spend){if(!money.has(row.currency))money.set(row.currency,{spend:null,purchaseRevenue:null,refunds:null});const value=money.get(row.currency)!;value.spend=(value.spend||0)+row.amount;}
   // Spend pulled from an ad provider (syncAdSpend) is keyed "ad:…"; everything else was typed in.
   if(spend.some(row=>!row.campaign_id.startsWith('ad:')))warnings.push('spend_manual');

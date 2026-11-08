@@ -12,7 +12,7 @@ const { startWorkerObservation, finishWorkerObservation, observeWorkerTick } = l
 const monitoring = import('../scripts/lib/platform-monitor.mjs');
 const key = '12'.repeat(32), cwd = path.join(__dirname, '..');
 const diskStats = async () => ({ bavail: 2048, bsize: 1024 ** 2 });
-function fixture(t) {
+async function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ryzevo-monitor-'));
   const file = path.join(directory, 'platform.sqlite'), backups = path.join(directory, 'backups');
   const db = openPlatformDatabase(file), repo = new PlatformRepository(db);
@@ -22,8 +22,8 @@ function fixture(t) {
     assert.ok(path.basename(directory).startsWith('ryzevo-monitor-'));
     fs.rmSync(directory, { recursive: true, force: true });
   });
-  repo.bootstrapLegacy('monitor-admin');
-  const a = repo.provision('legacy-admin', { organizationName: 'Private Alpha', projectName: 'Private Product', website: 'https://example.com', username: 'private-owner', password: 'fixture-password-123' });
+  await repo.bootstrapLegacy('monitor-admin');
+  const a = await repo.provision('legacy-admin', { organizationName: 'Private Alpha', projectName: 'Private Product', website: 'https://example.com', username: 'private-owner', password: 'fixture-password-123' });
   const scope = { organization_id: a.organizationId, project_id: a.projectId }, now = Date.now(), at = offset => new Date(now + offset).toISOString();
   const insert = (table, values) => {
     const keys = Object.keys(values);
@@ -35,7 +35,7 @@ function fixture(t) {
   const env = { ...process.env, PLATFORM_DATABASE_PATH: file, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: '', PLATFORM_WORKER_EXPECTED: '1' };
   const run = (script, args = [], extra = {}) => spawnSync(process.execPath, [`scripts/${script}.mjs`, ...args], { cwd, windowsHide: true, encoding: 'utf8', timeout: 30000, env: { ...env, ...extra } });
   const backup = () => { const result = run('platform-backup'); assert.equal(result.status, 0, result.stderr); return path.join(backups, fs.readdirSync(backups).sort().at(-1)); };
-  const success = (offset = 0) => { const id = startWorkerObservation(db, new Date(now + offset)); finishWorkerObservation(db, id, 'completed', 0, 0, new Date(now + offset + 1)); return id; };
+  const success = async (offset = 0) => { const id = await startWorkerObservation(db, new Date(now + offset)); await finishWorkerObservation(db, id, 'completed', 0, 0, new Date(now + offset + 1)); return id; };
   const monitor = async (extra = {}) => {
     const { monitorConfiguration, monitorPlatform } = await monitoring;
     return monitorPlatform({ databasePath: file, backupRoot: backups, options: monitorConfiguration(env), now: now + 1000, diskStats, ...extra });
@@ -46,7 +46,7 @@ function fixture(t) {
 const codes = report => report.alerts.map(item => item.code);
 
 test('worker observation is bounded, persistent, counts handler checks and never contains payloads', async t => {
-  const f = fixture(t);
+  const f = await fixture(t);
   assert.equal(f.db.prepare('SELECT COUNT(*) AS n FROM platform_worker_observations').get().n, 0);
   const result = await observeWorkerTick(f.db, async () => ({ checked: 2, failed: 1, pruned: 0 }));
   assert.equal(result.checked, 2);
@@ -60,7 +60,7 @@ test('worker observation is bounded, persistent, counts handler checks and never
 });
 
 test('worker exceptions are rethrown but only a sanitized failure observation is persisted', async t => {
-  const f = fixture(t), error = new Error('DO-NOT-PRINT-MONITOR-SECRET');
+  const f = await fixture(t), error = new Error('DO-NOT-PRINT-MONITOR-SECRET');
   await assert.rejects(observeWorkerTick(f.db, async () => { throw error; }), value => value === error);
   const row = f.db.prepare('SELECT * FROM platform_worker_observations').get();
   assert.equal(row.outcome, 'failed'); assert.equal(row.consecutive_failures, 1); assert.equal(row.last_success_at, null);
@@ -69,25 +69,25 @@ test('worker exceptions are rethrown but only a sanitized failure observation is
   assert.ok(codes(await f.monitor()).includes('worker_tick_failed'));
 });
 
-test('superseded and repeated worker completions cannot overwrite the latest observation', t => {
-  const f = fixture(t), first = startWorkerObservation(f.db, new Date(f.now)), second = startWorkerObservation(f.db, new Date(f.now + 10));
-  assert.equal(finishWorkerObservation(f.db, first, 'failed'), false);
-  assert.equal(finishWorkerObservation(f.db, second, 'completed', 3, 0, new Date(f.now + 20)), true);
-  assert.equal(finishWorkerObservation(f.db, second, 'failed'), false);
+test('superseded and repeated worker completions cannot overwrite the latest observation', async t => {
+  const f = await fixture(t), first = await startWorkerObservation(f.db, new Date(f.now)), second = await startWorkerObservation(f.db, new Date(f.now + 10));
+  assert.equal(await finishWorkerObservation(f.db, first, 'failed'), false);
+  assert.equal(await finishWorkerObservation(f.db, second, 'completed', 3, 0, new Date(f.now + 20)), true);
+  assert.equal(await finishWorkerObservation(f.db, second, 'failed'), false);
   const row = f.db.prepare('SELECT * FROM platform_worker_observations').get();
   assert.equal(row.run_id, second); assert.equal(row.checked, 3); assert.equal(row.first_observed_at, f.at(0));
-  assert.throws(() => finishWorkerObservation(f.db, second, 'completed', 4));
+  await assert.rejects(async () => await finishWorkerObservation(f.db, second, 'completed', 4));
 });
 
 test('handler-level partial results stay distinct from a failed worker tick', async t => {
-  const f = fixture(t); await observeWorkerTick(f.db, async () => ({ checked: 1, failed: 1 })); f.backup();
+  const f = await fixture(t); await observeWorkerTick(f.db, async () => ({ checked: 1, failed: 1 })); f.backup();
   const report = await f.monitor();
   assert.ok(codes(report).includes('worker_tick_partial')); assert.ok(!codes(report).includes('worker_tick_failed'));
   assert.equal(report.worker.handlerFailures, 1); assert.equal(report.status, 'warning');
 });
 
 test('fresh empty worker tick, valid backup and enough disk produce no fabricated production readiness', async t => {
-  const f = fixture(t); f.success(); f.backup();
+  const f = await fixture(t); await f.success(); f.backup();
   const report = await f.monitor();
   assert.equal(report.status, 'ok'); assert.equal(report.exitCode, 0); assert.equal(report.worker.status, 'completed');
   assert.equal(report.backup.status, 'verified'); assert.equal(report.queue.ready, 0);
@@ -97,32 +97,32 @@ test('fresh empty worker tick, valid backup and enough disk produce no fabricate
 });
 
 test('expected worker distinguishes never observed, stale, stalled and repeated unfinished starts', async t => {
-  const f = fixture(t); f.backup();
+  const f = await fixture(t); f.backup();
   assert.ok(codes(await f.monitor()).includes('worker_not_observed'));
-  f.success(-600000);
+  await f.success(-600000);
   assert.ok(codes(await f.monitor()).includes('worker_stale'));
-  startWorkerObservation(f.db, new Date(f.now - 300000));
+  await startWorkerObservation(f.db, new Date(f.now - 300000));
   assert.ok(codes(await f.monitor()).includes('worker_stalled'));
   // A fresh overlapping start is not proof that any tick successfully completed.
-  startWorkerObservation(f.db, new Date(f.now));
+  await startWorkerObservation(f.db, new Date(f.now));
   assert.ok(codes(await f.monitor()).includes('worker_no_recent_success'));
 });
 
 test('missing worker is not falsely called healthy or failed when operator has not enabled supervision', async t => {
-  const f = fixture(t); f.backup();
+  const f = await fixture(t); f.backup();
   const { monitorConfiguration } = await monitoring;
   const options = monitorConfiguration({ PLATFORM_WORKER_EXPECTED: '0' });
   const report = await f.monitor({ options });
   assert.equal(report.worker.expected, false); assert.equal(report.worker.status, 'not_observed');
   assert.ok(!codes(report).includes('worker_not_observed'));
-  f.job('waiting');
+  await f.job('waiting');
   assert.ok(codes(await f.monitor({ options })).includes('worker_not_expected_with_ready_jobs'));
 });
 
 test('future social schedules and container checks do not trigger false overdue alerts', async t => {
-  const f = fixture(t); f.success(); f.backup();
-  f.job('future', { job_type: 'social.publish', created_at: f.at(-3 * 86400000) });
-  f.insert('platform_social_publications', { ...f.scope, job_id: 'future', source_kind: 'content', source_id: 'private-content', source_digest: 'hash', body_digest: 'hash',
+  const f = await fixture(t); await f.success(); f.backup();
+  await f.job('future', { job_type: 'social.publish', created_at: f.at(-3 * 86400000) });
+  await f.insert('platform_social_publications', { ...f.scope, job_id: 'future', source_kind: 'content', source_id: 'private-content', source_digest: 'hash', body_digest: 'hash',
     encrypted_snapshot: encryptCredentials({}, key, f.a.organizationId, f.a.projectId, 'publication:future'), mode: 'rehearsal', scheduled_at: f.at(86400000), timezone: 'UTC', configuration_revision: 'fixture' });
   let report = await f.monitor(); assert.equal(report.queue.queued, 1); assert.equal(report.queue.ready, 0); assert.equal(report.queue.delayed, 0);
   f.db.prepare('UPDATE platform_social_publications SET scheduled_at=?,next_check_at=?').run(f.at(-3600000), f.at(60000));
@@ -135,10 +135,10 @@ test('future social schedules and container checks do not trigger false overdue 
 });
 
 test('expired leases, unsupported jobs and failures are reported without running or resetting anything', async t => {
-  const f = fixture(t); f.success(); f.backup();
-  f.job('expired', { status: 'running', lease_until: f.at(-10000) });
-  f.job('unsupported', { job_type: 'unknown-private-provider' });
-  f.job('failed', { status: 'failed', message: 'DO-NOT-PRINT-MONITOR-SECRET' });
+  const f = await fixture(t); await f.success(); f.backup();
+  await f.job('expired', { status: 'running', lease_until: f.at(-10000) });
+  await f.job('unsupported', { job_type: 'unknown-private-provider' });
+  await f.job('failed', { status: 'failed', message: 'DO-NOT-PRINT-MONITOR-SECRET' });
   const before = JSON.stringify(f.db.prepare('SELECT * FROM platform_jobs ORDER BY id').all()), report = await f.monitor();
   assert.equal(report.queue.expiredLeases, 1); assert.equal(report.queue.unsupported, 1); assert.equal(report.queue.failedRecent, 1);
   assert.ok(codes(report).includes('queue_expired_leases')); assert.ok(codes(report).includes('queue_unsupported_jobs'));
@@ -147,16 +147,16 @@ test('expired leases, unsupported jobs and failures are reported without running
 });
 
 test('uncertain email/social/identity and interrupted billing checks require review, never retry', async t => {
-  const f = fixture(t); f.success(); f.backup();
-  f.job('email', { job_type: 'email.pilot_send', status: 'failed' });
-  f.insert('platform_email_pilots', { ...f.scope, job_id: 'email', campaign_id: 'private-campaign', campaign_name: 'Private', review_id: 1, encrypted_snapshot: 'unused' });
-  f.insert('platform_email_pilot_recipients', { ...f.scope, job_id: 'email', position: 1, email_key: 'private-address-hash', masked_email: 'i***@example.com', state: 'uncertain', updated_at: f.at(0) });
-  f.job('social', { job_type: 'social.publish', status: 'failed' });
-  f.insert('platform_social_publications', { ...f.scope, job_id: 'social', source_kind: 'content', source_id: 'private-content', source_digest: 'hash', body_digest: 'hash', encrypted_snapshot: 'unused', mode: 'publish', state: 'uncertain', scheduled_at: f.at(0), timezone: 'UTC', configuration_revision: 'fixture' });
-  f.insert('platform_identity_challenges', { token_hash: 'private-token', kind: 'verify', user_id: f.a.userId, email: 'private@example.com', security_version: 0,
+  const f = await fixture(t); await f.success(); f.backup();
+  await f.job('email', { job_type: 'email.pilot_send', status: 'failed' });
+  await f.insert('platform_email_pilots', { ...f.scope, job_id: 'email', campaign_id: 'private-campaign', campaign_name: 'Private', review_id: 1, encrypted_snapshot: 'unused' });
+  await f.insert('platform_email_pilot_recipients', { ...f.scope, job_id: 'email', position: 1, email_key: 'private-address-hash', masked_email: 'i***@example.com', state: 'uncertain', updated_at: f.at(0) });
+  await f.job('social', { job_type: 'social.publish', status: 'failed' });
+  await f.insert('platform_social_publications', { ...f.scope, job_id: 'social', source_kind: 'content', source_id: 'private-content', source_digest: 'hash', body_digest: 'hash', encrypted_snapshot: 'unused', mode: 'publish', state: 'uncertain', scheduled_at: f.at(0), timezone: 'UTC', configuration_revision: 'fixture' });
+  await f.insert('platform_identity_challenges', { token_hash: 'private-token', kind: 'verify', user_id: f.a.userId, email: 'private@example.com', security_version: 0,
     configuration_revision: 'fixture', created_at: f.now, expires_at: f.now + 10000, encrypted_delivery: 'unused', delivery_state: 'uncertain' });
-  f.insert('platform_billing_orders', { ...f.scope, id: 'RZTESTprivate', actor_id: f.a.userId, idempotency_key: 'private', request_digest: 'hash', configuration_revision: 'fixture', merchant_revision: 'fixture', plan_id: 'launch', plan_name: 'Launch', cadence: 'monthly', amount_minor: 2900, currency: 'USD', test_mode: 1, state: 'review', created_at: f.at(0), expires_at: f.at(0), updated_at: f.at(0) });
-  f.insert('platform_billing_checks', { ...f.scope, id: 'private-check', order_id: 'RZTESTprivate', actor_id: f.a.userId, idempotency_key: 'private', request_digest: 'hash', expected_revision: 0, merchant_revision: 'fixture', outcome: 'checking', created_at: f.at(-120000) });
+  await f.insert('platform_billing_orders', { ...f.scope, id: 'RZTESTprivate', actor_id: f.a.userId, idempotency_key: 'private', request_digest: 'hash', configuration_revision: 'fixture', merchant_revision: 'fixture', plan_id: 'launch', plan_name: 'Launch', cadence: 'monthly', amount_minor: 2900, currency: 'USD', test_mode: 1, state: 'review', created_at: f.at(0), expires_at: f.at(0), updated_at: f.at(0) });
+  await f.insert('platform_billing_checks', { ...f.scope, id: 'private-check', order_id: 'RZTESTprivate', actor_id: f.a.userId, idempotency_key: 'private', request_digest: 'hash', expected_revision: 0, merchant_revision: 'fixture', outcome: 'checking', created_at: f.at(-120000) });
   const report = await f.monitor();
   for (const code of ['email_delivery_uncertain', 'social_publication_uncertain', 'identity_delivery_uncertain', 'billing_requires_review', 'billing_inquiry_interrupted']) assert.ok(codes(report).includes(code));
   assert.equal(report.status, 'critical');
@@ -166,7 +166,7 @@ test('uncertain email/social/identity and interrupted billing checks require rev
 });
 
 test('a valid backup from another database cannot satisfy this deployment backup check', async t => {
-  const f = fixture(t), other = fixture(t); f.success(); other.success(); other.backup();
+  const f = await fixture(t), other = await fixture(t); await f.success(); await other.success(); other.backup();
   const report = await f.monitor({ backupRoot: other.backups });
   assert.equal(report.backup.status, 'wrong_database'); assert.ok(codes(report).includes('backup_database_mismatch'));
   const id = other.db.prepare("SELECT value FROM platform_operation_metadata WHERE key='database_id'").get().value;
@@ -174,13 +174,13 @@ test('a valid backup from another database cannot satisfy this deployment backup
 });
 
 test('missing social payload raises an alert rather than pretending that queued work can complete', async t => {
-  const f = fixture(t); f.success(); f.backup(); f.job('missing-social', { job_type: 'social.publish' });
+  const f = await fixture(t); await f.success(); f.backup(); await f.job('missing-social', { job_type: 'social.publish' });
   const report = await f.monitor();
   assert.ok(codes(report).includes('queue_missing_payload')); assert.equal(report.status, 'critical');
 });
 
 test('a broken newest backup cannot be hidden by an older valid one; stale backups alert separately', async t => {
-  const f = fixture(t); f.success(); f.backup();
+  const f = await fixture(t); await f.success(); f.backup();
   let report = await f.monitor({ now: f.now + 27 * 3600000 });
   assert.equal(report.backup.status, 'stale'); assert.ok(codes(report).includes('backup_stale'));
   const latest = f.backup(); fs.appendFileSync(path.join(latest, 'platform.sqlite'), 'damaged');
@@ -189,7 +189,7 @@ test('a broken newest backup cannot be hidden by an older valid one; stale backu
 });
 
 test('low disk, missing database and unavailable disk checks have distinct nonzero outcomes', async t => {
-  const f = fixture(t); f.success(); f.backup();
+  const f = await fixture(t); await f.success(); f.backup();
   let report = await f.monitor({ diskStats: async () => ({ bavail: 1, bsize: 1024 ** 2 }) });
   assert.equal(report.disk.status, 'low'); assert.equal(report.exitCode, 2); assert.ok(codes(report).includes('disk_space_low'));
   report = await f.monitor({ diskStats: async () => { throw new Error('DO-NOT-PRINT-MONITOR-SECRET'); } });
@@ -199,7 +199,7 @@ test('low disk, missing database and unavailable disk checks have distinct nonze
 });
 
 test('invalid clocks, future schema and missing backups fail closed without migrations', async t => {
-  const f = fixture(t); f.success(60000);
+  const f = await fixture(t); await f.success(60000);
   let report = await f.monitor();
   assert.ok(codes(report).includes('worker_observation_invalid')); assert.ok(codes(report).includes('backup_missing_or_incomplete'));
   f.db.prepare("INSERT INTO platform_migrations VALUES(79,datetime('now'))").run();
@@ -208,24 +208,24 @@ test('invalid clocks, future schema and missing backups fail closed without migr
 });
 
 test('monitor options are bounded and the CLI returns safe machine-readable nonzero results', async t => {
-  const f = fixture(t); f.success(); f.backup();
+  const f = await fixture(t); await f.success(); f.backup();
   const { monitorConfiguration } = await monitoring;
   for (const env of [{ PLATFORM_WORKER_EXPECTED: 'yes' }, { PLATFORM_MONITOR_MIN_FREE_MB: '-1' }, { PLATFORM_MONITOR_QUEUE_DELAY_MINUTES: '0' }, { PLATFORM_MONITOR_BACKUP_MAX_AGE_HOURS: '1000' }]) assert.throws(() => monitorConfiguration(env));
-  const result = f.run('platform-monitor', [], { PLATFORM_DATABASE_PATH: path.join(f.directory, 'absent.sqlite') });
+  const result = await f.run('platform-monitor', [], { PLATFORM_DATABASE_PATH: path.join(f.directory, 'absent.sqlite') });
   assert.equal(result.status, 2);
   const report = JSON.parse(result.stdout.trim().split('\n').at(-1));
   assert.ok(codes(report).includes('database_unavailable'));
   assert.ok(!result.stdout.includes('DO-NOT-PRINT-MONITOR-SECRET') && !result.stderr.includes(key));
-  const invalid = f.run('platform-monitor', ['not-an-option']); assert.equal(invalid.status, 2); assert.match(invalid.stderr, /monitor_configuration_invalid/);
+  const invalid = await f.run('platform-monitor', ['not-an-option']); assert.equal(invalid.status, 2); assert.match(invalid.stderr, /monitor_configuration_invalid/);
 });
 
 test('schema27 migration is additive and repeatable, observations survive a restart', async t => {
-  const f = fixture(t), legacy = path.join(f.directory, 'schema26.sqlite');
+  const f = await fixture(t), legacy = path.join(f.directory, 'schema26.sqlite');
   require('./schema-fixture.cjs').removeWorkerObservationSchema(f.db);
   assert.equal(f.db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 26);
   await f.db.backup(legacy);
   let db = openPlatformDatabase(legacy);
-  try { startWorkerObservation(db); } finally { db.close(); }
+  try { await startWorkerObservation(db); } finally { db.close(); }
   db = openPlatformDatabase(legacy);
   try {
     assert.equal(db.prepare('SELECT MAX(version) AS n FROM platform_migrations').get().n, 78);
@@ -244,11 +244,11 @@ const sesEnv = () => ({ PLATFORM_MONITOR_EMAIL_ENABLED: '1', PLATFORM_MONITOR_EM
   PLATFORM_AUTH_SES_ACCESS_KEY_ID: 'AKIA' + crypto.randomBytes(16).toString('hex').toUpperCase().slice(0, 16), PLATFORM_AUTH_SES_SECRET_ACCESS_KEY: crypto.randomBytes(30).toString('base64'), PLATFORM_MONITOR_HOST_LABEL: 'QA host' });
 
 test('weekly restore drills: --latest verifies the newest backup, removes the copies and the monitor tracks the result', async t => {
-  const f = fixture(t); f.success(); f.backup();
+  const f = await fixture(t); await f.success(); f.backup();
   const { monitorConfiguration } = await monitoring, options = monitorConfiguration({ PLATFORM_WORKER_EXPECTED: '1', PLATFORM_DRILL_EXPECTED: '1' });
   assert.ok(codes(await f.monitor({ options })).includes('restore_drill_stale'), 'no drill yet');
   assert.equal((await f.monitor()).drill.status, 'not_expected');
-  const drills = path.join(f.directory, 'recovery-drills'), result = f.run('platform-restore-drill', ['--latest'], { PLATFORM_DRILL_PATH: '' });
+  const drills = path.join(f.directory, 'recovery-drills'), result = await f.run('platform-restore-drill', ['--latest'], { PLATFORM_DRILL_PATH: '' });
   assert.equal(result.status, 0, result.stderr);
   const folder = path.join(drills, fs.readdirSync(drills).sort().at(-1));
   assert.deepEqual(fs.readdirSync(folder).sort(), ['DO_NOT_START.txt', 'manifest.json', 'recovery-report.json'], 'database and key copies removed');
@@ -259,9 +259,9 @@ test('weekly restore drills: --latest verifies the newest backup, removes the co
   const failed = path.join(drills, '2999-01-01T00-00-00-000Z-' + crypto.randomUUID());
   fs.mkdirSync(failed); fs.writeFileSync(path.join(failed, 'FAILED.json'), '{"ok":false}');
   assert.ok(codes(await f.monitor({ options })).includes('restore_drill_failed'));
-  const inside = f.run('platform-restore-drill', ['--latest', path.join(f.backups, 'drills')]);
+  const inside = await f.run('platform-restore-drill', ['--latest', path.join(f.backups, 'drills')]);
   assert.equal(inside.status, 1); assert.match(inside.stderr, /output_inside_backup/);
-  const manual = f.run('platform-restore-drill', [path.join(f.backups, fs.readdirSync(f.backups).sort().at(-1)), path.join(f.directory, 'manual-drills')]);
+  const manual = await f.run('platform-restore-drill', [path.join(f.backups, fs.readdirSync(f.backups).sort().at(-1)), path.join(f.directory, 'manual-drills')]);
   assert.equal(manual.status, 0, manual.stderr);
   const kept = path.join(f.directory, 'manual-drills', fs.readdirSync(path.join(f.directory, 'manual-drills'))[0]);
   assert.ok(fs.readdirSync(kept).includes('platform.sqlite'), 'a manual drill keeps its copy for inspection');
@@ -274,15 +274,15 @@ test('operator email: off by default, codes only, once per change, reminders and
   assert.deepEqual(config(sesEnv()).to, ['ops@example.com', 'second@example.com']);
   const critical = { status: 'critical', checkedAt: '2026-11-05T10:00:00.000Z', alerts: [{ code: 'worker_stale', severity: 'critical' }, { code: 'queue_delayed', severity: 'warning', count: 3 }] };
   const ok = { status: 'ok', checkedAt: '2026-11-05T12:00:00.000Z', alerts: [] }, at = Date.parse('2026-11-05T10:00:00Z');
-  assert.deepEqual(decide(critical, null, at), { send: true, kind: 'problem' });
+  assert.deepEqual(await decide(critical, null, at), { send: true, kind: 'problem' });
   const sent = { status: 'critical', codes: 'queue_delayed,worker_stale', notifiedAt: new Date(at).toISOString() };
-  assert.deepEqual(decide(critical, sent, at + 3600000), { send: false });
-  assert.deepEqual(decide(critical, sent, at + 6 * 3600000), { send: true, kind: 'reminder' });
-  assert.deepEqual(decide({ ...critical, alerts: [critical.alerts[0]] }, sent, at + 60000), { send: true, kind: 'problem' }, 'a changed set is news');
-  assert.deepEqual(decide(ok, sent, at), { send: true, kind: 'resolved' });
-  assert.deepEqual(decide(ok, { status: 'ok' }, at), { send: false }); assert.deepEqual(decide(ok, null, at), { send: false });
+  assert.deepEqual(await decide(critical, sent, at + 3600000), { send: false });
+  assert.deepEqual(await decide(critical, sent, at + 6 * 3600000), { send: true, kind: 'reminder' });
+  assert.deepEqual(await decide({ ...critical, alerts: [critical.alerts[0]] }, sent, at + 60000), { send: true, kind: 'problem' }, 'a changed set is news');
+  assert.deepEqual(await decide(ok, sent, at), { send: true, kind: 'resolved' });
+  assert.deepEqual(await decide(ok, { status: 'ok' }, at), { send: false }); assert.deepEqual(await decide(ok, null, at), { send: false });
   const warning = { status: 'warning', checkedAt: critical.checkedAt, alerts: [critical.alerts[1]] }, warned = { status: 'warning', codes: 'queue_delayed', notifiedAt: sent.notifiedAt };
-  assert.deepEqual(decide(warning, warned, at + 7 * 3600000), { send: false }); assert.equal(decide(warning, warned, at + 24 * 3600000).kind, 'reminder');
+  assert.deepEqual(await decide(warning, warned, at + 7 * 3600000), { send: false }); assert.equal((await decide(warning, warned, at + 24 * 3600000)).kind, 'reminder');
   const mail = monitorMessage(critical, 'problem', 'QA host');
   assert.match(mail.subject, /QA host: acil sorun/); assert.match(mail.text, /bir süredir çalışmıyor/); assert.match(mail.text, /gecikti\. \(3\) \[queue_delayed\]/);
   assert.match(monitorMessage(ok, 'resolved').subject, /giderildi/);
@@ -301,8 +301,8 @@ test('operator email: off by default, codes only, once per change, reminders and
 });
 
 test('the monitor CLI reports the notification outcome without changing its exit code', async t => {
-  const f = fixture(t); f.success(); f.backup();
-  const result = f.run('platform-monitor', [], { PLATFORM_MONITOR_EMAIL_ENABLED: '0' });
+  const f = await fixture(t); await f.success(); f.backup();
+  const result = await f.run('platform-monitor', [], { PLATFORM_MONITOR_EMAIL_ENABLED: '0' });
   const report = JSON.parse(result.stdout.trim().split('\n').at(-1));
   assert.equal(report.notification, 'disabled'); assert.equal(report.notificationsSent, false); assert.equal(result.status, report.exitCode);
   assert.ok(!fs.existsSync(path.join(f.directory, 'monitor-notify.json')));

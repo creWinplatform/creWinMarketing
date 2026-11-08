@@ -1,3 +1,5 @@
+import { filterSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -29,102 +31,102 @@ const args = (scope: Scope) => [scope.organizationId, scope.projectId] as const;
 export function alertEmailConfiguration() { return process.env.PLATFORM_ALERT_EMAIL_ENABLED === '1' ? identityEmailConfiguration() : null; }
 
 // Alerts the member may act on, each only with the right that acting needs. Read-only; nothing is changed here.
-export function teamAlerts(db: Database.Database, scope: Scope, now = Date.now()): TeamAlert[] {
-  const repo = new PlatformRepository(db), can = (permission: Parameters<PlatformRepository['can']>[3]) => repo.can(scope.subject, ...args(scope), permission);
-  const project = can('read') ? repo.workspace(scope.subject, ...args(scope))?.project : undefined;
+export async function teamAlerts(db: Db, scope: Scope, now = Date.now()): Promise<TeamAlert[]> {
+  const repo = new PlatformRepository(db), can = async (permission: Parameters<PlatformRepository['can']>[3]) => await repo.can(scope.subject, ...args(scope), permission);
+  const project = await can('read') ? (await repo.workspace(scope.subject, ...args(scope)))?.project : undefined;
   if (!project || !ryzevoFeature(project.productPack, 'alerts')) return [];
   const alerts: TeamAlert[] = [], iso = (value: number) => new Date(value).toISOString();
   // Messages whose reply window closes within the warning time and that have no reply on its way.
-  if (hasMessagingDuty(db, scope.subject, ...args(scope), 'source.read')) {
+  if (await hasMessagingDuty(db, scope.subject, ...args(scope), 'source.read')) {
     const window = INBOX_LIMITS.messageWindowHours * HOUR;
-    const rows = db.prepare("SELECT id,received_at FROM platform_social_inbox WHERE organization_id=? AND project_id=? AND kind='message' AND state='new' AND (reply_state IS NULL OR reply_state IN ('draft','rejected')) AND received_at>? AND received_at<=? ORDER BY received_at,id LIMIT 200")
+    const rows = await db.prepare("SELECT id,received_at FROM platform_social_inbox WHERE organization_id=? AND project_id=? AND kind='message' AND state='new' AND (reply_state IS NULL OR reply_state IN ('draft','rejected')) AND received_at>? AND received_at<=? ORDER BY received_at,id LIMIT 200")
       .all(...args(scope), iso(now - window), iso(now - window + LIMITS.inboxWarningHours * HOUR)) as { id: string; received_at: string }[];
     if (rows.length) alerts.push({ kind: 'inbox_window', severity: 'urgent', count: rows.length, at: iso(Date.parse(rows[0].received_at) + window), href: '/?tab=campaigns&campaignView=inbox', keys: rows.map(row => `inbox:${row.id}`) });
   }
   // Live posts the provider rejected, that were stopped, or whose outcome is unknown, in the last week.
-  if (can('campaign.dispatch')) {
-    const rows = db.prepare("SELECT p.job_id,p.state,j.updated_at FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state IN ('rejected','uncertain','blocked') AND j.updated_at>=? ORDER BY j.updated_at DESC LIMIT 100")
+  if (await can('campaign.dispatch')) {
+    const rows = await db.prepare("SELECT p.job_id,p.state,j.updated_at FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='publish' AND p.state IN ('rejected','uncertain','blocked') AND j.updated_at>=? ORDER BY j.updated_at DESC LIMIT 100")
       .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { job_id: string; state: string; updated_at: string }[];
     if (rows.length) alerts.push({ kind: 'publication_failed', severity: rows.some(row => row.state === 'uncertain') ? 'urgent' : 'warning', count: rows.length, at: rows[0].updated_at, href: '/?tab=calendar&planning=social', keys: rows.map(row => `publication:${row.job_id}:${row.state}`) });
   }
   // Social account grants that end within a week or have ended.
-  if (can('connections.manage')) {
-    const rows = db.prepare("SELECT c.id,s.expires_at FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1 AND c.provider='social' AND s.expires_at IS NOT NULL AND s.expires_at<? ORDER BY s.expires_at,c.id LIMIT 50")
+  if (await can('connections.manage')) {
+    const rows = await db.prepare("SELECT c.id,s.expires_at FROM platform_connections c JOIN platform_social_accounts s ON s.connection_id=c.id WHERE c.organization_id=? AND c.project_id=? AND c.active=1 AND c.provider='social' AND s.expires_at IS NOT NULL AND s.expires_at<? ORDER BY s.expires_at,c.id LIMIT 50")
       .all(...args(scope), now + LIMITS.accessDays * DAY) as { id: string; expires_at: number }[];
     if (rows.length) alerts.push({ kind: 'connection_expiring', severity: rows.some(row => row.expires_at <= now) ? 'urgent' : 'warning', count: rows.length, at: iso(rows[0].expires_at), href: '/?tab=project&settings=connections', keys: rows.map(row => `connection:${row.id}:${row.expires_at}`) });
   }
   // The paid period (or its grace) or the trial is about to end, and no later period is paid.
-  if (can('billing.manage')) {
+  if (await can('billing.manage')) {
     const at = iso(now);
     let period: { ends_at: string; grace_ends_at: string } | undefined;
-    try { period = db.prepare('SELECT ends_at,grace_ends_at FROM platform_project_subscriptions WHERE organization_id=? AND project_id=? AND starts_at<=? AND grace_ends_at>? ORDER BY ends_at DESC LIMIT 1').get(...args(scope), at, at) as typeof period; } catch { period = undefined; }
-    const later = period && db.prepare('SELECT 1 FROM platform_project_subscriptions WHERE organization_id=? AND project_id=? AND starts_at>=?').get(...args(scope), period.ends_at);
+    try { period = await db.prepare('SELECT ends_at,grace_ends_at FROM platform_project_subscriptions WHERE organization_id=? AND project_id=? AND starts_at<=? AND grace_ends_at>? ORDER BY ends_at DESC LIMIT 1').get(...args(scope), at, at) as typeof period; } catch { period = undefined; }
+    const later = period && await db.prepare('SELECT 1 FROM platform_project_subscriptions WHERE organization_id=? AND project_id=? AND starts_at>=?').get(...args(scope), period.ends_at);
     if (period && !later) {
       if (period.ends_at <= at) alerts.push({ kind: 'billing_period', phase: 'grace', severity: 'urgent', count: 1, at: period.grace_ends_at, href: '/?tab=project&settings=plan', keys: [`billing:grace:${period.grace_ends_at}`] });
       else if (Date.parse(period.ends_at) - now <= LIMITS.paidDays * DAY) alerts.push({ kind: 'billing_period', phase: 'paid_ending', severity: 'warning', count: 1, at: period.ends_at, href: '/?tab=project&settings=plan', keys: [`billing:paid:${period.ends_at}`] });
     } else if (!period) {
-      const trial = db.prepare("SELECT ends_at FROM platform_project_entitlements WHERE organization_id=? AND project_id=? AND mode='trial'").get(...args(scope)) as { ends_at: string | null } | undefined;
+      const trial = await db.prepare("SELECT ends_at FROM platform_project_entitlements WHERE organization_id=? AND project_id=? AND mode='trial'").get(...args(scope)) as { ends_at: string | null } | undefined;
       if (trial?.ends_at && trial.ends_at > at && Date.parse(trial.ends_at) - now <= LIMITS.trialDays * DAY) alerts.push({ kind: 'billing_period', phase: 'trial_ending', severity: 'warning', count: 1, at: trial.ends_at, href: '/?tab=project&settings=plan', keys: [`billing:trial:${trial.ends_at}`] });
     }
   }
   // Ad plans with a provider error in the last week (start refused, pause unconfirmed, create half done).
-  if (can('connections.manage') && can('campaign.approve')) {
-    const rows = db.prepare("SELECT id,revision,updated_at FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND last_error IS NOT NULL AND last_error<>'' AND state IN ('created','paused','failed','active') AND updated_at>=? ORDER BY updated_at DESC LIMIT 50")
+  if (await can('connections.manage') && await can('campaign.approve')) {
+    const rows = await db.prepare("SELECT id,revision,updated_at FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND last_error IS NOT NULL AND last_error<>'' AND state IN ('created','paused','failed','active') AND updated_at>=? ORDER BY updated_at DESC LIMIT 50")
       .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { id: string; revision: number; updated_at: string }[];
     if (rows.length) alerts.push({ kind: 'ad_error', severity: 'warning', count: rows.length, at: rows[0].updated_at, href: '/?tab=campaigns&campaignView=ads', keys: rows.map(row => `ad:${row.id}:${row.revision}`) });
     // Running plans above the spend threshold or the cost-per-install cap; the team decides whether to pause.
-    const warnings = adWarnings(db, scope, now);
+    const warnings = await adWarnings(db, scope, now);
     for (const kind of ['ad_overspend', 'ad_cpi'] as const) {
       const list = warnings.filter(item => item.kind === (kind === 'ad_overspend' ? 'overspend' : 'cpi'));
       if (list.length) alerts.push({ kind, severity: 'urgent', count: list.length, at: null, href: '/?tab=campaigns&campaignView=ads', plans: [...new Set(list.map(item => item.name))].slice(0, 5), keys: list.map(item => `${kind}:${item.planId}:${item.day}`) });
     }
     // Sent ad images or videos whose click-through rate is falling: a new image is suggested.
-    const tired = fatiguedCreatives(db, scope, now);
+    const tired = await fatiguedCreatives(db, scope, now);
     if (tired.length) alerts.push({ kind: 'ad_fatigue', severity: 'warning', count: tired.length, at: null, href: '/?tab=campaigns&campaignView=ads', plans: [...new Set(tired.map(item => item.planName))].slice(0, 5), keys: tired.map(item => `ad_fatigue:${item.creativeId}:${item.day}`) });
   }
   // New or returning findings from a scheduled site scan (a scan someone starts by hand is looked at right away).
   // Competitor apps that shipped a version, changed their name or moved in rating in the last week.
-  if (can('content.write')) {
-    const changes = recentCompetitorChanges(db, scope, now);
+  if (await can('content.write')) {
+    const changes = await recentCompetitorChanges(db, scope, now);
     if (changes.length) alerts.push({ kind: 'competitor_change', severity: 'warning', count: changes.length, at: null, href: '/?tab=mobile&mobileSection=aso', plans: [...new Set(changes.map(item => item.name))].slice(0, 5), keys: changes.map(item => `competitor:${item.appleId}:${item.kind}:${item.day}`) });
   }
-  if (can('content.write')) {
-    const rows = db.prepare("SELECT e.finding_id,MAX(e.at) at FROM platform_seo_finding_events e JOIN platform_seo_findings f ON f.id=e.finding_id JOIN platform_seo_scans s ON s.id=e.scan_id WHERE e.organization_id=? AND e.project_id=? AND e.kind IN ('detected','reopened') AND e.at>=? AND f.state='open' AND s.started_via='schedule' GROUP BY e.finding_id ORDER BY at DESC LIMIT 100")
+  if (await can('content.write')) {
+    const rows = await db.prepare("SELECT e.finding_id,MAX(e.at) at FROM platform_seo_finding_events e JOIN platform_seo_findings f ON f.id=e.finding_id JOIN platform_seo_scans s ON s.id=e.scan_id WHERE e.organization_id=? AND e.project_id=? AND e.kind IN ('detected','reopened') AND e.at>=? AND f.state='open' AND s.started_via='schedule' GROUP BY e.finding_id ORDER BY at DESC LIMIT 100")
       .all(...args(scope), iso(now - LIMITS.eventDays * DAY)) as { finding_id: string; at: string }[];
     if (rows.length) alerts.push({ kind: 'seo_findings', severity: 'warning', count: rows.length, at: rows[0].at, href: '/?tab=seo', keys: rows.map(row => `seo:${row.finding_id}:${row.at}`) });
   }
   // Clicks from Google search fell by the fixed rule in the weekly check. Search Console figures stay with connection managers.
-  if (can('connections.manage')) {
-    const watch = db.prepare("SELECT w.clicks,w.previous_clicks,w.current_to,w.checked_at FROM platform_seo_search_watch w JOIN platform_connections c ON c.id=w.connection_id AND c.active=1 WHERE w.organization_id=? AND w.project_id=? AND w.status='ready' AND w.checked_at>=?").get(...args(scope), iso(now - 8 * DAY)) as { clicks: number | null; previous_clicks: number | null; current_to: string; checked_at: string } | undefined;
+  if (await can('connections.manage')) {
+    const watch = await db.prepare("SELECT w.clicks,w.previous_clicks,w.current_to,w.checked_at FROM platform_seo_search_watch w JOIN platform_connections c ON c.id=w.connection_id AND c.active=1 WHERE w.organization_id=? AND w.project_id=? AND w.status='ready' AND w.checked_at>=?").get(...args(scope), iso(now - 8 * DAY)) as { clicks: number | null; previous_clicks: number | null; current_to: string; checked_at: string } | undefined;
     if (watch && searchDropped(watch.clicks, watch.previous_clicks)) alerts.push({ kind: 'search_drop', severity: 'warning', count: 1, at: watch.checked_at, href: '/?tab=seo', keys: [`search:${watch.current_to}`], clicks: { current: watch.clicks!, previous: watch.previous_clicks! } });
   }
   // İYS: consents and opt-outs must reach İYS within three business days; shown to those who manage connections or recipients.
-  if (can('connections.manage') || can('recipients.manage')) {
-    const iys = iysAttention(db, scope, now);
+  if (await can('connections.manage') || await can('recipients.manage')) {
+    const iys = await iysAttention(db, scope, now);
     if (iys?.items.length) alerts.push({ kind: 'iys_deadline', severity: iys.items.some(item => item.state === 'failed' || Date.parse(item.due_at) <= now) ? 'urgent' : 'warning', count: iys.items.length, at: iys.items[0].due_at, href: '/?tab=project&settings=iys', keys: iys.items.map(item => `iys:${item.id}:${item.state}`) });
     if (iys?.stale) alerts.push({ kind: 'iys_sync', severity: 'warning', count: 1, at: iys.pulledAt, href: '/?tab=project&settings=iys', keys: [`iys-sync:${iys.pulledAt || 'never'}`] });
   }
   // Competitor websites that changed in the last week (title, headings, new pages, pricing).
-  if (can('content.write')) {
-    let changes: ReturnType<typeof recentCompetitorSiteChanges> = []; try { changes = recentCompetitorSiteChanges(db, scope, now); } catch { changes = []; }
+  if (await can('content.write')) {
+    let changes: Awaited<ReturnType<typeof recentCompetitorSiteChanges>> = []; try { changes = await recentCompetitorSiteChanges(db, scope, now); } catch { changes = []; }
     if (changes.length) alerts.push({ kind: 'competitor_site', severity: 'warning', count: changes.length, at: changes[0].detected_at, href: '/?tab=project&settings=brand', plans: [...new Set(changes.map(item => item.name))].slice(0, 5), keys: changes.map(item => `competitor-site:${item.id}`) });
   }
   // The Monday pack's drafts for this week that nobody has read and saved yet.
-  if (can('content.write') && project.productPack === 'standard') {
+  if (await can('content.write') && project.productPack === 'standard') {
     const week = coachWeekKey(new Date(now), project.timezone);
-    let ready = 0; try { ready = new ProjectMarketingStore(db, { ...scope, subject: scope.subject }).history().filter(item => item.starter && item.coachWeek === week).length; } catch { ready = 0; }
+    let ready = 0; try { ready = (await new ProjectMarketingStore(db, { ...scope, subject: scope.subject }).history()).filter(item => item.starter && item.coachWeek === week).length; } catch { ready = 0; }
     if (ready) alerts.push({ kind: 'weekly_pack', severity: 'warning', count: ready, at: null, href: '/?tab=library', keys: [`weekly:${week}`] });
   }
   // Scheduled jobs (posts, İYS uploads, syncs, alert emails) have not completed a round lately. Only a worker that
   // has run before counts, so a setup without one shows nothing; the server operator restarts it.
-  if (can('connections.manage')) {
+  if (await can('connections.manage')) {
     let worker: { first_observed_at: string; last_success_at: string | null } | undefined;
-    try { worker = db.prepare("SELECT first_observed_at,last_success_at FROM platform_worker_observations WHERE component='platform-worker'").get() as typeof worker; } catch { worker = undefined; }
+    try { worker = await db.prepare("SELECT first_observed_at,last_success_at FROM platform_worker_observations WHERE component='platform-worker'").get() as typeof worker; } catch { worker = undefined; }
     const last = worker ? Date.parse(worker.last_success_at || worker.first_observed_at) : NaN;
     if (Number.isFinite(last) && now - last > LIMITS.workerStaleMinutes * 60000) alerts.push({ kind: 'worker_stale', severity: now - last > LIMITS.workerUrgentHours * HOUR ? 'urgent' : 'warning', count: 1, at: worker!.last_success_at, href: '/?tab=project&settings=golive', keys: [`worker:${worker!.last_success_at || 'never'}`] });
   }
   // Invitations to other projects belong to the person, not this project; they are accepted in the portfolio.
-  const invites = receivedInvites(db, scope.subject);
+  const invites = await receivedInvites(db, scope.subject);
   if (invites.length) alerts.push({ kind: 'invite_pending', severity: 'warning', count: invites.length, at: [...invites].sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))[0].expiresAt, href: '/portfolio', keys: invites.map(item => `invite:${item.id}`) });
   return alerts.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'urgent' ? -1 : 1));
 }
@@ -165,75 +167,75 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
 
 export class TeamAlerts {
   private repo: PlatformRepository;
-  constructor(private db: Database.Database, private scope: MarketingScope) { this.repo = new PlatformRepository(db); }
-  private authorize() {
-    if (!this.repo.can(this.scope.subject, ...args(this.scope), 'read') || !ryzevoFeature(this.repo.workspace(this.scope.subject, ...args(this.scope))?.project.productPack, 'alerts')) throw new MarketingStoreError('Uyarılar için standart proje erişimi gerekli.', 403);
+  constructor(private db: Db, private scope: MarketingScope) { this.repo = new PlatformRepository(db); }
+  private async authorize() {
+    if (!await this.repo.can(this.scope.subject, ...args(this.scope), 'read') || !ryzevoFeature((await this.repo.workspace(this.scope.subject, ...args(this.scope)))?.project.productPack, 'alerts')) throw new MarketingStoreError('Uyarılar için standart proje erişimi gerekli.', 403);
   }
-  private email() { return (this.db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(this.scope.subject) as { email: string } | undefined)?.email || null; }
-  private subscription() { return this.db.prepare('SELECT language,weekly FROM platform_alert_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(this.scope.subject, ...args(this.scope)) as { language: Lang; weekly: number } | undefined; }
-  private audit(operation: string) { this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), operation, new Date().toISOString()); }
-  read(): TeamAlertsView {
-    this.authorize(); const subscription = this.subscription();
-    return { alerts: teamAlerts(this.db, this.scope), timezone: this.repo.workspace(this.scope.subject, ...args(this.scope))!.project.timezone,
-      email: { enabled: Boolean(alertEmailConfiguration()), subscribed: Boolean(subscription), language: subscription?.language || null, hasVerifiedEmail: Boolean(this.email()), weekly: Boolean(subscription?.weekly) }, push: { enabled: Boolean(webPushConfiguration()) } };
+  private async email() { return (await this.db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(this.scope.subject) as { email: string } | undefined)?.email || null; }
+  private async subscription() { return await this.db.prepare('SELECT language,weekly FROM platform_alert_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(this.scope.subject, ...args(this.scope)) as { language: Lang; weekly: number } | undefined; }
+  private async audit(operation: string) { await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), operation, new Date().toISOString()); }
+  async read(): Promise<TeamAlertsView> {
+    await this.authorize(); const subscription = await this.subscription();
+    return { alerts: await teamAlerts(this.db, this.scope), timezone: (await this.repo.workspace(this.scope.subject, ...args(this.scope)))!.project.timezone,
+      email: { enabled: Boolean(alertEmailConfiguration()), subscribed: Boolean(subscription), language: subscription?.language || null, hasVerifiedEmail: Boolean(await this.email()), weekly: Boolean(subscription?.weekly) }, push: { enabled: Boolean(webPushConfiguration()) } };
   }
   // Opting in marks what is already open as seen, so the first email is about something new.
-  subscribe(raw: Record<string, unknown>) {
-    this.authorize(); const language = raw.language === 'en' ? 'en' : raw.language === 'tr' ? 'tr' : null;
+  async subscribe(raw: Record<string, unknown>) {
+    await this.authorize(); const language = raw.language === 'en' ? 'en' : raw.language === 'tr' ? 'tr' : null;
     if (!language || Object.keys(raw).some(key => !['action', 'language'].includes(key))) throw new MarketingStoreError('Geçersiz uyarı ayarı.');
-    if (!this.email()) throw new MarketingStoreError('Uyarıları e-postayla almak için önce hesap e-postanızı doğrulayın.', 409);
-    this.db.transaction(() => {
-      this.authorize(); const now = new Date().toISOString(), fresh = !this.subscription();
-      this.db.prepare('INSERT INTO platform_alert_subscriptions(user_id,organization_id,project_id,language,created_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,organization_id,project_id) DO UPDATE SET language=excluded.language').run(this.scope.subject, ...args(this.scope), language, now);
-      if (fresh) { const seen = this.db.prepare('INSERT OR IGNORE INTO platform_alert_notices(user_id,organization_id,project_id,alert_key,notified_at) VALUES(?,?,?,?,?)'); for (const key of teamAlerts(this.db, this.scope).flatMap(item => item.keys)) seen.run(this.scope.subject, ...args(this.scope), key, now); }
-      this.audit('alerts.subscribe');
-    }).immediate();
-    return this.read();
+    if (!await this.email()) throw new MarketingStoreError('Uyarıları e-postayla almak için önce hesap e-postanızı doğrulayın.', 409);
+    await this.db.transaction(async () => {
+      await this.authorize(); const now = new Date().toISOString(), fresh = !await this.subscription();
+      await this.db.prepare('INSERT INTO platform_alert_subscriptions(user_id,organization_id,project_id,language,created_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,organization_id,project_id) DO UPDATE SET language=excluded.language').run(this.scope.subject, ...args(this.scope), language, now);
+      if (fresh) { const seen = this.db.prepare('INSERT OR IGNORE INTO platform_alert_notices(user_id,organization_id,project_id,alert_key,notified_at) VALUES(?,?,?,?,?)'); for (const key of (await teamAlerts(this.db, this.scope)).flatMap(item => item.keys)) await seen.run(this.scope.subject, ...args(this.scope), key, now); }
+      await this.audit('alerts.subscribe');
+    });
+    return await this.read();
   }
   // The weekly summary rides on the alert email subscription.
-  setWeekly(raw: Record<string, unknown>) {
-    this.authorize(); if (typeof raw.enabled !== 'boolean') throw new MarketingStoreError('Geçersiz uyarı ayarı.');
-    if (!this.subscription()) throw new MarketingStoreError('Haftalık özet için önce e-posta uyarılarını açın.', 409);
-    this.db.prepare('UPDATE platform_alert_subscriptions SET weekly=? WHERE user_id=? AND organization_id=? AND project_id=?').run(raw.enabled ? 1 : 0, this.scope.subject, ...args(this.scope)); this.audit(raw.enabled ? 'alerts.weekly.on' : 'alerts.weekly.off');
-    return this.read();
+  async setWeekly(raw: Record<string, unknown>) {
+    await this.authorize(); if (typeof raw.enabled !== 'boolean') throw new MarketingStoreError('Geçersiz uyarı ayarı.');
+    if (!await this.subscription()) throw new MarketingStoreError('Haftalık özet için önce e-posta uyarılarını açın.', 409);
+    await this.db.prepare('UPDATE platform_alert_subscriptions SET weekly=? WHERE user_id=? AND organization_id=? AND project_id=?').run(raw.enabled ? 1 : 0, this.scope.subject, ...args(this.scope)); await this.audit(raw.enabled ? 'alerts.weekly.on' : 'alerts.weekly.off');
+    return await this.read();
   }
-  unsubscribe() {
-    this.authorize();
-    this.db.transaction(() => { this.db.prepare('DELETE FROM platform_alert_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').run(this.scope.subject, ...args(this.scope)); this.audit('alerts.unsubscribe'); }).immediate();
-    return this.read();
+  async unsubscribe() {
+    await this.authorize();
+    await this.db.transaction(async () => { await this.db.prepare('DELETE FROM platform_alert_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').run(this.scope.subject, ...args(this.scope)); await this.audit('alerts.unsubscribe'); });
+    return await this.read();
   }
 }
 
 // Worker step: looks at one subscriber per tick (least recently checked first). An email goes only for records the
 // member has not been told about, at most once every three hours and six times a day. It is marked submitted before the
 // provider call and never retried; the records it covered are not mailed again.
-export async function deliverNextAlertEmail(db: Database.Database, deliver: DigestDelivery = deliverCoachDigest, configuration = alertEmailConfiguration(), now = Date.now()) {
+export async function deliverNextAlertEmail(db: Db, deliver: DigestDelivery = deliverCoachDigest, configuration = alertEmailConfiguration(), now = Date.now()) {
   if (!configuration) return false;
-  const claimed = db.transaction(() => {
+  const claimed = await db.transaction(async () => {
     const at = new Date(now).toISOString();
-    const row = db.prepare('SELECT user_id,organization_id,project_id,language FROM platform_alert_subscriptions WHERE checked_at IS NULL OR checked_at<=? ORDER BY checked_at IS NOT NULL,checked_at,user_id LIMIT 1').get(new Date(now - 10 * 60000).toISOString()) as { user_id: string; organization_id: string; project_id: string; language: Lang } | undefined;
+    const row = await db.prepare('SELECT user_id,organization_id,project_id,language FROM platform_alert_subscriptions WHERE checked_at IS NULL OR checked_at<=? ORDER BY checked_at IS NOT NULL,checked_at,user_id LIMIT 1').get(new Date(now - 10 * 60000).toISOString()) as { user_id: string; organization_id: string; project_id: string; language: Lang } | undefined;
     if (!row) return null;
-    db.prepare('UPDATE platform_alert_subscriptions SET checked_at=? WHERE user_id=? AND organization_id=? AND project_id=?').run(at, row.user_id, row.organization_id, row.project_id);
+    await db.prepare('UPDATE platform_alert_subscriptions SET checked_at=? WHERE user_id=? AND organization_id=? AND project_id=?').run(at, row.user_id, row.organization_id, row.project_id);
     const scope = { subject: row.user_id, organizationId: row.organization_id, projectId: row.project_id };
-    const repo = new PlatformRepository(db), workspace = repo.can(row.user_id, row.organization_id, row.project_id, 'read') ? repo.workspace(row.user_id, row.organization_id, row.project_id) : null;
-    const email = (db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as { email: string } | undefined)?.email;
+    const repo = new PlatformRepository(db), workspace = await repo.can(row.user_id, row.organization_id, row.project_id, 'read') ? await repo.workspace(row.user_id, row.organization_id, row.project_id) : null;
+    const email = (await db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as { email: string } | undefined)?.email;
     if (!workspace || !ryzevoFeature(workspace.project.productPack, 'alerts') || !email) return null;
-    const recent = db.prepare("SELECT MAX(created_at) AS last,SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END) AS today FROM platform_alert_deliveries WHERE user_id=? AND organization_id=? AND project_id=?").get(new Date(now - DAY).toISOString(), row.user_id, row.organization_id, row.project_id) as { last: string | null; today: number | null };
+    const recent = await db.prepare("SELECT MAX(created_at) AS last,SUM(CASE WHEN created_at>=? THEN 1 ELSE 0 END) AS today FROM platform_alert_deliveries WHERE user_id=? AND organization_id=? AND project_id=?").get(new Date(now - DAY).toISOString(), row.user_id, row.organization_id, row.project_id) as { last: string | null; today: number | null };
     if (recent.last && now - Date.parse(recent.last) < LIMITS.emailGapHours * HOUR || (recent.today || 0) >= LIMITS.emailsPerDay) return null;
-    const alerts = teamAlerts(db, scope, now), seen = db.prepare('SELECT 1 FROM platform_alert_notices WHERE user_id=? AND organization_id=? AND project_id=? AND alert_key=?');
-    const fresh = alerts.flatMap(item => item.keys).filter(key => !seen.get(row.user_id, row.organization_id, row.project_id, key));
+    const alerts = await teamAlerts(db, scope, now), seen = db.prepare('SELECT 1 FROM platform_alert_notices WHERE user_id=? AND organization_id=? AND project_id=? AND alert_key=?');
+    const fresh = await filterSeries(alerts.flatMap(item => item.keys), async key => !await seen.get(row.user_id, row.organization_id, row.project_id, key));
     if (!fresh.length) return null;
     const id = `alert_${randomUUID()}`, mark = db.prepare('INSERT OR IGNORE INTO platform_alert_notices(user_id,organization_id,project_id,alert_key,notified_at) VALUES(?,?,?,?,?)');
-    for (const key of alerts.flatMap(item => item.keys)) mark.run(row.user_id, row.organization_id, row.project_id, key, at);
-    db.prepare("INSERT INTO platform_alert_deliveries(id,organization_id,project_id,user_id,state,alert_count,created_at,updated_at) VALUES(?,?,?,?,'submitted',?,?,?)").run(id, row.organization_id, row.project_id, row.user_id, alerts.reduce((sum, item) => sum + item.count, 0), at, at);
+    for (const key of alerts.flatMap(item => item.keys)) await mark.run(row.user_id, row.organization_id, row.project_id, key, at);
+    await db.prepare("INSERT INTO platform_alert_deliveries(id,organization_id,project_id,user_id,state,alert_count,created_at,updated_at) VALUES(?,?,?,?,'submitted',?,?,?)").run(id, row.organization_id, row.project_id, row.user_id, alerts.reduce((sum, item) => sum + item.count, 0), at, at);
     // Notices of records that are no longer open are forgotten after 30 days; open ones stay, so they are not mailed again.
     const open = new Set(alerts.flatMap(item => item.keys)), forget = db.prepare('DELETE FROM platform_alert_notices WHERE user_id=? AND organization_id=? AND project_id=? AND alert_key=?');
-    for (const old of db.prepare('SELECT alert_key FROM platform_alert_notices WHERE user_id=? AND organization_id=? AND project_id=? AND notified_at<? LIMIT 500').all(row.user_id, row.organization_id, row.project_id, new Date(now - 30 * DAY).toISOString()) as { alert_key: string }[]) if (!open.has(old.alert_key)) forget.run(row.user_id, row.organization_id, row.project_id, old.alert_key);
+    for (const old of await db.prepare('SELECT alert_key FROM platform_alert_notices WHERE user_id=? AND organization_id=? AND project_id=? AND notified_at<? LIMIT 500').all(row.user_id, row.organization_id, row.project_id, new Date(now - 30 * DAY).toISOString()) as { alert_key: string }[]) if (!open.has(old.alert_key)) await forget.run(row.user_id, row.organization_id, row.project_id, old.alert_key);
     return { id, mail: { to: email, ...alertMessage(alerts, row.language, workspace.project, configuration.origin) } };
-  }).immediate();
+  });
   if (!claimed) return false;
   let state: 'sent' | 'uncertain' = 'sent';
   try { await deliver(claimed.mail, configuration); } catch { state = 'uncertain'; }
-  db.prepare('UPDATE platform_alert_deliveries SET state=?,updated_at=? WHERE id=?').run(state, new Date().toISOString(), claimed.id);
+  await db.prepare('UPDATE platform_alert_deliveries SET state=?,updated_at=? WHERE id=?').run(state, new Date().toISOString(), claimed.id);
   return true;
 }

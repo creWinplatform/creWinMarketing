@@ -17,14 +17,14 @@ export async function POST(request:NextRequest){
     const input=await readAuthenticationJson(request),identity=new PlatformIdentity(platformDatabase(),credentialEncryptionKey());
     if(input.action==='request-reset'||input.action==='request-signup'){
       // Return the same result for unknown, unavailable, rate-limited and known mailboxes.
-      try{identity.request(input.action==='request-reset'?'reset':'signup',input.email,input.language);}catch{}
+      try{await identity.request(input.action==='request-reset'?'reset':'signup',input.email,input.language);}catch{}
       return NextResponse.json({ok:true},{headers});
     }
-    if(typeof input.token!=='string'||input.token.length!==43||!consumeLoginAttempt(platformDatabase(),`identity-proof:${input.token}`))throw new Error('Invalid proof.');
-    if(input.action==='inspect'&&['verify','reset','signup'].includes(input.kind))identity.inspect(input.token,input.kind);
-    else if(input.action==='verify')identity.verify(input.token);
-    else if(input.action==='reset')identity.reset(input.token,input.password);
-    else if(input.action==='register')identity.register(input.token,input);
+    if(typeof input.token!=='string'||input.token.length!==43||!await consumeLoginAttempt(platformDatabase(),`identity-proof:${input.token}`))throw new Error('Invalid proof.');
+    if(input.action==='inspect'&&['verify','reset','signup'].includes(input.kind))await identity.inspect(input.token,input.kind);
+    else if(input.action==='verify')await identity.verify(input.token);
+    else if(input.action==='reset')await identity.reset(input.token,input.password);
+    else if(input.action==='register')await identity.register(input.token,input);
     else throw new Error('Invalid action.');
     return NextResponse.json({ok:true},{headers});
   }catch{

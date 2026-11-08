@@ -53,7 +53,7 @@ export const checkFacebookPublishing: PublishCheck = (token, accountId, credenti
 export const publishFacebookText: PublishTransport = async (token, accountId, text, reserve) => {
   const { graphVersion } = facebookPublishingConfiguration();
   if (!/^\d{1,30}$/.test(accountId) || !text.trim() || text.length > 3000 || !token || /[\r\n\x00]/.test(token) || /\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text)) return { state: 'blocked', postId: null };
-  if (!reserve()) return { state: 'blocked', postId: null };
+  if (!(await reserve())) return { state: 'blocked', postId: null };
   try {
     const response = await fetch(`https://graph.facebook.com/${graphVersion}/${accountId}/feed`, {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
@@ -72,11 +72,11 @@ export const publishFacebookText: PublishTransport = async (token, accountId, te
   } catch { return { state: 'uncertain', postId: null }; }
 };
 
-export async function publishFacebookImage(token:string,accountId:string,text:string,image:PublicationImage,reserve:()=>boolean):Promise<PublishResult> {
+export async function publishFacebookImage(token:string,accountId:string,text:string,image:PublicationImage,reserve:() => boolean | Promise<boolean>):Promise<PublishResult> {
   const {graphVersion}=facebookPublishingConfiguration();
   if(!/^\d{1,30}$/.test(accountId)||!text.trim()||text.length>3000||!token||/[\r\n\x00]/.test(token)||image.bytes>1024*1024||Buffer.from(image.data,'base64').length!==image.bytes) return {state:'blocked',postId:null};
   const body=new FormData();body.set('caption',text);body.set('published','true');body.set('source',new Blob([new Uint8Array(Buffer.from(image.data,'base64'))],{type:'image/jpeg'}),'publication.jpg');
-  if(!reserve())return {state:'blocked',postId:null};
+  if(!(await reserve()))return {state:'blocked',postId:null};
   try{
     const response=await fetch(`https://graph.facebook.com/${graphVersion}/${accountId}/photos`,{method:'POST',headers:{Authorization:`Bearer ${token}`,Accept:'application/json'},body,cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)});
     if(!response.ok){await response.body?.cancel();return {state:[400,401,403,404,405,409,422,429].includes(response.status)?'rejected':'uncertain',postId:null};}
@@ -87,10 +87,10 @@ export async function publishFacebookImage(token:string,accountId:string,text:st
 
 // Page video from the team's own https address (file_url). The answer is the video id; a lost answer is not retried.
 export const facebookVideoId=(id:unknown):id is string=>typeof id==='string'&&/^\d{1,30}$/.test(id);
-export async function publishFacebookVideo(token:string,accountId:string,text:string,videoUrl:string,reserve:()=>boolean):Promise<PublishResult> {
+export async function publishFacebookVideo(token:string,accountId:string,text:string,videoUrl:string,reserve:() => boolean | Promise<boolean>):Promise<PublishResult> {
   const {graphVersion}=facebookPublishingConfiguration();let url:URL;try{url=new URL(videoUrl);}catch{return {state:'blocked',postId:null};}
   if(!/^\d{1,30}$/.test(accountId)||!text.trim()||text.length>3000||!token||/[\r\n\x00]/.test(token)||url.protocol!=='https:'||url.username||url.password)return {state:'blocked',postId:null};
-  if(!reserve())return {state:'blocked',postId:null};
+  if(!(await reserve()))return {state:'blocked',postId:null};
   try{
     const response=await fetch(`https://graph-video.facebook.com/${graphVersion}/${accountId}/videos`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:new URLSearchParams({file_url:url.href,description:text,published:'true'}).toString(),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
     if(!response.ok){await response.body?.cancel();return {state:[400,401,403,404,405,409,422,429].includes(response.status)?'rejected':'uncertain',postId:null};}
@@ -100,10 +100,10 @@ export async function publishFacebookVideo(token:string,accountId:string,text:st
 }
 // Facebook Reels: start an upload session, let Meta fetch the team's file (rupload with file_url), then publish.
 // Nothing is visible before the finish call, so only a failed or unclear finish is recorded as uncertain.
-export async function publishFacebookReel(token:string,accountId:string,text:string,videoUrl:string,reserve:()=>boolean):Promise<PublishResult> {
+export async function publishFacebookReel(token:string,accountId:string,text:string,videoUrl:string,reserve:() => boolean | Promise<boolean>):Promise<PublishResult> {
   const {graphVersion}=facebookPublishingConfiguration();let url:URL;try{url=new URL(videoUrl);}catch{return {state:'blocked',postId:null};}
   if(!/^\d{1,30}$/.test(accountId)||!text.trim()||text.length>2200||!token||/[\r\n\x00]/.test(token)||url.protocol!=='https:'||url.username||url.password)return {state:'blocked',postId:null};
-  if(!reserve())return {state:'blocked',postId:null};
+  if(!(await reserve()))return {state:'blocked',postId:null};
   const form=(values:Record<string,string>)=>({method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/x-www-form-urlencoded',Accept:'application/json'},body:new URLSearchParams(values).toString(),cache:'no-store' as const,redirect:'error' as const,signal:AbortSignal.timeout(20000)});
   let videoId:string;
   try{

@@ -27,14 +27,14 @@ function fakeIys(){
   if(request.headers.Authorization!=='Bearer fake-token')return {status:401,body:{}};
   if(url.pathname==='/sps/123456/brands')return {status:200,body:[{brandCode:'654321'}]};
   if(url.pathname==='/sps/123456/brands/654321/consents'){state.register.set(`${body.type}\n${body.recipient}`,body);return {status:200,body:{transactionId:`tx-${state.requests.length}`}};}
-  if(url.pathname==='/sps/123456/brands/654321/consents/status'){const item=state.register.get(`${body.type}\n${body.recipient}`);return item?{status:200,body:{status:item.status,consentDate:item.consentDate,source:item.source}}:{status:404,body:{}};}
+  if(url.pathname==='/sps/123456/brands/654321/consents/status'){const item=await state.register.get(`${body.type}\n${body.recipient}`);return item?{status:200,body:{status:item.status,consentDate:item.consentDate,source:item.source}}:{status:404,body:{}};}
   if(url.pathname==='/sps/123456/brands/654321/consents/changes'){const after=url.searchParams.get('after');return {status:200,body:{after:after||'cursor-1',list:after?[]:state.changes}};}
   return {status:404,body:{}};
  };
  return {state,transport};
 }
-function setup(){
- const db=openPlatformDatabase(':memory:');new PlatformRepository(db).bootstrapLegacy('admin');
+async function setup(){
+ const db=openPlatformDatabase(':memory:');await new PlatformRepository(db).bootstrapLegacy('admin');
  const fake=fakeIys(),panel=new ProjectIys(db,CREWIN,KEY,fake.transport);
  const connect=()=>panel.connect({username:'qa-api-user',password:PASSWORD,iysCode:'123456',brandCode:'654321',environment:'sandbox'});
  return {db,fake,panel,connect,iys:crewinIys(db,KEY,fake.transport)};
@@ -51,24 +51,24 @@ const consent=(file,numbers,iys,extra={})=>m.recordLegacyWhatsAppConsent({number
 const outbox=db=>plain(db.prepare("SELECT status,source,state FROM platform_iys_outbox WHERE organization_id='crewin' ORDER BY created_at").all());
 
 test('Crewin declares and connects İYS on its own project; the password is never shown',async()=>{
- const f=setup();try{
-  assert.equal(f.panel.view().scope,null,'Crewin can open the İYS settings');
-  assert.match(f.iys.block(),/İYS beyanını yapın/);
-  f.panel.declare({scope:'none'});assert.equal(f.iys.block(),null);assert.equal(f.iys.gate(A),null,'"no": no İYS check');
-  f.panel.declare({scope:'tr'});assert.equal(f.iys.connected(),false);assert.equal(f.iys.gate(A),'iys_not_connected');
+ const f=await setup();try{
+  assert.equal((await f.panel.view()).scope,null,'Crewin can open the İYS settings');
+  assert.match(await f.iys.block(),/İYS beyanını yapın/);
+  await f.panel.declare({scope:'none'});assert.equal(await f.iys.block(),null);assert.equal(await f.iys.gate(A),null,'"no": no İYS check');
+  await f.panel.declare({scope:'tr'});assert.equal(await f.iys.connected(),false);assert.equal(await f.iys.gate(A),'iys_not_connected');
   const view=await f.connect();assert.equal(view.connection.brandCode,'654321');assert.ok(!JSON.stringify(view).includes(PASSWORD));
-  assert.equal(f.iys.connected(),true);assert.equal(f.iys.gate(P),null,'İYS is about Turkish numbers only');
+  assert.equal(await f.iys.connected(),true);assert.equal(await f.iys.gate(P),null,'İYS is about Turkish numbers only');
  }finally{f.db.close();}
 });
 
 test('without a declaration nothing is sent; after "Turkey" a +90 number needs İYS, others only the local consent',async()=>{
- const f=setup(),file=fresh();try{
+ const f=await setup(),file=fresh();try{
   await consent(file,[A,B,P]);const {calls,sender}=fakeSender();
   let out=await m.sendLegacyWhatsApp({mode:'broadcast',numbers:[A,P],text:'Merhaba'},sender,file,f.iys);
   assert.equal(out.status,409);assert.match(out.body.error,/İYS beyanını yapın/);assert.equal(calls.length,0);
-  f.panel.declare({scope:'none'});
+  await f.panel.declare({scope:'none'});
   out=await m.sendLegacyWhatsApp({mode:'broadcast',numbers:[A,P],text:'Merhaba'},sender,file,f.iys);assert.equal(out.body.sent,2);
-  calls.length=0;f.panel.declare({scope:'tr'});
+  calls.length=0;await f.panel.declare({scope:'tr'});
   out=await m.sendLegacyWhatsApp({mode:'broadcast',numbers:[A,P],text:'Merhaba'},sender,file,f.iys);
   assert.deepEqual(calls,[P]);assert.deepEqual(plain(out.body.skipped),{invalid:0,no_consent:0,opted_out:0,iys:1});assert.equal(out.body.skippedNumbers[0].iys,'iys_not_connected');
   await f.connect();calls.length=0;
@@ -82,26 +82,26 @@ test('without a declaration nothing is sent; after "Turkey" a +90 number needs �
   f.fake.state.changes.push({recipient:A,type:'MESAJ',status:'RET',consentDate:'2026-10-30 10:00:00'});await pullIysChanges(f.db,KEY,f.fake.transport);
   out=await m.sendLegacyWhatsApp({mode:'broadcast',numbers:[A,B],text:'Merhaba'},sender,file,f.iys);
   assert.equal(out.status,409);assert.match(out.body.error,/İYS kontrolü/);assert.deepEqual(plain(out.body.skippedNumbers.map(item=>item.iys)),['iys_rejected','iys_no_consent']);
-  assert.deepEqual(crewinKnownIysPhones(f.db,KEY),[A],'the settings check re-asks numbers İYS reported on');
+  assert.deepEqual(await crewinKnownIysPhones(f.db,KEY),[A],'the settings check re-asks numbers İYS reported on');
  }finally{f.db.close();}
 });
 
 test('after "Turkey", consents of Turkish numbers need their İYS source and are queued; old ones are not',async()=>{
- const f=setup(),file=fresh();try{
-  f.panel.declare({scope:'tr'});await f.connect();
+ const f=await setup(),file=fresh();try{
+  await f.panel.declare({scope:'tr'});await f.connect();
   await assert.rejects(consent(file,[A],f.iys),/izin nasıl alındı/);
   assert.deepEqual(plain(await consent(file,[P],f.iys)),{added:1,renewed:0,existing:0,iys:{queued:0,tooOld:0,failed:0}},'a non-Turkish number needs no source');
   assert.deepEqual(plain((await consent(file,[A,P],f.iys,{source:'HS_WEB'})).iys),{queued:1,tooOld:0,failed:0});
   assert.deepEqual(outbox(f.db),[{status:'ONAY',source:'HS_WEB',state:'queued'}]);
-  assert.deepEqual(plain(await deliverIysOutbox(f.db,KEY,f.fake.transport)),{sent:1,failed:0});assert.equal(f.iys.gate(A),null,'uploaded consent opens the gate');
+  assert.deepEqual(plain(await deliverIysOutbox(f.db,KEY,f.fake.transport)),{sent:1,failed:0});assert.equal(await f.iys.gate(A),null,'uploaded consent opens the gate');
   assert.deepEqual(plain((await consent(file,[B],f.iys,{source:'HS_ISLAK_IMZA',consentAt:day(-30)})).iys),{queued:0,tooOld:1,failed:0},'older than 3 business days: query İYS instead');
-  f.panel.declare({scope:'none'});assert.deepEqual(plain((await consent(fresh(),[A],f.iys)).iys),{queued:0,tooOld:0,failed:0},'"no": nothing is reported');
+  await f.panel.declare({scope:'none'});assert.deepEqual(plain((await consent(fresh(),[A],f.iys)).iys),{queued:0,tooOld:0,failed:0},'"no": nothing is reported');
  }finally{f.db.close();}
 });
 
 test('opt-outs of Turkish numbers go to İYS as RET from the panel, STOP replies and Meta 131050',async()=>{
- const f=setup(),file=fresh(),env={...process.env};try{
-  f.panel.declare({scope:'tr'});await f.connect();
+ const f=await setup(),file=fresh(),env={...process.env};try{
+  await f.panel.declare({scope:'tr'});await f.connect();
   await consent(file,[A,B,P,'+905550000033'],f.iys,{source:'HS_WEB'});f.db.prepare("DELETE FROM platform_iys_outbox").run();
   assert.deepEqual(plain((await m.recordLegacyWhatsAppOptOut([A,P],'team',file,f.iys,'fixture-admin')).iys),{queued:1,tooOld:0,failed:0});
   Object.assign(process.env,{WHATSAPP_APP_SECRET:'fixture-app-secret-0123456789',WHATSAPP_WEBHOOK_VERIFY_TOKEN:'fixture_verify_token_0123',WHATSAPP_PHONE_NUMBER_ID:'1234567890'});
@@ -111,7 +111,7 @@ test('opt-outs of Turkish numbers go to İYS as RET from the panel, STOP replies
   f.fake.state.register.set('MESAJ\n+905550000033',{status:'ONAY',consentDate:'2026-10-01 10:00:00',source:'HS_WEB'});await f.iys.query(['+905550000033']);
   const out=await m.sendLegacyWhatsApp({mode:'single',to:'+905550000033',text:'x'},fakeSender({'+905550000033':131050}).sender,file,f.iys);assert.equal(out.body.optedOutByMeta,1);
   assert.deepEqual(outbox(f.db).map(item=>item.status),['RET','RET','RET']);
-  assert.equal(f.iys.gate(A),'iys_rejected','an opt-out blocks at once, before İYS is told');
+  assert.equal(await f.iys.gate(A),'iys_rejected','an opt-out blocks at once, before İYS is told');
  }finally{f.db.close();for(const key of ['WHATSAPP_APP_SECRET','WHATSAPP_WEBHOOK_VERIFY_TOKEN','WHATSAPP_PHONE_NUMBER_ID'])if(env[key]===undefined)delete process.env[key];else process.env[key]=env[key];}
 });
 

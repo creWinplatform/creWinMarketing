@@ -11,11 +11,11 @@ export const maxDuration=40;
 // The project's go-live panel: status from its own records, and read-only checks of a connection on request.
 const handle=coachRoute(async(scope,request)=>{
   const db=platformDatabase();
-  if(request.method==='GET')return goLiveStatus(db,scope);
-  const raw=await coachBody(request);goLiveStatus(db,scope);
+  if(request.method==='GET')return await goLiveStatus(db,scope);
+  const raw=await coachBody(request);await goLiveStatus(db,scope);
   if(raw.action==='verifyAds'){const provider=['meta','google','linkedin','tiktok','apple_search'].includes(String(raw.provider))?String(raw.provider) as AdProvider:null;if(!provider)throw new MarketingStoreError('Geçersiz reklam sağlayıcısı.');
-    const result=await new ProjectAds(db,scope,credentialEncryptionKey(),undefined,provider).verify();return {result,status:goLiveStatus(db,scope)};}
-  if(raw.action==='verifyMobile'){await new MobileGrowth(db,scope,credentialEncryptionKey()).probe(String(raw.id));return {result:{ok:true},status:goLiveStatus(db,scope)};}
+    const result=await new ProjectAds(db,scope,credentialEncryptionKey(),undefined,provider).verify();return {result,status:await goLiveStatus(db,scope)};}
+  if(raw.action==='verifyMobile'){await new MobileGrowth(db,scope,credentialEncryptionKey()).probe(String(raw.id));return {result:{ok:true},status:await goLiveStatus(db,scope)};}
   throw new MarketingStoreError('Geçersiz işlem.');
 });
 export const GET=handle,POST=handle;

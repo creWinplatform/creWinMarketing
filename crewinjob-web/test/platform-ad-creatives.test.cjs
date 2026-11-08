@@ -21,8 +21,8 @@ const tiktokHttp=()=>{const calls=[];const fn=async request=>{const url=new URL(
 const png=async(width,height)=>(await sharp({create:{width,height,channels:3,background:{r:200,g:40,b:90}}}).png().toBuffer()).toString('base64');
 const plan=(extra={})=>({name:'Ink installs',objective:'OUTCOME_TRAFFIC',dailyBudgetMinor:2000,startDate:day(1),endDate:day(10),countries:['TR'],linkUrl:'https://example.com/ink',...extra});
 const env=fn=>coachRun(async f=>{const saved=process.env.PLATFORM_AD_CREATIVES_ENABLED;try{delete process.env.PLATFORM_AD_CREATIVES_ENABLED;await fn(f);}finally{if(saved===undefined)delete process.env.PLATFORM_AD_CREATIVES_ENABLED;else process.env.PLATFORM_AD_CREATIVES_ENABLED=saved;}});
-async function metaPlan(f,g){const ads=()=>new ProjectAds(f.db,f.scope,KEY,g);await ads().connect({adAccountId:'123456',accessToken:TOKEN});ads().setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});
-  let item=ads().savePlan(plan()).plans[0];item=ads().approve({id:item.id,expectedRevision:item.revision}).plans[0];return (await ads().create({id:item.id})).plans[0];}
+async function metaPlan(f,g){const ads=()=>new ProjectAds(f.db,f.scope,KEY,g);await ads().connect({adAccountId:'123456',accessToken:TOKEN});await ads().setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});
+  let item=(await ads().savePlan(plan())).plans[0];item=(await ads().approve({id:item.id,expectedRevision:item.revision})).plans[0];return (await ads().create({id:item.id})).plans[0];}
 
 test('Meta: an approved image and text become an image, a creative and a PAUSED ad in the plan’s ad set',env(async f=>{
   const g=graph(),item=await metaPlan(f,g),creatives=(scope=f.scope)=>new AdCreatives(f.db,scope,KEY,'meta',g);
@@ -32,38 +32,38 @@ test('Meta: an approved image and text become an image, a creative and a PAUSED 
   await assert.rejects(creatives().save({planId:item.id,image:{data:await png(1080,1080),mime:'image/jpeg'},primaryText:'x',pageId:'1234567890'}),/JPEG, PNG/,'the declared type must match');
   let list=await creatives().save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},headline:'Yeni stüdyo',primaryText:'Dövme fikirlerini keşfet.',pageId:'1234567890'});
   let creative=list.creatives[0];assert.equal(creative.state,'draft');assert.equal(creative.cta,'LEARN_MORE');assert.equal(creative.height>creative.width,true,'9:16 is kept');assert.match(creative.thumbnail,/^data:image\/jpeg;base64,/);
-  const editor={...f.scope,subject:f.member('editor').subject};
-  assert.throws(()=>creatives(editor).approve({id:creative.id,expectedRevision:creative.revision}),e=>e.status===403);
-  creative=creatives().approve({id:creative.id,expectedRevision:creative.revision}).creatives[0];assert.equal(creative.approved,true);
+  const editor={...f.scope,subject:(await f.member('editor')).subject};
+  await assert.rejects(async ()=>await creatives(editor).approve({id:creative.id,expectedRevision:creative.revision}),e=>e.status===403);
+  creative=(await creatives().approve({id:creative.id,expectedRevision:creative.revision})).creatives[0];assert.equal(creative.approved,true);
   await assert.rejects(creatives().upload({id:creative.id,acknowledged:true}),e=>e.status===409&&/PLATFORM_AD_CREATIVES_ENABLED/.test(e.message));
   process.env.PLATFORM_AD_CREATIVES_ENABLED='1';await assert.rejects(creatives().upload({id:creative.id}),/açık onay/);
   await assert.rejects(creatives(editor).upload({id:creative.id,acknowledged:true}),e=>e.status===403);
   // Editing after approval needs a new approval.
   creative=(await creatives().save({planId:item.id,id:creative.id,expectedRevision:creative.revision,headline:'Yeni stüdyo',primaryText:'Dövme fikirleri ve randevu.',pageId:'1234567890'})).creatives[0];assert.equal(creative.state,'draft');
   await assert.rejects(creatives().upload({id:creative.id,acknowledged:true}),/onaylı/);
-  creative=creatives().approve({id:creative.id,expectedRevision:creative.revision}).creatives[0];
+  creative=(await creatives().approve({id:creative.id,expectedRevision:creative.revision})).creatives[0];
   const before=g.calls.length;creative=(await creatives().upload({id:creative.id,acknowledged:true})).creatives[0];assert.equal(creative.state,'uploaded');assert.ok(creative.adRef);
   const [image,made,ad]=g.calls.slice(before);assert.equal(image.path,'act_123456/adimages');assert.equal(Buffer.from(image.params.bytes,'base64').subarray(0,2).toString('hex'),'ffd8','a JPEG is sent');assert.equal(image.token,TOKEN);
   const story=JSON.parse(made.params.object_story_spec);assert.deepEqual(plain(story),{page_id:'1234567890',link_data:{image_hash:'a1b2c3d4e5f60718293a4b5c6d7e8f90',link:'https://example.com/ink',message:'Dövme fikirleri ve randevu.',name:'Yeni stüdyo',call_to_action:{type:'LEARN_MORE',value:{link:'https://example.com/ink'}}}});
   assert.equal(ad.path,'act_123456/ads');assert.equal(ad.params.status,'PAUSED');assert.equal(ad.params.adset_id,f.db.prepare('SELECT provider_adset_id id FROM platform_ad_plans WHERE id=?').get(item.id).id);assert.match(JSON.parse(ad.params.creative).creative_id,/^\d+$/);
-  await assert.rejects(creatives().upload({id:creative.id,acknowledged:true}),/onaylı/,'sent once');assert.throws(()=>creatives().remove({id:creative.id}),/silinemez/);
+  await assert.rejects(creatives().upload({id:creative.id,acknowledged:true}),/onaylı/,'sent once');await assert.rejects(async ()=>await creatives().remove({id:creative.id}),/silinemez/);
   // A creative refused by Meta leaves the image uploaded and says so.
   const refusing=graph('/adcreatives'),other=new AdCreatives(f.db,f.scope,KEY,'meta',refusing);
-  let second=(await other.save({planId:item.id,image:{data:await png(1200,630),mime:'image/png'},primaryText:'İkinci görsel',pageId:'1234567890'})).creatives[1];second=other.approve({id:second.id,expectedRevision:second.revision}).creatives[1];
+  let second=(await other.save({planId:item.id,image:{data:await png(1200,630),mime:'image/png'},primaryText:'İkinci görsel',pageId:'1234567890'})).creatives[1];second=(await other.approve({id:second.id,expectedRevision:second.revision})).creatives[1];
   second=(await other.upload({id:second.id,acknowledged:true})).creatives[1];assert.equal(second.state,'failed');assert.match(second.lastError,/reklam içeriği oluşturulamadı/);
-  assert.throws(()=>new AdCreatives(f.db,f.other,KEY,'meta',g).list(item.id),e=>e.status===403||e.status===404,'other projects see nothing');
-  assert.throws(()=>new AdCreatives(f.db,f.scope,KEY,'google',g).list(item.id),/Meta ve TikTok/);
+  await assert.rejects(async ()=>await new AdCreatives(f.db,f.other,KEY,'meta',g).list(item.id),e=>e.status===403||e.status===404,'other projects see nothing');
+  await assert.rejects(async ()=>await new AdCreatives(f.db,f.scope,KEY,'google',g).list(item.id),/Meta ve TikTok/);
 }));
 test('TikTok: an approved image goes to the ad account’s library as a signed file upload; app plans only offer install',env(async f=>{
   const h=tiktokHttp(),ads=()=>new ProjectAds(f.db,f.scope,KEY,undefined,'tiktok',h);
-  await ads().connect({adAccountId:'7000000000000001',accessToken:TIKTOK});ads().setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});
-  let item=ads().savePlan(plan({objective:'OUTCOME_APP_PROMOTION',app:{store:'google',appId:'com.example.qaink',storeUrl:'https://play.google.com/store/apps/details?id=com.example.qaink'}})).plans[0];item=ads().approve({id:item.id,expectedRevision:item.revision}).plans[0];item=(await ads().create({id:item.id})).plans[0];
+  await ads().connect({adAccountId:'7000000000000001',accessToken:TIKTOK});await ads().setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});
+  let item=(await ads().savePlan(plan({objective:'OUTCOME_APP_PROMOTION',app:{store:'google',appId:'com.example.qaink',storeUrl:'https://play.google.com/store/apps/details?id=com.example.qaink'}}))).plans[0];item=(await ads().approve({id:item.id,expectedRevision:item.revision})).plans[0];item=(await ads().create({id:item.id})).plans[0];
   const creatives=new AdCreatives(f.db,f.scope,KEY,'tiktok',undefined,h);
-  assert.deepEqual(plain(creatives.list(item.id).ctas),['INSTALL_MOBILE_APP']);
+  assert.deepEqual(plain((await creatives.list(item.id)).ctas),['INSTALL_MOBILE_APP']);
   await assert.rejects(creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},primaryText:'x'.repeat(101)}),/100/,'TikTok ad text is short');
   let creative=(await creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},primaryText:'Dövme fikirleri'})).creatives[0];assert.equal(creative.pageId,'');
   await assert.rejects(creatives.save({planId:item.id,id:creative.id,expectedRevision:creative.revision,cta:'SHOP_NOW'}),/eylem düğmesi/);
-  creative=creatives.approve({id:creative.id,expectedRevision:creative.revision}).creatives[0];process.env.PLATFORM_AD_CREATIVES_ENABLED='1';
+  creative=(await creatives.approve({id:creative.id,expectedRevision:creative.revision})).creatives[0];process.env.PLATFORM_AD_CREATIVES_ENABLED='1';
   creative=(await creatives.upload({id:creative.id,acknowledged:true})).creatives[0];assert.equal(creative.state,'uploaded');assert.equal(creative.adRef,null);
   const upload=h.calls.find(call=>call.url.pathname.endsWith('/file/image/ad/upload/'));assert.equal(upload.headers['Access-Token'],TIKTOK);assert.equal(upload.body.get('upload_type'),'UPLOAD_BY_FILE');assert.equal(upload.body.get('advertiser_id'),'7000000000000001');
   const file=Buffer.from(await upload.body.get('image_file').arrayBuffer());assert.equal(upload.body.get('image_signature'),crypto.createHash('md5').update(file).digest('hex'),'the signature is the file’s MD5');
@@ -78,7 +78,7 @@ test('Meta video: Meta fetches the team’s video, the image is its cover; a vid
   await assert.rejects(creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},primaryText:'x',pageId:'1234567890',videoUrl:'http://example.com/v.mp4'}),/https/);
   let creative=(await creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},headline:'Stüdyo turu',primaryText:'Dövme stüdyomuzu gezin.',pageId:'1234567890',videoUrl:'https://cdn.example.com/tur.mp4'})).creatives[0];
   assert.equal(creative.videoUrl,'https://cdn.example.com/tur.mp4');assert.equal(creative.videoBytes,1000000);
-  creative=creatives.approve({id:creative.id,expectedRevision:creative.revision}).creatives[0];process.env.PLATFORM_AD_CREATIVES_ENABLED='1';
+  creative=(await creatives.approve({id:creative.id,expectedRevision:creative.revision})).creatives[0];process.env.PLATFORM_AD_CREATIVES_ENABLED='1';
   creative=(await creatives.upload({id:creative.id,acknowledged:true})).creatives[0];
   assert.equal(creative.state,'approved','still approved while Meta processes the video');assert.match(creative.lastError,/işleniyor/);assert.equal(creative.videoRef,'770001');
   const upload=g.calls.find(call=>call.path.endsWith('/advideos'));assert.equal(upload.params.file_url,'https://cdn.example.com/tur.mp4');
@@ -87,7 +87,7 @@ test('Meta video: Meta fetches the team’s video, the image is its cover; a vid
   const story=JSON.parse(later.find(call=>call.path.endsWith('/adcreatives')).params.object_story_spec);
   assert.deepEqual(plain(story.video_data),{video_id:'770001',image_hash:'a1b2c3d4e5f60718293a4b5c6d7e8f90',message:'Dövme stüdyomuzu gezin.',title:'Stüdyo turu',call_to_action:{type:'LEARN_MORE',value:{link:'https://example.com/ink'}}});
   // A video that changes after approval is never sent.
-  let changed=(await creatives.save({planId:item.id,image:{data:await png(1080,1080),mime:'image/png'},primaryText:'İkinci',pageId:'1234567890',videoUrl:'https://cdn.example.com/iki.mp4'})).creatives[1];changed=creatives.approve({id:changed.id,expectedRevision:changed.revision}).creatives[1];
+  let changed=(await creatives.save({planId:item.id,image:{data:await png(1080,1080),mime:'image/png'},primaryText:'İkinci',pageId:'1234567890',videoUrl:'https://cdn.example.com/iki.mp4'})).creatives[1];changed=(await creatives.approve({id:changed.id,expectedRevision:changed.revision})).creatives[1];
   await assert.rejects(new AdCreatives(f.db,f.scope,KEY,'meta',g,undefined,videoHost('"v2"'),async()=>{}).upload({id:changed.id,acknowledged:true}),/değişti/);
 }));
 test('TikTok: the ad group is made once from the approved plan with TikTok’s own locations; a video becomes a DISABLED ad in it',env(async f=>{
@@ -99,11 +99,11 @@ test('TikTok: the ad group is made once from the approved plan with TikTok’s o
     if(url.pathname.endsWith('/file/video/ad/upload/')){calls.push({...request,url,json:JSON.parse(request.body)});return ok({code:0,data:[{video_id:'v10000'}]});}
     if(url.pathname.endsWith('/ad/create/')){calls.push({...request,url,json:JSON.parse(request.body)});return ok({code:0,data:{ad_ids:['1600000000000088']}});}
     return base(request);};h.calls=calls;
-  const ads=()=>new ProjectAds(f.db,f.scope,KEY,undefined,'tiktok',h);await ads().connect({adAccountId:'7000000000000001',accessToken:TIKTOK});ads().setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});
-  let item=ads().savePlan(plan({objective:'OUTCOME_APP_PROMOTION',countries:['TR','DE'],app:{store:'apple',appId:'1234567890',storeUrl:'https://apps.apple.com/tr/app/qa/id1234567890'}})).plans[0];item=ads().approve({id:item.id,expectedRevision:item.revision}).plans[0];item=(await ads().create({id:item.id})).plans[0];
+  const ads=()=>new ProjectAds(f.db,f.scope,KEY,undefined,'tiktok',h);await ads().connect({adAccountId:'7000000000000001',accessToken:TIKTOK});await ads().setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});
+  let item=(await ads().savePlan(plan({objective:'OUTCOME_APP_PROMOTION',countries:['TR','DE'],app:{store:'apple',appId:'1234567890',storeUrl:'https://apps.apple.com/tr/app/qa/id1234567890'}}))).plans[0];item=(await ads().approve({id:item.id,expectedRevision:item.revision})).plans[0];item=(await ads().create({id:item.id})).plans[0];
   const creatives=new AdCreatives(f.db,f.scope,KEY,'tiktok',undefined,h,videoHost(),async()=>{});
   // A video uploaded before the ad group exists stays in the library.
-  let early=(await creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},primaryText:'Dövme fikirleri',videoUrl:'https://cdn.example.com/ink.mp4'})).creatives[0];early=creatives.approve({id:early.id,expectedRevision:early.revision}).creatives[0];
+  let early=(await creatives.save({planId:item.id,image:{data:await png(1080,1920),mime:'image/png'},primaryText:'Dövme fikirleri',videoUrl:'https://cdn.example.com/ink.mp4'})).creatives[0];early=(await creatives.approve({id:early.id,expectedRevision:early.revision})).creatives[0];
   process.env.PLATFORM_AD_CREATIVES_ENABLED='1';early=(await creatives.upload({id:early.id,acknowledged:true})).creatives[0];assert.equal(early.state,'uploaded');assert.equal(early.adRef,null);assert.equal(early.videoRef,'v10000');
   assert.deepEqual(plain(calls.find(call=>call.url.pathname.endsWith('/file/video/ad/upload/')).json),{advertiser_id:'7000000000000001',upload_type:'UPLOAD_BY_URL',video_url:'https://cdn.example.com/ink.mp4',file_name:`ryzevo-${early.id.slice(0,8)}`});
   await assert.rejects(creatives.setupTikTok({planId:item.id,displayName:'QA Ink',acknowledged:true}),/App ID/,'app plans need the TikTok app id');
@@ -139,9 +139,9 @@ test('creative figures: daily provider numbers per sent ad, the best click-throu
   const daily=ad=>Array.from({length:8},(_,i)=>({date_start:ago(7-i),impressions:'1000',clicks:String(ad==='ad1'?(i<5?20:8):18),spend:'5.00',actions:[{action_type:'link_click',value:'9'}]}));
   let ids=[];const base=graph(),g=async(method,path,token,params={})=>{const insight=path.match(/^(\d+)\/insights$/);if(insight){base.calls.push({method,path,token,params});return {data:daily(insight[1]===ids[0]?'ad1':'ad2')};}return base(method,path,token,params);};g.calls=base.calls;
   const item=await metaPlan(f,g),creatives=new AdCreatives(f.db,f.scope,KEY,'meta',g);process.env.PLATFORM_AD_CREATIVES_ENABLED='1';
-  for(const height of [1080,1350]){let row=(await creatives.save({planId:item.id,image:{data:await png(1080,height),mime:'image/png'},primaryText:`Görsel ${height}`,pageId:'1234567890'})).creatives.at(-1);row=creatives.approve({id:row.id,expectedRevision:row.revision}).creatives.find(value=>value.id===row.id);await creatives.upload({id:row.id,acknowledged:true});}
-  ids=creatives.list(item.id).creatives.map(row=>row.adRef);assert.equal(ids.every(Boolean),true,JSON.stringify(creatives.list(item.id).creatives.map(row=>[row.state,row.lastError])));
-  await assert.rejects(new AdCreatives(f.db,{...f.scope,subject:f.member('editor').subject},KEY,'meta',g).refreshStats({planId:item.id}),e=>e.status===403);
+  for(const height of [1080,1350]){let row=(await creatives.save({planId:item.id,image:{data:await png(1080,height),mime:'image/png'},primaryText:`Görsel ${height}`,pageId:'1234567890'})).creatives.at(-1);row=(await creatives.approve({id:row.id,expectedRevision:row.revision})).creatives.find(value=>value.id===row.id);await creatives.upload({id:row.id,acknowledged:true});}
+  ids=(await creatives.list(item.id)).creatives.map(row=>row.adRef);assert.equal(ids.every(Boolean),true,JSON.stringify((await creatives.list(item.id)).creatives.map(row=>[row.state,row.lastError])));
+  await assert.rejects(new AdCreatives(f.db,{...f.scope,subject:(await f.member('editor')).subject},KEY,'meta',g).refreshStats({planId:item.id}),e=>e.status===403);
   const list=await creatives.refreshStats({planId:item.id});const [first,second]=list.creatives;
   const call=g.calls.find(value=>value.path===`${ids[0]}/insights`);assert.equal(call.method,'GET');assert.equal(call.params.time_increment,'1');
   assert.equal(first.stats.impressions,8000);assert.equal(first.stats.clicks,124);assert.equal(first.stats.spendMinor,4000);assert.equal(first.stats.conversions,null,'a traffic plan has no installs');
@@ -149,7 +149,7 @@ test('creative figures: daily provider numbers per sent ad, the best click-throu
   assert.equal(second.best,true);assert.equal(first.best,false);
   // The falling ad needs the plan to be running or paused for the team alert.
   f.db.prepare("UPDATE platform_ad_plans SET state='paused' WHERE id=?").run(item.id);
-  const alert=plain(teamAlerts(f.db,f.scope)).find(value=>value.kind==='ad_fatigue');assert.equal(alert.count,1);assert.equal(alert.severity,'warning');
+  const alert=plain(await teamAlerts(f.db,f.scope)).find(value=>value.kind==='ad_fatigue');assert.equal(alert.count,1);assert.equal(alert.severity,'warning');
   // Worker: once a day, as the approver.
   const made=[];f.db.prepare('UPDATE platform_ad_creatives SET stats_checked_at=NULL').run();f.db.prepare('UPDATE platform_ad_plans SET approved_by=? WHERE id=?').run(f.scope.subject,item.id);
   assert.equal(await refreshDueCreativeStats(f.db,KEY,(scope,provider)=>({refreshStats:async raw=>{made.push({scope,provider,raw});f.db.prepare('UPDATE platform_ad_creatives SET stats_checked_at=?').run(new Date().toISOString());}})),1);

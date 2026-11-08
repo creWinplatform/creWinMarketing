@@ -4,6 +4,7 @@
 // and company and prospect audiences use the merchant (tacir) exemption. The gate starts in measure mode: everyone
 // still gets the email and the result says who İYS would have stopped. The owner switches to enforce mode when the
 // numbers look right. Unknown recipients are queued (encrypted) and the worker asks İYS about them, 50 per tick.
+import type { Db } from './db/client';
 import 'server-only';
 import path from 'path';
 import type Database from 'better-sqlite3';
@@ -61,15 +62,15 @@ export const iysAppliesToEmail = (recipient: EmailRecipientRef) =>
   !recipient.business && (!recipient.nationality || !recipient.nationality.trim() || recipient.nationality.trim().toUpperCase() === 'TR');
 
 /** The İYS side of one legacy email send. Pure for "no" declarations; queues unknown recipients for the worker. */
-export async function crewinEmailGate(db: Database.Database, key: string, recipients: EmailRecipientRef[], paths = files): Promise<CrewinEmailGateResult> {
-  const mode = crewinEmailMode(paths.mode).mode, scope = iysScope(db, LEGACY_SCOPE);
+export async function crewinEmailGate(db: Db, key: string, recipients: EmailRecipientRef[], paths = files): Promise<CrewinEmailGateResult> {
+  const mode = crewinEmailMode(paths.mode).mode, scope = await iysScope(db, LEGACY_SCOPE);
   const allowed = new Set<string>(), skipped: CrewinEmailGateResult['skipped'] = [], counts: CrewinEmailGateResult['counts'] = { total: 0, reasons: {}, queued: 0 };
   const queue: { id: string; email: string }[] = [];
-  if (!scope && mode === 'enforce') return { mode, block: iysSendBlock(db, LEGACY_SCOPE), allowed, skipped, counts };
+  if (!scope && mode === 'enforce') return { mode, block: await iysSendBlock(db, LEGACY_SCOPE), allowed, skipped, counts };
   for (const recipient of recipients) {
     const raw = recipient.email.trim().toLowerCase(), email = normal(recipient.email);
     const reason: IysGateReason | null = scope === 'none' || !iysAppliesToEmail(recipient) ? null
-      : !scope ? 'iys_scope_missing' : !email ? 'iys_no_consent' : iysGate(db, LEGACY_SCOPE, 'EPOSTA', iysEmailKey(LEGACY_SCOPE, key, email));
+      : !scope ? 'iys_scope_missing' : !email ? 'iys_no_consent' : await iysGate(db, LEGACY_SCOPE, 'EPOSTA', iysEmailKey(LEGACY_SCOPE, key, email));
     if (reason) {
       counts.total++; counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
       if (email && scope === 'tr' && reason !== 'iys_rejected') queue.push({ id: iysEmailKey(LEGACY_SCOPE, key, email), email });
@@ -92,8 +93,8 @@ export async function crewinEmailGate(db: Database.Database, key: string, recipi
 }
 
 /** Worker: asks İYS about up to 50 queued addresses, oldest first, once Crewin declared Turkey and is connected. */
-export async function crewinIysEmailBackfill(db: Database.Database, key: string, transport: IysTransport = fetchTransport, file = files.pending) {
-  if (iysScope(db, LEGACY_SCOPE) !== 'tr' || iysSendBlock(db, LEGACY_SCOPE)) return { checked: 0 };
+export async function crewinIysEmailBackfill(db: Db, key: string, transport: IysTransport = fetchTransport, file = files.pending) {
+  if (await iysScope(db, LEGACY_SCOPE) !== 'tr' || await iysSendBlock(db, LEGACY_SCOPE)) return { checked: 0 };
   const batch = Object.entries(readJson<Pending>(file, {})).sort((a, b) => a[1].at.localeCompare(b[1].at)).slice(0, IYS_LIMITS.queryBatch);
   if (!batch.length) return { checked: 0 };
   const emails = batch.flatMap(([id, item]) => {

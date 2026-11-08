@@ -13,7 +13,7 @@ export const socialPublishingEnabled = () => process.env.PLATFORM_SOCIAL_PUBLISH
 export type PublishAccess = { expiresAt: number };
 export type PublishCheck = (token: string, accountId: string, credentials?: StoredCredentials) => Promise<PublishAccess>;
 export type PublishResult = { state: 'accepted' | 'rejected' | 'uncertain' | 'blocked'; postId: string | null; postUrl?: string | null };
-export type PublishTransport = (token: string, accountId: string, text: string, reserve: () => boolean) => Promise<PublishResult>;
+export type PublishTransport = (token: string, accountId: string, text: string, reserve: () => boolean | Promise<boolean>) => Promise<PublishResult>;
 
 async function boundedJson(response: Response) {
   const reader = response.body?.getReader(); if (!reader) throw new Error('Empty provider response.');
@@ -50,7 +50,7 @@ export const escapeLinkedInText = (text: string) => text.replace(/[\\|{}@\[\]()<
 function linkedInTextPublisher(accountType:'person'|'organization'):PublishTransport { return async (token, accountId, text, reserve) => {
   const { version } = linkedinPublishingConfiguration();
   if (!(accountType==='organization'?/^[1-9]\d{0,29}$/:/^[A-Za-z0-9_-]{1,128}$/).test(accountId) || !text.trim() || text.length > 3000 || !token || /[\r\n\x00]/.test(token)) return { state: 'blocked', postId: null };
-  if (!reserve()) return { state: 'blocked', postId: null };
+  if (!(await reserve())) return { state: 'blocked', postId: null };
   try {
     const response = await fetch('https://api.linkedin.com/rest/posts', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'LinkedIn-Version': version, 'X-Restli-Protocol-Version': '2.0.0' },

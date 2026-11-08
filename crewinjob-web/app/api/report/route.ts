@@ -12,7 +12,7 @@ export async function POST(request:NextRequest){
   if(!request.headers.get('origin')||!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
   try{
     const input=await readAuthenticationJson(request),db=platformDatabase(),token=input&&typeof input==='object'?(input as {token?:unknown}).token:undefined;
-    const report=typeof token==='string'&&token.length===43&&consumeLoginAttempt(db,`report-view:${token}`)?openSharedReport(db,token):null;
+    const report=typeof token==='string'&&token.length===43&&await consumeLoginAttempt(db,`report-view:${token}`)?await openSharedReport(db,token):null;
     if(!report)throw new Error('Unavailable.');
     return NextResponse.json(report,{headers});
   }catch{return NextResponse.json({error:'Bu rapor bağlantısı geçersiz, süresi dolmuş veya kapatılmış.'},{status:404,headers});}

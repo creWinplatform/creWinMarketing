@@ -8,7 +8,7 @@ export async function GET(request:NextRequest,{params}:{params:Promise<{id:strin
   try{
     const q=request.nextUrl.searchParams;
     if(!q.has('signature')||q.size!==(q.has('index')?2:1))throw new Error();
-    const image=providerPublicationImage(platformDatabase(),credentialEncryptionKey(),(await params).id,q.get('signature')||'',q.has('index')?Number(q.get('index')):0);
+    const image=await providerPublicationImage(platformDatabase(),credentialEncryptionKey(),(await params).id,q.get('signature')||'',q.has('index')?Number(q.get('index')):0);
     return new NextResponse(new Uint8Array(Buffer.from(image.data,'base64')),{headers:{...headers,'Content-Type':'image/jpeg','Content-Length':String(image.bytes)}});
   }catch{return new NextResponse(null,{status:404,headers});}
 }

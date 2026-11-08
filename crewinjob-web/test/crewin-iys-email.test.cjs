@@ -21,14 +21,14 @@ function fakeIys(){
   if(url.pathname==='/oauth2/token')return body.password===PASSWORD?{status:200,body:{access_token:'fake-token',expires_in:7200}}:{status:401,body:{}};
   if(request.headers.Authorization!=='Bearer fake-token')return {status:401,body:{}};
   if(url.pathname==='/sps/123456/brands')return {status:200,body:[{brandCode:'654321'}]};
-  if(url.pathname==='/sps/123456/brands/654321/consents/status'){const item=state.register.get(`${body.type}\n${body.recipient}`);return item?{status:200,body:item}:{status:404,body:{}};}
+  if(url.pathname==='/sps/123456/brands/654321/consents/status'){const item=await state.register.get(`${body.type}\n${body.recipient}`);return item?{status:200,body:item}:{status:404,body:{}};}
   if(url.pathname==='/sps/123456/brands/654321/consents/changes'){const after=url.searchParams.get('after');return {status:200,body:{after:after||'cursor-1',list:after?[]:state.changes}};}
   return {status:404,body:{}};
  };
  return {state,transport};
 }
-function setup(){
- const db=openPlatformDatabase(':memory:');new PlatformRepository(db).bootstrapLegacy('admin');
+async function setup(){
+ const db=openPlatformDatabase(':memory:');await new PlatformRepository(db).bootstrapLegacy('admin');
  const fake=fakeIys(),panel=new ProjectIys(db,CREWIN,KEY,fake.transport);
  return {db,fake,panel,connect:()=>panel.connect({username:'qa-api-user',password:PASSWORD,iysCode:'123456',brandCode:'654321',environment:'sandbox'})};
 }
@@ -41,25 +41,25 @@ test('İYS applies to recipients whose nationality is TR or unknown, never to co
 });
 
 test('measure mode: everyone gets the email; the result says who İYS would stop and unknown recipients are queued encrypted',async()=>{
- const f=setup(),p=paths();try{
+ const f=await setup(),p=paths();try{
   assert.equal(e.crewinEmailMode(p.mode).mode,'measure','measure is the default');
   let gate=await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN,PH,FIRM],p);
   assert.equal(gate.block,null);assert.equal(gate.allowed.size,4);assert.deepEqual(plain(gate.counts),{total:2,reasons:{iys_scope_missing:2},queued:0});
-  f.panel.declare({scope:'tr'});
+  await f.panel.declare({scope:'tr'});
   gate=await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN,PH,FIRM],p);
   assert.equal(gate.allowed.size,4);assert.deepEqual(plain(gate.counts),{total:2,reasons:{iys_not_connected:2},queued:2});
   const raw=fs.readFileSync(p.pending,'utf8');assert.doesNotMatch(raw,/ayse|mehmet|example\.com/i,'queued addresses are encrypted');
   assert.equal(e.crewinPendingCount(p.pending),2);
   assert.equal((await e.crewinEmailGate(f.db,KEY,[TR],p)).counts.queued,0,'an address is queued once');
-  f.panel.declare({scope:'none'});assert.deepEqual(plain((await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN],p)).counts),{total:0,reasons:{},queued:0},'"no": no İYS check');
+  await f.panel.declare({scope:'none'});assert.deepEqual(plain((await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN],p)).counts),{total:0,reasons:{},queued:0},'"no": no İYS check');
  }finally{f.db.close();}
 });
 
 test('enforce mode: nothing goes before a declaration; recipients without a fresh İYS consent are skipped',async()=>{
- const f=setup(),p=paths();try{
+ const f=await setup(),p=paths();try{
   assert.deepEqual(plain(await e.setCrewinEmailMode('enforce','legacy-admin',p.mode)).mode,'enforce');
   assert.match((await e.crewinEmailGate(f.db,KEY,[TR,PH],p)).block,/İYS beyanını yapın/);
-  f.panel.declare({scope:'tr'});await f.connect();
+  await f.panel.declare({scope:'tr'});await f.connect();
   onay(f.fake,'ayse.kaya@example.com');await new ProjectIys(f.db,CREWIN,KEY,f.fake.transport).query([{channel:'EPOSTA',value:'ayse.kaya@example.com'}]);
   let gate=await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN,PH,FIRM],p);
   assert.deepEqual([...gate.allowed].sort(),['ayse.kaya@example.com','juan@example.com','ops@shipco.example']);
@@ -72,8 +72,8 @@ test('enforce mode: nothing goes before a declaration; recipients without a fres
 });
 
 test('the worker asks İYS about up to 50 queued addresses once Crewin is connected, then drops them from the queue',async()=>{
- const f=setup(),p=paths();try{
-  f.panel.declare({scope:'tr'});
+ const f=await setup(),p=paths();try{
+  await f.panel.declare({scope:'tr'});
   const many=Array.from({length:60},(_,i)=>({email:`seafarer${i}@example.com`}));
   assert.equal((await e.crewinEmailGate(f.db,KEY,many,p)).counts.queued,60);
   assert.deepEqual(plain(await e.crewinIysEmailBackfill(f.db,KEY,f.fake.transport,p.pending)),{checked:0},'not connected: nothing is asked');

@@ -7,13 +7,13 @@ export const dynamic='force-dynamic';
 export const maxDuration=55;
 const handle=coachRoute(async(scope,request)=>{
   const seo=new CoachSeo(platformDatabase(),scope,credentialEncryptionKey());
-  if(request.method==='GET')return seo.read();
+  if(request.method==='GET')return await seo.read();
   const raw=await coachBody(request);
   if(raw.action==='topics')return seo.generate(raw,{generator:raw.mode==='ai'?coachGemini():undefined});
   if(raw.action==='brief')return seo.draftBrief(raw,raw.mode==='ai'?coachGemini():undefined);
-  if(raw.action==='save')return seo.saveBrief(raw);
-  if(raw.action==='approve')return seo.approveBrief(raw);
-  if(raw.action==='remove')return seo.remove(raw);
+  if(raw.action==='save')return await seo.saveBrief(raw);
+  if(raw.action==='approve')return await seo.approveBrief(raw);
+  if(raw.action==='remove')return await seo.remove(raw);
   if(raw.action==='refresh')return seo.refresh();
   throw new MarketingStoreError('Geçersiz SEO işlemi.');
 });

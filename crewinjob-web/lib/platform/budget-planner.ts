@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -22,34 +23,34 @@ const days=(from:string,to:string)=>Math.round((Date.parse(`${to.slice(0,10)}T00
 // that can replace an assumption. Read and bookkeeping only; nothing is predicted, bought or sent.
 export class BudgetPlanner{
   repo:PlatformRepository;
-  constructor(public db:Database.Database,public scope:MarketingScope){this.repo=new PlatformRepository(db);}
+  constructor(public db:Db,public scope:MarketingScope){this.repo=new PlatformRepository(db);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  private can(permission:'read'|'content.write'){return this.repo.can(this.scope.subject,...this.args(),permission);}
-  authorize(permission:'read'|'content.write'='read'){
-    if(!this.can('read')||!ryzevoFeature(this.repo.workspace(this.scope.subject,...this.args())?.project.productPack,'budget'))throw new MarketingStoreError('Bütçe planlayıcı için standart proje erişimi gerekli.',403);
-    if(!this.can(permission))throw new MarketingStoreError('Bu işlem için içerik yazma yetkisi gerekir.',403);
+  private async can(permission:'read'|'content.write'){return await this.repo.can(this.scope.subject,...this.args(),permission);}
+  async authorize(permission:'read'|'content.write'='read'){
+    if(!await this.can('read')||!ryzevoFeature((await this.repo.workspace(this.scope.subject,...this.args()))?.project.productPack,'budget'))throw new MarketingStoreError('Bütçe planlayıcı için standart proje erişimi gerekli.',403);
+    if(!await this.can(permission))throw new MarketingStoreError('Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
-  private currency(){const plan=this.db.prepare("SELECT currency FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider='meta' ORDER BY updated_at DESC LIMIT 1").get(...this.args()) as {currency:string}|undefined;
-    return plan?.currency||(this.repo.workspace(this.scope.subject,...this.args())!.project.language==='en'?'USD':'TRY');}
+  private async currency(){const plan=await this.db.prepare("SELECT currency FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider='meta' ORDER BY updated_at DESC LIMIT 1").get(...this.args()) as {currency:string}|undefined;
+    return plan?.currency||((await this.repo.workspace(this.scope.subject,...this.args()))!.project.language==='en'?'USD':'TRY');}
   // Meta-reported totals across this project's ad plans: CPC = spend ÷ clicks, CTR = clicks ÷ impressions.
-  private meta(currency:string){
-    const row=this.db.prepare("SELECT SUM(spend_minor) spend,SUM(clicks) clicks,SUM(impressions) impressions,MAX(spend_checked_at) at,MIN(start_date) from_,MIN(MAX(end_date),substr(MAX(spend_checked_at),1,10)) to_ FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider='meta' AND currency=? AND spend_checked_at IS NOT NULL AND clicks IS NOT NULL").get(...this.args(),currency) as {spend:number|null;clicks:number|null;impressions:number|null;at:string|null;from_:string|null;to_:string|null};
+  private async meta(currency:string){
+    const row=await this.db.prepare("SELECT SUM(spend_minor) spend,SUM(clicks) clicks,SUM(impressions) impressions,MAX(spend_checked_at) at,MIN(start_date) from_,MIN(MAX(end_date),substr(MAX(spend_checked_at),1,10)) to_ FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider='meta' AND currency=? AND spend_checked_at IS NOT NULL AND clicks IS NOT NULL").get(...this.args(),currency) as {spend:number|null;clicks:number|null;impressions:number|null;at:string|null;from_:string|null;to_:string|null};
     if(!row.at||!row.clicks)return {cpc:null,ctr:null};
     const unit=adMinorUnit(currency),base={source:'meta',from:row.from_,to:row.to_,at:row.at};
     return {cpc:{...base,value:(row.spend||0)/unit/row.clicks,label:{tr:'Meta’nın bildirdiği tıklama başı maliyet',en:'Cost per click reported by Meta'}},
       ctr:row.impressions?{...base,value:row.clicks/row.impressions,label:{tr:'Meta’nın bildirdiği tıklama oranı',en:'Click-through rate reported by Meta'}}:null};
   }
   // Latest automatic Search Console "clicks" reading, as an average per day over its measured period.
-  private organic():MeasuredValue|null{
-    const row=this.db.prepare("SELECT e.value,e.period_from,e.period_to,e.observed_at FROM platform_metric_entries e JOIN platform_measurement_bindings b ON b.id=e.binding_id WHERE e.organization_id=? AND e.project_id=? AND e.source='search_console' AND json_extract(b.definition_json,'$.metric')='clicks' AND e.period_from IS NOT NULL ORDER BY e.period_to DESC,e.observed_at DESC LIMIT 1").get(...this.args()) as {value:number;period_from:string;period_to:string;observed_at:string}|undefined;
+  private async organic():Promise<MeasuredValue|null>{
+    const row=await this.db.prepare("SELECT e.value,e.period_from,e.period_to,e.observed_at FROM platform_metric_entries e JOIN platform_measurement_bindings b ON b.id=e.binding_id WHERE e.organization_id=? AND e.project_id=? AND e.source='search_console' AND json_extract(b.definition_json,'$.metric')='clicks' AND e.period_from IS NOT NULL ORDER BY e.period_to DESC,e.observed_at DESC LIMIT 1").get(...this.args()) as {value:number;period_from:string;period_to:string;observed_at:string}|undefined;
     if(!row)return null;const length=days(row.period_from,row.period_to);
     return length>0?{value:row.value/length,label:{tr:'Search Console organik tıklama, günlük ortalama',en:'Search Console organic clicks, daily average'},source:'search_console',from:row.period_from,to:row.period_to,at:row.observed_at}:null;
   }
   // Stage-to-stage rates from automatic readings of the SAME goal, source and period (e.g. key events ÷ sessions).
   // Only readings whose mapping still matches the goal as it is today count, so renamed or reordered stages never mislabel a rate.
-  private conversions(){
-    const project=this.repo.workspace(this.scope.subject,...this.args())!.project,list:BudgetSnapshot['measured']['conversions']=[];
-    const rows=this.db.prepare("SELECT e.goal_id,e.stage_index,e.value,e.source,e.period_from,e.period_to,e.observed_at,b.goal_signature FROM platform_metric_entries e JOIN platform_measurement_bindings b ON b.id=e.binding_id WHERE e.organization_id=? AND e.project_id=? AND e.source<>'manual' AND e.period_from IS NOT NULL ORDER BY e.period_to DESC,e.observed_at DESC LIMIT 400").all(...this.args()) as {goal_id:string;stage_index:number;value:number;source:string;period_from:string;period_to:string;observed_at:string;goal_signature:string}[];
+  private async conversions(){
+    const project=(await this.repo.workspace(this.scope.subject,...this.args()))!.project,list:BudgetSnapshot['measured']['conversions']=[];
+    const rows=await this.db.prepare("SELECT e.goal_id,e.stage_index,e.value,e.source,e.period_from,e.period_to,e.observed_at,b.goal_signature FROM platform_metric_entries e JOIN platform_measurement_bindings b ON b.id=e.binding_id WHERE e.organization_id=? AND e.project_id=? AND e.source<>'manual' AND e.period_from IS NOT NULL ORDER BY e.period_to DESC,e.observed_at DESC LIMIT 400").all(...this.args()) as {goal_id:string;stage_index:number;value:number;source:string;period_from:string;period_to:string;observed_at:string;goal_signature:string}[];
     for(const goal of project.goals){
       const seen=new Set<string>(),signature=createHash('sha256').update(JSON.stringify(goal)).digest('hex'),current=rows.filter(row=>row.goal_id===goal.id&&row.goal_signature===signature);
       for(const later of current){
@@ -61,11 +62,11 @@ export class BudgetPlanner{
     }
     return list.slice(0,10);
   }
-  read():BudgetSnapshot{
-    this.authorize();const currency=this.currency();
-    const scenarios=(this.db.prepare('SELECT * FROM platform_budget_scenarios WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC,id').all(...this.args()) as {id:string;name:string;kind:'paid'|'seo';currency:string;inputs_json:string;sources_json:string;revision:number;updated_at:string}[])
+  async read():Promise<BudgetSnapshot>{
+    await this.authorize();const currency=await this.currency();
+    const scenarios=(await this.db.prepare('SELECT * FROM platform_budget_scenarios WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC,id').all(...this.args()) as {id:string;name:string;kind:'paid'|'seo';currency:string;inputs_json:string;sources_json:string;revision:number;updated_at:string}[])
       .map(row=>({id:row.id,name:row.name,kind:row.kind,currency:row.currency,inputs:JSON.parse(row.inputs_json),sources:JSON.parse(row.sources_json),revision:row.revision,updatedAt:row.updated_at}));
-    return {currency,minorUnit:adMinorUnit(currency),measured:{...this.meta(currency),organicClicksPerDay:this.organic(),conversions:this.conversions()},scenarios,canWrite:this.can('content.write')};
+    return {currency,minorUnit:adMinorUnit(currency),measured:{...await this.meta(currency),organicClicksPerDay:await this.organic(),conversions:await this.conversions()},scenarios,canWrite:await this.can('content.write')};
   }
   // Validates a scenario: money ≥ 0, rates in 0–1 (growth −1 to +10), every range low ≤ high.
   normalize(raw:Record<string,unknown>){
@@ -83,23 +84,23 @@ export class BudgetPlanner{
     for(const [key,label] of Object.entries(raw.sources&&typeof raw.sources==='object'?raw.sources as Record<string,unknown>:{}).slice(0,12))if(/^[a-zA-Z]{1,20}$/.test(key)&&typeof label==='string'&&label.length<=160&&!/[\x00-\x1f]/.test(label))sources[key]=label;
     return {name,kind,currency,inputs,sources};
   }
-  save(raw:Record<string,unknown>){
-    this.authorize('content.write');const value=this.normalize(raw);
-    return this.db.transaction(()=>{
-      this.authorize('content.write');const now=new Date().toISOString();
+  async save(raw:Record<string,unknown>){
+    await this.authorize('content.write');const value=this.normalize(raw);
+    return await this.db.transaction(async ()=>{
+      await this.authorize('content.write');const now=new Date().toISOString();
       if(raw.id===undefined){
-        if((this.db.prepare('SELECT COUNT(*) n FROM platform_budget_scenarios WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n>=LIMIT)throw new MarketingStoreError('Senaryo sınırına ulaşıldı.',429);
-        this.db.prepare('INSERT INTO platform_budget_scenarios(id,organization_id,project_id,name,kind,currency,inputs_json,sources_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(`budget_${randomUUID()}`,...this.args(),value.name,value.kind,value.currency,JSON.stringify(value.inputs),JSON.stringify(value.sources),this.scope.subject,this.scope.subject,now,now);
+        if((await this.db.prepare('SELECT COUNT(*) n FROM platform_budget_scenarios WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n>=LIMIT)throw new MarketingStoreError('Senaryo sınırına ulaşıldı.',429);
+        await this.db.prepare('INSERT INTO platform_budget_scenarios(id,organization_id,project_id,name,kind,currency,inputs_json,sources_json,created_by,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(`budget_${randomUUID()}`,...this.args(),value.name,value.kind,value.currency,JSON.stringify(value.inputs),JSON.stringify(value.sources),this.scope.subject,this.scope.subject,now,now);
       }else{
-        const row=this.db.prepare('SELECT revision FROM platform_budget_scenarios WHERE id=? AND organization_id=? AND project_id=?').get(raw.id,...this.args()) as {revision:number}|undefined;
+        const row=await this.db.prepare('SELECT revision FROM platform_budget_scenarios WHERE id=? AND organization_id=? AND project_id=?').get(raw.id,...this.args()) as {revision:number}|undefined;
         if(!row)throw new MarketingStoreError('Senaryo bulunamadı.',404);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Senaryo başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
-        this.db.prepare('UPDATE platform_budget_scenarios SET name=?,kind=?,currency=?,inputs_json=?,sources_json=?,revision=revision+1,updated_by=?,updated_at=? WHERE id=?').run(value.name,value.kind,value.currency,JSON.stringify(value.inputs),JSON.stringify(value.sources),this.scope.subject,now,raw.id);
+        await this.db.prepare('UPDATE platform_budget_scenarios SET name=?,kind=?,currency=?,inputs_json=?,sources_json=?,revision=revision+1,updated_by=?,updated_at=? WHERE id=?').run(value.name,value.kind,value.currency,JSON.stringify(value.inputs),JSON.stringify(value.sources),this.scope.subject,now,raw.id);
       }
-      this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),'budget.scenario.save',now);return this.read();
-    }).immediate();
+      await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),'budget.scenario.save',now);return await this.read();
+    });
   }
-  remove(raw:Record<string,unknown>){
-    this.authorize('content.write');
-    return this.db.transaction(()=>{const removed=this.db.prepare('DELETE FROM platform_budget_scenarios WHERE id=? AND organization_id=? AND project_id=?').run(raw.id,...this.args()).changes;if(!removed)throw new MarketingStoreError('Senaryo bulunamadı.',404);return this.read();}).immediate();
+  async remove(raw:Record<string,unknown>){
+    await this.authorize('content.write');
+    return await this.db.transaction(async ()=>{const removed=(await this.db.prepare('DELETE FROM platform_budget_scenarios WHERE id=? AND organization_id=? AND project_id=?').run(raw.id,...this.args())).changes;if(!removed)throw new MarketingStoreError('Senaryo bulunamadı.',404);return await this.read();});
   }
 }

@@ -36,16 +36,16 @@ test('pages are checked for readable text without JavaScript and for structured 
 test('the llms.txt draft uses only what the project knows and the pages the last scan read',coachRun(async f=>{
   const deps={discover:async origin=>({baseUrl:origin,urls:['https://example.com/','https://example.com/menu','https://example.com/iletisim'],source:'sitemap',discoveredCount:3}),audit:async()=>({ok:true,httpStatus:200,findings:[]})};
   const seo=(scope=f.scope)=>new SeoOperations(f.db,scope,deps);
-  let draft=seo().llmsDraft();
+  let draft=await seo().llmsDraft();
   assert.match(draft.text,/^# alpha\n\n> Describe your business|^# alpha\n\n> Bu satıra/,'no invented summary before a strategy exists');
   assert.equal(draft.hasSummary,false);assert.equal(draft.fromScan,false);assert.match(draft.text,/\[(Ana sayfa|Home page)\]\(https:\/\/example\.com\/\)/);
   await f.approve();
   let snapshot=await seo().start();for(let i=0;i<5&&snapshot.scan.state==='running';i++)snapshot=await seo().step();
-  draft=seo().llmsDraft();
+  draft=await seo().llmsDraft();
   assert.equal(draft.fromScan,true);assert.equal(draft.pages,3);assert.equal(draft.hasSummary,true);
   assert.match(draft.text,/- \[menu\]\(https:\/\/example\.com\/menu\)/);assert.match(draft.text,/- \[iletisim\]\(https:\/\/example\.com\/iletisim\)/);
   const brief=f.db.prepare('SELECT brief_json FROM platform_growth_coach').get().brief_json;assert.ok(draft.text.includes(JSON.parse(brief).positioning.slice(0,40)),'the summary is the approved positioning');
   assert.doesNotMatch(draft.text,/\d+\s*%|guarantee|garanti/i);
-  assert.ok(seo(f.member('viewer')).llmsDraft().text,'readers can see the draft');
-  assert.doesNotMatch(new SeoOperations(f.db,f.other,deps).llmsDraft().text,/example\.com\/menu/,'another project never sees these pages');
+  assert.ok((await seo(await f.member('viewer')).llmsDraft()).text,'readers can see the draft');
+  assert.doesNotMatch((await new SeoOperations(f.db,f.other,deps).llmsDraft()).text,/example\.com\/menu/,'another project never sees these pages');
 }));

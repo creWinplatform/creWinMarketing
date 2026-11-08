@@ -30,14 +30,14 @@ export async function POST(request:NextRequest){
     const input=await readAuthenticationJson(request),oauth=new LinkedInOrganizationOAuth(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},credentialEncryptionKey());
     if(input.action==='select'||input.action==='cancel'){
       const cookie=request.cookies.get(LINKEDIN_ORGANIZATION_SELECTION_COOKIE)?.value||'';
-      const result=input.action==='select'?await oauth.select(cookie,input.pageId):(oauth.cancel(cookie),{ok:true}),response=json(result);
+      const result=input.action==='select'?await oauth.select(cookie,input.pageId):(await oauth.cancel(cookie),{ok:true}),response=json(result);
       response.cookies.set(LINKEDIN_ORGANIZATION_SELECTION_COOKIE,'',{httpOnly:true,sameSite:'lax',secure:request.nextUrl.protocol==='https:',path:'/api/platform/linkedin-organizations',maxAge:0});
       return response;
     }
     if(input.action!=='start')throw new MarketingStoreError('Geçerli LinkedIn şirket işlemi gerekli.');
     const config=linkedinOrganizationConfiguration();
     if(request.headers.get('origin')!==new URL(config.redirectUri).origin)throw new MarketingStoreError('Panel adresi LinkedIn dönüş adresiyle eşleşmiyor.');
-    const result=oauth.start(input.publishing),response=json({authorizationUrl:result.authorizationUrl});
+    const result=await oauth.start(input.publishing),response=json({authorizationUrl:result.authorizationUrl});
     response.cookies.set(LINKEDIN_BROWSER_COOKIE,result.browser,{httpOnly:true,sameSite:'lax',secure:new URL(config.redirectUri).protocol==='https:',path:'/api/platform/social/callback',maxAge:600});
     response.cookies.set(LINKEDIN_ORGANIZATION_SELECTION_COOKIE,'',{httpOnly:true,sameSite:'lax',secure:new URL(config.redirectUri).protocol==='https:',path:'/api/platform/linkedin-organizations',maxAge:0});
     return response;

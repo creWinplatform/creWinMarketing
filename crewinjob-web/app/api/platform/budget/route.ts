@@ -6,10 +6,10 @@ export const dynamic='force-dynamic';
 // Budget and goal planner: saved scenarios and measured values; the calculation itself runs in the browser.
 const handle=coachRoute(async(scope,request)=>{
   const planner=new BudgetPlanner(platformDatabase(),scope);
-  if(request.method==='GET')return planner.read();
+  if(request.method==='GET')return await planner.read();
   const raw=await coachBody(request);
-  if(raw.action==='save')return planner.save(raw);
-  if(raw.action==='remove')return planner.remove(raw);
+  if(raw.action==='save')return await planner.save(raw);
+  if(raw.action==='remove')return await planner.remove(raw);
   throw new MarketingStoreError('Geçersiz bütçe planı işlemi.');
 });
 export const GET=handle,POST=handle;

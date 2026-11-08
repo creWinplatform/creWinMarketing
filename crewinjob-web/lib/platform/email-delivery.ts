@@ -10,10 +10,10 @@ import {emailAddress} from './email-safety';
 
 export type PilotMail={from:{name:string;address:string};to:string;subject:string;text:string;html:string;messageId:string;date:string;headers:Record<string,string>};
 export type DeliveryResult={state:'accepted'|'rejected'|'uncertain'|'blocked';providerMessageId:string|null};
-export type PilotDelivery=(smtp:SmtpConfiguration,password:string,mail:PilotMail,beforeSubmit:()=>boolean)=>Promise<DeliveryResult>;
+export type PilotDelivery=(smtp:SmtpConfiguration,password:string,mail:PilotMail,beforeSubmit:() => boolean | Promise<boolean>)=>Promise<DeliveryResult>;
 type Transport={sendMail(message:Mail.Options):Promise<{accepted?:unknown[];rejected?:unknown[];response?:string}>;close():void};
 const createTransport=(options:SMTPTransport.Options):Transport=>nodemailer.createTransport(options);
-export async function submitSmtpPilot(raw:SmtpConfiguration,password:string,mail:PilotMail,beforeSubmit:()=>boolean,resolve=resolvePublicAddress,create=createTransport,connect=connectPinnedSmtp):Promise<DeliveryResult>{
+export async function submitSmtpPilot(raw:SmtpConfiguration,password:string,mail:PilotMail,beforeSubmit:() => boolean | Promise<boolean>,resolve=resolvePublicAddress,create=createTransport,connect=connectPinnedSmtp):Promise<DeliveryResult>{
   let socket:net.Socket|undefined,transport:Transport|undefined,timer:ReturnType<typeof setTimeout>|undefined,submitted=false,expired=false;
   const expiresAt=Date.now()+18000;
   try{
@@ -22,7 +22,7 @@ export async function submitSmtpPilot(raw:SmtpConfiguration,password:string,mail
     const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{expired=true;socket?.destroy();transport?.close();reject(new Error('deadline'));},18000);});
     return await Promise.race([(async():Promise<DeliveryResult>=>{
       const address=await resolve(new URL(`https://${settings.host}/`));if(expired||Date.now()>=expiresAt)throw new Error('deadline');socket=await connect(address.address,settings.port);if(expired||Date.now()>=expiresAt){socket.destroy();throw new Error('deadline');}transport=create(smtpTransportOptions(settings,address.address,socket,password));
-      if(!beforeSubmit())return {state:'blocked',providerMessageId:null};
+      if(!(await beforeSubmit()))return {state:'blocked',providerMessageId:null};
       submitted=true;
       if(expired||Date.now()>=expiresAt)throw new Error('deadline');
       const result=await transport.sendMail({...mail,date:new Date(mail.date),envelope:{from:settings.fromEmail,to:[mail.to]},disableFileAccess:true,disableUrlAccess:true,attachDataUrls:false});

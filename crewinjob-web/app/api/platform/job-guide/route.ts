@@ -12,10 +12,10 @@ import { panelOrigin } from '@/lib/platform/request-origin';
 export const dynamic='force-dynamic';
 export const fetchCache='force-no-store';
 
-const platformGuide=coachRoute(async scope=>jobGuide(platformDatabase(),scope));
+const platformGuide=coachRoute(async scope=>await jobGuide(platformDatabase(),scope));
 const SOCIAL={instagram:'Instagram',facebook:'Facebook',linkedin:'LinkedIn',twitter:'X',tiktok:'TikTok'} as const;
 // Crewin's workspace (the single legacy account): the same guide, read from its JSON stores and the Crewin backend.
-function crewinGuide(origin:string){
+async function crewinGuide(origin:string){
   const api=()=>agentModule('modules/api.js');
   return crewinJobGuide({
     webData:path.join(process.cwd(),'data'),agentRoot:agentDir(),now:Date.now(),env:process.env,
@@ -28,7 +28,7 @@ function crewinGuide(origin:string){
     campaigns:()=>cachedAgentRead('guide:campaigns',()=>api().marketingCampaignV2Get('GetAll',{skipCount:0,maxResultCount:100})),
     posts:()=>cachedAgentRead('guide:posts',()=>api().marketingPostHistoryGet('GetAll',{skipCount:0,maxResultCount:20})),
     db:platformDatabase(),
-    setup:serverSetup(platformDatabase(),origin).sections.map(({id,state,problems})=>({id,state,problems})),
+    setup:(await serverSetup(platformDatabase(),origin)).sections.map(({id,state,problems})=>({id,state,problems})),
   });
 }
 

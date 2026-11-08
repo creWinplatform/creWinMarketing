@@ -17,8 +17,8 @@ const server = spawn(process.execPath, [require.resolve('next/dist/bin/next'), '
     PLATFORM_META_APP_ID: 'fixture-meta-app', PLATFORM_META_APP_SECRET: 'fixture-meta-secret', PLATFORM_META_REDIRECT_URI: `${base}/api/platform/meta/callback`, PLATFORM_META_GRAPH_VERSION: 'v25.0' },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
-server.stdout.on('data', data => process.stdout.write(data));
-server.stderr.on('data', data => process.stderr.write(data));
+server.stdout.on('data', async data => await process.stdout.write(data));
+server.stderr.on('data', async data => await process.stderr.write(data));
 server.on('exit', code => process.exit(code || 0));
 process.on('SIGINT', () => server.kill());
 process.on('SIGTERM', () => server.kill());
@@ -47,22 +47,22 @@ const request = (url, cookie, body) => fetch(`${base}${url}`, { method: body ? '
   let choice;
   try {
     const repository=new (load('repository.ts').PlatformRepository)(db);
-    repository.updateProject(tenant.userId,tenant.organizationId,tenant.projectId,{name:'Northstar',website:'https://product.example',timezone:'Europe/Istanbul',language:'tr',brandVoice:'Açık, kısa ve ürün odaklı.',goals:[{id:'activation',label:{tr:'Ürün aktivasyonu',en:'Product activation'},audience:{tr:'Yeni kullanıcılar',en:'New users'},stages:[{tr:'Kayıt',en:'Signup'},{tr:'İlk kullanım',en:'First use'},{tr:'Aktivasyon',en:'Activation'}]},{id:'b2b',label:{tr:'Şirket kazanımı',en:'Company acquisition'},audience:{tr:'B2B müşteriler',en:'B2B customers'},stages:[{tr:'Talep',en:'Lead'},{tr:'Demo',en:'Demo'},{tr:'Müşteri',en:'Customer'}]}]});
+    await repository.updateProject(tenant.userId,tenant.organizationId,tenant.projectId,{name:'Northstar',website:'https://product.example',timezone:'Europe/Istanbul',language:'tr',brandVoice:'Açık, kısa ve ürün odaklı.',goals:[{id:'activation',label:{tr:'Ürün aktivasyonu',en:'Product activation'},audience:{tr:'Yeni kullanıcılar',en:'New users'},stages:[{tr:'Kayıt',en:'Signup'},{tr:'İlk kullanım',en:'First use'},{tr:'Aktivasyon',en:'Activation'}]},{id:'b2b',label:{tr:'Şirket kazanımı',en:'Company acquisition'},audience:{tr:'B2B müşteriler',en:'B2B customers'},stages:[{tr:'Talep',en:'Lead'},{tr:'Demo',en:'Demo'},{tr:'Müşteri',en:'Customer'}]}]});
     const operations=new (load('operations.ts').ProjectOperations)(db,{subject:tenant.userId,organizationId:tenant.organizationId,projectId:tenant.projectId});
-    operations.saveTask({title:'İlk kampanya içeriğini gözden geçir',dueAt:new Date(Date.now()+86400000).toISOString(),status:'planned',note:'Örnek proje iş planı.'});
-    operations.saveTask({title:'Ürün demosu davetini hazırla',dueAt:new Date(Date.now()+172800000).toISOString(),status:'in_progress',note:'Örnek proje iş planı.'});
+    await operations.saveTask({title:'İlk kampanya içeriğini gözden geçir',dueAt:new Date(Date.now()+86400000).toISOString(),status:'planned',note:'Örnek proje iş planı.'});
+    await operations.saveTask({title:'Ürün demosu davetini hazırla',dueAt:new Date(Date.now()+172800000).toISOString(),status:'in_progress',note:'Örnek proje iş planı.'});
     // Clearly labelled demonstration observations; never written to the application's data file.
-    [42,18,7].forEach((value,stageIndex) => operations.saveMetric({goalId:'activation',stageIndex,value,observedAt:new Date().toISOString(),note:'Örnek proje ölçümü; gerçek müşteri verisi değildir.'}));
-    choice = new (load('oauth-requests.ts').OAuthRequests)(db, { subject: tenant.userId, organizationId: tenant.organizationId, projectId: tenant.projectId }, '12'.repeat(32)).create('meta_selection', 'instagram', 'Fixture Meta', {
+    for (const [stageIndex,value] of [42,18,7].entries()) await operations.saveMetric({goalId:'activation',stageIndex,value,observedAt:new Date().toISOString(),note:'Örnek proje ölçümü; gerçek müşteri verisi değildir.'});
+    choice = await new (load('oauth-requests.ts').OAuthRequests)(db, { subject: tenant.userId, organizationId: tenant.organizationId, projectId: tenant.projectId }, '12'.repeat(32)).create('meta_selection', 'instagram', 'Fixture Meta', {
       accessToken: 'fixture-only-unused-meta-token', expiresAt: Date.now() + 3600000, graphVersion: 'v25.0', loaded: true,
       pages: [{ id: '100', name: 'Fixture Page Without Instagram', token: 'fixture-only-unused-page-token' }, { id: '200', name: 'Fixture Maritime Business Page', token: 'fixture-only-unused-page-token', instagramId: '300', instagramUsername: 'fixture_maritime' }],
     });
   } finally { db.close(); }
   // One-shot local fixture portal sets test cookies; no test endpoint is added to Next.
-  const portal = createServer((req, res) => {
+  const portal = createServer(async (req, res) => {
     if (req.url !== '/meta-qa') { res.writeHead(404); res.end(); return; }
     res.writeHead(302, { Location: base, 'Set-Cookie': [`${owner}; HttpOnly; SameSite=Lax; Path=/`, `platform_meta_selection=${choice.state}.${choice.browser}; HttpOnly; SameSite=Lax; Path=/api/platform/meta; Max-Age=600`] });
-    res.end(); portal.close();
+    res.end(); await portal.close();
   });
   await new Promise((resolve, reject) => { portal.once('error', reject); portal.listen(31451, '127.0.0.1', resolve); });
   console.log('Meta fixture portal ready at http://127.0.0.1:31451/meta-qa');

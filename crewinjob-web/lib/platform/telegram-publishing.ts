@@ -34,7 +34,7 @@ export const checkTelegramPublishing:PublishCheck=async(token,accountId,credenti
 };
 export const publishTelegramText:PublishTransport=async(token,accountId,text,reserve)=>{
   if(!telegramToken(token)||!telegramChannel(accountId)||!text.trim()||text.length>TELEGRAM_TEXT_LIMIT||/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text))return {state:'blocked',postId:null};
-  if(!reserve())return {state:'blocked',postId:null};
+  if(!(await reserve()))return {state:'blocked',postId:null};
   try{
     const response=await fetch(api(token,'sendMessage'),{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({chat_id:accountId,text}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)});
     if([400,401,403,404,409,429].includes(response.status)){await response.body?.cancel();return {state:'rejected',postId:null};}

@@ -58,12 +58,12 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   // Keeps the Crewin figures warm for the panel (shown from cache, refreshed in the background); not awaited, and a
   // missing Crewin agent or backend is simply skipped.
   void cachedAllData().catch(() => {}); void cachedBreakdown().catch(() => {});
-  const pruned = { ...pruneProductEvents(db), attribution: pruneAttribution(db) };
-  const expiredEmailTokens = pruneEmailTokens(db);
-  const scheduledMeasurements = scheduleMeasurements(db, credentialEncryptionKey());
+  const pruned = { ...await pruneProductEvents(db), attribution: await pruneAttribution(db) };
+  const expiredEmailTokens = await pruneEmailTokens(db);
+  const scheduledMeasurements = await scheduleMeasurements(db, credentialEncryptionKey());
   const identity=new PlatformIdentity(db,credentialEncryptionKey());
-  identity.prune();
-  const rows = db
+  await identity.prune();
+  const rows = await db
     .prepare(
       "SELECT id,actor_id,organization_id,project_id,job_type FROM platform_jobs WHERE job_type IN ('connection.verify','product.sync','email.rehearsal','email.pilot_send','measurement.sync','social.publish','mobile.message') AND (status='queued' OR (status='running' AND (lease_until IS NULL OR lease_until<?))) AND (job_type<>'social.publish' OR EXISTS(SELECT 1 FROM platform_social_publications p WHERE p.job_id=platform_jobs.id AND p.scheduled_at<=? AND (p.next_check_at IS NULL OR p.next_check_at<=?))) AND (job_type<>'mobile.message' OR EXISTS(SELECT 1 FROM platform_mobile_messages m WHERE m.job_id=platform_jobs.id AND m.scheduled_at<=?)) ORDER BY created_at,id LIMIT 3",
     )
@@ -88,8 +88,8 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
       else if(row.job_type==='email.pilot_send')await new EmailSendJobs(db,scope,credentialEncryptionKey()).process(row.id);
       else if(row.job_type==='measurement.sync')await new ProjectMeasurements(db,scope,credentialEncryptionKey()).process(row.id);
       else if(row.job_type==='social.publish')await new SocialPublications(db,scope,credentialEncryptionKey()).process(row.id);
-      else if(row.job_type==='mobile.message'){const mobile=new MobileGrowth(db,scope,credentialEncryptionKey());if(settleUnauthorizedMobileJob(db,mobile,row.id)){failed++;continue;}await new MobileDelivery(mobile).process(row.id);}
-      else if(settleUnauthorizedConnectionJob(db,scope,row.id)){failed++;continue;}
+      else if(row.job_type==='mobile.message'){const mobile=new MobileGrowth(db,scope,credentialEncryptionKey());if(await settleUnauthorizedMobileJob(db,mobile,row.id)){failed++;continue;}await new MobileDelivery(mobile).process(row.id);}
+      else if(await settleUnauthorizedConnectionJob(db,scope,row.id)){failed++;continue;}
       else await new ConnectionJobs(db,scope).run(row.id, credentialEncryptionKey());
       checked++;
     } catch {
@@ -106,7 +106,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   // Weekly AI search visibility checks (opt-in; one AI credit per question, as the member who turned them on).
   const aiVisibility=Date.now()-startedAt<15000?await runAiVisibilityChecks(db,visibilityGemini()).catch(()=>0):0;
   // Automation bookkeeping only (enrollments and exits); sending always waits for a person's approval.
-  let automations=0;try{automations=evaluateDueAutomations(db,credentialEncryptionKey());}catch{automations=0;}
+  let automations=0;try{automations=await evaluateDueAutomations(db,credentialEncryptionKey());}catch{automations=0;}
   // Channel posts wait about 24 hours on Telegram, so sources with automatic reading are read every 30 minutes.
   const messagingReads=Date.now()-startedAt<20000?await readDueMessagingSources(db,credentialEncryptionKey()).catch(()=>0):0;
   // Approved WhatsApp batches continue a few messages per tick; each message is re-checked before it goes.

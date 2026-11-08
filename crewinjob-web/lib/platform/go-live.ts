@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { MarketingStoreError } from './errors';
@@ -15,15 +16,15 @@ const configured=(...names:string[])=>names.every(name=>Boolean(process.env[name
 const DAY=86400000;
 type Scope={subject:string;organizationId:string;projectId:string};
 
-export function goLiveStatus(db:Database.Database,scope:Scope,now=Date.now()):GoLiveView{
+export async function goLiveStatus(db:Db,scope:Scope,now=Date.now()):Promise<GoLiveView>{
   const repo=new PlatformRepository(db),args=[scope.organizationId,scope.projectId] as const;
-  if(!repo.can(scope.subject,...args,'connections.manage')||repo.workspace(scope.subject,...args)?.project.productPack!=='standard')throw new MarketingStoreError('Canlıya geçiş durumunu yalnız bağlantı yöneticileri görebilir.',403);
+  if(!await repo.can(scope.subject,...args,'connections.manage')||(await repo.workspace(scope.subject,...args))?.project.productPack!=='standard')throw new MarketingStoreError('Canlıya geçiş durumunu yalnız bağlantı yöneticileri görebilir.',403);
   const items:GoLiveItem[]=[],add=(item:GoLiveItem)=>items.push(item);
-  const connection=(provider:string)=>db.prepare('SELECT id,account_name,updated_at FROM platform_connections WHERE organization_id=? AND project_id=? AND provider=? AND active=1 ORDER BY updated_at DESC LIMIT 1').get(...args,provider) as {id:string;account_name:string;updated_at:string}|undefined;
-  const has=(table:string)=>Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
+  const connection=async (provider:string)=>await db.prepare('SELECT id,account_name,updated_at FROM platform_connections WHERE organization_id=? AND project_id=? AND provider=? AND active=1 ORDER BY updated_at DESC LIMIT 1').get(...args,provider) as {id:string;account_name:string;updated_at:string}|undefined;
+  const has=async (table:string)=>Boolean(await db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
 
   // Social channels: a connected account per platform, its grant, and the server's publishing switch.
-  const accounts=db.prepare("SELECT a.platform,a.expires_at,c.account_name FROM platform_social_accounts a JOIN platform_connections c ON c.id=a.connection_id WHERE c.organization_id=? AND c.project_id=? AND c.active=1").all(...args) as {platform:string;expires_at:number|null;account_name:string}[];
+  const accounts=await db.prepare("SELECT a.platform,a.expires_at,c.account_name FROM platform_social_accounts a JOIN platform_connections c ON c.id=a.connection_id WHERE c.organization_id=? AND c.project_id=? AND c.active=1").all(...args) as {platform:string;expires_at:number|null;account_name:string}[];
   const channelApps:Record<string,string[]>={tiktok:['PLATFORM_TIKTOK_CLIENT_KEY','PLATFORM_TIKTOK_CLIENT_SECRET','PLATFORM_TIKTOK_REDIRECT_URI'],pinterest:['PLATFORM_PINTEREST_CLIENT_ID','PLATFORM_PINTEREST_CLIENT_SECRET','PLATFORM_PINTEREST_REDIRECT_URI'],youtube:['PLATFORM_YOUTUBE_CLIENT_ID','PLATFORM_YOUTUBE_CLIENT_SECRET','PLATFORM_YOUTUBE_REDIRECT_URI']};
   const names:Record<string,string>={linkedin:'LinkedIn',facebook:'Facebook',instagram:'Instagram',twitter:'X',tiktok:'TikTok',pinterest:'Pinterest',youtube:'YouTube'};
   for(const platform of ['linkedin','facebook','instagram','twitter','tiktok','pinterest','youtube']){
@@ -38,8 +39,8 @@ export function goLiveStatus(db:Database.Database,scope:Scope,now=Date.now()):Go
   // Ad accounts: connected and checked, a budget cap, plans created, and the server's start and image switches.
   const adNames:Record<string,[string,string]>={meta:['Meta','meta_ads'],google:['Google Ads','google_ads'],linkedin:['LinkedIn','linkedin_ads'],tiktok:['TikTok','tiktok_ads'],apple_search:['Apple Search Ads','apple_search_ads']};
   for(const [provider,[name,kind]] of Object.entries(adNames)){
-    const account=connection(kind),policy=has('platform_ad_policies')?db.prepare('SELECT 1 FROM platform_ad_policies WHERE organization_id=? AND project_id=? AND provider=?').get(...args,provider):null;
-    const plans=(db.prepare('SELECT COUNT(*) n FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider=? AND provider_campaign_id IS NOT NULL').get(...args,provider) as {n:number}).n;
+    const account=await connection(kind),policy=await has('platform_ad_policies')?await db.prepare('SELECT 1 FROM platform_ad_policies WHERE organization_id=? AND project_id=? AND provider=?').get(...args,provider):null;
+    const plans=(await db.prepare('SELECT COUNT(*) n FROM platform_ad_plans WHERE organization_id=? AND project_id=? AND provider=? AND provider_campaign_id IS NOT NULL').get(...args,provider) as {n:number}).n;
     const href=`/?tab=campaigns&campaignView=ads&provider=${provider}`;
     if(provider==='google'&&!googleAdsConfigured()){add({id:`ads:${provider}`,group:'ads',label:l(name,name),state:'optional',detail:l('Sunucuda Google Ads geliştirici anahtarı yok (yöneticinin işi).','No Google Ads developer token on the server (an administrator task).'),href});continue;}
     if(!account){add({id:`ads:${provider}`,group:'ads',label:l(name,name),state:'optional',detail:l('Reklam hesabı bağlı değil.','No ad account connected.'),href});continue;}
@@ -49,12 +50,12 @@ export function goLiveStatus(db:Database.Database,scope:Scope,now=Date.now()):Go
     add({id:`switch:${name}`,group:'ads',label,state:on(name)?'ready':'off',detail:on(name)?l('Açık.','On.'):l(`Kapalı (${name}). Planlar ve görseller hazırlanıp onaylanabilir.`,`Off (${name}). Plans and images can still be prepared and approved.`),switch:name});
 
   // Mobile apps: each app's connections, whether they were checked or sent events, and the mobile switches.
-  if(has('platform_mobile_apps')){
-    const apps=db.prepare('SELECT id,config_json FROM platform_mobile_apps WHERE organization_id=? AND project_id=? ORDER BY created_at,id').all(...args) as {id:string;config_json:string}[];
+  if(await has('platform_mobile_apps')){
+    const apps=await db.prepare('SELECT id,config_json FROM platform_mobile_apps WHERE organization_id=? AND project_id=? ORDER BY created_at,id').all(...args) as {id:string;config_json:string}[];
     const labels:Record<string,string>={bridge:'Server Bridge',appsflyer:'AppsFlyer',adjust:'Adjust',onesignal:'OneSignal',firebase:'Firebase FCM',branch:'Branch',revenuecat:'RevenueCat',google_play:'Google Play',app_store_connect:'App Store Connect',appsflyer_skan:'AppsFlyer SKAN'};
     for(const app of apps){
       const config=JSON.parse(app.config_json) as {name:string;platform:string;attributionProvider:string;appleId:string;packageName:string};
-      const integrations=db.prepare("SELECT i.connection_id,i.kind,i.status,i.checked_at,i.last_event_at,c.active FROM platform_mobile_integrations i JOIN platform_connections c ON c.id=i.connection_id WHERE i.app_id=? AND i.organization_id=? AND i.project_id=?").all(app.id,...args) as {connection_id:string;kind:string;status:string;checked_at:string|null;last_event_at:string|null;active:number}[];
+      const integrations=await db.prepare("SELECT i.connection_id,i.kind,i.status,i.checked_at,i.last_event_at,c.active FROM platform_mobile_integrations i JOIN platform_connections c ON c.id=i.connection_id WHERE i.app_id=? AND i.organization_id=? AND i.project_id=?").all(app.id,...args) as {connection_id:string;kind:string;status:string;checked_at:string|null;last_event_at:string|null;active:number}[];
       const wanted=[config.attributionProvider||'bridge',...(config.platform!=='android'&&config.appleId?['app_store_connect']:[]),...(config.platform!=='ios'&&config.packageName?['google_play']:[])];
       const push=integrations.find(item=>item.active&&['onesignal','firebase'].includes(item.kind));
       for(const kind of [...new Set([...wanted,...integrations.filter(item=>item.active).map(item=>item.kind)])]){
@@ -70,10 +71,10 @@ export function goLiveStatus(db:Database.Database,scope:Scope,now=Date.now()):Go
   }
 
   // Messages and measurement: email sender, WhatsApp, IYS, Google Analytics and Search Console.
-  const email=connection('email'),whatsapp=connection('whatsapp'),ga=connection('ga4'),gsc=connection('search_console');
+  const email=await connection('email'),whatsapp=await connection('whatsapp'),ga=await connection('ga4'),gsc=await connection('search_console');
   add({id:'msg:email',group:'messages',label:l('E-posta gönderici','Email sender'),state:email?'ready':'optional',detail:email?l(`“${email.account_name}” bağlı.`,`“${email.account_name}” connected.`):l('Gönderici bağlı değil.','No sender connected.'),href:'/?tab=campaigns&campaignView=sender'});
   add({id:'msg:whatsapp',group:'messages',label:l('WhatsApp','WhatsApp'),state:whatsapp?'ready':'optional',detail:whatsapp?l(`“${whatsapp.account_name}” bağlı.`,`“${whatsapp.account_name}” connected.`):l('WhatsApp hesabı bağlı değil.','No WhatsApp account connected.'),href:'/?tab=campaigns&campaignView=whatsapp'});
-  if(has('platform_iys_settings')){const iys=db.prepare('SELECT scope FROM platform_iys_settings WHERE organization_id=? AND project_id=?').get(...args) as {scope:string|null}|undefined;
+  if(await has('platform_iys_settings')){const iys=await db.prepare('SELECT scope FROM platform_iys_settings WHERE organization_id=? AND project_id=?').get(...args) as {scope:string|null}|undefined;
     add({id:'msg:iys',group:'messages',label:l('İYS beyanı','IYS declaration'),state:iys?.scope?'ready':'action',detail:iys?.scope?l('Beyan verildi.','Declared.'):l('Türkiye’deki alıcılara ticari ileti gönderip göndermediğinizi beyan edin; beyan yoksa canlı gönderim açılmaz.','Declare whether you send commercial messages to recipients in Türkiye; without it live sending stays off.'),href:'/?tab=project&settings=iys'});}
   for(const [name,label] of [['PLATFORM_EMAIL_PILOT_SEND_ENABLED',l('E-posta gerçek gönderim anahtarı','Email live send switch')],['PLATFORM_WHATSAPP_SEND_ENABLED',l('WhatsApp gerçek gönderim anahtarı','WhatsApp live send switch')]] as const)
     add({id:`switch:${name}`,group:'messages',label,state:on(name)?'ready':'off',detail:on(name)?l('Açık.','On.'):l(`Kapalı (${name}): yalnız prova yapılır.`,`Off (${name}): rehearsals only.`),switch:name});

@@ -21,13 +21,13 @@ const TOKENS={
     'GET https://www.googleapis.com/youtube/v3/channels':json({items:[{id:'UCabcdefghijklmnopqrstuv'}]})},
 };
 async function connect(f,platform,extra={}){
-  const oauth=new ProjectChannelOAuth(f.db,f.scope,KEY),started=oauth.start({platform,accountName:`QA ${platform}`,...extra}),url=new URL(started.authorizationUrl),state=url.searchParams.get('state');
-  const fake=provider(TOKENS[platform]);const done=await withFetch(fake.fetch,()=>oauth.complete(state,started.browser,'qa-code'));
+  const oauth=new ProjectChannelOAuth(f.db,f.scope,KEY),started=await oauth.start({platform,accountName:`QA ${platform}`,...extra}),url=new URL(started.authorizationUrl),state=url.searchParams.get('state');
+  const fake=provider(TOKENS[platform]);const done=await withFetch(fake.fetch,async ()=>await oauth.complete(state,started.browser,'qa-code'));
   return {connection:done.connection,url,calls:fake.calls};
 }
 const makeImage=async()=>({imageData:(await sharp({create:{width:1000,height:1000,channels:3,background:'#222'}}).png().toBuffer()).toString('base64'),imageMime:'image/png'});
 const videoReader=async url=>({status:200,finalUrl:url,headers:new Headers({'content-type':'video/mp4','content-length':'5242880',etag:'"v1"'}),cancel:async()=>{}});
-const run=fn=>async()=>{const f=fixture();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';try{await fn(f);}finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}};
+const run=fn=>async()=>{const f=await fixture();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';try{await fn(f);}finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}};
 
 test('each channel connects with OAuth; the account is the open_id, the chosen board or the channel; no secret leaves the vault',run(async f=>{
   const tiktok=await connect(f,'tiktok');assert.equal(tiktok.url.origin+tiktok.url.pathname,'https://www.tiktok.com/v2/auth/authorize/');assert.equal(tiktok.url.searchParams.get('scope'),'user.info.basic,video.publish,video.list');
@@ -37,52 +37,52 @@ test('each channel connects with OAuth; the account is the open_id, the chosen b
   assert.deepEqual(JSON.parse(JSON.stringify(rows)),[{platform:'pinterest',account_id:'549755885175'},{platform:'tiktok',account_id:'-000abcDEF'},{platform:'youtube',account_id:'UCabcdefghijklmnopqrstuv'}]);
   const credentials=decryptCredentials(f.db.prepare('SELECT encrypted_credentials v FROM platform_connections WHERE id=?').get(tiktok.connection.id).v,KEY,f.scope.organizationId,f.scope.projectId,tiktok.connection.id);
   assert.equal(credentials.refreshToken,'tt-refresh');assert.ok(credentials.channelPublishing.accessExpiresAt>Date.now());
-  assert.doesNotMatch(JSON.stringify(new SocialPublications(f.db,f.scope,KEY).workspace()),/tt-access|tt-refresh|pin-refresh|yt-refresh|secret-only/);
-  assert.throws(()=>new ProjectChannelOAuth(f.db,f.scope,KEY).start({platform:'pinterest',accountName:'x'}),e=>e.status===400,'Pinterest needs a board');
-  assert.throws(()=>new ProjectChannelOAuth(f.db,f.scope,KEY).start({platform:'myspace',accountName:'x'}),e=>e.status===400);
+  assert.doesNotMatch(JSON.stringify(await new SocialPublications(f.db,f.scope,KEY).workspace()),/tt-access|tt-refresh|pin-refresh|yt-refresh|secret-only/);
+  await assert.rejects(async ()=>await new ProjectChannelOAuth(f.db,f.scope,KEY).start({platform:'pinterest',accountName:'x'}),e=>e.status===400,'Pinterest needs a board');
+  await assert.rejects(async ()=>await new ProjectChannelOAuth(f.db,f.scope,KEY).start({platform:'myspace',accountName:'x'}),e=>e.status===400);
 }));
 
 test('a missing scope or a board that is not the account’s fails the connection',run(async f=>{
   const oauth=new ProjectChannelOAuth(f.db,f.scope,KEY);
-  let started=oauth.start({platform:'tiktok',accountName:'QA'}),state=new URL(started.authorizationUrl).searchParams.get('state');
-  await withFetch(provider({...TOKENS.tiktok,'POST https://open.tiktokapis.com/v2/oauth/token/':json({access_token:'a',expires_in:86400,refresh_token:'r',open_id:'x',scope:'user.info.basic'})}).fetch,()=>assert.rejects(()=>oauth.complete(state,started.browser,'code'),e=>e.status===400));
-  started=oauth.start({platform:'pinterest',accountName:'QA',boardId:'1'});state=new URL(started.authorizationUrl).searchParams.get('state');
-  await withFetch(provider({...TOKENS.pinterest,'GET https://api.pinterest.com/v5/boards/1':json({message:'not found'},404)}).fetch,()=>assert.rejects(()=>oauth.complete(state,started.browser,'code')));
+  let started=await oauth.start({platform:'tiktok',accountName:'QA'}),state=new URL(started.authorizationUrl).searchParams.get('state');
+  await withFetch(provider({...TOKENS.tiktok,'POST https://open.tiktokapis.com/v2/oauth/token/':json({access_token:'a',expires_in:86400,refresh_token:'r',open_id:'x',scope:'user.info.basic'})}).fetch,()=>assert.rejects(async ()=>await oauth.complete(state,started.browser,'code'),e=>e.status===400));
+  started=await oauth.start({platform:'pinterest',accountName:'QA',boardId:'1'});state=new URL(started.authorizationUrl).searchParams.get('state');
+  await withFetch(provider({...TOKENS.pinterest,'GET https://api.pinterest.com/v5/boards/1':json({message:'not found'},404)}).fetch,()=>assert.rejects(async ()=>await oauth.complete(state,started.browser,'code')));
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM platform_social_accounts WHERE platform IN ('tiktok','pinterest')").get().n,0);
 }));
 
 test('a Pinterest pin: one image, a 500-character description, the check refreshes the token, the pin goes to the board',run(async f=>{
   const {connection}=await connect(f,'pinterest',{boardId:'549755885175'});
-  f.store.saveContent({id:'pin-1',platform:'pinterest',language:'tr',headline:'Minimal dövme fikirleri',content:'Bilek için minimal dövme fikirleri https://example.com/fikirler',timestamp:Date.now(),prompt:'',...await makeImage()},true);
-  const service=new SocialPublications(f.db,f.scope,KEY),source=service.workspace().sources.find(item=>item.id==='pin-1');
+  await f.store.saveContent({id:'pin-1',platform:'pinterest',language:'tr',headline:'Minimal dövme fikirleri',content:'Bilek için minimal dövme fikirleri https://example.com/fikirler',timestamp:Date.now(),prompt:'',...await makeImage()},true);
+  const service=new SocialPublications(f.db,f.scope,KEY),source=(await service.workspace()).sources.find(item=>item.id==='pin-1');
   assert.equal(source.eligible,true);assert.equal(source.format,'image');assert.ok(source.text.includes('utm_source=pinterest')||!source.trackedLinks,'own links carry the pin’s tag when tracking is on');
-  f.store.saveContent({id:'pin-2',platform:'pinterest',language:'tr',headline:'x',content:'x'.repeat(501),timestamp:Date.now(),prompt:'',...await makeImage()},true);
-  assert.equal(service.workspace().sources.find(item=>item.id==='pin-2').eligible,false,'over 500 characters');
+  await f.store.saveContent({id:'pin-2',platform:'pinterest',language:'tr',headline:'x',content:'x'.repeat(501),timestamp:Date.now(),prompt:'',...await makeImage()},true);
+  assert.equal((await service.workspace()).sources.find(item=>item.id==='pin-2').eligible,false,'over 500 characters');
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
   const fake=provider({'GET https://api.pinterest.com/v5/boards/549755885175':json({id:'549755885175'}),'POST https://api.pinterest.com/v5/pins':init=>{const body=JSON.parse(init.body);assert.equal(body.board_id,'549755885175');assert.equal(body.media_source.source_type,'image_base64');assert.ok(body.link.startsWith('https://example.com/fikirler'));return json({id:'987654321'});}});
   await withFetch(fake.fetch,async()=>{
     await service.check(connection.id);
-    const target=service.workspace().targets.find(item=>item.id===connection.id);assert.equal(target.ready,true);
+    const target=(await service.workspace()).targets.find(item=>item.id===connection.id);assert.equal(target.ready,true);
     const job=await service.create({sourceKind:'content',sourceId:'pin-1',connectionId:connection.id,expectedDigest:source.digest,expectedTargetRevision:target.revision,mode:'publish',idempotencyKey:'pinterest-qa-1',acknowledged:true});
     await service.process(job.id);
-    const done=service.get(job.id);assert.equal(done.state,'accepted');assert.equal(done.providerUrl,'https://www.pinterest.com/pin/987654321/');
+    const done=await service.get(job.id);assert.equal(done.state,'accepted');assert.equal(done.providerUrl,'https://www.pinterest.com/pin/987654321/');
   });
   assert.equal(fake.calls.filter(call=>call.key==='POST https://api.pinterest.com/v5/pins').length,1);
 }));
 
 test('TikTok and YouTube take a video only; a TikTok post pulls the approved file and keeps the private default',run(async f=>{
   const {connection}=await connect(f,'tiktok');
-  f.store.saveContent({id:'tt-1',platform:'tiktok',language:'tr',headline:'Dövme süreci',content:'Dövme süreci #dövme',timestamp:Date.now(),prompt:'',video:{url:'https://cdn.example.com/dovme.mp4',format:'feed'}},true);
-  f.store.saveContent({id:'tt-2',platform:'tiktok',language:'tr',headline:'Metin',content:'Yalnız metin',timestamp:Date.now(),prompt:''},true);
-  const service=new SocialPublications(f.db,f.scope,KEY,undefined,videoReader),sources=service.workspace().sources;
+  await f.store.saveContent({id:'tt-1',platform:'tiktok',language:'tr',headline:'Dövme süreci',content:'Dövme süreci #dövme',timestamp:Date.now(),prompt:'',video:{url:'https://cdn.example.com/dovme.mp4',format:'feed'}},true);
+  await f.store.saveContent({id:'tt-2',platform:'tiktok',language:'tr',headline:'Metin',content:'Yalnız metin',timestamp:Date.now(),prompt:''},true);
+  const service=new SocialPublications(f.db,f.scope,KEY,undefined,videoReader),sources=(await service.workspace()).sources;
   assert.equal(sources.find(item=>item.id==='tt-1').eligible,true);assert.equal(sources.find(item=>item.id==='tt-2').eligible,false,'TikTok needs a video');
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
   const fake=provider({'POST https://open.tiktokapis.com/v2/post/publish/creator_info/query/':json({data:{privacy_level_options:['SELF_ONLY','PUBLIC_TO_EVERYONE']},error:{code:'ok'}}),
     'POST https://open.tiktokapis.com/v2/post/publish/video/init/':init=>{const body=JSON.parse(init.body);assert.equal(body.post_info.privacy_level,'SELF_ONLY');assert.equal(body.source_info.video_url,'https://cdn.example.com/dovme.mp4');return json({data:{publish_id:'v_pub_url~v2.123'},error:{code:'ok'}});}});
   await withFetch(fake.fetch,async()=>{
-    await service.check(connection.id);const source=service.workspace().sources.find(item=>item.id==='tt-1'),target=service.workspace().targets.find(item=>item.id===connection.id);
+    await service.check(connection.id);const source=(await service.workspace()).sources.find(item=>item.id==='tt-1'),target=(await service.workspace()).targets.find(item=>item.id===connection.id);
     const job=await service.create({sourceKind:'content',sourceId:'tt-1',connectionId:connection.id,expectedDigest:source.digest,expectedTargetRevision:target.revision,mode:'publish',idempotencyKey:'tiktok-qa-1',acknowledged:true});
-    await service.process(job.id);assert.equal(service.get(job.id).state,'accepted');assert.equal(service.get(job.id).providerPostId,'v_pub_url~v2.123');
+    await service.process(job.id);assert.equal((await service.get(job.id)).state,'accepted');assert.equal((await service.get(job.id)).providerPostId,'v_pub_url~v2.123');
   });
 }));
 
@@ -122,23 +122,23 @@ test('a TikTok photo post: up to five approved images, served to TikTok from sig
   const saved=process.env.PLATFORM_PUBLIC_ORIGIN;process.env.PLATFORM_PUBLIC_ORIGIN='https://panel.ryzevo-qa.com';
   try{
     const {connection}=await connect(f,'tiktok');const image=await makeImage();
-    f.store.saveContent({id:'tt-photo',platform:'tiktok',language:'tr',headline:'Portfolyo',content:'Yeni portfolyo çalışmaları\n#dövme',timestamp:Date.now(),prompt:'',images:[{data:image.imageData,mime:'image/png'},{data:image.imageData,mime:'image/png'}]},true);
-    const service=new SocialPublications(f.db,f.scope,KEY,undefined,videoReader),source=service.workspace().sources.find(item=>item.id==='tt-photo');
+    await f.store.saveContent({id:'tt-photo',platform:'tiktok',language:'tr',headline:'Portfolyo',content:'Yeni portfolyo çalışmaları\n#dövme',timestamp:Date.now(),prompt:'',images:[{data:image.imageData,mime:'image/png'},{data:image.imageData,mime:'image/png'}]},true);
+    const service=new SocialPublications(f.db,f.scope,KEY,undefined,videoReader),source=(await service.workspace()).sources.find(item=>item.id==='tt-photo');
     assert.equal(source.eligible,true);assert.equal(source.format,'carousel');
     process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';let urls=[];
     const fake=provider({'POST https://open.tiktokapis.com/v2/post/publish/creator_info/query/':json({data:{privacy_level_options:['SELF_ONLY']},error:{code:'ok'}}),
       'POST https://open.tiktokapis.com/v2/post/publish/content/init/':init=>{const body=JSON.parse(init.body);urls=body.source_info.photo_images;assert.equal(body.media_type,'PHOTO');assert.equal(body.post_info.title,'Yeni portfolyo çalışmaları');return json({data:{publish_id:'p_pub_url~v2.9'},error:{code:'ok'}});}});
     let jobId;
     await withFetch(fake.fetch,async()=>{
-      await service.check(connection.id);const target=service.workspace().targets.find(item=>item.id===connection.id);
+      await service.check(connection.id);const target=(await service.workspace()).targets.find(item=>item.id===connection.id);
       const job=await service.create({sourceKind:'content',sourceId:'tt-photo',connectionId:connection.id,expectedDigest:source.digest,expectedTargetRevision:target.revision,mode:'publish',idempotencyKey:'tiktok-photo-1',acknowledged:true});
-      jobId=job.id;await service.process(job.id);assert.equal(service.get(job.id).state,'accepted');
+      jobId=job.id;await service.process(job.id);assert.equal((await service.get(job.id)).state,'accepted');
     });
     assert.equal(urls.length,2);assert.ok(urls.every(url=>url.startsWith(`https://panel.ryzevo-qa.com/api/platform/publication-media/${jobId}?signature=`)));
     const {providerPublicationImage}=load('social-publications.ts'),second=new URL(urls[1]);
-    const served=providerPublicationImage(f.db,KEY,jobId,second.searchParams.get('signature'),Number(second.searchParams.get('index')));
+    const served=await providerPublicationImage(f.db,KEY,jobId,second.searchParams.get('signature'),Number(second.searchParams.get('index')));
     assert.ok(served.data,'TikTok can fetch the accepted post image');
-    assert.throws(()=>providerPublicationImage(f.db,KEY,jobId,'0'.repeat(64),1),e=>e.status===404,'a wrong signature gets nothing');
+    await assert.rejects(async ()=>await providerPublicationImage(f.db,KEY,jobId,'0'.repeat(64),1),e=>e.status===404,'a wrong signature gets nothing');
   }finally{if(saved===undefined)delete process.env.PLATFORM_PUBLIC_ORIGIN;else process.env.PLATFORM_PUBLIC_ORIGIN=saved;}
 }));
 

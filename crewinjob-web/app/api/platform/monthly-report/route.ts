@@ -11,14 +11,14 @@ async function handle(request:NextRequest){
   try{
     const access=await getRyzevoAccess();if(!access)return NextResponse.json({error:'Proje oturumu gerekli.'},{status:403,headers});
     const service=new MonthlyReports(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId});
-    if(request.method==='GET'){const month=request.nextUrl.searchParams.get('month');return NextResponse.json(service.read(month===null?undefined:month),{headers});}
+    if(request.method==='GET'){const month=request.nextUrl.searchParams.get('month');return NextResponse.json(await service.read(month===null?undefined:month),{headers});}
     if(!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz rapor isteği.');
-    if(input.action==='note')return NextResponse.json(service.saveNote(input),{headers});
-    if(input.action==='approve')return NextResponse.json(service.approve(input),{headers});
-    if(input.action==='reopen')return NextResponse.json(service.reopen(input),{headers});
-    if(input.action==='share')return NextResponse.json(service.share(input),{headers});
-    if(input.action==='revoke')return NextResponse.json(service.revoke(input),{headers});
+    if(input.action==='note')return NextResponse.json(await service.saveNote(input),{headers});
+    if(input.action==='approve')return NextResponse.json(await service.approve(input),{headers});
+    if(input.action==='reopen')return NextResponse.json(await service.reopen(input),{headers});
+    if(input.action==='share')return NextResponse.json(await service.share(input),{headers});
+    if(input.action==='revoke')return NextResponse.json(await service.revoke(input),{headers});
     throw new MarketingStoreError('Geçersiz rapor işlemi.');
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Rapor işlemi tamamlanamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

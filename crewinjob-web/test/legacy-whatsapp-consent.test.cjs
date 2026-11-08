@@ -182,10 +182,10 @@ test('the agent sender reports per-number results for the gate (no network witho
   assert.equal(out.sent,0);assert.deepEqual(out.results,[{to:A,success:false},{to:B,success:false}]);
 });
 
-test('the setup guide shows the STOP webhook address and its two settings',()=>{
+test('the setup guide shows the STOP webhook address and its two settings',async ()=>{
   const {serverSetup}=load('server-setup.ts'),noDb={prepare(){throw new Error('no database in this test');}};
-  const card=origin=>serverSetup(noDb,origin,{}).sections.find(section=>section.id==='crewin-whatsapp');
-  const live=card('https://panel.example.com'),local=card('http://localhost:3033');
+  const card=async origin=>(await serverSetup(noDb,origin,{})).sections.find(section=>section.id==='crewin-whatsapp');
+  const live=await card('https://panel.example.com'),local=await card('http://localhost:3033');
   assert.ok(live.steps.some(step=>step.copy?.value==='https://panel.example.com/api/messaging/whatsapp/hook'));
   assert.ok(local.steps.some(step=>step.copy?.value==='https://<alan-adınız>/api/messaging/whatsapp/hook'),'Meta cannot call this machine');
   assert.match(live.env,/WHATSAPP_APP_SECRET=<[^>]+>\nWHATSAPP_WEBHOOK_VERIFY_TOKEN=/);

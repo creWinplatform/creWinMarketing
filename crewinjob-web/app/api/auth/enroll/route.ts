@@ -14,18 +14,18 @@ export async function POST(request: NextRequest) {
     const input = await readAuthenticationJson(request);
     if (typeof input.token !== 'string' || input.token.length > 100)
       throw new Error();
-    if (!consumeLoginAttempt(platformDatabase(), 'enroll:' + input.token))
+    if (!await consumeLoginAttempt(platformDatabase(), 'enroll:' + input.token))
       return NextResponse.json(
         { error: 'Çok fazla deneme. Daha sonra tekrar deneyin.' },
         { status: 429 },
       );
-    platformRepository();
+    await platformRepository();
     if (input.action === 'inspect')
       return NextResponse.json(
-        new PlatformAccounts(platformDatabase()).invitation(input.token),
+        await new PlatformAccounts(platformDatabase()).invitation(input.token),
         { headers: { 'Cache-Control': 'private, no-store' } },
       );
-    new PlatformAccounts(platformDatabase()).redeem(input.token, input);
+    await new PlatformAccounts(platformDatabase()).redeem(input.token, input);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

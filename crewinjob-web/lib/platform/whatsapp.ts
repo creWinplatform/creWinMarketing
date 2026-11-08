@@ -1,3 +1,5 @@
+import { mapSeries, someSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -64,54 +66,54 @@ const buttonParam=(value:unknown)=>{const text=typeof value==='string'?value.tri
 // sent one message at a time, each re-checked just before it goes. Meta bills each message; no price is shown here.
 export class ProjectWhatsApp{
   repo:PlatformRepository;
-  constructor(public db:Database.Database,public scope:MarketingScope,public key:string,public graph:WhatsAppGraph=whatsAppGraph){this.repo=new PlatformRepository(db);}
+  constructor(public db:Db,public scope:MarketingScope,public key:string,public graph:WhatsAppGraph=whatsAppGraph){this.repo=new PlatformRepository(db);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  private can(permission:Parameters<PlatformRepository['can']>[3],subject=this.scope.subject){return this.repo.can(subject,...this.args(),permission);}
-  private authorize(need?:'connections.manage'|'recipients.manage'|'content.write'|'campaign.approve'|'campaign.dispatch'|'publish',subject=this.scope.subject){
-    if(!this.can('read',subject)||this.repo.workspace(subject,...this.args())?.project.productPack!=='standard')throw new MarketingStoreError('WhatsApp gönderimi için standart proje erişimi gerekli.',403);
+  private async can(permission:Parameters<PlatformRepository['can']>[3],subject=this.scope.subject){return await this.repo.can(subject,...this.args(),permission);}
+  private async authorize(need?:'connections.manage'|'recipients.manage'|'content.write'|'campaign.approve'|'campaign.dispatch'|'publish',subject=this.scope.subject){
+    if(!await this.can('read',subject)||(await this.repo.workspace(subject,...this.args()))?.project.productPack!=='standard')throw new MarketingStoreError('WhatsApp gönderimi için standart proje erişimi gerekli.',403);
     if(!need)return;
-    if(need==='publish'){if(!this.can('campaign.dispatch',subject)||!hasMessagingDuty(this.db,subject,...this.args(),'publish'))throw new MarketingStoreError('Gerçek WhatsApp gönderimi için gönderim yetkisi ve "yayın" mesajlaşma görevi gerekir.',403);return;}
-    if(!this.can(need,subject))throw new MarketingStoreError(need==='connections.manage'?'WhatsApp numarasını yalnız bağlantı yönetimi yetkisi olanlar bağlayabilir.':need==='recipients.manage'?'WhatsApp kişilerini ve izinlerini yalnız alıcı yönetimi yetkisi olanlar düzenleyebilir.':need==='campaign.approve'?'WhatsApp gönderilerini yalnız onay yetkisi olanlar onaylayabilir.':need==='campaign.dispatch'?'Bu işlem için gönderim yetkisi gerekir.':'Bu işlem için içerik yazma yetkisi gerekir.',403);
+    if(need==='publish'){if(!await this.can('campaign.dispatch',subject)||!await hasMessagingDuty(this.db,subject,...this.args(),'publish'))throw new MarketingStoreError('Gerçek WhatsApp gönderimi için gönderim yetkisi ve "yayın" mesajlaşma görevi gerekir.',403);return;}
+    if(!await this.can(need,subject))throw new MarketingStoreError(need==='connections.manage'?'WhatsApp numarasını yalnız bağlantı yönetimi yetkisi olanlar bağlayabilir.':need==='recipients.manage'?'WhatsApp kişilerini ve izinlerini yalnız alıcı yönetimi yetkisi olanlar düzenleyebilir.':need==='campaign.approve'?'WhatsApp gönderilerini yalnız onay yetkisi olanlar onaylayabilir.':need==='campaign.dispatch'?'Bu işlem için gönderim yetkisi gerekir.':'Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
-  private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
-  private connection(){return this.db.prepare("SELECT id,encrypted_credentials FROM platform_connections WHERE organization_id=? AND project_id=? AND provider='whatsapp' AND active=1 ORDER BY updated_at DESC LIMIT 1").get(...this.args()) as {id:string;encrypted_credentials:string}|undefined;}
-  private credentials(){const connection=this.connection();if(!connection)throw new MarketingStoreError('Önce WhatsApp Business numarasını bağlayın.',409);return {connection,credentials:decryptCredentials<Credentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id)};}
+  private async audit(operation:string){await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
+  private async connection(){return await this.db.prepare("SELECT id,encrypted_credentials FROM platform_connections WHERE organization_id=? AND project_id=? AND provider='whatsapp' AND active=1 ORDER BY updated_at DESC LIMIT 1").get(...this.args()) as {id:string;encrypted_credentials:string}|undefined;}
+  private async credentials(){const connection=await this.connection();if(!connection)throw new MarketingStoreError('Önce WhatsApp Business numarasını bağlayın.',409);return {connection,credentials:decryptCredentials<Credentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id)};}
   private phoneHash(phone:string){return createHmac('sha256',Buffer.from(this.key,'hex')).update(`whatsapp:${this.scope.organizationId}:${this.scope.projectId}:${phone}`).digest('hex');}
   private phone(contactId:string,encrypted:string){return decryptCredentials<{phone:string}>(encrypted,this.key,...this.args(),`whatsapp-contact:${contactId}`).phone;}
-  private templates(connectionId?:string):WhatsAppTemplateView[]{
-    const id=connectionId??this.connection()?.id;if(!id)return [];
-    return (this.db.prepare('SELECT name,language,category,body,params,header_format,button_url,fetched_at FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=? ORDER BY name,language').all(id,...this.args()) as {name:string;language:string;category:string;body:string;params:number;header_format:WhatsAppHeaderFormat;button_url:string|null;fetched_at:string}[]).map(row=>({name:row.name,language:row.language,category:row.category,body:row.body,params:row.params,headerFormat:row.header_format,buttonUrl:row.button_url,fetchedAt:row.fetched_at}));
+  private async templates(connectionId?:string):Promise<WhatsAppTemplateView[]>{
+    const id=connectionId??(await this.connection())?.id;if(!id)return [];
+    return (await this.db.prepare('SELECT name,language,category,body,params,header_format,button_url,fetched_at FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=? ORDER BY name,language').all(id,...this.args()) as {name:string;language:string;category:string;body:string;params:number;header_format:WhatsAppHeaderFormat;button_url:string|null;fetched_at:string}[]).map(row=>({name:row.name,language:row.language,category:row.category,body:row.body,params:row.params,headerFormat:row.header_format,buttonUrl:row.button_url,fetchedAt:row.fetched_at}));
   }
-  private buttonIndex(connectionId:string,name:string,language:string){
-    return (this.db.prepare('SELECT button_index FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=? AND name=? AND language=?').get(connectionId,...this.args(),name,language) as {button_index:number|null}|undefined)?.button_index??null;
+  private async buttonIndex(connectionId:string,name:string,language:string){
+    return (await this.db.prepare('SELECT button_index FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=? AND name=? AND language=?').get(connectionId,...this.args(),name,language) as {button_index:number|null}|undefined)?.button_index??null;
   }
-  private batch(id:unknown){const row=typeof id==='string'?this.db.prepare('SELECT * FROM platform_whatsapp_batches WHERE id=? AND organization_id=? AND project_id=?').get(id,...this.args()) as Batch|undefined:undefined;if(!row)throw new MarketingStoreError('WhatsApp gönderisi bulunamadı.',404);return row;}
-  private sentToday(){return (this.db.prepare("SELECT COUNT(*) n FROM platform_whatsapp_messages m JOIN platform_whatsapp_batches b ON b.id=m.batch_id WHERE b.organization_id=? AND b.project_id=? AND m.state IN ('submitting','accepted','uncertain') AND m.submitted_at>=?").get(...this.args(),`${new Date().toISOString().slice(0,10)}T00:00:00.000Z`) as {n:number}).n;}
-  private sendable(contactId:string){return this.db.prepare('SELECT id,phone_hash,phone_encrypted FROM platform_whatsapp_contacts WHERE id=? AND organization_id=? AND project_id=? AND opted_out_at IS NULL').get(contactId,...this.args()) as {id:string;phone_hash:string;phone_encrypted:string}|undefined;}
-  private describe(row:Batch):WhatsAppBatchView{
-    const counts:Partial<Record<WhatsAppMessageState,number>>={};for(const item of this.db.prepare('SELECT state,COUNT(*) n FROM platform_whatsapp_messages WHERE batch_id=? GROUP BY state').all(row.id) as {state:WhatsAppMessageState;n:number}[])counts[item.state]=item.n;
-    const delivery:Partial<Record<WhatsAppDelivery,number>>={};for(const item of this.db.prepare('SELECT delivery,COUNT(*) n FROM platform_whatsapp_messages WHERE batch_id=? AND delivery IS NOT NULL GROUP BY delivery').all(row.id) as {delivery:WhatsAppDelivery;n:number}[])delivery[item.delivery]=item.n;
-    const params=JSON.parse(row.params_json) as string[],template=this.templates(row.connection_id).find(item=>item.name===row.template_name&&item.language===row.template_language);
+  private async batch(id:unknown){const row=typeof id==='string'?await this.db.prepare('SELECT * FROM platform_whatsapp_batches WHERE id=? AND organization_id=? AND project_id=?').get(id,...this.args()) as Batch|undefined:undefined;if(!row)throw new MarketingStoreError('WhatsApp gönderisi bulunamadı.',404);return row;}
+  private async sentToday(){return (await this.db.prepare("SELECT COUNT(*) n FROM platform_whatsapp_messages m JOIN platform_whatsapp_batches b ON b.id=m.batch_id WHERE b.organization_id=? AND b.project_id=? AND m.state IN ('submitting','accepted','uncertain') AND m.submitted_at>=?").get(...this.args(),`${new Date().toISOString().slice(0,10)}T00:00:00.000Z`) as {n:number}).n;}
+  private async sendable(contactId:string){return await this.db.prepare('SELECT id,phone_hash,phone_encrypted FROM platform_whatsapp_contacts WHERE id=? AND organization_id=? AND project_id=? AND opted_out_at IS NULL').get(contactId,...this.args()) as {id:string;phone_hash:string;phone_encrypted:string}|undefined;}
+  private async describe(row:Batch):Promise<WhatsAppBatchView>{
+    const counts:Partial<Record<WhatsAppMessageState,number>>={};for(const item of await this.db.prepare('SELECT state,COUNT(*) n FROM platform_whatsapp_messages WHERE batch_id=? GROUP BY state').all(row.id) as {state:WhatsAppMessageState;n:number}[])counts[item.state]=item.n;
+    const delivery:Partial<Record<WhatsAppDelivery,number>>={};for(const item of await this.db.prepare('SELECT delivery,COUNT(*) n FROM platform_whatsapp_messages WHERE batch_id=? AND delivery IS NOT NULL GROUP BY delivery').all(row.id) as {delivery:WhatsAppDelivery;n:number}[])delivery[item.delivery]=item.n;
+    const params=JSON.parse(row.params_json) as string[],template=(await this.templates(row.connection_id)).find(item=>item.name===row.template_name&&item.language===row.template_language);
     return {id:row.id,name:row.name,templateName:row.template_name,templateLanguage:row.template_language,params,overrides:JSON.parse(row.overrides_json||'{}'),extras:JSON.parse(row.extras_json||'{}') as WhatsAppBatchExtras,contactIds:JSON.parse(row.contacts_json),digest:row.digest,state:row.state,mode:row.mode,approved:row.approved_digest===row.digest,approvedAt:row.approved_at,queuedAt:row.queued_at,counts,delivery,
       preview:template?template.body.replace(/\{\{(\d{1,2})\}\}/g,(match,index)=>params[Number(index)-1]??match):null,revision:row.revision,updatedAt:row.updated_at,
       // What a real send brought, through its tagged links (null until the attribution report has data).
-      results:row.mode==='send'&&['queued','done'].includes(row.state)?new ProjectAttribution(this.db,this.scope).forTag(linkTag(this.scope,'whatsapp',row.id),'whatsapp'):null};
+      results:row.mode==='send'&&['queued','done'].includes(row.state)?await new ProjectAttribution(this.db,this.scope).forTag(linkTag(this.scope,'whatsapp',row.id),'whatsapp'):null};
   }
-  read():WhatsAppSnapshot{
-    this.authorize();const connection=this.connection();let account:WhatsAppSnapshot['account']=null;
+  async read():Promise<WhatsAppSnapshot>{
+    await this.authorize();const connection=await this.connection();let account:WhatsAppSnapshot['account']=null;
     if(connection){const value=decryptCredentials<Credentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);account={connectionId:connection.id,phoneNumberId:value.phoneNumberId,wabaId:value.wabaId,displayPhone:value.displayPhone,verifiedName:value.verifiedName,quality:value.quality,checkedAt:value.checkedAt};}
-    const showContacts=this.can('recipients.manage')||this.can('content.write');
+    const showContacts=await this.can('recipients.manage')||await this.can('content.write');
     return {
-      account,templates:this.templates(),
-      contacts:showContacts?(this.db.prepare('SELECT id,phone_hint,consent_evidence,consent_at,opted_out_at,opt_out_source,created_at FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? ORDER BY created_at DESC').all(...this.args()) as {id:string;phone_hint:string;consent_evidence:string;consent_at:string;opted_out_at:string|null;opt_out_source:'team'|'reply'|null;created_at:string}[]).map(row=>({id:row.id,hint:row.phone_hint,consentEvidence:row.consent_evidence,consentAt:row.consent_at,optedOut:Boolean(row.opted_out_at),optOutSource:row.opt_out_source,createdAt:row.created_at})):[],
-      batches:(this.db.prepare('SELECT * FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 50').all(...this.args()) as Batch[]).map(row=>this.describe(row)),
-      sendEnabled:whatsAppSendEnabled(),sentToday:this.sentToday(),hook:this.hook(connection?.id),
-      can:{connect:this.can('connections.manage'),contacts:this.can('recipients.manage'),write:this.can('content.write'),approve:this.can('campaign.approve'),dispatch:this.can('campaign.dispatch'),publish:this.can('campaign.dispatch')&&hasMessagingDuty(this.db,this.scope.subject,...this.args(),'publish')},
+      account,templates:await this.templates(),
+      contacts:showContacts?(await this.db.prepare('SELECT id,phone_hint,consent_evidence,consent_at,opted_out_at,opt_out_source,created_at FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? ORDER BY created_at DESC').all(...this.args()) as {id:string;phone_hint:string;consent_evidence:string;consent_at:string;opted_out_at:string|null;opt_out_source:'team'|'reply'|null;created_at:string}[]).map(row=>({id:row.id,hint:row.phone_hint,consentEvidence:row.consent_evidence,consentAt:row.consent_at,optedOut:Boolean(row.opted_out_at),optOutSource:row.opt_out_source,createdAt:row.created_at})):[],
+      batches:await mapSeries((await this.db.prepare('SELECT * FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC,rowid DESC LIMIT 50').all(...this.args()) as Batch[]), async row=>await this.describe(row)),
+      sendEnabled:whatsAppSendEnabled(),sentToday:await this.sentToday(),hook:await this.hook(connection?.id),
+      can:{connect:await this.can('connections.manage'),contacts:await this.can('recipients.manage'),write:await this.can('content.write'),approve:await this.can('campaign.approve'),dispatch:await this.can('campaign.dispatch'),publish:await this.can('campaign.dispatch')&&await hasMessagingDuty(this.db,this.scope.subject,...this.args(),'publish')},
     };
   }
   // Connects the project's own number: the token must see the phone number and that number must belong to the WABA.
   async connect(raw:Record<string,unknown>){
-    this.authorize('connections.manage');
+    await this.authorize('connections.manage');
     const phoneNumberId=clean(raw.phoneNumberId,25),wabaId=clean(raw.wabaId,25),token=typeof raw.accessToken==='string'?raw.accessToken.trim():'';
     if(!/^\d{5,25}$/.test(phoneNumberId)||!/^\d{5,25}$/.test(wabaId))throw new MarketingStoreError('Telefon numarası kimliği ve WhatsApp Business hesap kimliği yalnız rakamlardan oluşmalı.');
     if(!token||token.length>4096||/[\s\x00]/.test(token))throw new MarketingStoreError('Geçerli bir erişim anahtarı girin.');
@@ -121,20 +123,20 @@ export class ProjectWhatsApp{
       if(one.status!==200||list.status!==200)throw new Error();phone=one.payload;numbers=list.payload.data;
     }catch{throw new MarketingStoreError('WhatsApp numarasına erişilemedi. Kimlikleri, anahtarın whatsapp_business_messaging ve whatsapp_business_management izinlerini kontrol edin.',502);}
     if(!Array.isArray(numbers)||!numbers.some(item=>item&&typeof item==='object'&&(item as Record<string,unknown>).id===phoneNumberId))throw new MarketingStoreError('Bu telefon numarası belirtilen WhatsApp Business hesabına ait değil.',409);
-    return this.db.transaction(()=>{
-      this.authorize('connections.manage');const now=new Date().toISOString(),old=this.connection(),id=`waconn_${randomUUID()}`;
+    return await this.db.transaction(async ()=>{
+      await this.authorize('connections.manage');const now=new Date().toISOString(),old=await this.connection(),id=`waconn_${randomUUID()}`;
       const credentials:Credentials={accessToken:token,refreshToken:'',phoneNumberId,wabaId,displayPhone:clean(phone.display_phone_number,30)||phoneNumberId,verifiedName:clean(phone.verified_name,120),quality:clean(phone.quality_rating,20)||null,checkedAt:now};
-      if(old)this.db.prepare("UPDATE platform_connections SET active=0,encrypted_credentials='',updated_at=? WHERE id=?").run(now,old.id);
-      this.db.prepare("UPDATE platform_whatsapp_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE organization_id=? AND project_id=? AND state IN ('draft','approved','queued')").run(now,...this.args());
-      this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='number_changed',finished_at=? WHERE state='pending' AND batch_id IN (SELECT id FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=?)").run(now,...this.args());
-      this.db.prepare("INSERT INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,active,updated_at) VALUES(?,?,?,'whatsapp',?,?,?,1,?)").run(id,...this.args(),phoneNumberId,(credentials.verifiedName||credentials.displayPhone).slice(0,120),encryptCredentials(credentials,this.key,...this.args(),id),now);
-      this.audit('whatsapp.connect');return this.read();
-    }).immediate();
+      if(old)await this.db.prepare("UPDATE platform_connections SET active=0,encrypted_credentials='',updated_at=? WHERE id=?").run(now,old.id);
+      await this.db.prepare("UPDATE platform_whatsapp_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE organization_id=? AND project_id=? AND state IN ('draft','approved','queued')").run(now,...this.args());
+      await this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='number_changed',finished_at=? WHERE state='pending' AND batch_id IN (SELECT id FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=?)").run(now,...this.args());
+      await this.db.prepare("INSERT INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,active,updated_at) VALUES(?,?,?,'whatsapp',?,?,?,1,?)").run(id,...this.args(),phoneNumberId,(credentials.verifiedName||credentials.displayPhone).slice(0,120),encryptCredentials(credentials,this.key,...this.args(),id),now);
+      await this.audit('whatsapp.connect');return await this.read();
+    });
   }
   // Approved templates: body variables, an optional image/video/document header and at most one URL button with a dynamic ending.
   // Text-header variables, copy-code, flow, catalogue and one-time-password buttons are left out.
   async refreshTemplates(){
-    this.authorize('content.write');const {connection,credentials}=this.credentials();let data:unknown;
+    await this.authorize('content.write');const {connection,credentials}=await this.credentials();let data:unknown;
     try{const result=await this.graph('GET',`${credentials.wabaId}/message_templates`,credentials.accessToken,{fields:'name,language,status,category,components',limit:'100'});if(result.status!==200)throw new Error();data=result.payload.data;}catch{throw new MarketingStoreError('WhatsApp şablonları okunamadı. Anahtarın whatsapp_business_management iznini kontrol edin.',502);}
     const rows=(Array.isArray(data)?data:[]).flatMap((item:unknown)=>{
       const value=item&&typeof item==='object'?item as Record<string,unknown>:{},components=Array.isArray(value.components)?value.components as Record<string,unknown>[]:[];
@@ -151,16 +153,16 @@ export class ProjectWhatsApp{
       if(url&&!/^https:\/\/[^\s{}]+\{\{1\}\}$/.test(url))return [];
       return [{name:value.name,language:value.language,category:String(value.category),body:body.text.slice(0,1024),params:templateParams(body.text),headerFormat,buttonUrl:url?url.slice(0,1000):null,buttonIndex:dynamic[0]?.index??null}];
     });
-    return this.db.transaction(()=>{
-      this.authorize('content.write');const now=new Date().toISOString();
-      this.db.prepare('DELETE FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=?').run(connection.id,...this.args());
-      for(const row of rows)this.db.prepare('INSERT OR REPLACE INTO platform_whatsapp_templates(connection_id,organization_id,project_id,name,language,category,body,params,fetched_at,header_format,button_url,button_index) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(connection.id,...this.args(),row.name,row.language,row.category,row.body,row.params,now,row.headerFormat,row.buttonUrl,row.buttonIndex);
-      this.audit('whatsapp.templates.refresh');return this.read();
-    }).immediate();
+    return await this.db.transaction(async ()=>{
+      await this.authorize('content.write');const now=new Date().toISOString();
+      await this.db.prepare('DELETE FROM platform_whatsapp_templates WHERE connection_id=? AND organization_id=? AND project_id=?').run(connection.id,...this.args());
+      for(const row of rows)await this.db.prepare('INSERT OR REPLACE INTO platform_whatsapp_templates(connection_id,organization_id,project_id,name,language,category,body,params,fetched_at,header_format,button_url,button_index) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)').run(connection.id,...this.args(),row.name,row.language,row.category,row.body,row.params,now,row.headerFormat,row.buttonUrl,row.buttonIndex);
+      await this.audit('whatsapp.templates.refresh');return await this.read();
+    });
   }
   // Contacts are added with their own WhatsApp consent evidence. Email consent never counts for WhatsApp.
-  addContacts(raw:Record<string,unknown>){
-    this.authorize('recipients.manage');
+  async addContacts(raw:Record<string,unknown>){
+    await this.authorize('recipients.manage');
     if(raw.acknowledged!==true)throw new MarketingStoreError('Her kişinin WhatsApp ile pazarlama mesajı almayı açıkça kabul ettiğini onaylayın.');
     const evidence=clean(raw.evidence,160),consentAt=clean(raw.consentAt,10);if(!evidence)throw new MarketingStoreError('İzin kanıtı (form, kayıt veya belge referansı) gerekli.');
     if(!/^\d{4}-\d{2}-\d{2}$/.test(consentAt)||Date.parse(`${consentAt}T00:00:00Z`)>Date.now())throw new MarketingStoreError('Geçerli bir izin tarihi girin; gelecek tarih olamaz.');
@@ -168,46 +170,46 @@ export class ProjectWhatsApp{
     if(!entries.length||entries.length>WHATSAPP_LIMITS.addPerRequest)throw new MarketingStoreError(`Bir seferde 1–${WHATSAPP_LIMITS.addPerRequest} numara ekleyin.`);
     const phones=entries.map(normalizePhone);if(phones.some(phone=>!phone))throw new MarketingStoreError('Numaraları ülke koduyla, uluslararası biçimde girin (ör. +905321234567).');
     const iysSource=typeof raw.iysSource==='string'&&(IYS_SOURCES as readonly string[]).includes(raw.iysSource)?raw.iysSource as IysSource:null;
-    if(iysScope(this.db,this.scope)==='tr'&&!iysSource)throw new MarketingStoreError('İYS için iznin nasıl alındığını seçin.');
-    return this.db.transaction(()=>{
-      this.authorize('recipients.manage');let added=0,existing=0;const now=new Date().toISOString();
+    if(await iysScope(this.db,this.scope)==='tr'&&!iysSource)throw new MarketingStoreError('İYS için iznin nasıl alındığını seçin.');
+    return await this.db.transaction(async ()=>{
+      await this.authorize('recipients.manage');let added=0,existing=0;const now=new Date().toISOString();
       for(const phone of new Set(phones as string[])){
-        const hash=this.phoneHash(phone);if(this.db.prepare('SELECT 1 FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? AND phone_hash=?').get(...this.args(),hash)){existing++;continue;}
-        const suppressed=this.db.prepare('SELECT created_at FROM platform_whatsapp_suppressions WHERE organization_id=? AND project_id=? AND phone_hash=?').get(...this.args(),hash) as {created_at:string}|undefined;
+        const hash=this.phoneHash(phone);if(await this.db.prepare('SELECT 1 FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? AND phone_hash=?').get(...this.args(),hash)){existing++;continue;}
+        const suppressed=await this.db.prepare('SELECT created_at FROM platform_whatsapp_suppressions WHERE organization_id=? AND project_id=? AND phone_hash=?').get(...this.args(),hash) as {created_at:string}|undefined;
         if(suppressed&&consentAt<=suppressed.created_at.slice(0,10))throw new MarketingStoreError('Bu numaralardan biri daha önce izinden çıktı; yeniden eklemek için çıkıştan sonra alınmış yeni bir izin gerekir.',409);
-        if(suppressed)this.db.prepare('DELETE FROM platform_whatsapp_suppressions WHERE organization_id=? AND project_id=? AND phone_hash=?').run(...this.args(),hash);
-        if((this.db.prepare('SELECT COUNT(*) n FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n>=WHATSAPP_LIMITS.contacts)throw new MarketingStoreError('WhatsApp kişi sınırına ulaşıldı.',429);
+        if(suppressed)await this.db.prepare('DELETE FROM platform_whatsapp_suppressions WHERE organization_id=? AND project_id=? AND phone_hash=?').run(...this.args(),hash);
+        if((await this.db.prepare('SELECT COUNT(*) n FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n>=WHATSAPP_LIMITS.contacts)throw new MarketingStoreError('WhatsApp kişi sınırına ulaşıldı.',429);
         const id=`wacontact_${randomUUID()}`;
-        this.db.prepare('INSERT INTO platform_whatsapp_contacts(id,organization_id,project_id,phone_hash,phone_encrypted,phone_hint,consent_evidence,consent_at,consent_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,...this.args(),hash,encryptCredentials({phone},this.key,...this.args(),`whatsapp-contact:${id}`),hint(phone),evidence,consentAt,this.scope.subject,now);added++;
-        queueIysConsent(this.db,this.scope,this.key,{channel:'MESAJ',recipient:phone,status:'ONAY',source:iysSource,consentDate:`${consentAt}T12:00:00+03:00`,actor:this.scope.subject});
+        await this.db.prepare('INSERT INTO platform_whatsapp_contacts(id,organization_id,project_id,phone_hash,phone_encrypted,phone_hint,consent_evidence,consent_at,consent_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(id,...this.args(),hash,encryptCredentials({phone},this.key,...this.args(),`whatsapp-contact:${id}`),hint(phone),evidence,consentAt,this.scope.subject,now);added++;
+        await queueIysConsent(this.db,this.scope,this.key,{channel:'MESAJ',recipient:phone,status:'ONAY',source:iysSource,consentDate:`${consentAt}T12:00:00+03:00`,actor:this.scope.subject});
       }
-      this.audit('whatsapp.contacts.add');return {added,existing,snapshot:this.read()};
-    }).immediate();
+      await this.audit('whatsapp.contacts.add');return {added,existing,snapshot:await this.read()};
+    });
   }
   // Opting out is permanent for that number in this project; pending messages to it are skipped.
-  optOut(raw:Record<string,unknown>){
-    this.authorize('recipients.manage');
-    return this.db.transaction(()=>{const now=new Date().toISOString(),changed=this.db.prepare("UPDATE platform_whatsapp_contacts SET opted_out_at=COALESCE(opted_out_at,?),opt_out_source=COALESCE(opt_out_source,'team') WHERE id=? AND organization_id=? AND project_id=?").run(now,raw.id,...this.args()).changes;if(!changed)throw new MarketingStoreError('Kişi bulunamadı.',404);
-      const row=this.db.prepare('SELECT id,phone_encrypted FROM platform_whatsapp_contacts WHERE id=?').get(raw.id) as {id:string;phone_encrypted:string};
-      queueIysConsent(this.db,this.scope,this.key,{channel:'MESAJ',recipient:this.phone(row.id,row.phone_encrypted),status:'RET',source:'HS_WEB',consentDate:now,actor:this.scope.subject});
-      this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='opted_out',finished_at=? WHERE contact_id=? AND state='pending'").run(now,raw.id);this.audit('whatsapp.contact.opt_out');return this.read();}).immediate();
+  async optOut(raw:Record<string,unknown>){
+    await this.authorize('recipients.manage');
+    return await this.db.transaction(async ()=>{const now=new Date().toISOString(),changed=(await this.db.prepare("UPDATE platform_whatsapp_contacts SET opted_out_at=COALESCE(opted_out_at,?),opt_out_source=COALESCE(opt_out_source,'team') WHERE id=? AND organization_id=? AND project_id=?").run(now,raw.id,...this.args())).changes;if(!changed)throw new MarketingStoreError('Kişi bulunamadı.',404);
+      const row=await this.db.prepare('SELECT id,phone_encrypted FROM platform_whatsapp_contacts WHERE id=?').get(raw.id) as {id:string;phone_encrypted:string};
+      await queueIysConsent(this.db,this.scope,this.key,{channel:'MESAJ',recipient:this.phone(row.id,row.phone_encrypted),status:'RET',source:'HS_WEB',consentDate:now,actor:this.scope.subject});
+      await this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='opted_out',finished_at=? WHERE contact_id=? AND state='pending'").run(now,raw.id);await this.audit('whatsapp.contact.opt_out');return await this.read();});
   }
-  removeContact(raw:Record<string,unknown>){
-    this.authorize('recipients.manage');
-    return this.db.transaction(()=>{const now=new Date().toISOString(),old=this.db.prepare('SELECT phone_hash,opted_out_at,opt_out_source FROM platform_whatsapp_contacts WHERE id=? AND organization_id=? AND project_id=?').get(raw.id,...this.args()) as {phone_hash:string;opted_out_at:string|null;opt_out_source:'team'|'reply'|null}|undefined;
-      if(old?.opted_out_at)this.db.prepare('INSERT OR IGNORE INTO platform_whatsapp_suppressions VALUES(?,?,?,?,?)').run(...this.args(),old.phone_hash,old.opt_out_source||'team',old.opted_out_at);
-      const changed=this.db.prepare('DELETE FROM platform_whatsapp_contacts WHERE id=? AND organization_id=? AND project_id=?').run(raw.id,...this.args()).changes;if(!changed)throw new MarketingStoreError('Kişi bulunamadı.',404);
-      this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='removed',finished_at=? WHERE contact_id=? AND state='pending'").run(now,raw.id);this.audit('whatsapp.contact.remove');return this.read();}).immediate();
+  async removeContact(raw:Record<string,unknown>){
+    await this.authorize('recipients.manage');
+    return await this.db.transaction(async ()=>{const now=new Date().toISOString(),old=await this.db.prepare('SELECT phone_hash,opted_out_at,opt_out_source FROM platform_whatsapp_contacts WHERE id=? AND organization_id=? AND project_id=?').get(raw.id,...this.args()) as {phone_hash:string;opted_out_at:string|null;opt_out_source:'team'|'reply'|null}|undefined;
+      if(old?.opted_out_at)await this.db.prepare('INSERT OR IGNORE INTO platform_whatsapp_suppressions VALUES(?,?,?,?,?)').run(...this.args(),old.phone_hash,old.opt_out_source||'team',old.opted_out_at);
+      const changed=(await this.db.prepare('DELETE FROM platform_whatsapp_contacts WHERE id=? AND organization_id=? AND project_id=?').run(raw.id,...this.args())).changes;if(!changed)throw new MarketingStoreError('Kişi bulunamadı.',404);
+      await this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='removed',finished_at=? WHERE contact_id=? AND state='pending'").run(now,raw.id);await this.audit('whatsapp.contact.remove');return await this.read();});
   }
   // A batch is one approved template, its fixed variables and up to 20 consented contacts. Any edit clears the approval.
-  saveBatch(raw:Record<string,unknown>){
-    this.authorize('content.write');const {connection}=this.credentials();
+  async saveBatch(raw:Record<string,unknown>){
+    await this.authorize('content.write');const {connection}=await this.credentials();
     const name=clean(raw.name,80),language=clean(raw.templateLanguage,10),templateName=clean(raw.templateName,512);if(!name)throw new MarketingStoreError('Gönderi adı gerekli.');
-    const template=this.templates(connection.id).find(item=>item.name===templateName&&item.language===language);if(!template)throw new MarketingStoreError('Onaylı bir WhatsApp şablonu seçin.',409);
+    const template=(await this.templates(connection.id)).find(item=>item.name===templateName&&item.language===language);if(!template)throw new MarketingStoreError('Onaylı bir WhatsApp şablonu seçin.',409);
     const params=(Array.isArray(raw.params)?raw.params:[]).map(param);if(params.length!==template.params)throw new MarketingStoreError(`Bu şablon ${template.params} değişken bekliyor.`);
     const contactIds=[...new Set((Array.isArray(raw.contactIds)?raw.contactIds:[]).filter((item):item is string=>typeof item==='string'))].sort();
     if(!contactIds.length||contactIds.length>WHATSAPP_LIMITS.batchRecipients)throw new MarketingStoreError(`Bir gönderide 1–${WHATSAPP_LIMITS.batchRecipients} kişi seçin.`);
-    if(contactIds.some(id=>!this.sendable(id)))throw new MarketingStoreError('Seçilen kişilerden biri bulunamadı veya izinden çıktı.',409);
+    if(await someSeries(contactIds, async id=>!await this.sendable(id)))throw new MarketingStoreError('Seçilen kişilerden biri bulunamadı veya izinden çıktı.',409);
     // Per-recipient values: an empty value keeps the batch's own value for that variable.
     const rawOverrides=raw.overrides&&typeof raw.overrides==='object'?raw.overrides as Record<string,unknown>:{},overrides:Record<string,string[]>={};
     for(const contactId of contactIds){const list=rawOverrides[contactId];if(!Array.isArray(list)||!list.some(item=>typeof item==='string'&&item.trim()))continue;if(list.length!==template.params)throw new MarketingStoreError(`Bu şablon ${template.params} değişken bekliyor.`);overrides[contactId]=list.map(item=>typeof item==='string'&&item.trim()?param(item):'');}
@@ -215,79 +217,79 @@ export class ProjectWhatsApp{
     if(['IMAGE','VIDEO','DOCUMENT'].includes(template.headerFormat))entered.headerLink=mediaLink(rawExtras.headerLink);
     if(template.buttonUrl)entered.buttonParam=buttonParam(rawExtras.buttonParam);
     // The id is known before saving so the tagged links are part of what the team reviews and approves.
-    const batchId=raw.id===undefined?`wabatch_${randomUUID()}`:String(raw.id),website=this.repo.workspace(this.scope.subject,...this.args())?.project.website||'';
-    const tagged=linkTrackingEnabled(this.db,this.scope)?tagBatch(website,linkTag(this.scope,'whatsapp',batchId),template,params,overrides,entered):{params,overrides,extras:entered};
+    const batchId=raw.id===undefined?`wabatch_${randomUUID()}`:String(raw.id),website=(await this.repo.workspace(this.scope.subject,...this.args()))?.project.website||'';
+    const tagged=await linkTrackingEnabled(this.db,this.scope)?tagBatch(website,linkTag(this.scope,'whatsapp',batchId),template,params,overrides,entered):{params,overrides,extras:entered};
     const extras=tagged.extras;params.splice(0,params.length,...tagged.params);for(const id of Object.keys(overrides))overrides[id]=tagged.overrides[id];
     const digest=batchDigest(connection.id,template,params,contactIds,overrides,extras);
-    return this.db.transaction(()=>{
-      this.authorize('content.write');const now=new Date().toISOString();
+    return await this.db.transaction(async ()=>{
+      await this.authorize('content.write');const now=new Date().toISOString();
       if(raw.id===undefined){
-        if((this.db.prepare("SELECT COUNT(*) n FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? AND state IN ('draft','approved')").get(...this.args()) as {n:number}).n>=WHATSAPP_LIMITS.batches)throw new MarketingStoreError('Taslak gönderi sınırına ulaşıldı.',429);
-        this.db.prepare("INSERT INTO platform_whatsapp_batches(id,organization_id,project_id,connection_id,name,template_name,template_language,params_json,overrides_json,extras_json,contacts_json,digest,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)").run(batchId,...this.args(),connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,this.scope.subject,now,now);
+        if((await this.db.prepare("SELECT COUNT(*) n FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=? AND state IN ('draft','approved')").get(...this.args()) as {n:number}).n>=WHATSAPP_LIMITS.batches)throw new MarketingStoreError('Taslak gönderi sınırına ulaşıldı.',429);
+        await this.db.prepare("INSERT INTO platform_whatsapp_batches(id,organization_id,project_id,connection_id,name,template_name,template_language,params_json,overrides_json,extras_json,contacts_json,digest,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)").run(batchId,...this.args(),connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,this.scope.subject,now,now);
       }else{
-        const row=this.batch(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Gönderi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
+        const row=await this.batch(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Gönderi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
         if(!['draft','approved'].includes(row.state))throw new MarketingStoreError('Kuyruğa alınmış bir gönderi değiştirilemez.',409);
-        this.db.prepare("UPDATE platform_whatsapp_batches SET connection_id=?,name=?,template_name=?,template_language=?,params_json=?,overrides_json=?,extras_json=?,contacts_json=?,digest=?,state='draft',approved_by=NULL,approved_digest=NULL,approved_at=NULL,revision=revision+1,updated_at=? WHERE id=?").run(connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,now,row.id);
+        await this.db.prepare("UPDATE platform_whatsapp_batches SET connection_id=?,name=?,template_name=?,template_language=?,params_json=?,overrides_json=?,extras_json=?,contacts_json=?,digest=?,state='draft',approved_by=NULL,approved_digest=NULL,approved_at=NULL,revision=revision+1,updated_at=? WHERE id=?").run(connection.id,name,templateName,language,JSON.stringify(params),JSON.stringify(overrides),JSON.stringify(extras),JSON.stringify(contactIds),digest,now,row.id);
       }
-      this.audit('whatsapp.batch.save');return this.read();
-    }).immediate();
+      await this.audit('whatsapp.batch.save');return await this.read();
+    });
   }
-  approve(raw:Record<string,unknown>){
-    this.authorize('campaign.approve');
-    return this.db.transaction(()=>{const row=this.batch(raw.id);if(row.state!=='draft'||raw.expectedDigest!==row.digest)throw new MarketingStoreError('Gönderi değişti veya onaylanacak durumda değil. Yenileyip tekrar inceleyin.',409);
-      this.db.prepare("UPDATE platform_whatsapp_batches SET state='approved',approved_by=?,approved_digest=digest,approved_at=?,revision=revision+1,updated_at=? WHERE id=?").run(this.scope.subject,new Date().toISOString(),new Date().toISOString(),row.id);this.audit('whatsapp.batch.approve');return this.read();}).immediate();
+  async approve(raw:Record<string,unknown>){
+    await this.authorize('campaign.approve');
+    return await this.db.transaction(async ()=>{const row=await this.batch(raw.id);if(row.state!=='draft'||raw.expectedDigest!==row.digest)throw new MarketingStoreError('Gönderi değişti veya onaylanacak durumda değil. Yenileyip tekrar inceleyin.',409);
+      await this.db.prepare("UPDATE platform_whatsapp_batches SET state='approved',approved_by=?,approved_digest=digest,approved_at=?,revision=revision+1,updated_at=? WHERE id=?").run(this.scope.subject,new Date().toISOString(),new Date().toISOString(),row.id);await this.audit('whatsapp.batch.approve');return await this.read();});
   }
   // Rehearsal checks every message without contacting WhatsApp. A real send needs the switch, the publish duty and an acknowledgement.
-  queue(raw:Record<string,unknown>){
+  async queue(raw:Record<string,unknown>){
     const mode=raw.mode==='send'?'send':raw.mode==='rehearsal'?'rehearsal':null;if(!mode)throw new MarketingStoreError('Geçersiz gönderim türü.');
-    this.authorize(mode==='send'?'publish':'campaign.dispatch');
+    await this.authorize(mode==='send'?'publish':'campaign.dispatch');
     if(mode==='send'&&(!whatsAppSendEnabled()||raw.acknowledged!==true))throw new MarketingStoreError('Gerçek WhatsApp gönderimi bu sunucuda kapalı veya açık onay verilmedi.',409);
-    const iys=mode==='send'?iysSendBlock(this.db,this.scope):null;if(iys)throw new MarketingStoreError(iys,409);
-    return this.db.transaction(()=>{
-      this.authorize(mode==='send'?'publish':'campaign.dispatch');const row=this.batch(raw.id),now=new Date().toISOString(),contacts=JSON.parse(row.contacts_json) as string[];
+    const iys=mode==='send'?await iysSendBlock(this.db,this.scope):null;if(iys)throw new MarketingStoreError(iys,409);
+    return await this.db.transaction(async ()=>{
+      await this.authorize(mode==='send'?'publish':'campaign.dispatch');const row=await this.batch(raw.id),now=new Date().toISOString(),contacts=JSON.parse(row.contacts_json) as string[];
       if(row.state!=='approved'||row.approved_digest!==row.digest||raw.expectedDigest!==row.digest)throw new MarketingStoreError('Yalnız değişmemiş, onaylı gönderiler kuyruğa alınabilir.',409);
-      if(row.connection_id!==this.connection()?.id)throw new MarketingStoreError('WhatsApp numarası değişti. Gönderiyi yeniden hazırlayın.',409);
-      if(mode==='send'&&this.sentToday()+contacts.length>WHATSAPP_LIMITS.sendsPerDay)throw new MarketingStoreError(`Günlük WhatsApp gönderim sınırı (${WHATSAPP_LIMITS.sendsPerDay}) aşılır.`,429);
-      this.db.prepare("UPDATE platform_whatsapp_batches SET state='queued',mode=?,queued_by=?,queued_at=?,revision=revision+1,updated_at=? WHERE id=?").run(mode,this.scope.subject,now,now,row.id);
-      for(const contactId of contacts)this.db.prepare("INSERT INTO platform_whatsapp_messages(batch_id,contact_id,state) VALUES(?,?,'pending')").run(row.id,contactId);
-      this.audit(mode==='send'?'whatsapp.batch.queue_send':'whatsapp.batch.queue_rehearsal');return this.read();
-    }).immediate();
+      if(row.connection_id!==(await this.connection())?.id)throw new MarketingStoreError('WhatsApp numarası değişti. Gönderiyi yeniden hazırlayın.',409);
+      if(mode==='send'&&await this.sentToday()+contacts.length>WHATSAPP_LIMITS.sendsPerDay)throw new MarketingStoreError(`Günlük WhatsApp gönderim sınırı (${WHATSAPP_LIMITS.sendsPerDay}) aşılır.`,429);
+      await this.db.prepare("UPDATE platform_whatsapp_batches SET state='queued',mode=?,queued_by=?,queued_at=?,revision=revision+1,updated_at=? WHERE id=?").run(mode,this.scope.subject,now,now,row.id);
+      for(const contactId of contacts)await this.db.prepare("INSERT INTO platform_whatsapp_messages(batch_id,contact_id,state) VALUES(?,?,'pending')").run(row.id,contactId);
+      await this.audit(mode==='send'?'whatsapp.batch.queue_send':'whatsapp.batch.queue_rehearsal');return await this.read();
+    });
   }
-  cancel(raw:Record<string,unknown>){
-    this.authorize('campaign.dispatch');
-    return this.db.transaction(()=>{const row=this.batch(raw.id),now=new Date().toISOString();if(['done','cancelled'].includes(row.state))throw new MarketingStoreError('Bu gönderi zaten tamamlandı.',409);
-      this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='cancelled',finished_at=? WHERE batch_id=? AND state='pending'").run(now,row.id);
-      this.db.prepare("UPDATE platform_whatsapp_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE id=?").run(now,row.id);this.audit('whatsapp.batch.cancel');return this.read();}).immediate();
+  async cancel(raw:Record<string,unknown>){
+    await this.authorize('campaign.dispatch');
+    return await this.db.transaction(async ()=>{const row=await this.batch(raw.id),now=new Date().toISOString();if(['done','cancelled'].includes(row.state))throw new MarketingStoreError('Bu gönderi zaten tamamlandı.',409);
+      await this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='cancelled',finished_at=? WHERE batch_id=? AND state='pending'").run(now,row.id);
+      await this.db.prepare("UPDATE platform_whatsapp_batches SET state='cancelled',revision=revision+1,updated_at=? WHERE id=?").run(now,row.id);await this.audit('whatsapp.batch.cancel');return await this.read();});
   }
   // Sends (or rehearses) up to `limit` pending messages of a queued batch. Each one is re-checked and marked as submitted
   // before the network call, so an interrupted send is recorded as uncertain and never repeated.
   async process(id:string,limit=10){
-    const row=this.batch(id);if(row.state!=='queued')return this.describe(row);
-    this.db.prepare("UPDATE platform_whatsapp_messages SET state='uncertain',reason='interrupted',finished_at=? WHERE batch_id=? AND state='submitting' AND submitted_at<?").run(new Date().toISOString(),id,new Date(Date.now()-120000).toISOString());
+    const row=await this.batch(id);if(row.state!=='queued')return await this.describe(row);
+    await this.db.prepare("UPDATE platform_whatsapp_messages SET state='uncertain',reason='interrupted',finished_at=? WHERE batch_id=? AND state='submitting' AND submitted_at<?").run(new Date().toISOString(),id,new Date(Date.now()-120000).toISOString());
     for(let i=0;i<limit;i++){
-      const claim=this.db.transaction(()=>{
-        const batch=this.batch(id),next=this.db.prepare("SELECT contact_id FROM platform_whatsapp_messages WHERE batch_id=? AND state='pending' LIMIT 1").get(id) as {contact_id:string}|undefined;if(batch.state!=='queued'||!next)return null;const now=new Date().toISOString();
-        const skip=(reason:string)=>{this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason=?,finished_at=? WHERE batch_id=? AND contact_id=?").run(reason,now,id,next.contact_id);return 'skipped' as const;};
-        const actor=batch.queued_by||'';let allowed=true;try{this.authorize(batch.mode==='send'?'publish':'campaign.dispatch',actor);}catch{allowed=false;}
-        const approver=this.db.prepare('SELECT approved_by FROM platform_whatsapp_batches WHERE id=?').get(id) as {approved_by:string|null};
-        if(!allowed||batch.approved_digest!==batch.digest||!approver.approved_by||!this.can('campaign.approve',approver.approved_by)||batch.connection_id!==this.connection()?.id)return skip('changed');
+      const claim=await this.db.transaction(async ()=>{
+        const batch=await this.batch(id),next=await this.db.prepare("SELECT contact_id FROM platform_whatsapp_messages WHERE batch_id=? AND state='pending' LIMIT 1").get(id) as {contact_id:string}|undefined;if(batch.state!=='queued'||!next)return null;const now=new Date().toISOString();
+        const skip=async (reason:string)=>{await this.db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason=?,finished_at=? WHERE batch_id=? AND contact_id=?").run(reason,now,id,next.contact_id);return 'skipped' as const;};
+        const actor=batch.queued_by||'';let allowed=true;try{await this.authorize(batch.mode==='send'?'publish':'campaign.dispatch',actor);}catch{allowed=false;}
+        const approver=await this.db.prepare('SELECT approved_by FROM platform_whatsapp_batches WHERE id=?').get(id) as {approved_by:string|null};
+        if(!allowed||batch.approved_digest!==batch.digest||!approver.approved_by||!await this.can('campaign.approve',approver.approved_by)||batch.connection_id!==(await this.connection())?.id)return await skip('changed');
         // A template refreshed after approval must still have the same body, header kind and button.
-        const extras=JSON.parse(batch.extras_json||'{}') as WhatsAppBatchExtras,template=this.templates(batch.connection_id).find(item=>item.name===batch.template_name&&item.language===batch.template_language);
-        if(!template||batchDigest(batch.connection_id,template,JSON.parse(batch.params_json),JSON.parse(batch.contacts_json),JSON.parse(batch.overrides_json||'{}'),extras)!==batch.digest)return skip('changed');
-        const contact=this.sendable(next.contact_id);if(!contact)return skip('not_consented');
-        if(batch.mode==='rehearsal'){this.db.prepare("UPDATE platform_whatsapp_messages SET state='rehearsed',finished_at=? WHERE batch_id=? AND contact_id=?").run(now,id,next.contact_id);return 'rehearsed' as const;}
-        if(!whatsAppSendEnabled())return skip('switch_off');if(this.sentToday()>=WHATSAPP_LIMITS.sendsPerDay)return skip('daily_limit');
-        const iys=iysGate(this.db,this.scope,'MESAJ',contact.phone_hash);if(iys)return skip(iys);
-        this.db.prepare("UPDATE platform_whatsapp_messages SET state='submitting',submitted_at=? WHERE batch_id=? AND contact_id=?").run(now,id,next.contact_id);
+        const extras=JSON.parse(batch.extras_json||'{}') as WhatsAppBatchExtras,template=(await this.templates(batch.connection_id)).find(item=>item.name===batch.template_name&&item.language===batch.template_language);
+        if(!template||batchDigest(batch.connection_id,template,JSON.parse(batch.params_json),JSON.parse(batch.contacts_json),JSON.parse(batch.overrides_json||'{}'),extras)!==batch.digest)return await skip('changed');
+        const contact=await this.sendable(next.contact_id);if(!contact)return await skip('not_consented');
+        if(batch.mode==='rehearsal'){await this.db.prepare("UPDATE platform_whatsapp_messages SET state='rehearsed',finished_at=? WHERE batch_id=? AND contact_id=?").run(now,id,next.contact_id);return 'rehearsed' as const;}
+        if(!whatsAppSendEnabled())return await skip('switch_off');if(await this.sentToday()>=WHATSAPP_LIMITS.sendsPerDay)return await skip('daily_limit');
+        const iys=await iysGate(this.db,this.scope,'MESAJ',contact.phone_hash);if(iys)return await skip(iys);
+        await this.db.prepare("UPDATE platform_whatsapp_messages SET state='submitting',submitted_at=? WHERE batch_id=? AND contact_id=?").run(now,id,next.contact_id);
         return {contactId:next.contact_id,phone:this.phone(contact.id,contact.phone_encrypted),batch};
-      }).immediate();
+      });
       if(!claim)break;if(typeof claim==='string')continue;
-      const {credentials}=this.credentials(),base=JSON.parse(claim.batch.params_json) as string[],override=(JSON.parse(claim.batch.overrides_json||'{}') as Record<string,string[]>)[claim.contactId],params=base.map((value,index)=>override?.[index]||value);
-      const extras=JSON.parse(claim.batch.extras_json||'{}') as WhatsAppBatchExtras,template=this.templates(claim.batch.connection_id).find(item=>item.name===claim.batch.template_name&&item.language===claim.batch.template_language);
+      const {credentials}=await this.credentials(),base=JSON.parse(claim.batch.params_json) as string[],override=(JSON.parse(claim.batch.overrides_json||'{}') as Record<string,string[]>)[claim.contactId],params=base.map((value,index)=>override?.[index]||value);
+      const extras=JSON.parse(claim.batch.extras_json||'{}') as WhatsAppBatchExtras,template=(await this.templates(claim.batch.connection_id)).find(item=>item.name===claim.batch.template_name&&item.language===claim.batch.template_language);
       const components:Record<string,unknown>[]=[];
       if(extras.headerLink&&template&&['IMAGE','VIDEO','DOCUMENT'].includes(template.headerFormat)){const type=template.headerFormat.toLowerCase();components.push({type:'header',parameters:[{type,[type]:{link:extras.headerLink}}]});}
       if(params.length)components.push({type:'body',parameters:params.map(text=>({type:'text',text}))});
-      const buttonIndex=extras.buttonParam?this.buttonIndex(claim.batch.connection_id,claim.batch.template_name,claim.batch.template_language):null;
+      const buttonIndex=extras.buttonParam?await this.buttonIndex(claim.batch.connection_id,claim.batch.template_name,claim.batch.template_language):null;
       if(extras.buttonParam&&buttonIndex!==null)components.push({type:'button',sub_type:'url',index:String(buttonIndex),parameters:[{type:'text',text:extras.buttonParam}]});
       let state:WhatsAppMessageState='uncertain',messageId:string|null=null,reason:string|null=null;
       try{
@@ -297,30 +299,30 @@ export class ProjectWhatsApp{
         else if(result.status>=400&&result.status<500){state='rejected';const error=result.payload.error as Record<string,unknown>|undefined;reason=Number.isSafeInteger(error?.code)?`meta_${error!.code}`:`http_${result.status}`;}
         else reason=`http_${result.status}`;
       }catch{reason='network';}
-      this.db.prepare('UPDATE platform_whatsapp_messages SET state=?,reason=?,provider_message_id=?,finished_at=? WHERE batch_id=? AND contact_id=?').run(state,reason,messageId,new Date().toISOString(),id,claim.contactId);
+      await this.db.prepare('UPDATE platform_whatsapp_messages SET state=?,reason=?,provider_message_id=?,finished_at=? WHERE batch_id=? AND contact_id=?').run(state,reason,messageId,new Date().toISOString(),id,claim.contactId);
     }
-    this.db.transaction(()=>{if(!this.db.prepare("SELECT 1 FROM platform_whatsapp_messages WHERE batch_id=? AND state IN ('pending','submitting')").get(id))this.db.prepare("UPDATE platform_whatsapp_batches SET state='done',revision=revision+1,updated_at=? WHERE id=? AND state='queued'").run(new Date().toISOString(),id);}).immediate();
-    return this.describe(this.batch(id));
+    await this.db.transaction(async ()=>{if(!await this.db.prepare("SELECT 1 FROM platform_whatsapp_messages WHERE batch_id=? AND state IN ('pending','submitting')").get(id))await this.db.prepare("UPDATE platform_whatsapp_batches SET state='done',revision=revision+1,updated_at=? WHERE id=? AND state='queued'").run(new Date().toISOString(),id);});
+    return await this.describe(await this.batch(id));
   }
-  private hook(connectionId?:string){if(!connectionId)return null;const row=this.db.prepare('SELECT hook_id,created_at,last_event_at FROM platform_whatsapp_hooks WHERE connection_id=? AND organization_id=? AND project_id=?').get(connectionId,...this.args()) as {hook_id:string;created_at:string;last_event_at:string|null}|undefined;
+  private async hook(connectionId?:string){if(!connectionId)return null;const row=await this.db.prepare('SELECT hook_id,created_at,last_event_at FROM platform_whatsapp_hooks WHERE connection_id=? AND organization_id=? AND project_id=?').get(connectionId,...this.args()) as {hook_id:string;created_at:string;last_event_at:string|null}|undefined;
     return row?{callbackPath:`/api/platform/whatsapp/hooks/${row.hook_id}`,createdAt:row.created_at,lastEventAt:row.last_event_at}:null;}
   // Webhook setup: the Meta app secret signs every callback. The verify token is shown once and only its hash is kept.
-  setupHooks(raw:Record<string,unknown>){
-    this.authorize('connections.manage');const secret=typeof raw.appSecret==='string'?raw.appSecret.trim():'';
+  async setupHooks(raw:Record<string,unknown>){
+    await this.authorize('connections.manage');const secret=typeof raw.appSecret==='string'?raw.appSecret.trim():'';
     if(!/^[a-f0-9]{32}$/.test(secret))throw new MarketingStoreError('Meta uygulama gizli anahtarı 32 karakterlik onaltılık bir değer olmalı.');
-    return this.db.transaction(()=>{
-      this.authorize('connections.manage');const {connection}=this.credentials(),hookId=randomBytes(16).toString('hex'),verifyToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
-      this.db.prepare('DELETE FROM platform_whatsapp_hooks WHERE connection_id=?').run(connection.id);
-      this.db.prepare('INSERT INTO platform_whatsapp_hooks(hook_id,connection_id,organization_id,project_id,verify_hash,secret_encrypted,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)').run(hookId,connection.id,...this.args(),createHash('sha256').update(verifyToken).digest('hex'),encryptCredentials({secret},this.key,...this.args(),`whatsapp-hook:${hookId}`),this.scope.subject,now);
-      this.audit('whatsapp.hooks.setup');return {verifyToken,snapshot:this.read()};
-    }).immediate();
+    return await this.db.transaction(async ()=>{
+      await this.authorize('connections.manage');const {connection}=await this.credentials(),hookId=randomBytes(16).toString('hex'),verifyToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
+      await this.db.prepare('DELETE FROM platform_whatsapp_hooks WHERE connection_id=?').run(connection.id);
+      await this.db.prepare('INSERT INTO platform_whatsapp_hooks(hook_id,connection_id,organization_id,project_id,verify_hash,secret_encrypted,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)').run(hookId,connection.id,...this.args(),createHash('sha256').update(verifyToken).digest('hex'),encryptCredentials({secret},this.key,...this.args(),`whatsapp-hook:${hookId}`),this.scope.subject,now);
+      await this.audit('whatsapp.hooks.setup');return {verifyToken,snapshot:await this.read()};
+    });
   }
-  async deliver(raw:Record<string,unknown>){this.authorize('campaign.dispatch');const row=this.batch(raw.id);await this.process(row.id);return this.read();}
+  async deliver(raw:Record<string,unknown>){await this.authorize('campaign.dispatch');const row=await this.batch(raw.id);await this.process(row.id);return await this.read();}
 }
 
 // Worker step: continues queued batches, a few messages per tick, as the person who queued them.
-export async function deliverWhatsAppBatches(db:Database.Database,key:string,graph:WhatsAppGraph=whatsAppGraph,limit=2){
-  const rows=db.prepare("SELECT id,organization_id,project_id,queued_by FROM platform_whatsapp_batches WHERE state='queued' ORDER BY queued_at LIMIT ?").all(limit) as {id:string;organization_id:string;project_id:string;queued_by:string}[];
+export async function deliverWhatsAppBatches(db:Db,key:string,graph:WhatsAppGraph=whatsAppGraph,limit=2){
+  const rows=await db.prepare("SELECT id,organization_id,project_id,queued_by FROM platform_whatsapp_batches WHERE state='queued' ORDER BY queued_at LIMIT ?").all(limit) as {id:string;organization_id:string;project_id:string;queued_by:string}[];
   let processed=0;
   for(const row of rows){try{await new ProjectWhatsApp(db,{subject:row.queued_by,organizationId:row.organization_id,projectId:row.project_id},key,graph).process(row.id);processed++;}catch{}}
   return processed;
@@ -331,15 +333,15 @@ export async function deliverWhatsAppBatches(db:Database.Database,key:string,gra
 // hashed sender, encrypted reply address, 90-day retention) so the team can answer it inside the 24-hour window.
 const STOP=new Set<string>(WHATSAPP_STOP_WORDS.map(word=>word.toLocaleLowerCase('tr')));
 const ORDER:Record<WhatsAppDelivery,number>={sent:1,delivered:2,read:3,failed:4};
-export function verifyWhatsAppHook(db:Database.Database,hookId:string,query:URLSearchParams){
-  const row=/^[a-f0-9]{32}$/.test(hookId)?db.prepare('SELECT verify_hash FROM platform_whatsapp_hooks WHERE hook_id=?').get(hookId) as {verify_hash:string}|undefined:undefined;
+export async function verifyWhatsAppHook(db:Db,hookId:string,query:URLSearchParams){
+  const row=/^[a-f0-9]{32}$/.test(hookId)?await db.prepare('SELECT verify_hash FROM platform_whatsapp_hooks WHERE hook_id=?').get(hookId) as {verify_hash:string}|undefined:undefined;
   const token=query.get('hub.verify_token')||'',challenge=query.get('hub.challenge')||'';
   if(!row||query.get('hub.mode')!=='subscribe'||!/^[A-Za-z0-9_-]{1,200}$/.test(challenge))return null;
   const given=Buffer.from(createHash('sha256').update(token).digest('hex')),expected=Buffer.from(row.verify_hash);
   return given.length===expected.length&&timingSafeEqual(given,expected)?challenge:null;
 }
-export function receiveWhatsAppHook(db:Database.Database,key:string,hookId:string,body:Uint8Array,signature:string|null){
-  const row=/^[a-f0-9]{32}$/.test(hookId)?db.prepare('SELECT h.*,c.encrypted_credentials,c.active,c.account_name,c.integration_id FROM platform_whatsapp_hooks h JOIN platform_connections c ON c.id=h.connection_id WHERE h.hook_id=?').get(hookId) as {hook_id:string;connection_id:string;organization_id:string;project_id:string;secret_encrypted:string;encrypted_credentials:string;active:number;account_name:string;integration_id:string}|undefined:undefined;
+export async function receiveWhatsAppHook(db:Db,key:string,hookId:string,body:Uint8Array,signature:string|null){
+  const row=/^[a-f0-9]{32}$/.test(hookId)?await db.prepare('SELECT h.*,c.encrypted_credentials,c.active,c.account_name,c.integration_id FROM platform_whatsapp_hooks h JOIN platform_connections c ON c.id=h.connection_id WHERE h.hook_id=?').get(hookId) as {hook_id:string;connection_id:string;organization_id:string;project_id:string;secret_encrypted:string;encrypted_credentials:string;active:number;account_name:string;integration_id:string}|undefined:undefined;
   if(!row||row.active!==1)throw new MarketingStoreError('Bilinmeyen WhatsApp bildirimi.',404);
   const {secret}=decryptCredentials<{secret:string}>(row.secret_encrypted,key,row.organization_id,row.project_id,`whatsapp-hook:${row.hook_id}`);
   const expected=Buffer.from(`sha256=${createHmac('sha256',secret).update(body).digest('hex')}`),given=Buffer.from(signature||'');
@@ -347,7 +349,7 @@ export function receiveWhatsAppHook(db:Database.Database,key:string,hookId:strin
   const payload=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(body)) as Record<string,unknown>;
   const phoneNumberId=decryptCredentials<{phoneNumberId:string}>(row.encrypted_credentials,key,row.organization_id,row.project_id,row.connection_id).phoneNumberId;
   let statuses=0,optOuts=0,inbound=0;
-  db.transaction(()=>{
+  await db.transaction(async ()=>{
     const received:WhatsAppInbound[]=[];
     const now=new Date().toISOString();
     for(const entry of Array.isArray(payload.entry)?payload.entry as Record<string,unknown>[]:[])for(const change of Array.isArray(entry.changes)?entry.changes as Record<string,unknown>[]:[]){
@@ -357,7 +359,7 @@ export function receiveWhatsAppHook(db:Database.Database,key:string,hookId:strin
         const state=status.status as WhatsAppDelivery,id=status.id;if(typeof id!=='string'||!Object.hasOwn(ORDER,state))continue;
         const at=Number.isFinite(Number(status.timestamp))?new Date(Number(status.timestamp)*1000).toISOString():now;
         // States only move forward (sent → delivered → read); a failure is final.
-        statuses+=db.prepare("UPDATE platform_whatsapp_messages SET delivery=?,delivery_at=? WHERE provider_message_id=? AND batch_id IN (SELECT id FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=?) AND (delivery IS NULL OR CASE delivery WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 ELSE 4 END<?)").run(state,at,id,row.organization_id,row.project_id,ORDER[state]).changes;
+        statuses+=(await db.prepare("UPDATE platform_whatsapp_messages SET delivery=?,delivery_at=? WHERE provider_message_id=? AND batch_id IN (SELECT id FROM platform_whatsapp_batches WHERE organization_id=? AND project_id=?) AND (delivery IS NULL OR CASE delivery WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2 WHEN 'read' THEN 3 ELSE 4 END<?)").run(state,at,id,row.organization_id,row.project_id,ORDER[state])).changes;
       }
       for(const message of Array.isArray(value.messages)?value.messages as Record<string,unknown>[]:[]){
         const from=typeof message.from==='string'&&/^[1-9]\d{7,14}$/.test(message.from)?`+${message.from}`:null;
@@ -366,22 +368,22 @@ export function receiveWhatsAppHook(db:Database.Database,key:string,hookId:strin
         if(!from)continue;
         if(!STOP.has(text)){const item=whatsAppInboundFrom(message);if(item)received.push(item);continue;}
         const hash=createHmac('sha256',Buffer.from(key,'hex')).update(`whatsapp:${row.organization_id}:${row.project_id}:${from}`).digest('hex');
-        const contact=db.prepare('SELECT id FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? AND phone_hash=? AND opted_out_at IS NULL').get(row.organization_id,row.project_id,hash) as {id:string}|undefined;
+        const contact=await db.prepare('SELECT id FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? AND phone_hash=? AND opted_out_at IS NULL').get(row.organization_id,row.project_id,hash) as {id:string}|undefined;
         if(!contact)continue;
-        db.prepare("UPDATE platform_whatsapp_contacts SET opted_out_at=?,opt_out_source='reply' WHERE id=?").run(now,contact.id);
-        queueIysConsent(db,{organizationId:row.organization_id,projectId:row.project_id},key,{channel:'MESAJ',recipient:from,status:'RET',source:'HS_MESAJ',consentDate:now,actor:'whatsapp-reply'});
-        db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='opted_out',finished_at=? WHERE contact_id=? AND state='pending'").run(now,contact.id);optOuts++;
+        await db.prepare("UPDATE platform_whatsapp_contacts SET opted_out_at=?,opt_out_source='reply' WHERE id=?").run(now,contact.id);
+        await queueIysConsent(db,{organizationId:row.organization_id,projectId:row.project_id},key,{channel:'MESAJ',recipient:from,status:'RET',source:'HS_MESAJ',consentDate:now,actor:'whatsapp-reply'});
+        await db.prepare("UPDATE platform_whatsapp_messages SET state='skipped',reason='opted_out',finished_at=? WHERE contact_id=? AND state='pending'").run(now,contact.id);optOuts++;
       }
     }
-    inbound=ingestWhatsAppInbound(db,key,{id:row.connection_id,organization_id:row.organization_id,project_id:row.project_id,account_name:row.account_name,encrypted_credentials:row.encrypted_credentials,integration_id:row.integration_id},received.slice(0,INBOX_LIMITS.hookEntries));
-    db.prepare('UPDATE platform_whatsapp_hooks SET last_event_at=? WHERE hook_id=?').run(now,row.hook_id);
-    if(statuses||optOuts)db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run('whatsapp-webhook',row.organization_id,row.project_id,optOuts?'whatsapp.hook.opt_out':'whatsapp.hook.status',now);
-    if(inbound)db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run('whatsapp-webhook',row.organization_id,row.project_id,'whatsapp.hook.inbound',now);
-  }).immediate();
+    inbound=await ingestWhatsAppInbound(db,key,{id:row.connection_id,organization_id:row.organization_id,project_id:row.project_id,account_name:row.account_name,encrypted_credentials:row.encrypted_credentials,integration_id:row.integration_id},received.slice(0,INBOX_LIMITS.hookEntries));
+    await db.prepare('UPDATE platform_whatsapp_hooks SET last_event_at=? WHERE hook_id=?').run(now,row.hook_id);
+    if(statuses||optOuts)await db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run('whatsapp-webhook',row.organization_id,row.project_id,optOuts?'whatsapp.hook.opt_out':'whatsapp.hook.status',now);
+    if(inbound)await db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run('whatsapp-webhook',row.organization_id,row.project_id,'whatsapp.hook.inbound',now);
+  });
   return {statuses,optOuts,inbound};
 }
 // The numbers a live batch could reach (not opted out), for an İYS status query.
-export function whatsAppContactPhones(db:Database.Database,scope:{organizationId:string;projectId:string},key:string){
-  return (db.prepare('SELECT id,phone_encrypted FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? AND opted_out_at IS NULL').all(scope.organizationId,scope.projectId) as {id:string;phone_encrypted:string}[])
+export async function whatsAppContactPhones(db:Db,scope:{organizationId:string;projectId:string},key:string){
+  return (await db.prepare('SELECT id,phone_encrypted FROM platform_whatsapp_contacts WHERE organization_id=? AND project_id=? AND opted_out_at IS NULL').all(scope.organizationId,scope.projectId) as {id:string;phone_encrypted:string}[])
     .map(row=>decryptCredentials<{phone:string}>(row.phone_encrypted,key,scope.organizationId,scope.projectId,`whatsapp-contact:${row.id}`).phone);
 }

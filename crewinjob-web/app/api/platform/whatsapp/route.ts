@@ -8,19 +8,19 @@ export const maxDuration=40;
 // WhatsApp template sending: approved templates to contacts with WhatsApp consent, after approval and behind a server switch.
 const handle=coachRoute(async(scope,request)=>{
   const whatsapp=new ProjectWhatsApp(platformDatabase(),scope,credentialEncryptionKey());
-  if(request.method==='GET')return whatsapp.read();
+  if(request.method==='GET')return await whatsapp.read();
   const raw=await coachBody(request);
   if(raw.action==='connect')return whatsapp.connect(raw);
   if(raw.action==='templates')return whatsapp.refreshTemplates();
-  if(raw.action==='hooks')return whatsapp.setupHooks(raw);
-  if(raw.action==='addContacts')return (whatsapp.addContacts(raw)).snapshot;
-  if(raw.action==='optOut')return whatsapp.optOut(raw);
-  if(raw.action==='removeContact')return whatsapp.removeContact(raw);
-  if(raw.action==='save')return whatsapp.saveBatch(raw);
-  if(raw.action==='approve')return whatsapp.approve(raw);
-  if(raw.action==='queue')return whatsapp.queue(raw);
+  if(raw.action==='hooks')return await whatsapp.setupHooks(raw);
+  if(raw.action==='addContacts')return (await whatsapp.addContacts(raw)).snapshot;
+  if(raw.action==='optOut')return await whatsapp.optOut(raw);
+  if(raw.action==='removeContact')return await whatsapp.removeContact(raw);
+  if(raw.action==='save')return await whatsapp.saveBatch(raw);
+  if(raw.action==='approve')return await whatsapp.approve(raw);
+  if(raw.action==='queue')return await whatsapp.queue(raw);
   if(raw.action==='deliver')return whatsapp.deliver(raw);
-  if(raw.action==='cancel')return whatsapp.cancel(raw);
+  if(raw.action==='cancel')return await whatsapp.cancel(raw);
   throw new MarketingStoreError('Geçersiz WhatsApp işlemi.');
 });
 export const GET=handle,POST=handle;

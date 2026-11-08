@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -37,29 +38,29 @@ export function contractEmailMessage(order: Order, period: Period) {
 }
 
 // Called inside the signed-notification transaction when an order becomes paid.
-export function queueContractEmail(db: Database.Database, order: { id: string; organization_id: string; project_id: string; actor_id: string; terms_text: string | null }, at: string) {
+export async function queueContractEmail(db: Db, order: { id: string; organization_id: string; project_id: string; actor_id: string; terms_text: string | null }, at: string) {
   if (!order.terms_text) return false;
-  return db.prepare("INSERT OR IGNORE INTO platform_billing_contract_emails(order_id,organization_id,project_id,user_id,state,created_at,updated_at) VALUES(?,?,?,?,'queued',?,?)").run(order.id, order.organization_id, order.project_id, order.actor_id, at, at).changes > 0;
+  return (await db.prepare("INSERT OR IGNORE INTO platform_billing_contract_emails(order_id,organization_id,project_id,user_id,state,created_at,updated_at) VALUES(?,?,?,?,'queued',?,?)").run(order.id, order.organization_id, order.project_id, order.actor_id, at, at)).changes > 0;
 }
 
 // Worker step: while account email is not configured the copy waits in the queue. One claim per tick, marked
 // submitted before the provider call; a buyer without a verified email any more is skipped with a reason.
-export async function deliverNextContractEmail(db: Database.Database, deliver: DigestDelivery = deliverCoachDigest, configuration = identityEmailConfiguration()) {
+export async function deliverNextContractEmail(db: Db, deliver: DigestDelivery = deliverCoachDigest, configuration = identityEmailConfiguration()) {
   if (!configuration) return false;
-  const claimed = db.transaction(() => {
-    const row = db.prepare("SELECT order_id,user_id FROM platform_billing_contract_emails WHERE state='queued' ORDER BY created_at,rowid LIMIT 1").get() as { order_id: string; user_id: string } | undefined;
+  const claimed = await db.transaction(async () => {
+    const row = await db.prepare("SELECT order_id,user_id FROM platform_billing_contract_emails WHERE state='queued' ORDER BY created_at,rowid LIMIT 1").get() as { order_id: string; user_id: string } | undefined;
     if (!row) return null;
-    const now = new Date().toISOString(), skip = (reason: string) => { db.prepare("UPDATE platform_billing_contract_emails SET state='skipped',reason=?,updated_at=? WHERE order_id=?").run(reason, now, row.order_id); return 'skipped' as const; };
-    const order = db.prepare("SELECT id,plan_id,package,cadence,amount_minor,paid_at,terms_version,terms_language,terms_text FROM platform_billing_live_orders WHERE id=? AND state='paid'").get(row.order_id) as Order | undefined;
-    if (!order?.terms_text) return skip('no_paid_snapshot');
-    const email = (db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as { email: string } | undefined)?.email;
-    if (!email) return skip('no_verified_email');
-    const period = db.prepare('SELECT starts_at,ends_at FROM platform_project_subscriptions WHERE order_id=?').get(order.id) as Period;
-    db.prepare("UPDATE platform_billing_contract_emails SET state='submitted',updated_at=? WHERE order_id=? AND state='queued'").run(now, row.order_id);
+    const now = new Date().toISOString(), skip = async (reason: string) => { await db.prepare("UPDATE platform_billing_contract_emails SET state='skipped',reason=?,updated_at=? WHERE order_id=?").run(reason, now, row.order_id); return 'skipped' as const; };
+    const order = await db.prepare("SELECT id,plan_id,package,cadence,amount_minor,paid_at,terms_version,terms_language,terms_text FROM platform_billing_live_orders WHERE id=? AND state='paid'").get(row.order_id) as Order | undefined;
+    if (!order?.terms_text) return await skip('no_paid_snapshot');
+    const email = (await db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as { email: string } | undefined)?.email;
+    if (!email) return await skip('no_verified_email');
+    const period = await db.prepare('SELECT starts_at,ends_at FROM platform_project_subscriptions WHERE order_id=?').get(order.id) as Period;
+    await db.prepare("UPDATE platform_billing_contract_emails SET state='submitted',updated_at=? WHERE order_id=? AND state='queued'").run(now, row.order_id);
     return { id: row.order_id, mail: { to: email, ...contractEmailMessage(order, period) } };
-  }).immediate();
+  });
   if (!claimed || claimed === 'skipped') return claimed;
   let state: 'sent' | 'uncertain' = 'sent'; try { await deliver(claimed.mail, configuration); } catch { state = 'uncertain'; }
-  db.prepare('UPDATE platform_billing_contract_emails SET state=?,updated_at=? WHERE order_id=?').run(state, new Date().toISOString(), claimed.id);
+  await db.prepare('UPDATE platform_billing_contract_emails SET state=?,updated_at=? WHERE order_id=?').run(state, new Date().toISOString(), claimed.id);
   return state;
 }

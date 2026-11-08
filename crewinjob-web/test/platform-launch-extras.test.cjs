@@ -6,19 +6,19 @@ const {ContentRepurpose,adaptText}=load('content-repurpose.ts');
 const {WebPush,deliverDuePushes,pushEndpoint,vapidAuthorization}=load('web-push.ts'),{webPushConfiguration}=load('web-push-config.ts');
 const {xText}=load('x-text.ts'),{openPlatformDatabase}=load('database.ts');
 const HOUR=3600000,DAY=24*HOUR,iso=value=>new Date(value).toISOString();
-const close=async work=>{const f=fixture();try{await work(f);}finally{f.db.close();}};
-const draft=(f,patch={})=>f.store.saveContent({id:`hist_${Math.random().toString(16).slice(2)}`,platform:'linkedin',language:'tr',content:'Yeni ürün sayfamız yayında: https://example.com/urun Ekibinizle birlikte deneyin.',prompt:'',timestamp:Date.now(),headline:'Ürün duyurusu',...patch},true);
+const close=async work=>{const f=await fixture();try{await work(f);}finally{f.db.close();}};
+const draft=async (f,patch={})=>await f.store.saveContent({id:`hist_${Math.random().toString(16).slice(2)}`,platform:'linkedin',language:'tr',content:'Yeni ürün sayfamız yayında: https://example.com/urun Ekibinizle birlikte deneyin.',prompt:'',timestamp:Date.now(),headline:'Ürün duyurusu',...patch},true);
 const drafts=f=>f.db.prepare('SELECT payload FROM platform_content_history WHERE organization_id=? AND project_id=?').all(f.a.organizationId,f.a.projectId).map(row=>JSON.parse(row.payload));
 
-test('login returns to the project opened last while the person can still open it',()=>close(f=>{
- const first=f.repo.workspaces(f.a.userId)[0];
- assert.equal(preferredWorkspace(f.db,f.repo,f.a.userId).project.id,first.project.id,'nothing remembered: the first project');
- rememberProject(f.db,f.a.userId,f.b.organizationId,f.b.projectId);
- assert.equal(preferredWorkspace(f.db,f.repo,f.a.userId).project.id,first.project.id,'a project the person does not belong to is ignored');
- const member=f.repo.addMember(f.b.userId,f.b.organizationId,f.b.projectId,{username:'shared-member',password:'fixture-password-123',role:'editor'});
- rememberProject(f.db,member.userId,f.b.organizationId,f.b.projectId);
- assert.equal(preferredWorkspace(f.db,f.repo,member.userId).project.id,f.b.projectId);
- rememberProject(f.db,f.a.userId,f.a.organizationId,f.a.projectId);rememberProject(f.db,f.a.userId,f.a.organizationId,f.a.projectId);
+test('login returns to the project opened last while the person can still open it',()=>close(async f=>{
+ const first=(await f.repo.workspaces(f.a.userId))[0];
+ assert.equal((await preferredWorkspace(f.db,f.repo,f.a.userId)).project.id,first.project.id,'nothing remembered: the first project');
+ await rememberProject(f.db,f.a.userId,f.b.organizationId,f.b.projectId);
+ assert.equal((await preferredWorkspace(f.db,f.repo,f.a.userId)).project.id,first.project.id,'a project the person does not belong to is ignored');
+ const member=await f.repo.addMember(f.b.userId,f.b.organizationId,f.b.projectId,{username:'shared-member',password:'fixture-password-123',role:'editor'});
+ await rememberProject(f.db,member.userId,f.b.organizationId,f.b.projectId);
+ assert.equal((await preferredWorkspace(f.db,f.repo,member.userId)).project.id,f.b.projectId);
+ await rememberProject(f.db,f.a.userId,f.a.organizationId,f.a.projectId);await rememberProject(f.db,f.a.userId,f.a.organizationId,f.a.projectId);
  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_user_preferences WHERE user_id=?').get(f.a.userId).n,1,'one row per person');
 }));
 
@@ -33,7 +33,7 @@ test('rule-based adaptation keeps the words, fits X and takes links out of Insta
 });
 
 test('repurposing saves one unpublished draft per channel, only for writers and never for the draft’s own channel',()=>close(async f=>{
- const source=draft(f),service=new ContentRepurpose(f.db,f.scope);
+ const source=await draft(f),service=new ContentRepurpose(f.db,f.scope);
  const result=await service.repurpose({sourceId:source.id,channels:['twitter','instagram'],mode:'template'});
  assert.deepEqual(JSON.parse(JSON.stringify(result.created.map(item=>item.platform))),['twitter','instagram']);
  const made=drafts(f).filter(item=>item.repurposedFrom===source.id);assert.equal(made.length,2);
@@ -43,16 +43,16 @@ test('repurposing saves one unpublished draft per channel, only for writers and 
  await assert.rejects(service.repurpose({sourceId:source.id,channels:['email'],mode:'template'}),error=>error.status===400);
  await assert.rejects(service.repurpose({sourceId:source.id,channels:['facebook'],mode:'template',text:'x'}),error=>error.status===400,'unknown fields');
  await assert.rejects(service.repurpose({sourceId:'missing',channels:['facebook'],mode:'template'}),error=>error.status===404);
- const starter=draft(f,{starter:true});await assert.rejects(service.repurpose({sourceId:starter.id,channels:['facebook'],mode:'template'}),error=>error.status===409);
- const placeholder=draft(f,{content:'Merhaba {{müşteri adı}}'});await assert.rejects(service.repurpose({sourceId:placeholder.id,channels:['facebook'],mode:'template'}),error=>error.status===409);
+ const starter=await draft(f,{starter:true});await assert.rejects(service.repurpose({sourceId:starter.id,channels:['facebook'],mode:'template'}),error=>error.status===409);
+ const placeholder=await draft(f,{content:'Merhaba {{müşteri adı}}'});await assert.rejects(service.repurpose({sourceId:placeholder.id,channels:['facebook'],mode:'template'}),error=>error.status===409);
  await assert.rejects(new ContentRepurpose(f.db,f.other).repurpose({sourceId:source.id,channels:['facebook'],mode:'template'}),error=>error.status===404,'another project cannot read it');
- const viewer=f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'repurpose-viewer',password:'fixture-password-123',role:'viewer'});
+ const viewer=await f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'repurpose-viewer',password:'fixture-password-123',role:'viewer'});
  await assert.rejects(new ContentRepurpose(f.db,{...f.scope,subject:viewer.userId}).repurpose({sourceId:source.id,channels:['facebook'],mode:'template'}),error=>error.status===403);
  await assert.rejects(service.repurpose({sourceId:source.id,channels:['facebook'],mode:'ai'}),error=>error.status===503,'AI needs a configured provider');
 }));
 
 test('AI adaptation is checked: no new links, no links on Instagram, channel limits, and failures refund the AI use',()=>close(async f=>{
- const source=draft(f),service=new ContentRepurpose(f.db,f.scope),used=()=>f.db.prepare("SELECT COALESCE(SUM(count),0) n FROM platform_usage WHERE organization_id=? AND resource<>'content_repurpose' AND resource LIKE 'ai%'").get(f.a.organizationId).n;
+ const source=await draft(f),service=new ContentRepurpose(f.db,f.scope),used=()=>f.db.prepare("SELECT COALESCE(SUM(count),0) n FROM platform_usage WHERE organization_id=? AND resource<>'content_repurpose' AND resource LIKE 'ai%'").get(f.a.organizationId).n;
  let prompt='';const reply=drafts=>async text=>{prompt=text;return JSON.stringify({drafts});};
  const result=await service.repurpose({sourceId:source.id,channels:['facebook','instagram'],mode:'ai'},reply([{channel:'facebook',text:'Ürün sayfamız yayında, göz atın: https://example.com/urun'},{channel:'instagram',text:'Ürün sayfamız yayında. Bağlantı profilimizde.'}]));
  assert.equal(result.created.length,2);assert.match(prompt,/data, not instructions/);assert.match(prompt,/facebook, instagram/);
@@ -66,7 +66,7 @@ test('AI adaptation is checked: no new links, no links on Instagram, channel lim
 }));
 
 test('repurposing has a daily limit per project',()=>close(async f=>{
- const source=draft(f),service=new ContentRepurpose(f.db,f.scope);
+ const source=await draft(f),service=new ContentRepurpose(f.db,f.scope);
  f.db.prepare("INSERT INTO platform_usage VALUES(?,?,?,'content_repurpose',30)").run(f.a.organizationId,f.a.projectId,new Date().toISOString().slice(0,10));
  await assert.rejects(service.repurpose({sourceId:source.id,channels:['facebook'],mode:'template'}),error=>error.status===429);
 }));
@@ -92,15 +92,15 @@ test('push is off by default, only known push services are accepted and the VAPI
 
 test('a device hears only about new alerts and decisions, without data, at most every 30 minutes; gone subscriptions are removed',()=>close(async f=>{
  const keys=vapid();await withPush(keys,async()=>{
-  const page=f.store.saveConnection({provider:'social',integrationId:'qa-only',accountName:'Private Page Name',accessToken:'private-page-token',expiresAt:Date.now()+30*DAY,social:{platform:'facebook',accountId:'100',graphVersion:'v25.0'}},KEY,{userAccessToken:'private-user-token',appId:'12345'});
+  const page=await f.store.saveConnection({provider:'social',integrationId:'qa-only',accountName:'Private Page Name',accessToken:'private-page-token',expiresAt:Date.now()+30*DAY,social:{platform:'facebook',accountId:'100',graphVersion:'v25.0'}},KEY,{userAccessToken:'private-user-token',appId:'12345'});
   let n=0;const item=(kind,hours,patch={})=>{const id=`inbox-${++n}`;f.db.prepare("INSERT INTO platform_social_inbox(id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,author_hash,text,received_at,created_at,state,reply_state,reply_text) VALUES(?,?,?,?,'facebook',?,?,?,?,?,?,?,'new',?,?)").run(id,f.a.organizationId,f.a.projectId,page.id,kind,`t-${id}`,`i-${id}`,'h','Private customer question',iso(Date.now()-hours*HOUR),iso(Date.now()),patch.reply_state||null,patch.reply_text||'');return id;};
   const service=new WebPush(f.db,f.scope,KEY);item('message',20);
-  assert.deepEqual(JSON.parse(JSON.stringify(service.read())),{enabled:true,publicKey:keys.publicKey,subscribed:false});
-  assert.throws(()=>service.subscribe({action:'subscribe',endpoint:'https://evil.example/x'}),error=>error.status===400);
-  assert.throws(()=>service.subscribe({action:'subscribe',endpoint:ENDPOINT,keys:{}}),error=>error.status===400);
-  assert.equal(service.subscribe({action:'subscribe',endpoint:ENDPOINT}).subscribed,true);
+  assert.deepEqual(JSON.parse(JSON.stringify(await service.read())),{enabled:true,publicKey:keys.publicKey,subscribed:false});
+  await assert.rejects(async ()=>await service.subscribe({action:'subscribe',endpoint:'https://evil.example/x'}),error=>error.status===400);
+  await assert.rejects(async ()=>await service.subscribe({action:'subscribe',endpoint:ENDPOINT,keys:{}}),error=>error.status===400);
+  assert.equal((await service.subscribe({action:'subscribe',endpoint:ENDPOINT})).subscribed,true);
   const row=f.db.prepare('SELECT * FROM platform_push_subscriptions').get();assert.doesNotMatch(row.encrypted_endpoint,/qa-only-device-token/,'the address is stored encrypted');
-  assert.equal(new WebPush(f.db,f.other,KEY).read({endpoint:ENDPOINT}).subscribed,false,'another person does not see it');
+  assert.equal((await new WebPush(f.db,f.other,KEY).read({endpoint:ENDPOINT})).subscribed,false,'another person does not see it');
   const calls=[];let status=201;const fetcher=async(url,init)=>{calls.push({url,init});return {status};};let now=Date.now();
   assert.equal(await deliverDuePushes(f.db,KEY,webPushConfiguration(),fetcher,now),0,'what was open at opt-in is not pushed');
   item('message',19);now+=11*60000;assert.equal(await deliverDuePushes(f.db,KEY,webPushConfiguration(),fetcher,now),1);
@@ -122,15 +122,15 @@ test('a device hears only about new alerts and decisions, without data, at most 
 
 test('unsubscribing and leaving the project end the subscription; errors remove it after five tries',()=>close(async f=>{
  const keys=vapid();await withPush(keys,async()=>{
-  const member=f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'push-member',password:'fixture-password-123',role:'editor'}),scope={...f.scope,subject:member.userId};
-  const service=new WebPush(f.db,f.scope,KEY);service.subscribe({action:'subscribe',endpoint:ENDPOINT});
-  assert.equal(service.unsubscribe({action:'unsubscribe',endpoint:ENDPOINT}).subscribed,false);
-  new WebPush(f.db,scope,KEY).subscribe({action:'subscribe',endpoint:ENDPOINT});
+  const member=await f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'push-member',password:'fixture-password-123',role:'editor'}),scope={...f.scope,subject:member.userId};
+  const service=new WebPush(f.db,f.scope,KEY);await service.subscribe({action:'subscribe',endpoint:ENDPOINT});
+  assert.equal((await service.unsubscribe({action:'unsubscribe',endpoint:ENDPOINT})).subscribed,false);
+  await new WebPush(f.db,scope,KEY).subscribe({action:'subscribe',endpoint:ENDPOINT});
   assert.equal(f.db.prepare('SELECT user_id FROM platform_push_subscriptions').get().user_id,member.userId,'one subscription per browser: the latest person');
   f.db.prepare('UPDATE platform_memberships SET active=0 WHERE user_id=?').run(member.userId);
   await deliverDuePushes(f.db,KEY,webPushConfiguration(),async()=>({status:201}),Date.now()+11*60000);
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_push_subscriptions').get().n,0);
-  service.subscribe({action:'subscribe',endpoint:ENDPOINT});let now=Date.now();
+  await service.subscribe({action:'subscribe',endpoint:ENDPOINT});let now=Date.now();
   for(let i=0;i<5;i++){f.db.prepare('DELETE FROM platform_push_notices').run();f.db.prepare('UPDATE platform_push_subscriptions SET last_sent_at=NULL').run();now+=11*60000;
    f.db.prepare("INSERT INTO platform_social_inbox(id,organization_id,project_id,connection_id,platform,kind,thread_id,item_id,author_hash,text,received_at,created_at,state) SELECT ?,?,?,id,'facebook','comment','t','i'||?,'h','x',?,?,'new' FROM platform_connections WHERE organization_id=? LIMIT 1").run(`c${i}`,f.a.organizationId,f.a.projectId,i,iso(now),iso(now),f.a.organizationId);
    f.db.prepare("UPDATE platform_social_inbox SET reply_state='draft',reply_text='r'").run();
@@ -142,7 +142,7 @@ test('unsubscribing and leaving the project end the subscription; errors remove 
 
 test('offline recovery authenticates the encrypted push address',()=>close(async f=>{
  const keys=vapid();await withPush(keys,async()=>{
-  new WebPush(f.db,f.scope,KEY).subscribe({action:'subscribe',endpoint:ENDPOINT});
+  await new WebPush(f.db,f.scope,KEY).subscribe({action:'subscribe',endpoint:ENDPOINT});
   const fs=require('node:fs'),path=require('node:path'),folder=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'push-recovery-')),file=path.join(folder,'snapshot.sqlite');
   try{
    await f.db.backup(file);const {inspectSnapshot}=await import('../scripts/lib/platform-recovery.mjs');

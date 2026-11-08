@@ -1,3 +1,5 @@
+import { flatMapSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { adMinorUnit } from './ad-manager';
@@ -10,14 +12,14 @@ export const CREATIVE_STATS={days:14,keepDays:90,fatigueDays:3,minImpressions:10
 type Day={creative_id:string;day:string;impressions:number;clicks:number;spend_minor:number;conversions:number|null};
 const round=(value:number,digits=4)=>Math.round(value*10**digits)/10**digits;
 
-export function storeCreativeDays(db:Database.Database,rows:Day[]){
+export async function storeCreativeDays(db:Db,rows:Day[]){
   const insert=db.prepare('INSERT INTO platform_ad_creative_stats VALUES(?,?,?,?,?,?) ON CONFLICT(creative_id,day) DO UPDATE SET impressions=excluded.impressions,clicks=excluded.clicks,spend_minor=excluded.spend_minor,conversions=excluded.conversions');
-  for(const row of rows)insert.run(row.creative_id,row.day,row.impressions,row.clicks,row.spend_minor,row.conversions);
-  db.prepare('DELETE FROM platform_ad_creative_stats WHERE day<?').run(new Date(Date.now()-CREATIVE_STATS.keepDays*86400000).toISOString().slice(0,10));
+  for(const row of rows)await insert.run(row.creative_id,row.day,row.impressions,row.clicks,row.spend_minor,row.conversions);
+  await db.prepare('DELETE FROM platform_ad_creative_stats WHERE day<?').run(new Date(Date.now()-CREATIVE_STATS.keepDays*86400000).toISOString().slice(0,10));
 }
-export function creativeStats(db:Database.Database,creativeId:string,currency:string,now=Date.now()):AdCreativeStats|null{
+export async function creativeStats(db:Db,creativeId:string,currency:string,now=Date.now()):Promise<AdCreativeStats|null>{
   const from=new Date(now-(CREATIVE_STATS.days-1)*86400000).toISOString().slice(0,10);
-  const days=db.prepare('SELECT * FROM platform_ad_creative_stats WHERE creative_id=? AND day>=? ORDER BY day').all(creativeId,from) as Day[];if(!days.length)return null;
+  const days=await db.prepare('SELECT * FROM platform_ad_creative_stats WHERE creative_id=? AND day>=? ORDER BY day').all(creativeId,from) as Day[];if(!days.length)return null;
   const sum=(list:Day[],key:'impressions'|'clicks'|'spend_minor')=>list.reduce((total,row)=>total+row[key],0);
   const impressions=sum(days,'impressions'),clicks=sum(days,'clicks'),spend=sum(days,'spend_minor'),known=days.filter(row=>row.conversions!==null),conversions=known.length?known.reduce((total,row)=>total+(row.conversions||0),0):null;
   const delivered=days.filter(row=>row.impressions>0),recent=delivered.slice(-CREATIVE_STATS.fatigueDays),before=delivered.slice(0,-CREATIVE_STATS.fatigueDays);
@@ -27,10 +29,10 @@ export function creativeStats(db:Database.Database,creativeId:string,currency:st
     fatigue:fatigued?{recentCtr:round(ctr(recent)),earlierCtr:round(ctr(before))}:null,days:days.map(row=>({day:row.day,impressions:row.impressions,clicks:row.clicks,spendMinor:row.spend_minor}))};
 }
 // Sent creatives of running or paused plans whose click-through rate is falling (team alert).
-export function fatiguedCreatives(db:Database.Database,scope:{organizationId:string;projectId:string},now=Date.now()){
-  if(!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='platform_ad_creative_stats'").get())return [];
-  const rows=db.prepare("SELECT c.id,p.name,p.currency,p.id plan_id FROM platform_ad_creatives c JOIN platform_ad_plans p ON p.id=c.plan_id WHERE c.organization_id=? AND c.project_id=? AND c.state='uploaded' AND c.ad_ref IS NOT NULL AND p.state IN ('active','paused')").all(scope.organizationId,scope.projectId) as {id:string;name:string;currency:string;plan_id:string}[];
-  return rows.flatMap(row=>{const stats=creativeStats(db,row.id,row.currency,now);return stats?.fatigue?[{creativeId:row.id,planId:row.plan_id,planName:row.name,day:stats.to}]:[];});
+export async function fatiguedCreatives(db:Db,scope:{organizationId:string;projectId:string},now=Date.now()){
+  if(!await db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='platform_ad_creative_stats'").get())return [];
+  const rows=await db.prepare("SELECT c.id,p.name,p.currency,p.id plan_id FROM platform_ad_creatives c JOIN platform_ad_plans p ON p.id=c.plan_id WHERE c.organization_id=? AND c.project_id=? AND c.state='uploaded' AND c.ad_ref IS NOT NULL AND p.state IN ('active','paused')").all(scope.organizationId,scope.projectId) as {id:string;name:string;currency:string;plan_id:string}[];
+  return await flatMapSeries(rows, async row=>{const stats=await creativeStats(db,row.id,row.currency,now);return stats?.fatigue?[{creativeId:row.id,planId:row.plan_id,planName:row.name,day:stats.to}]:[];});
 }
 // Provider spend strings ("12.34") to minor units of the plan's currency.
 export const spendMinor=(value:unknown,currency:string)=>{const number=typeof value==='string'||typeof value==='number'?Number(value):NaN;return Number.isFinite(number)&&number>=0?Math.round(number*adMinorUnit(currency)):0;};

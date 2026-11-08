@@ -1,3 +1,5 @@
+import { forEachSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -31,21 +33,21 @@ export function coachStarterDraft(item: Pick<CoachContentItem, 'id' | 'channel' 
   return { id: `starter_${randomUUID()}`, platform, language: brief.language, headline: item.title.slice(0, 200), content, prompt: item.angle.slice(0, 2000), timestamp: Date.now(), coachRef: `content:${item.id}`, starter: true };
 }
 
-export function seedCoachFirstWeek(db: Database.Database, scope: MarketingScope): { drafts: number } {
-  const coach = new GrowthCoach(db, scope), { brief } = coach.approved();
+export async function seedCoachFirstWeek(db: Db, scope: MarketingScope): Promise<{ drafts: number }> {
+  const coach = new GrowthCoach(db, scope), { brief } = await coach.approved();
   // The Crewin workspace already has its own content library and history; no starter drafts are added to the platform's.
-  if (!brief || !coach.can('content.write') || coach.crewin()) return { drafts: 0 };
+  if (!brief || !await coach.can('content.write') || await coach.crewin()) return { drafts: 0 };
   // Earliest plan items first, spread over different topics and channels; repeats only when the plan has no others.
-  const open = new CoachContentPlan(db, scope).seedStarter().filter(item => item.channel !== 'email'), items: typeof open = [];
+  const open = (await new CoachContentPlan(db, scope).seedStarter()).filter(item => item.channel !== 'email'), items: typeof open = [];
   const topic = (item: (typeof open)[number]) => item.title.replace(/^[^:]{1,40}:\s*/, '');
   for (const fresh of [(item: (typeof open)[number]) => !items.some(other => topic(other) === topic(item) || other.channel === item.channel), (item: (typeof open)[number]) => !items.some(other => topic(other) === topic(item)), () => true])
     for (const item of open) if (items.length < DRAFTS && !items.includes(item) && fresh(item)) items.push(item);
-  const store = new ProjectMarketingStore(db, scope), existing = new Set(store.history().map(item => item.coachRef).filter(Boolean));
-  const website = coach.repo.workspace(scope.subject, scope.organizationId, scope.projectId)?.project.website || '';
+  const store = new ProjectMarketingStore(db, scope), existing = new Set((await store.history()).map(item => item.coachRef).filter(Boolean));
+  const website = (await coach.repo.workspace(scope.subject, scope.organizationId, scope.projectId))?.project.website || '';
   let drafts = 0;
-  items.forEach(item => {
+  await forEachSeries(items, async item => {
     if (existing.has(`content:${item.id}`)) return;
-    try { store.saveContent(coachStarterDraft(item, brief, website), true); drafts++; } catch { /* content limit or trial end: the plan stays, drafts are optional */ }
+    try { await store.saveContent(coachStarterDraft(item, brief, website), true); drafts++; } catch { /* content limit or trial end: the plan stays, drafts are optional */ }
   });
   return { drafts };
 }

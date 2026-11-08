@@ -48,3 +48,7 @@ yarn-error.log*
 # ── TypeScript ────────────────────────────────────────────────────────────────
 *.tsbuildinfo
 next-env.d.ts
+
+# Database connection settings (secrets)
+appsettings.json
+appsettings.*.json

@@ -29,17 +29,17 @@ export async function POST(req: NextRequest) {
   }
 
   const legacy = validateCredentials(username, password);
-  const repository = platformRepository();
-  if(!consumeLoginAttempt(platformDatabase(),username)) return NextResponse.json({error:'Çok fazla giriş denemesi. 15 dakika sonra tekrar deneyin.'},{status:429});
-  const user = legacy ? null : repository.authenticate(username, password);
+  const repository = await platformRepository();
+  if(!await consumeLoginAttempt(platformDatabase(),username)) return NextResponse.json({error:'Çok fazla giriş denemesi. 15 dakika sonra tekrar deneyin.'},{status:429});
+  const user = legacy ? null : await repository.authenticate(username, password);
   // The project the person opened last, else the first one they belong to.
-  const workspace = user ? preferredWorkspace(platformDatabase(), repository, user.id) : null;
+  const workspace = user ? await preferredWorkspace(platformDatabase(), repository, user.id) : null;
   if (!legacy && (!user || !workspace)) {
     await new Promise(r => setTimeout(r, 800)); // brute-force yavaşlatma
     return NextResponse.json({ error: 'Kullanıcı adı veya şifre hatalı' }, { status: 401 });
   }
 
-  const token = legacy ? await createSessionToken(username) : await createPlatformSessionToken({ subject: user!.id, organizationId: workspace!.organization.id, projectId: workspace!.project.id,securityVersion:securityVersion(platformDatabase(),user!.id) });
+  const token = legacy ? await createSessionToken(username) : await createPlatformSessionToken({ subject: user!.id, organizationId: workspace!.organization.id, projectId: workspace!.project.id,securityVersion:await securityVersion(platformDatabase(),user!.id) });
   const res   = NextResponse.json({ ok: true, username });
 
   res.cookies.set(COOKIE_NAME, token, {

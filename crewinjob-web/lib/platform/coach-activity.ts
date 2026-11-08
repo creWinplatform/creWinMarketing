@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import fs from 'fs';
 import path from 'path';
 import type Database from 'better-sqlite3';
@@ -6,8 +7,8 @@ import { crewinDataDir, fileSummary, records, timeOf } from './file-summary';
 // Crewin workspace keeps its content library and published posts in its own stores (data/content-history.json and
 // data/post-history.json, mirrored to the Crewin backend), so the coach reads those instead of the empty platform tables.
 type Scope = readonly [organizationId: string, projectId: string];
-const packOf = (db: Database.Database, [organizationId, projectId]: Scope) => (db.prepare('SELECT product_pack FROM platform_projects WHERE organization_id=? AND id=?').get(organizationId, projectId) as { product_pack: string } | undefined)?.product_pack;
-export const isCrewinProject = (db: Database.Database, scope: Scope) => packOf(db, scope) === 'crewin';
+const packOf = async (db: Db, [organizationId, projectId]: Scope) => (await db.prepare('SELECT product_pack FROM platform_projects WHERE organization_id=? AND id=?').get(organizationId, projectId) as { product_pack: string } | undefined)?.product_pack;
+export const isCrewinProject = async (db: Db, scope: Scope) => await packOf(db, scope) === 'crewin';
 
 // Crewin content: one row per draft, with its platform and time (the prompt marks ads and messaging drafts, which are not
 // channel posts).
@@ -22,18 +23,18 @@ const crewinPostRows = () => fileSummary(path.join(crewinDataDir(), 'post-histor
 const crewinPosts = () => crewinPostRows().map(item => item.at);
 
 /** Drafts per platform since `since` (ms). */
-export function draftsByPlatform(db: Database.Database, scope: Scope, since: number): Record<string, number> {
+export async function draftsByPlatform(db: Db, scope: Scope, since: number): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
-  if (isCrewinProject(db, scope)) { for (const item of crewinDrafts()) if (item.at >= since) out[item.platform] = (out[item.platform] || 0) + 1; return out; }
-  for (const item of db.prepare("SELECT json_extract(payload,'$.platform') platform FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.timestamp')>=?").all(...scope, since) as { platform: string | null }[])
+  if (await isCrewinProject(db, scope)) { for (const item of crewinDrafts()) if (item.at >= since) out[item.platform] = (out[item.platform] || 0) + 1; return out; }
+  for (const item of await db.prepare("SELECT json_extract(payload,'$.platform') platform FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.timestamp')>=?").all(...scope, since) as { platform: string | null }[])
     if (item.platform) out[item.platform] = (out[item.platform] || 0) + 1;
   return out;
 }
 /** All drafts the project has (content and campaign drafts). */
-export function draftTotal(db: Database.Database, scope: Scope): number {
-  if (isCrewinProject(db, scope)) return crewinDrafts().length;
-  const count = (table: string) => (db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE organization_id=? AND project_id=?`).get(...scope) as { n: number }).n;
-  return count('platform_content_history') + count('platform_campaigns');
+export async function draftTotal(db: Db, scope: Scope): Promise<number> {
+  if (await isCrewinProject(db, scope)) return crewinDrafts().length;
+  const count = async (table: string) => (await db.prepare(`SELECT COUNT(*) n FROM ${table} WHERE organization_id=? AND project_id=?`).get(...scope) as { n: number }).n;
+  return await count('platform_content_history') + await count('platform_campaigns');
 }
 /** Crewin's published posts in [from, to): what its own tools recorded (no engagement or site figures). */
 export function crewinPostsIn(from: string, to: string): Post[] {

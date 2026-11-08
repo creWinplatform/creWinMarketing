@@ -12,7 +12,7 @@ const key = '12'.repeat(32), wrongKey = '34'.repeat(32);
 const cwd = path.join(__dirname, '..');
 const recovery = import('../scripts/lib/platform-recovery.mjs');
 
-function fixture(t, { environment = false, noKey = false, encrypted = true } = {}) {
+async function fixture(t, { environment = false, noKey = false, encrypted = true } = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ryzevo-recovery-'));
   t.after(() => {
     if (db.open) db.close();
@@ -23,9 +23,9 @@ function fixture(t, { environment = false, noKey = false, encrypted = true } = {
   });
   const source = path.join(directory, 'platform.sqlite'), backups = path.join(directory, 'backups');
   const db = openPlatformDatabase(source), repo = new PlatformRepository(db);
-  repo.bootstrapLegacy('backup-admin');
-  const a = repo.provision('legacy-admin', { organizationName: 'Alpha', projectName: 'Alpha', website: 'https://example.com', username: 'alpha', password: 'fixture-password-123' });
-  const b = repo.provision('legacy-admin', { organizationName: 'Beta', projectName: 'Beta', website: 'https://example.org', username: 'beta', password: 'fixture-password-123' });
+  await repo.bootstrapLegacy('backup-admin');
+  const a = await repo.provision('legacy-admin', { organizationName: 'Alpha', projectName: 'Alpha', website: 'https://example.com', username: 'alpha', password: 'fixture-password-123' });
+  const b = await repo.provision('legacy-admin', { organizationName: 'Beta', projectName: 'Beta', website: 'https://example.org', username: 'beta', password: 'fixture-password-123' });
   if (encrypted) for (const [index, project] of [a, b].entries()) {
     const id = `connection-${index}`;
     db.prepare('INSERT INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(
@@ -49,7 +49,7 @@ const modifyManifest = (folder, edit) => {
 };
 
 test('sealed online backup and offline drill verify scoped credentials without mutating the source', async t => {
-  const f = fixture(t), { result, folder } = f.backup();
+  const f = await fixture(t), { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   const { verifyBackup, fileDigest, MAX_RECOVERY_SCHEMA } = await recovery;
   const manifest = manifestAt(folder);
@@ -65,7 +65,7 @@ test('sealed online backup and offline drill verify scoped credentials without m
   assert.equal(checks.credentialCheck, 'authenticated');
   assert.ok(checks.scopedTables > 20);
   assert.ok(checks.scopedReferences > 10);
-  const root = path.join(f.directory, 'drills'), drill = f.run('platform-restore-drill', [folder, root]);
+  const root = path.join(f.directory, 'drills'), drill = await f.run('platform-restore-drill', [folder, root]);
   assert.equal(drill.status, 0, drill.stderr);
   const restored = path.join(root, fs.readdirSync(root)[0]), reportText = fs.readFileSync(path.join(restored, 'recovery-report.json'), 'utf8'), report = JSON.parse(reportText);
   assert.equal(report.applicationStarted, false);
@@ -85,7 +85,7 @@ test('sealed online backup and offline drill verify scoped credentials without m
 });
 
 test('environment key is never copied and a matching vaulted key is required even without credential rows', async t => {
-  const f = fixture(t, { environment: true, encrypted: false }), { result, folder } = f.backup();
+  const f = await fixture(t, { environment: true, encrypted: false }), { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   assert.equal(manifestAt(folder).keySource, 'environment');
   assert.equal(fs.existsSync(path.join(folder, 'platform-credentials.key')), false);
@@ -93,13 +93,13 @@ test('environment key is never copied and a matching vaulted key is required eve
   await assert.rejects(verifyBackup(folder, wrongKey), { code: 'key_mismatch' });
   await assert.rejects(verifyBackup(folder, ''), { code: 'invalid_key' });
   assert.equal((await verifyBackup(folder, key)).checks.credentialCheck, 'no_encrypted_records');
-  const rejected = f.run('platform-verify-backup', [folder], { PLATFORM_ENCRYPTION_KEY: wrongKey });
+  const rejected = await f.run('platform-verify-backup', [folder], { PLATFORM_ENCRYPTION_KEY: wrongKey });
   assert.equal(rejected.status, 1);
   assert.ok(!rejected.stderr.includes(key) && !rejected.stderr.includes(wrongKey));
 });
 
 test('every current encrypted storage contract authenticates using the application AAD format', async t => {
-  const f = fixture(t), { organizationId: organization_id, projectId: project_id, userId } = f.a;
+  const f = await fixture(t), { organizationId: organization_id, projectId: project_id, userId } = f.a;
   const now = new Date().toISOString(), scope = { organization_id, project_id };
   const encrypted = resource => encryptCredentials({ secret: 'DO-NOT-PRINT-SECRET' }, key, organization_id, project_id, resource);
   const insert = (table, values) => {
@@ -128,7 +128,7 @@ test('every current encrypted storage contract authenticates using the applicati
 });
 
 test('file-key backup ignores an unrelated active environment key but rejects a replaced key file', async t => {
-  const f = fixture(t), { result, folder } = f.backup();
+  const f = await fixture(t), { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   const { verifyBackup } = await recovery;
   await verifyBackup(folder, wrongKey);
@@ -137,7 +137,7 @@ test('file-key backup ignores an unrelated active environment key but rejects a 
 });
 
 test('pre-27 sealed backups still verify without a database binding, while a changed binding is rejected', async t => {
-  const f = fixture(t), { verifyBackup, keyProof } = await recovery;
+  const f = await fixture(t), { verifyBackup, keyProof } = await recovery;
   require('./schema-fixture.cjs').removeWorkerObservationSchema(f.db);
   const { result, folder } = f.backup(); assert.equal(result.status, 0, result.stderr);
   modifyManifest(folder, manifest => { delete manifest.databaseId; manifest.keyProof = keyProof(manifest, key); });
@@ -148,7 +148,7 @@ test('pre-27 sealed backups still verify without a database binding, while a cha
 });
 
 test('unmodified no-key databases can be checked, but encrypted records without their key fail closed', async t => {
-  const f = fixture(t, { noKey: true, encrypted: false }), { result, folder } = f.backup();
+  const f = await fixture(t, { noKey: true, encrypted: false }), { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   const { verifyBackup } = await recovery;
   assert.equal((await verifyBackup(folder)).manifest.keySource, 'not_created');
@@ -160,24 +160,24 @@ test('unmodified no-key databases can be checked, but encrypted records without 
 });
 
 test('modified snapshot bytes are rejected before SQLite is opened', async t => {
-  const f = fixture(t), { folder, result } = f.backup();
+  const f = await fixture(t), { folder, result } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   fs.appendFileSync(path.join(folder, 'platform.sqlite'), Buffer.from('damaged'));
   await assert.rejects((await recovery).verifyBackup(folder), { code: 'database_hash_mismatch' });
-  const rejected = f.run('platform-restore-drill', [folder, path.join(f.directory, 'drills')]);
+  const rejected = await f.run('platform-restore-drill', [folder, path.join(f.directory, 'drills')]);
   assert.equal(rejected.status, 1);
   assert.equal(fs.existsSync(path.join(f.directory, 'drills')), false);
 });
 
 test('unrecorded WAL and journal sidecars cannot be silently incorporated into a snapshot', async t => {
-  const f = fixture(t), { folder, result } = f.backup();
+  const f = await fixture(t), { folder, result } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   fs.writeFileSync(path.join(folder, 'platform.sqlite-wal'), 'untracked');
   await assert.rejects((await recovery).verifyBackup(folder), { code: 'snapshot_sidecar_found' });
 });
 
 test('manifests cannot redirect the database path or downgrade to an unsealed legacy format', async t => {
-  const f = fixture(t), { folder, result } = f.backup();
+  const f = await fixture(t), { folder, result } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   const { verifyBackup } = await recovery;
   modifyManifest(folder, value => { value.database = '../platform.sqlite'; });
@@ -186,8 +186,8 @@ test('manifests cannot redirect the database path or downgrade to an unsealed le
   await assert.rejects(verifyBackup(folder), { code: 'unsupported_backup_format' });
 });
 
-test('backup fails if encrypted rows were copied across customer scopes', t => {
-  const f = fixture(t);
+test('backup fails if encrypted rows were copied across customer scopes', async t => {
+  const f = await fixture(t);
   const row = f.db.prepare("SELECT encrypted_credentials FROM platform_connections WHERE id='connection-0'").get();
   f.db.prepare("UPDATE platform_connections SET encrypted_credentials=? WHERE id='connection-1'").run(row.encrypted_credentials);
   const { result } = f.backup();
@@ -196,8 +196,8 @@ test('backup fails if encrypted rows were copied across customer scopes', t => {
   assert.ok(!result.stderr.includes('DO-NOT-PRINT-SECRET'));
 });
 
-test('cross-project connection references fail even when ordinary foreign keys are valid', t => {
-  const f = fixture(t);
+test('cross-project connection references fail even when ordinary foreign keys are valid', async t => {
+  const f = await fixture(t);
   f.db.prepare('INSERT INTO platform_jobs(id,organization_id,project_id,actor_id,connection_id,revision,idempotency_key,status,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)').run(
     'foreign-job', f.b.organizationId, f.b.projectId, f.b.userId, 'connection-0', 'revision', 'unique-key', 'queued', new Date().toISOString(), new Date().toISOString());
   assert.equal(f.db.pragma('foreign_key_check').length, 0);
@@ -207,8 +207,8 @@ test('cross-project connection references fail even when ordinary foreign keys a
   assert.equal(f.db.prepare("SELECT status FROM platform_jobs WHERE id='foreign-job'").get().status, 'queued');
 });
 
-test('orphaned project scopes and undeclared encrypted columns fail recovery checks', t => {
-  const f = fixture(t);
+test('orphaned project scopes and undeclared encrypted columns fail recovery checks', async t => {
+  const f = await fixture(t);
   f.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run('legacy-admin', 'missing', 'missing', 'fixture', new Date().toISOString());
   const orphan = f.backup();
   assert.equal(orphan.result.status, 1);
@@ -224,8 +224,8 @@ test('orphaned project scopes and undeclared encrypted columns fail recovery che
   assert.match(suffix.result.stderr, /unsupported_encrypted_column/, 'the <name>_encrypted spelling is recognised too');
 });
 
-test('future and gapped migrations are rejected without running migrations', t => {
-  const f = fixture(t);
+test('future and gapped migrations are rejected without running migrations', async t => {
+  const f = await fixture(t);
   f.db.prepare("INSERT INTO platform_migrations VALUES(79,datetime('now'))").run();
   const future = f.backup();
   assert.equal(future.result.status, 1);
@@ -238,22 +238,22 @@ test('future and gapped migrations are rejected without running migrations', t =
 });
 
 test('drill rejects backup-nested targets and never overwrites an existing destination file', async t => {
-  const f = fixture(t), { result, folder } = f.backup();
+  const f = await fixture(t), { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
-  const nested = f.run('platform-restore-drill', [folder, path.join(folder, 'nested')]);
+  const nested = await f.run('platform-restore-drill', [folder, path.join(folder, 'nested')]);
   assert.equal(nested.status, 1);
   assert.match(nested.stderr, /output_inside_backup/);
   assert.equal(fs.existsSync(path.join(folder, 'nested')), false);
   const sentinel = path.join(f.directory, 'sentinel'); fs.writeFileSync(sentinel, 'unchanged');
-  assert.equal(f.run('platform-restore-drill', [folder, sentinel]).status, 1);
+  assert.equal((await f.run('platform-restore-drill', [folder, sentinel])).status, 1);
   assert.equal(fs.readFileSync(sentinel, 'utf8'), 'unchanged');
 });
 
 test('backup symlinks are refused rather than followed', async t => {
-  const f = fixture(t), { result, folder } = f.backup();
+  const f = await fixture(t), { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
   const link = path.join(f.directory, 'backup-link');
   try { fs.symlinkSync(folder, link, process.platform === 'win32' ? 'junction' : 'dir'); }
-  catch (error) { if (error.code === 'EPERM') { t.skip('OS denies symlink creation'); return; } throw error; }
+  catch (error) { if (error.code === 'EPERM') { await t.skip('OS denies symlink creation'); return; } throw error; }
   await assert.rejects((await recovery).verifyBackup(link), { code: 'unsafe_link' });
 });

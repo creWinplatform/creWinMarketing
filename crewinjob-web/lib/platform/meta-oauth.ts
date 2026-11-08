@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { OAuthRequests } from './oauth-requests';
@@ -13,30 +14,30 @@ const numericId = (value: unknown): value is string => typeof value === 'string'
 
 export class ProjectMetaOAuth {
   private requests: OAuthRequests;
-  constructor(private db: Database.Database, private scope: MarketingScope, private key: string, private clientFactory = metaClient, private read = readSocialJson) { this.requests = new OAuthRequests(db, scope, key); }
-  start(target: string, publishing = false, inbox = false) {
-    new ProjectMarketingStore(this.db, this.scope).connections();
+  constructor(private db: Db, private scope: MarketingScope, private key: string, private clientFactory = metaClient, private read = readSocialJson) { this.requests = new OAuthRequests(db, scope, key); }
+  async start(target: string, publishing = false, inbox = false) {
+    await new ProjectMarketingStore(this.db, this.scope).connections();
     if (!['facebook', 'instagram'].includes(target)) throw new MarketingStoreError('Facebook veya Instagram seçin.');
     if (typeof publishing !== 'boolean') throw new MarketingStoreError('Geçerli yayın izni seçimi gerekli.');
     if (typeof inbox !== 'boolean') throw new MarketingStoreError('Geçerli gelen kutusu izni seçimi gerekli.');
-    const client = this.clientFactory(), { state, browser } = this.requests.create('meta', target, target, { publishing });
+    const client = this.clientFactory(), { state, browser } = await this.requests.create('meta', target, target, { publishing });
     return { browser, authorizationUrl: client.authorizationUrl(state, target, publishing, inbox) };
   }
   async complete(state: string, browser: string, code: string) {
     if (!code || code.length > 4096) throw new MarketingStoreError('Yetkilendirme kodu geçersiz.');
-    const pending = this.requests.claim(state, browser, ['meta']);
+    const pending = await this.requests.claim(state, browser, ['meta']);
     try {
       const client = this.clientFactory(), token = await client.exchange(code), { publishing } = this.requests.secret<{publishing?:boolean}>(pending);
-      return this.requests.finish(pending, () => {
-        const selected = this.requests.create('meta_selection', pending.resource, pending.account_name, { ...token, graphVersion: client.graphVersion, ...(publishing ? {publishing:true,appId:client.appId} : {}), pages: [], loaded: false });
+      return await this.requests.finish(pending, async () => {
+        const selected = await this.requests.create('meta_selection', pending.resource, pending.account_name, { ...token, graphVersion: client.graphVersion, ...(publishing ? {publishing:true,appId:client.appId} : {}), pages: [], loaded: false });
         return `${selected.state}.${selected.browser}`;
       });
-    } catch { this.requests.discard(pending); throw new MarketingStoreError('Meta bağlantısı tamamlanamadı. Uygulama ve izinleri kontrol edin.'); }
+    } catch { await this.requests.discard(pending); throw new MarketingStoreError('Meta bağlantısı tamamlanamadı. Uygulama ve izinleri kontrol edin.'); }
   }
-  private selection(cookie: string, claim = false) {
+  private async selection(cookie: string, claim = false) {
     const [state, browser, extra] = cookie.split('.');
     if (extra !== undefined) throw new MarketingStoreError('Seçim isteği geçersiz.', 403);
-    const pending = claim ? this.requests.claim(state || '', browser || '', ['meta_selection']) : this.requests.get(state || '', browser || '', ['meta_selection']);
+    const pending = claim ? await this.requests.claim(state || '', browser || '', ['meta_selection']) : await this.requests.get(state || '', browser || '', ['meta_selection']);
     const grant = this.requests.secret<Grant>(pending);
     if (grant.expiresAt <= Date.now()) throw new MarketingStoreError('Meta izni süresi dolmuş. Yeniden bağlanın.', 409);
     return { pending, grant };
@@ -59,7 +60,7 @@ export class ProjectMetaOAuth {
     return { pages, nextCursor };
   }
   async list(cookie: string, more = false) {
-    const { pending, grant } = this.selection(cookie);
+    const { pending, grant } = await this.selection(cookie);
     if (!grant.loaded || (more && grant.nextCursor && grant.pages.length < 200)) {
       try {
         const batch = await this.pages(grant, pending.resource, grant.loaded ? grant.nextCursor : undefined);
@@ -67,14 +68,14 @@ export class ProjectMetaOAuth {
         for (const page of batch.pages) pages.set(page.id, page);
         if (pages.size > 200) throw new Error('Page limit exceeded.');
         grant.pages = Array.from(pages.values()); grant.nextCursor = batch.nextCursor; grant.loaded = true;
-        this.requests.replaceSecret(pending, grant);
+        await this.requests.replaceSecret(pending, grant);
       } catch { throw new MarketingStoreError('Meta sayfaları alınamadı. İzinleri kontrol edin veya yeniden bağlanın.'); }
     }
     return { target: pending.resource, publishing: grant.publishing === true, items: grant.pages.map(page => ({ id: page.id, name: page.name, instagramId: page.instagramId || null, instagramUsername: page.instagramUsername || null })), hasMore: Boolean(grant.nextCursor && grant.pages.length < 200), limitReached: Boolean(grant.nextCursor && grant.pages.length >= 200) };
   }
   async select(cookie: string, pageId: string) {
     if (!numericId(pageId)) throw new MarketingStoreError('Geçerli sayfa seçin.');
-    const { pending, grant } = this.selection(cookie, true);
+    const { pending, grant } = await this.selection(cookie, true);
     try {
       const cached = grant.pages.find(page => page.id === pageId);
       if (!cached) throw new Error();
@@ -83,8 +84,8 @@ export class ProjectMetaOAuth {
       if (!page || (pending.resource === 'instagram' && (!page.instagramId || !page.instagramUsername || page.instagramId !== cached.instagramId))) throw new Error();
       const instagram = pending.resource === 'instagram';
       const social = { platform: instagram ? 'instagram' as const : 'facebook' as const, accountId: instagram ? page.instagramId! : page.id, graphVersion: grant.graphVersion, ...(instagram ? { pageId: page.id } : {}) };
-      return this.requests.finish(pending, () => new ProjectMarketingStore(this.db, this.scope).saveConnection({ provider: 'social', integrationId: `${social.platform}:${social.accountId}`, accountName: (instagram ? page.instagramUsername! : page.name).slice(0, 160), accessToken: page.token, expiresAt: grant.expiresAt, social }, this.key, grant.publishing ? {userAccessToken:grant.accessToken,appId:grant.appId!} : undefined));
-    } catch { this.requests.discard(pending); throw new MarketingStoreError('Seçilen sayfa veya Instagram bağlantısı değişti. Yeniden bağlanın.'); }
+      return await this.requests.finish(pending, async () => await new ProjectMarketingStore(this.db, this.scope).saveConnection({ provider: 'social', integrationId: `${social.platform}:${social.accountId}`, accountName: (instagram ? page.instagramUsername! : page.name).slice(0, 160), accessToken: page.token, expiresAt: grant.expiresAt, social }, this.key, grant.publishing ? {userAccessToken:grant.accessToken,appId:grant.appId!} : undefined));
+    } catch { await this.requests.discard(pending); throw new MarketingStoreError('Seçilen sayfa veya Instagram bağlantısı değişti. Yeniden bağlanın.'); }
   }
-  cancel(cookie: string) { const { pending } = this.selection(cookie); this.requests.discard(pending); }
+  async cancel(cookie: string) { const { pending } = await this.selection(cookie); await this.requests.discard(pending); }
 }

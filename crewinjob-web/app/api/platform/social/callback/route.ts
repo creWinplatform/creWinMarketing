@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     if (!access || access.identity.mode !== 'platform' || request.nextUrl.searchParams.has('error')) throw new Error();
     const scope={subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},db=platformDatabase(),key=credentialEncryptionKey();
     const state=request.nextUrl.searchParams.get('state')||'',browser=request.cookies.get(LINKEDIN_BROWSER_COOKIE)?.value||'',code=request.nextUrl.searchParams.get('code')||'';
-    const pending=new OAuthRequests(db,scope,key).get(state,browser,['linkedin','linkedin_organization']);
+    const pending=await new OAuthRequests(db,scope,key).get(state,browser,['linkedin','linkedin_organization']);
     organization=pending.provider==='linkedin_organization';
     if(organization){selectionCookie=await new LinkedInOrganizationOAuth(db,scope,key).complete(state,browser,code);result='select';}
     else {await new ProjectLinkedInOAuth(db,scope,key).complete(state,browser,code);result='connected';}

@@ -15,11 +15,11 @@ const cwd = path.join(__dirname, '..');
 const fakeKeys = (prefix = 'AKIA') => ({ accessKeyId: prefix + crypto.randomBytes(16).toString('hex').toUpperCase().slice(0, 16), secretAccessKey: crypto.randomBytes(30).toString('base64') });
 const env = (keys = fakeKeys()) => ({ PLATFORM_OFFSITE_ENABLED: '1', PLATFORM_OFFSITE_S3_BUCKET: 'ryzevo-qa-backups', PLATFORM_OFFSITE_S3_REGION: 'eu-central-1', PLATFORM_OFFSITE_S3_PREFIX: 'qa/platform', PLATFORM_OFFSITE_AWS_ACCESS_KEY_ID: keys.accessKeyId, PLATFORM_OFFSITE_AWS_SECRET_ACCESS_KEY: keys.secretAccessKey });
 
-function fixture(t) {
+async function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ryzevo-offsite-'));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const file = path.join(directory, 'platform.sqlite'), backups = path.join(directory, 'backups'), key = crypto.randomBytes(32).toString('hex');
-  const db = openPlatformDatabase(file); new PlatformRepository(db).bootstrapLegacy('offsite-admin'); db.close();
+  const db = openPlatformDatabase(file); await new PlatformRepository(db).bootstrapLegacy('offsite-admin'); db.close();
   fs.writeFileSync(path.join(directory, 'platform-credentials.key'), key);
   const backup = () => { const result = spawnSync(process.execPath, ['scripts/platform-backup.mjs'], { cwd, windowsHide: true, encoding: 'utf8', timeout: 30000, env: { ...process.env, PLATFORM_DATABASE_PATH: file, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: '' } }); assert.equal(result.status, 0, result.stderr); return path.join(backups, fs.readdirSync(backups).sort().at(-1)); };
   return { directory, file, backups, backup, statePath: path.join(directory, 'offsite-state.json') };
@@ -31,12 +31,12 @@ function fakeS3({ deny = false, corrupt = false } = {}) {
     calls.push({ method, host, path: objectPath, headers });
     if (deny) return { status: 403, headers: {} };
     if (method === 'PUT') {
-      if (objects.has(objectPath)) return { status: 412, headers: {} };
+      if (await objects.has(objectPath)) return { status: 412, headers: {} };
       const body = fs.readFileSync(file);
       if (crypto.createHash('sha256').update(body).digest('base64') !== headers['x-amz-checksum-sha256']) return { status: 400, headers: {} };
       objects.set(objectPath, { bytes: body.length, checksum: corrupt ? 'AAAA' : headers['x-amz-checksum-sha256'] }); return { status: 200, headers: {} };
     }
-    const item = objects.get(objectPath);
+    const item = await objects.get(objectPath);
     return item ? { status: 200, headers: { 'content-length': String(item.bytes), 'x-amz-checksum-sha256': item.checksum } } : { status: 404, headers: {} };
   };
   return { objects, calls, transport };
@@ -68,7 +68,7 @@ test('the off-host copy is off by default and refuses unsafe settings', async ()
 });
 
 test('the newest backup is copied once, encrypted, checksummed and read back; the key file never leaves', async t => {
-  const { copyLatestBackup } = await offsite, f = fixture(t), folder = f.backup(), s3 = fakeS3(), keys = fakeKeys();
+  const { copyLatestBackup } = await offsite, f = await fixture(t), folder = f.backup(), s3 = fakeS3(), keys = fakeKeys();
   assert.ok(fs.readdirSync(folder).includes('platform-credentials.key'), 'this backup carries a key file');
   assert.deepEqual(await copyLatestBackup({ backupRoot: f.backups, statePath: f.statePath, env: {}, transport: s3.transport }), { status: 'disabled' });
   const result = await copyLatestBackup({ backupRoot: f.backups, statePath: f.statePath, env: env(keys), transport: s3.transport });
@@ -89,7 +89,7 @@ test('the newest backup is copied once, encrypted, checksummed and read back; th
 });
 
 test('failures are recorded as codes and the monitor reports missing, stale and failing copies', async t => {
-  const { copyLatestBackup } = await offsite, { monitorConfiguration, monitorPlatform } = await monitoring, f = fixture(t);
+  const { copyLatestBackup } = await offsite, { monitorConfiguration, monitorPlatform } = await monitoring, f = await fixture(t);
   assert.deepEqual(await copyLatestBackup({ backupRoot: f.backups, statePath: f.statePath, env: env(), transport: fakeS3().transport }), { status: 'failed', code: 'backup_missing_or_incomplete' });
   f.backup();
   assert.deepEqual(await copyLatestBackup({ backupRoot: f.backups, statePath: f.statePath, env: env(), transport: fakeS3({ deny: true }).transport }), { status: 'failed', code: 'offsite_access_denied' });

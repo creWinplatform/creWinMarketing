@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import type { LocalizedText } from './catalog';
@@ -94,8 +95,8 @@ function gemini(env: Env, isLocal: boolean): SetupSection {
     verify: { text: l('“Dene” anahtarın ve modelin çalıştığını doğrular; içerik üretmez ve arama yapmaz. Sonra SEO & Blog → AI görünürlüğü’nde bir soru ekleyip tek bir soruyla deneyin.', '“Check” confirms the key and model work; it generates nothing and runs no search. Then add one question in SEO & Blog → AI visibility and try it.'), href: '/?tab=seo&view=visibility', probe: 'gemini' } };
 }
 
-function worker(db: Database.Database, env: Env, origin: string, isLocal: boolean, now: number): SetupSection {
-  const row = (() => { try { return db.prepare("SELECT last_success_at,outcome,consecutive_failures FROM platform_worker_observations WHERE component='platform-worker'").get() as { last_success_at: string | null; outcome: string; consecutive_failures: number } | undefined; } catch { return undefined; } })();
+async function worker(db: Db, env: Env, origin: string, isLocal: boolean, now: number): Promise<SetupSection> {
+  const row = await (async () => { try { return await db.prepare("SELECT last_success_at,outcome,consecutive_failures FROM platform_worker_observations WHERE component='platform-worker'").get() as { last_success_at: string | null; outcome: string; consecutive_failures: number } | undefined; } catch { return undefined; } })();
   const last = row?.last_success_at || null, age = last ? now - Date.parse(last) : Infinity, secret = (env.CRON_SECRET || '').length >= 16;
   const problems: LocalizedText[] = [...(secret ? [] : [l('CRON_SECRET en az 16 karakterlik rastgele bir değer olmalı.', 'CRON_SECRET must be a random value of at least 16 characters.')]),
     ...(!last ? [l('Zamanlanmış işler bu sunucuda hiç çalışmamış.', 'Scheduled jobs have never run on this server.')] : age > WORKER_FRESH_MS ? [l(`Son başarılı çalışma ${Math.round(age / 60_000)} dakika önce; birkaç dakikada bir çalışması gerekir.`, `The last successful run was ${Math.round(age / 60_000)} minutes ago; it should run every few minutes.`)] : []),
@@ -316,10 +317,10 @@ function switches(env: Env): SetupSection {
 // extra: what the route reads outside the process environment: the agent's .env (Telegram session), the key file and the
 // settings files next to the project that are checked for pasted secrets.
 export type SetupExtra = { agentEnv?: Env; keyFile?: { exists: boolean; path: string }; files?: { label: string; text: string }[] };
-export function serverSetup(db: Database.Database, origin: string, env: Env = process.env, now = Date.now(), extra: SetupExtra = {}): SetupGuide {
+export async function serverSetup(db: Db, origin: string, env: Env = process.env, now = Date.now(), extra: SetupExtra = {}): Promise<SetupGuide> {
   const isLocal = local(origin), keyFile = extra.keyFile || { exists: false, path: 'data/platform-credentials.key' };
   return { origin, local: isLocal, generatedAt: new Date(now).toISOString(), sections: [
-    google(env, origin, isLocal), meta(env, origin, isLocal), gemini(env, isLocal), worker(db, env, origin, isLocal, now),
+    google(env, origin, isLocal), meta(env, origin, isLocal), gemini(env, isLocal), await worker(db, env, origin, isLocal, now),
     adminPassword(env, isLocal), authSecret(env, isLocal), encryptionKey(env, keyFile, isLocal), plaintextSecrets(env, extra.files || []),
     crewinEmail(env, isLocal), crewinWhatsApp(env, origin, isLocal), crewinTelegram(env, extra.agentEnv || {}, isLocal), crewinAnalytics(env, isLocal),
     publicAddress(env, origin, isLocal), sesFeedback(env, origin, isLocal), accountEmail(env, isLocal),

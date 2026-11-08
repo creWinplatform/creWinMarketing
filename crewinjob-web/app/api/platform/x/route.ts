@@ -23,7 +23,7 @@ export async function POST(request:NextRequest) {
     const config=xConfiguration();
     if(request.headers.get('origin')!==new URL(config.redirectUri).origin)throw new MarketingStoreError('Panel adresi X dönüş adresiyle eşleşmiyor.');
     const input=await readAuthenticationJson(request),oauth=new ProjectXOAuth(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},credentialEncryptionKey());
-    const result=oauth.start({accountName:input.accountName,publishing:input.publishing});
+    const result=await oauth.start({accountName:input.accountName,publishing:input.publishing});
     const response=NextResponse.json({authorizationUrl:result.authorizationUrl},{headers:{'Cache-Control':'private, no-store'}});
     response.cookies.set(X_BROWSER_COOKIE,result.browser,{httpOnly:true,sameSite:'lax',secure:new URL(config.redirectUri).protocol==='https:',path:'/api/platform/x/callback',maxAge:600});
     return response;

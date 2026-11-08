@@ -8,19 +8,19 @@ import { coachBody,coachGemini,coachRoute } from './shared';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
 const handle=coachRoute(async(scope,request)=>{
-  const coach=new GrowthCoach(platformDatabase(),scope);coach.authorize();
-  if(request.method==='GET')return request.nextUrl.searchParams.get('view')==='weekly'?new CoachWeeklyPack(platformDatabase(),scope).view():coach.read();
+  const coach=new GrowthCoach(platformDatabase(),scope);await coach.authorize();
+  if(request.method==='GET')return request.nextUrl.searchParams.get('view')==='weekly'?await new CoachWeeklyPack(platformDatabase(),scope).view():await coach.read();
   const raw=await coachBody(request);
   if(raw.action==='diagnose')return coach.diagnose(raw,raw.mode==='ai'?coachGemini():undefined);
   // Suggested answers from the project's public site or a short description; nothing is saved here.
   if(raw.action==='intake')return new CoachIntakeService(platformDatabase(),scope).run(raw,{generator:raw.mode==='ai'?coachGemini(1500):undefined});
-  if(raw.action==='intake_tasks')return new CoachIntakeService(platformDatabase(),scope).addTasks(raw);
-  if(raw.action==='weekly_pack')return new CoachWeeklyPack(platformDatabase(),scope).setEnabled(raw);
-  if(raw.action==='save')return coach.saveDraft(raw);
+  if(raw.action==='intake_tasks')return await new CoachIntakeService(platformDatabase(),scope).addTasks(raw);
+  if(raw.action==='weekly_pack')return await new CoachWeeklyPack(platformDatabase(),scope).setEnabled(raw);
+  if(raw.action==='save')return await coach.saveDraft(raw);
   // After approval the first week is ready: this month's starter plan and a few drafts to edit. Nothing is published.
-  if(raw.action==='approve'){coach.approve(raw);try{seedCoachFirstWeek(platformDatabase(),scope);}catch{/* the approval stands without starter drafts */}return coach.read();}
-  if(raw.action==='act')return coach.act(raw);
-  if(raw.action==='schedule')return coach.schedule(raw);
+  if(raw.action==='approve'){await coach.approve(raw);try{await seedCoachFirstWeek(platformDatabase(),scope);}catch{/* the approval stands without starter drafts */}return await coach.read();}
+  if(raw.action==='act')return await coach.act(raw);
+  if(raw.action==='schedule')return await coach.schedule(raw);
   throw new MarketingStoreError('Geçersiz büyüme koçu işlemi.');
 });
 export const GET=handle,POST=handle;

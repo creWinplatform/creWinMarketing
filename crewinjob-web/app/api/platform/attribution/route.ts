@@ -13,11 +13,11 @@ async function handle(request:NextRequest){
     const service=new ProjectAttribution(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId});
     if(request.method==='GET'){
       const view=request.nextUrl.searchParams.get('view');
-      return NextResponse.json(view==='settings'?service.settings():service.report(request.nextUrl.searchParams.get('days')||30,request.nextUrl.searchParams.get('model')||'first'),{headers});
+      return NextResponse.json(view==='settings'?await service.settings():await service.report(request.nextUrl.searchParams.get('days')||30,request.nextUrl.searchParams.get('model')||'first'),{headers});
     }
     if(!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz istek.');
-    if(input.action==='save_settings')return NextResponse.json(service.saveSettings(input),{headers});
+    if(input.action==='save_settings')return NextResponse.json(await service.saveSettings(input),{headers});
     throw new MarketingStoreError('Geçersiz işlem.');
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Kaynak atfı okunamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

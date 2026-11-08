@@ -10,8 +10,8 @@ export async function POST(request:NextRequest){
     if(request.headers.get('content-type')?.split(';')[0].trim().toLowerCase()!=='application/x-www-form-urlencoded')return new NextResponse('Invalid notification',{status:415,headers});
     const body=new TextDecoder('utf-8',{fatal:true}).decode(await readBoundedBodyBytes(request,8192));
     // RZLIVE orders are live payments; everything else stays on the sandbox path.
-    if(isLiveNotification(body))receivePaytrLiveNotification(platformDatabase(),body);
-    else receivePaytrNotification(platformDatabase(),body);
+    if(isLiveNotification(body))await receivePaytrLiveNotification(platformDatabase(),body);
+    else await receivePaytrNotification(platformDatabase(),body);
     return new NextResponse('OK',{headers});
   }catch{return new NextResponse('Notification not accepted',{status:400,headers});}
 }

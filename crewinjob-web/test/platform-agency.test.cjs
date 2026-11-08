@@ -8,10 +8,10 @@ const env={PLATFORM_PAYTR_MERCHANT_ID:'123456',PLATFORM_PAYTR_MERCHANT_KEY:'agen
 function withConfig(run){const original=Object.fromEntries(keys.map(key=>[key,process.env[key]]));for(const key of keys)delete process.env[key];Object.assign(process.env,env);return Promise.resolve().then(run).finally(()=>{for(const key of keys){if(original[key]===undefined)delete process.env[key];else process.env[key]=original[key];}});}
 function notice(id,total){const value={merchant_oid:id,status:'success',total_amount:String(total),currency:'USD',test_mode:'0',payment_amount:String(total),payment_type:'card'};value.hash=createHmac('sha256',env.PLATFORM_PAYTR_MERCHANT_KEY).update(value.merchant_oid+env.PLATFORM_PAYTR_MERCHANT_SALT+value.status+value.total_amount).digest('base64');return new URLSearchParams(value).toString();}
 const DAY=86400000,iso=value=>new Date(value).toISOString(),plain=value=>JSON.parse(JSON.stringify(value)),IP='203.0.113.9';
-function fixture(){
- const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);repo.bootstrapLegacy('admin');
- const create=name=>repo.provision('legacy-admin',{organizationName:name,projectName:name,website:`https://${name}.example`,username:name,password:'fixture-password-123'});
- const agency=create('agency'),client=create('client'),pilot=create('pilot');
+async function fixture(){
+ const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);await repo.bootstrapLegacy('admin');
+ const create=async name=>await repo.provision('legacy-admin',{organizationName:name,projectName:name,website:`https://${name}.example`,username:name,password:'fixture-password-123'});
+ const agency=await create('agency'),client=await create('client'),pilot=await create('pilot');
  // One clock reading: a trial must last exactly 14 days, so its start and end may not fall a millisecond apart.
  const now=Date.now();for(const w of [agency,client])db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(w.userId,iso(now),iso(now+14*DAY),w.organizationId,w.projectId);
  db.prepare('INSERT INTO platform_account_emails VALUES(?,?,?)').run(agency.userId,'owner@agency.example',iso(Date.now()));
@@ -26,64 +26,64 @@ function fixture(){
 const project=(patch={})=>({action:'create',homeOrganizationId:'x',homeProjectId:'y',organizationName:'Deniz Mobilya',projectName:'Deniz Mobilya',website:'https://deniz.example',...patch});
 
 test('the agency package is bought like any live plan, as a Growth period marked agency, and gives the home project Growth rights',()=>withConfig(async()=>{
- const f=fixture(),billing=new ProjectLiveBilling(f.db,f.home,KEY);
+ const f=await fixture(),billing=new ProjectLiveBilling(f.db,f.home,KEY);
  const order=await billing.start({planId:'agency',cadence:'monthly',idempotencyKey:'agency-attempt-000001',acceptTerms:true,language:'tr',contact:{name:'Ajans Ltd',phone:'+90 555 000 0000',address:'Fixture address only'}},IP,async()=>({state:'accepted',token:'agencycheckouttoken12345'}));
  assert.equal(order.planId,'agency');assert.equal(order.amountMinor,29900);
  assert.deepEqual(plain(f.db.prepare('SELECT plan_id,package,amount_minor FROM platform_billing_live_orders WHERE id=?').get(order.id)),{plan_id:'growth',package:'agency',amount_minor:29900});
- assert.equal(receivePaytrLiveNotification(f.db,notice(order.id,29900)).state,'paid');
- const rights=projectEntitlement(f.db,f.home);assert.equal(rights.id,'paid');assert.equal(rights.plan,'growth');assert.equal(rights.agency,'home');assert.equal(rights.seats,5);
- assert.equal(billing.read().current.planId,'agency');assert.equal(agencyHomes(f.db,f.agency.userId)[0].limit,10);
+ assert.equal((await receivePaytrLiveNotification(f.db,notice(order.id,29900))).state,'paid');
+ const rights=await projectEntitlement(f.db,f.home);assert.equal(rights.id,'paid');assert.equal(rights.plan,'growth');assert.equal(rights.agency,'home');assert.equal(rights.seats,5);
+ assert.equal((await billing.read()).current.planId,'agency');assert.equal((await agencyHomes(f.db,f.agency.userId))[0].limit,10);
 }));
 
-test('an agency opens client projects it owns, each covered with Growth rights, up to ten',()=>{
- const f=fixture();assert.throws(()=>f.service.createProject(project()),error=>error.status===403,'no package bought yet');
- f.grant();const created=f.service.createProject(project());
- assert.equal(f.repo.can(f.agency.userId,created.organizationId,created.projectId,'billing.manage'),true,'the agency owns the new project');
- const rights=projectEntitlement(f.db,{organizationId:created.organizationId,projectId:created.projectId});assert.equal(rights.id,'paid');assert.equal(rights.agency,'linked');
+test('an agency opens client projects it owns, each covered with Growth rights, up to ten',async ()=>{
+ const f=await fixture();await assert.rejects(async ()=>await f.service.createProject(project()),error=>error.status===403,'no package bought yet');
+ f.grant();const created=await f.service.createProject(project());
+ assert.equal(await f.repo.can(f.agency.userId,created.organizationId,created.projectId,'billing.manage'),true,'the agency owns the new project');
+ const rights=await projectEntitlement(f.db,{organizationId:created.organizationId,projectId:created.projectId});assert.equal(rights.id,'paid');assert.equal(rights.agency,'linked');
  assert.equal(f.db.prepare('SELECT mode FROM platform_project_entitlements WHERE project_id=?').get(created.projectId).mode,'agency','no rights of its own and no trial used up');
- for(let i=1;i<10;i++)f.service.createProject(project({projectName:`Müşteri ${i}`}));
- assert.throws(()=>f.service.createProject(project({projectName:'On birinci'})),error=>error.status===429);assert.equal(f.service.view().used,10);
- for(const bad of [{website:'ftp://x.example'},{organizationName:''},{timezone:'Mars/Base'},{extra:'x'}])assert.throws(()=>new AgencyPackage(f.db,f.home).createProject(project(bad)));
+ for(let i=1;i<10;i++)await f.service.createProject(project({projectName:`Müşteri ${i}`}));
+ await assert.rejects(async ()=>await f.service.createProject(project({projectName:'On birinci'})),error=>error.status===429);assert.equal((await f.service.view()).used,10);
+ for(const bad of [{website:'ftp://x.example'},{organizationName:''},{timezone:'Mars/Base'},{extra:'x'}])await assert.rejects(async ()=>await new AgencyPackage(f.db,f.home).createProject(project(bad)));
 });
 
-test('a client project joins the package only with its owner’s consent, and the owner can end it at any time',()=>{
- const f=fixture();f.grant();f.member(f.client,'editor');
- assert.equal(f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId}).state,'requested');
- assert.equal(projectEntitlement(f.db,f.scope(f.client)).id,'trial','nothing changes before consent');
- assert.deepEqual(plain(approvalQueue(f.db,f.scope(f.client)).map(item=>item.kind)),['agency_link']);
- const owner=new AgencyClient(f.db,f.scope(f.client)),[request]=owner.list();assert.equal(request.agencyName,'agency');assert.equal(request.requestedBy,'agency');
- assert.throws(()=>new AgencyClient(f.db,{subject:f.agency.userId,organizationId:f.client.organizationId,projectId:f.client.projectId}).decide({id:request.id,decision:'approve'}),error=>error.status===403,'the agency cannot approve for the client');
- owner.decide({id:request.id,decision:'approve'});const rights=projectEntitlement(f.db,f.scope(f.client));assert.equal(rights.id,'paid');assert.equal(rights.agency,'linked');
- assert.throws(()=>new AgencyPackage(f.db,f.home).requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId}),error=>error.status===409,'already linked');
- owner.remove({id:request.id});assert.equal(projectEntitlement(f.db,f.scope(f.client)).id,'trial','removing ends the coverage at once');
- f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId});const [again]=owner.list().filter(item=>item.state==='requested');owner.decide({id:again.id,decision:'decline'});
- assert.equal(projectEntitlement(f.db,f.scope(f.client)).id,'trial');
+test('a client project joins the package only with its owner’s consent, and the owner can end it at any time',async ()=>{
+ const f=await fixture();f.grant();await f.member(f.client,'editor');
+ assert.equal((await f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId})).state,'requested');
+ assert.equal((await projectEntitlement(f.db,await f.scope(f.client))).id,'trial','nothing changes before consent');
+ assert.deepEqual(plain((await approvalQueue(f.db,await f.scope(f.client))).map(item=>item.kind)),['agency_link']);
+ const owner=new AgencyClient(f.db,await f.scope(f.client)),[request]=await owner.list();assert.equal(request.agencyName,'agency');assert.equal(request.requestedBy,'agency');
+ await assert.rejects(async ()=>await new AgencyClient(f.db,{subject:f.agency.userId,organizationId:f.client.organizationId,projectId:f.client.projectId}).decide({id:request.id,decision:'approve'}),error=>error.status===403,'the agency cannot approve for the client');
+ await owner.decide({id:request.id,decision:'approve'});const rights=await projectEntitlement(f.db,await f.scope(f.client));assert.equal(rights.id,'paid');assert.equal(rights.agency,'linked');
+ await assert.rejects(async ()=>await new AgencyPackage(f.db,f.home).requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId}),error=>error.status===409,'already linked');
+ await owner.remove({id:request.id});assert.equal((await projectEntitlement(f.db,await f.scope(f.client))).id,'trial','removing ends the coverage at once');
+ await f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId});const [again]=(await owner.list()).filter(item=>item.state==='requested');await owner.decide({id:again.id,decision:'decline'});
+ assert.equal((await projectEntitlement(f.db,await f.scope(f.client))).id,'trial');
 });
 
-test('links need membership, a standard non-pilot project and a running package; the home project’s editors cannot manage it',()=>{
- const f=fixture();f.grant();
- assert.throws(()=>f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId}),error=>error.status===403,'not a member');
- f.member(f.pilot,'editor');assert.throws(()=>f.service.requestLink({organizationId:f.pilot.organizationId,projectId:f.pilot.projectId}),error=>error.status===409,'pilots keep pilot rights');
- assert.throws(()=>f.service.requestLink({organizationId:f.agency.organizationId,projectId:f.agency.projectId}),error=>error.status===409,'the home project is already covered');
- const editor=f.repo.addMember(f.agency.userId,f.agency.organizationId,f.agency.projectId,{username:'agency-editor',password:'fixture-password-123',role:'editor'});
- assert.throws(()=>new AgencyPackage(f.db,{...f.home,subject:editor.userId}).view(),error=>error.status===403);
- f.member(f.client,'owner');assert.equal(f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId}).state,'linked','an owner of both sides links at once');
+test('links need membership, a standard non-pilot project and a running package; the home project’s editors cannot manage it',async ()=>{
+ const f=await fixture();f.grant();
+ await assert.rejects(async ()=>await f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId}),error=>error.status===403,'not a member');
+ await f.member(f.pilot,'editor');await assert.rejects(async ()=>await f.service.requestLink({organizationId:f.pilot.organizationId,projectId:f.pilot.projectId}),error=>error.status===409,'pilots keep pilot rights');
+ await assert.rejects(async ()=>await f.service.requestLink({organizationId:f.agency.organizationId,projectId:f.agency.projectId}),error=>error.status===409,'the home project is already covered');
+ const editor=await f.repo.addMember(f.agency.userId,f.agency.organizationId,f.agency.projectId,{username:'agency-editor',password:'fixture-password-123',role:'editor'});
+ await assert.rejects(async ()=>await new AgencyPackage(f.db,{...f.home,subject:editor.userId}).view(),error=>error.status===403);
+ await f.member(f.client,'owner');assert.equal((await f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId})).state,'linked','an owner of both sides links at once');
 });
 
-test('when the package and its grace end, linked projects fall back to their own plan and nothing new can be linked',()=>{
- const f=fixture();f.grant(Date.now()-40*DAY,Date.now()-10*DAY);const created=(()=>{f.grant();const value=f.service.createProject(project());f.db.prepare("DELETE FROM platform_project_subscriptions WHERE ends_at>?").run(iso(Date.now()));return value;})();
- const lapsed=projectEntitlement(f.db,{organizationId:created.organizationId,projectId:created.projectId});assert.equal(lapsed.active,false);assert.equal(lapsed.agency,'lapsed');assert.equal(lapsed.liveDeliveryAllowed,false);
- assert.equal(projectEntitlement(f.db,f.home).id,'trial');
- assert.throws(()=>f.service.createProject(project({projectName:'Yeni'})),error=>error.status===409,'a lapsed package opens nothing');
- assert.equal(agencyHomes(f.db,f.agency.userId)[0].period,null);
+test('when the package and its grace end, linked projects fall back to their own plan and nothing new can be linked',async ()=>{
+ const f=await fixture();f.grant(Date.now()-40*DAY,Date.now()-10*DAY);const created=await (async ()=>{f.grant();const value=await f.service.createProject(project());f.db.prepare("DELETE FROM platform_project_subscriptions WHERE ends_at>?").run(iso(Date.now()));return value;})();
+ const lapsed=await projectEntitlement(f.db,{organizationId:created.organizationId,projectId:created.projectId});assert.equal(lapsed.active,false);assert.equal(lapsed.agency,'lapsed');assert.equal(lapsed.liveDeliveryAllowed,false);
+ assert.equal((await projectEntitlement(f.db,f.home)).id,'trial');
+ await assert.rejects(async ()=>await f.service.createProject(project({projectName:'Yeni'})),error=>error.status===409,'a lapsed package opens nothing');
+ assert.equal((await agencyHomes(f.db,f.agency.userId))[0].period,null);
 });
 
-test('the portfolio shows the package and what it means for each project, read with the person’s rights',()=>{
- const f=fixture();f.grant();f.member(f.client,'editor');const created=f.service.createProject(project());f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId});
- const view=portfolio(f.db,f.agency.userId,{organizationId:f.agency.organizationId,projectId:f.agency.projectId});
+test('the portfolio shows the package and what it means for each project, read with the person’s rights',async ()=>{
+ const f=await fixture();f.grant();await f.member(f.client,'editor');const created=await f.service.createProject(project());await f.service.requestLink({organizationId:f.client.organizationId,projectId:f.client.projectId});
+ const view=await portfolio(f.db,f.agency.userId,{organizationId:f.agency.organizationId,projectId:f.agency.projectId});
  assert.equal(view.agencies.length,1);assert.equal(view.agencies[0].used,2);
  const states=Object.fromEntries(view.projects.map(item=>[item.projectName,item.agency?.state||null]));assert.deepEqual(states,{agency:null,'Deniz Mobilya':'linked',client:'requested'});
- assert.equal(portfolio(f.db,f.client.userId,{organizationId:f.client.organizationId,projectId:f.client.projectId}).agencies.length,0,'the client is not an agency');
+ assert.equal((await portfolio(f.db,f.client.userId,{organizationId:f.client.organizationId,projectId:f.client.projectId})).agencies.length,0,'the client is not an agency');
  assert.equal(created.projectId.length,36);
 });
 
@@ -96,7 +96,7 @@ test('the contract email names the agency package and the sales terms list its p
 
 test('migration 61 is additive and repeatable',async()=>{
  const fs=require('node:fs'),path=require('node:path'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'agency-')),'fixture.sqlite');
- let db=openPlatformDatabase(file);const seed=new PlatformRepository(db);seed.bootstrapLegacy('admin');const kept=['pilot-row','trial-row'].map(name=>seed.provision('legacy-admin',{organizationName:name,projectName:name,website:'https://kept.example',username:name,password:'fixture-password-123'}));
+ let db=openPlatformDatabase(file);const seed=new PlatformRepository(db);await seed.bootstrapLegacy('admin');const kept=[];for(const name of ['pilot-row','trial-row'])kept.push(await seed.provision('legacy-admin',{organizationName:name,projectName:name,website:'https://kept.example',username:name,password:'fixture-password-123'}));
  const start=Date.now();db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE project_id=?").run(kept[1].userId,iso(start),iso(start+14*DAY),kept[1].projectId);const rows=JSON.stringify(db.prepare('SELECT * FROM platform_project_entitlements ORDER BY project_id').all());
  require('./schema-fixture.cjs').removeAgencySchema(db);assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='platform_agency_links'").get().n,0);db.close();
  db=openPlatformDatabase(file);assert.equal(JSON.stringify(db.prepare('SELECT * FROM platform_project_entitlements ORDER BY project_id').all()),rows,'pilot and trial rows survive the rebuild');assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,78);assert.ok(db.prepare("SELECT name FROM pragma_table_info('platform_project_subscriptions')").all().some(item=>item.name==='package'));assert.equal(db.pragma('foreign_key_check').length,0);

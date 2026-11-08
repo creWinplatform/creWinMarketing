@@ -110,9 +110,9 @@ async function context(request: NextRequest, ryzevoStore = false) {
   const store = new ProjectMarketingStore(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId });
   const jobs = new ConnectionJobs(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId });
   const segments=new ProductSegments(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId});
-  return { store, jobs, segments, workspace: access.repository.workspace(access.subject, access.identity.organizationId, access.identity.projectId)! };
+  return { store, jobs, segments, workspace: (await access.repository.workspace(access.subject, access.identity.organizationId, access.identity.projectId))! };
 }
-function segmentBinding(raw:Record<string,unknown>,segments:ProductSegments,goalId:string,current?:SegmentBinding){
+async function segmentBinding(raw:Record<string,unknown>,segments:ProductSegments,goalId:string,current?:SegmentBinding){
   if(raw.segmentId===undefined&&raw.segmentVersion===undefined){
     if(current?.goalId&&current.goalId!==goalId)throw new MarketingStoreError('Hedef değiştiğinde kitle bağını yeniden seçin veya kaldırın.',409);
     return current;
@@ -122,7 +122,7 @@ function segmentBinding(raw:Record<string,unknown>,segments:ProductSegments,goal
   if(current?.segmentId===raw.segmentId&&current.segmentVersion===raw.segmentVersion){
     if(current.goalId&&current.goalId!==goalId)throw new MarketingStoreError('Kampanya ve kitle hedefi eşleşmiyor.',409);return current;
   }
-  return segments.binding(raw.segmentId,Number(raw.segmentVersion),goalId);
+  return await segments.binding(raw.segmentId,Number(raw.segmentVersion),goalId);
 }
 function failure(error: unknown) {
   return NextResponse.json({ error: error instanceof MarketingStoreError ? error.message : 'Geçersiz proje isteği.' }, { status: error instanceof MarketingStoreError ? error.status : 400 });
@@ -135,28 +135,28 @@ export async function projectCampaignResponse(request: NextRequest, id?: string)
     if (!scope) return null;
     const { store, workspace } = scope;
     if (request.method === 'GET') {
-      if (id) { const item = store.campaign(id); if (!item) throw new MarketingStoreError('Kampanya bulunamadı.', 404); return response(item); }
+      if (id) { const item = await store.campaign(id); if (!item) throw new MarketingStoreError('Kampanya bulunamadı.', 404); return response(item); }
       const search = (request.nextUrl.searchParams.get('search') || '').toLowerCase();
       const status = request.nextUrl.searchParams.get('status');
-      const items = store.listCampaigns().filter(item => (!search || item.name.toLowerCase().includes(search)) && (!status || status === 'all' || item.status === status));
+      const items = (await store.listCampaigns()).filter(item => (!search || item.name.toLowerCase().includes(search)) && (!status || status === 'all' || item.status === status));
       return response({ items, totalCount: items.length });
     }
-    if (request.method === 'DELETE' && id) { store.deleteCampaign(id); return response({ ok: true }); }
+    if (request.method === 'DELETE' && id) { await store.deleteCampaign(id); return response({ ok: true }); }
     if (request.method === 'POST' && !id) {
       const raw=object(await request.json()),input = campaignInput(raw, workspace.project.timezone, workspace.project.goals.map(goal => goal.id));
-      const binding=segmentBinding(raw,scope.segments,input.goalId||'');
-      return response(store.saveCampaign({ ...buildCampaign(input), status: 'draft',...(binding?{segmentBinding:binding}:{}),...coachRef(raw.coachRef) }, true), 201);
+      const binding=await segmentBinding(raw,scope.segments,input.goalId||'');
+      return response(await store.saveCampaign({ ...buildCampaign(input), status: 'draft',...(binding?{segmentBinding:binding}:{}),...coachRef(raw.coachRef) }, true), 201);
     }
     if (request.method === 'PATCH' && id) {
-      const current = store.campaign(id);
+      const current = await store.campaign(id);
       if (!current) throw new MarketingStoreError('Kampanya bulunamadı.', 404);
       const raw = object(await request.json());
       const input = campaignInput({ name: current.name, goalId: current.goalId, objective: current.objective, channels: current.channels, content: current.content, ...raw }, workspace.project.timezone, workspace.project.goals.map(goal => goal.id));
-      const binding=segmentBinding(raw,scope.segments,input.goalId||'',current.segmentBinding);
+      const binding=await segmentBinding(raw,scope.segments,input.goalId||'',current.segmentBinding);
       const next: UnifiedCampaign = { ...buildCampaign(input), id: current.id, status: 'draft', createdAt: current.createdAt,
         utm: current.utm, updatedAt: new Date().toISOString(),...(binding?{segmentBinding:binding}:{}),...coachRef(raw.coachRef,current.coachRef) };
       next.deliveries = next.deliveries.map((delivery, index) => ({ ...delivery, id: `${current.id}_d${index + 1}` }));
-      return response(store.saveCampaign(next, false));
+      return response(await store.saveCampaign(next, false));
     }
     throw new MarketingStoreError('Desteklenmeyen işlem.', 405);
   } catch (error) { return failure(error); }
@@ -168,13 +168,13 @@ export async function projectHistoryResponse(request: NextRequest): Promise<Next
     if (!scope) return null;
     const { store } = scope;
     const id = request.nextUrl.searchParams.get('id') || undefined;
-    if (request.method === 'GET') return response(store.history());
-    if (request.method === 'DELETE') { store.deleteContent(id); return response({ ok: true }); }
-    if (request.method === 'POST') return response(store.saveContent(await contentInput(object(JSON.parse(new TextDecoder().decode(await readBoundedJsonBytes(request,8*1024*1024))))), true), 201);
+    if (request.method === 'GET') return response(await store.history());
+    if (request.method === 'DELETE') { await store.deleteContent(id); return response({ ok: true }); }
+    if (request.method === 'POST') return response(await store.saveContent(await contentInput(object(JSON.parse(new TextDecoder().decode(await readBoundedJsonBytes(request,8*1024*1024))))), true), 201);
     if (request.method === 'PATCH' && id) {
-      const current = store.history().find(item => item.id === id);
+      const current = (await store.history()).find(item => item.id === id);
       if (!current) throw new MarketingStoreError('İçerik bulunamadı.', 404);
-      return response(store.saveContent(await contentInput(object(JSON.parse(new TextDecoder().decode(await readBoundedJsonBytes(request,8*1024*1024)))), current), false));
+      return response(await store.saveContent(await contentInput(object(JSON.parse(new TextDecoder().decode(await readBoundedJsonBytes(request,8*1024*1024)))), current), false));
     }
     throw new MarketingStoreError('Geçerli içerik kimliği gerekli.');
   } catch (error) { return failure(error); }
@@ -186,18 +186,18 @@ export async function projectConnectionResponse(request: NextRequest): Promise<N
     if (!scope) return null;
     const { store } = scope;
     if (request.method === 'GET') {
-      const items = store.connections();
+      const items = await store.connections();
       const id = request.nextUrl.searchParams.get('id');
       if (id) { const item = items.find(item => item.id === id); if (!item) throw new MarketingStoreError('Bağlantı bulunamadı.', 404); return response(item); }
       return response({ items, totalCount: items.length });
     }
     const raw = object(await request.json());
-    if (raw.action === 'revoke') { store.revokeConnection(string(raw.id, 160)); return response({ ok: true }); }
+    if (raw.action === 'revoke') { await store.revokeConnection(string(raw.id, 160)); return response({ ok: true }); }
     if (!scope.workspace.permissions?.includes('connections.manage')) throw new MarketingStoreError('Bağlantı yönetimi yetkisi gerekli.', 403);
     // Crewin connects Google and Meta through their sign-in screens only; its other channels use its own tools.
     if (scope.workspace.project.productPack === 'crewin') throw new MarketingStoreError('Crewin çalışma alanında Ryzevo bağlantıları yalnız Google ve Meta ile kurulur.', 403);
-    if (['product_rest','product_webhook','mobile'].includes(String(raw.provider)) || (typeof raw.id==='string' && store.connections().some(item=>item.id===raw.id && ['product_rest','product_webhook','mobile'].includes(item.provider)))) throw new MarketingStoreError('Bu bağlantıyı ilgili Ürün verisi veya Mobil büyüme bölümünden yönetin.');
-    return response(store.saveConnection({ id: raw.id === undefined ? undefined : string(raw.id, 160), provider: string(raw.provider, 50), integrationId: string(raw.integrationId, 160, raw.provider === 'social' ? 'social' : ''), accountName: string(raw.accountName, 160), accessToken: string(raw.accessToken, 16384), refreshToken: string(raw.refreshToken, 16384), ...(raw.smtp !== undefined ? { smtp: raw.smtp as SmtpConfiguration } : {}), ...(raw.social !== undefined ? { social: raw.social as SocialConfiguration } : {}) }, credentialEncryptionKey()));
+    if (['product_rest','product_webhook','mobile'].includes(String(raw.provider)) || (typeof raw.id==='string' && (await store.connections()).some(item=>item.id===raw.id && ['product_rest','product_webhook','mobile'].includes(item.provider)))) throw new MarketingStoreError('Bu bağlantıyı ilgili Ürün verisi veya Mobil büyüme bölümünden yönetin.');
+    return response(await store.saveConnection({ id: raw.id === undefined ? undefined : string(raw.id, 160), provider: string(raw.provider, 50), integrationId: string(raw.integrationId, 160, raw.provider === 'social' ? 'social' : ''), accountName: string(raw.accountName, 160), accessToken: string(raw.accessToken, 16384), refreshToken: string(raw.refreshToken, 16384), ...(raw.smtp !== undefined ? { smtp: raw.smtp as SmtpConfiguration } : {}), ...(raw.social !== undefined ? { social: raw.social as SocialConfiguration } : {}) }, credentialEncryptionKey()));
   } catch (error) { return failure(error); }
 }
 
@@ -207,13 +207,13 @@ export async function projectAutomationResponse(request: NextRequest): Promise<N
     if (!scope) return null;
     if (request.method === 'GET') {
       const id = request.nextUrl.searchParams.get('id') || undefined;
-      const result = scope.jobs.list(id);
+      const result = await scope.jobs.list(id);
       return response(id ? result : { items: result });
     }
     const raw = object(await request.json());
-    if (raw.action === 'cancel') return response(scope.jobs.cancel(string(raw.id, 160)));
+    if (raw.action === 'cancel') return response(await scope.jobs.cancel(string(raw.id, 160)));
     if (raw.action === 'run') return response(await scope.jobs.run(string(raw.id, 160), credentialEncryptionKey()));
     if (raw.jobType !== 'connection.verify') throw new MarketingStoreError('Bu proje için yalnız bağlantı doğrulama işi etkin.', 409);
-    return response(scope.jobs.enqueue(string(raw.connectionId, 160), string(raw.idempotencyKey, 160)), 201);
+    return response(await scope.jobs.enqueue(string(raw.connectionId, 160), string(raw.idempotencyKey, 160)), 201);
   } catch (error) { return failure(error); }
 }

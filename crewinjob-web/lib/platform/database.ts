@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { mssqlDb, sqliteDb, type Db } from '../db/client';
 
 export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH || join(process.cwd(), 'data', 'platform.sqlite')) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
@@ -1669,7 +1670,21 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
   return db;
 }
 
-const globalDb = globalThis as typeof globalThis & { __marketingPlatformDb?: Database.Database };
-export function platformDatabase() {
-  return globalDb.__marketingPlatformDb ?? (globalDb.__marketingPlatformDb = openPlatformDatabase());
+// The database the application uses. SQLite (data/platform.sqlite) until PLATFORM_DATABASE_PROVIDER=mssql switches
+// to the SQL Server named by ConnectionStrings.Platform in appsettings.json (lib/db/settings.cjs).
+export function databaseProvider(): 'sqlite' | 'mssql' {
+  return process.env.PLATFORM_DATABASE_PROVIDER === 'mssql' ? 'mssql' : 'sqlite';
+}
+
+const globalDb = globalThis as typeof globalThis & { __marketingPlatformDb?: Db };
+export function platformDatabase(): Db {
+  if (globalDb.__marketingPlatformDb) return globalDb.__marketingPlatformDb;
+  if (databaseProvider() === 'mssql') {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sql = require('mssql') as typeof import('mssql'), { connectionString } = require('../db/settings.cjs') as { connectionString(): string };
+    const value = connectionString();
+    if (!value) throw new Error('PLATFORM_DATABASE_PROVIDER=mssql needs ConnectionStrings.Platform in appsettings.json.');
+    return (globalDb.__marketingPlatformDb = mssqlDb(new sql.ConnectionPool(value), sql));
+  }
+  return (globalDb.__marketingPlatformDb = sqliteDb(openPlatformDatabase()));
 }

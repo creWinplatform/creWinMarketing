@@ -13,10 +13,10 @@ export async function POST(request:NextRequest,context:{params:Promise<{sourceId
     const {sourceId}=await context.params;
     if(request.headers.has('origin'))return NextResponse.json({error:'Yalnız sunucudan sunucuya imzalı istek kabul edilir.',code:'server_only'},{status:403,headers});
     if(!/^[a-f0-9]{32}$/.test(sourceId))throw new ProductWebhookError('signature','Webhook doğrulanamadı.',401);
-    const receive=authenticateProductWebhook(platformDatabase(),sourceId,request.headers,credentialEncryptionKey());
+    const receive=await authenticateProductWebhook(platformDatabase(),sourceId,request.headers,credentialEncryptionKey());
     let bytes:Uint8Array;
     try{bytes=await readBoundedJsonBytes(request,WEBHOOK_LIMITS.bodyBytes);}catch{throw new ProductWebhookError('body_limit','UTF-8 JSON, 64 KiB ve 5 saniye sınırını kontrol edin.',413);}
-    return NextResponse.json(receive(bytes),{status:200,headers});
+    return NextResponse.json(await receive(bytes),{status:200,headers});
   }catch(error){
     return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Webhook kabul edilemedi.',code:error instanceof ProductWebhookError?error.code:'invalid_event'},{status:error instanceof MarketingStoreError?error.status:400,headers:{...headers,...(error instanceof MarketingStoreError&&error.status===429?{'Retry-After':'60'}:{})}});
   }

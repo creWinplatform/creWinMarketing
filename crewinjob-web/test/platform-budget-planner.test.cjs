@@ -36,33 +36,33 @@ test('published reference values carry their source and date, stay in USD and on
   assert.deepEqual(plain(includeValue({low:3,high:4},5.42)),{low:3,high:5.42});assert.deepEqual(plain(includeValue({low:3,high:6},5.42)),{low:3,high:6},'a range that already covers the value is unchanged');
 });
 test('measured values come from this project’s records with source and period; scenarios are saved per project',coachRun(async f=>{
-  f.setGoals([{id:'demo',label:{tr:'Talep',en:'Demand'},audience:{tr:'K',en:'A'},stages:[{tr:'Ziyaret',en:'Visit'},{tr:'Talep',en:'Request'},{tr:'Organik',en:'Organic'}]}]);
-  let snapshot=new BudgetPlanner(f.db,f.scope).read();
+  await f.setGoals([{id:'demo',label:{tr:'Talep',en:'Demand'},audience:{tr:'K',en:'A'},stages:[{tr:'Ziyaret',en:'Visit'},{tr:'Talep',en:'Request'},{tr:'Organik',en:'Organic'}]}]);
+  let snapshot=await new BudgetPlanner(f.db,f.scope).read();
   assert.equal(snapshot.measured.cpc,null);assert.equal(snapshot.measured.organicClicksPerDay,null);assert.equal(snapshot.measured.conversions.length,0,'no data, nothing measured');
   const {organizationId,projectId}=f.scope,now=new Date().toISOString();
   f.db.prepare("INSERT INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,active,updated_at) VALUES('c-ads',?,?,'meta_ads','act_1','QA','{}',1,?),('c-ga4',?,?,'ga4','123','QA','{}',1,?),('c-gsc',?,?,'search_console','https://example.com/','QA','{}',1,?)").run(organizationId,projectId,now,organizationId,projectId,now,organizationId,projectId,now);
   f.db.prepare("INSERT INTO platform_ad_plans(id,organization_id,project_id,connection_id,name,objective,daily_budget_minor,currency,start_date,end_date,countries_json,link_url,state,digest,spend_minor,impressions,clicks,spend_checked_at,created_by,created_at,updated_at) VALUES('p1',?,?,'c-ads','A','OUTCOME_TRAFFIC',1000,'TRY','2026-10-01','2026-10-10','[]','https://example.com','paused','d',123400,20000,400,?,?,?,?)").run(organizationId,projectId,now,f.scope.subject,now,now);
-  const {PlatformRepository}=load('repository.ts'),goal=new PlatformRepository(f.db).workspace(f.scope.subject,organizationId,projectId).project.goals.find(item=>item.id==='demo'),signature=require('node:crypto').createHash('sha256').update(JSON.stringify(goal)).digest('hex');
+  const {PlatformRepository}=load('repository.ts'),goal=(await new PlatformRepository(f.db).workspace(f.scope.subject,organizationId,projectId)).project.goals.find(item=>item.id==='demo'),signature=require('node:crypto').createHash('sha256').update(JSON.stringify(goal)).digest('hex');
   const binding=(id,connection,provider,metric,stage,goalSignature=signature)=>f.db.prepare("INSERT INTO platform_measurement_bindings(id,organization_id,project_id,goal_id,stage_index,goal_signature,connection_id,provider,definition_json,version,enabled,manager_id,updated_at) VALUES(?,?,?,'demo',?,?,?,?,?,1,0,?,?)").run(id,organizationId,projectId,stage,goalSignature,connection,provider,JSON.stringify({metric,eventName:''}),f.scope.subject,now);
   binding('b-sessions','c-ga4','ga4','sessions',0);binding('b-key','c-ga4','ga4','keyEvents',1);binding('b-gsc','c-gsc','search_console','clicks',2);
   const entry=(id,stage,value,source,bindingId,from,to)=>f.db.prepare("INSERT INTO platform_metric_entries(id,organization_id,project_id,goal_id,stage_index,value,observed_at,source,note,binding_id,binding_version,period_from,period_to) VALUES(?,?,?,'demo',?,?,?,?,'',?,1,?,?)").run(id,organizationId,projectId,stage,value,now,source,bindingId,from,to);
   entry('e1',0,800,'ga4','b-sessions','2026-10-03','2026-10-09');entry('e2',1,20,'ga4','b-key','2026-10-03','2026-10-09');entry('e3',2,70,'search_console','b-gsc','2026-10-10','2026-10-16');
   entry('e4',1,99,'ga4','b-key','2026-09-01','2026-09-07');
-  snapshot=new BudgetPlanner(f.db,f.scope).read();
+  snapshot=await new BudgetPlanner(f.db,f.scope).read();
   assert.equal(snapshot.currency,'TRY');close(snapshot.measured.cpc.value,1234/400);close(snapshot.measured.ctr.value,400/20000);assert.equal(snapshot.measured.cpc.source,'meta');
   close(snapshot.measured.organicClicksPerDay.value,10);assert.equal(snapshot.measured.organicClicksPerDay.from,'2026-10-10');
   assert.equal(snapshot.measured.conversions.length,1,'only same goal, source and period pair up');close(snapshot.measured.conversions[0].value,20/800);assert.equal(snapshot.measured.conversions[0].to,'2026-10-09');
   // A mapping made for an older version of the goal no longer pairs up: its stages may mean something else now.
-  f.db.prepare("UPDATE platform_measurement_bindings SET goal_signature='old-goal' WHERE id='b-key'").run();assert.equal(new BudgetPlanner(f.db,f.scope).read().measured.conversions.length,0);
+  f.db.prepare("UPDATE platform_measurement_bindings SET goal_signature='old-goal' WHERE id='b-key'").run();assert.equal((await new BudgetPlanner(f.db,f.scope).read()).measured.conversions.length,0);
   f.db.prepare("UPDATE platform_measurement_bindings SET goal_signature=? WHERE id='b-key'").run(signature);
   const planner=new BudgetPlanner(f.db,f.scope),input={name:'Meta deneme',kind:'paid',currency:'TRY',inputs:{budget:10000,cpc:{low:3,high:5},conversion:{low:0.02,high:0.03},close:null,value:null},sources:{cpc:'Meta, 1–10 Eki'}};
-  for(const bad of [{inputs:{...input.inputs,cpc:{low:0,high:5}}},{inputs:{...input.inputs,conversion:{low:0.5,high:0.2}}},{inputs:{...input.inputs,budget:-1}},{currency:'lira'},{kind:'tv'}])assert.throws(()=>planner.save({...input,...bad}),JSON.stringify(bad));
-  snapshot=planner.save(input);assert.equal(snapshot.scenarios.length,1);assert.deepEqual(plain(snapshot.scenarios[0].sources),{cpc:'Meta, 1–10 Eki'});
-  const saved=snapshot.scenarios[0];assert.throws(()=>planner.save({...input,id:saved.id,expectedRevision:saved.revision+1}),error=>error.status===409);
-  assert.equal(planner.save({...input,name:'v2',id:saved.id,expectedRevision:saved.revision}).scenarios[0].name,'v2');
-  const viewer=f.member('viewer');assert.equal(new BudgetPlanner(f.db,viewer).read().scenarios.length,1);assert.throws(()=>new BudgetPlanner(f.db,viewer).save(input),error=>error.status===403);
-  assert.equal(new BudgetPlanner(f.db,f.other).read().scenarios.length,0,'other projects see nothing');
-  assert.equal(planner.remove({id:saved.id}).scenarios.length,0);
+  for(const bad of [{inputs:{...input.inputs,cpc:{low:0,high:5}}},{inputs:{...input.inputs,conversion:{low:0.5,high:0.2}}},{inputs:{...input.inputs,budget:-1}},{currency:'lira'},{kind:'tv'}])await assert.rejects(async ()=>await planner.save({...input,...bad}),JSON.stringify(bad));
+  snapshot=await planner.save(input);assert.equal(snapshot.scenarios.length,1);assert.deepEqual(plain(snapshot.scenarios[0].sources),{cpc:'Meta, 1–10 Eki'});
+  const saved=snapshot.scenarios[0];await assert.rejects(async ()=>await planner.save({...input,id:saved.id,expectedRevision:saved.revision+1}),error=>error.status===409);
+  assert.equal((await planner.save({...input,name:'v2',id:saved.id,expectedRevision:saved.revision})).scenarios[0].name,'v2');
+  const viewer=await f.member('viewer');assert.equal((await new BudgetPlanner(f.db,viewer).read()).scenarios.length,1);await assert.rejects(async ()=>await new BudgetPlanner(f.db,viewer).save(input),error=>error.status===403);
+  assert.equal((await new BudgetPlanner(f.db,f.other).read()).scenarios.length,0,'other projects see nothing');
+  assert.equal((await planner.remove({id:saved.id})).scenarios.length,0);
 }));
 test('schema45 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'budget-')),'fixture.sqlite');

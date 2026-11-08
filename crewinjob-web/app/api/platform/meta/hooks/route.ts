@@ -13,6 +13,6 @@ export async function GET(request:NextRequest){
 }
 export async function POST(request:NextRequest){
   try{const bytes=await readBoundedBodyBytes(request,262144);
-    return NextResponse.json(receiveMetaInboxHook(platformDatabase(),credentialEncryptionKey(),bytes,request.headers.get('x-hub-signature-256')),{headers});}
+    return NextResponse.json(await receiveMetaInboxHook(platformDatabase(),credentialEncryptionKey(),bytes,request.headers.get('x-hub-signature-256')),{headers});}
   catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Meta bildirimi işlenemedi.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

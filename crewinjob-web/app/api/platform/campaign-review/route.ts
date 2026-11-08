@@ -13,12 +13,12 @@ async function handle(request:NextRequest){
     const access=await getPlatformAccess('read');
     if(!access||access.identity.mode!=='platform')return NextResponse.json({error:'Proje erişimi gerekli.'},{status:403,headers});
     const reviews=new CampaignReviews(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},credentialEncryptionKey());
-    if(request.method==='GET')return NextResponse.json(reviews.get(request.nextUrl.searchParams.get('id')||''),{headers});
+    if(request.method==='GET')return NextResponse.json(await reviews.get(request.nextUrl.searchParams.get('id')||''),{headers});
     if(!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);
     if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz inceleme isteği.');
-    if(input.action==='check')return NextResponse.json(reviews.check(input.id,input.expectedDigest),{headers});
-    if(input.action==='decide')return NextResponse.json(reviews.decide(input.id,input),{headers});
+    if(input.action==='check')return NextResponse.json(await reviews.check(input.id,input.expectedDigest),{headers});
+    if(input.action==='decide')return NextResponse.json(await reviews.decide(input.id,input),{headers});
     throw new MarketingStoreError('Geçersiz inceleme işlemi.');
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'İnceleme tamamlanamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

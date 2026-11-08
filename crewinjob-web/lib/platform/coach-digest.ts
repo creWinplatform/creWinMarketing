@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -53,62 +54,62 @@ const SEND_DENIED='Haftalık özeti yalnız onay yetkisi olan ekip üyeleri gön
 type ReviewRow={id:string;week:string;facts_json:string;adjustments_json:string};
 export class CoachDigest{
   coach:GrowthCoach;repo:PlatformRepository;
-  constructor(public db:Database.Database,public scope:MarketingScope){this.coach=new GrowthCoach(db,scope);this.repo=this.coach.repo;}
+  constructor(public db:Db,public scope:MarketingScope){this.coach=new GrowthCoach(db,scope);this.repo=this.coach.repo;}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  private email(user=this.scope.subject){return (this.db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(user) as {email:string}|undefined)?.email||null;}
-  private subscription(user=this.scope.subject){return this.db.prepare('SELECT language FROM platform_coach_digest_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(user,...this.args()) as {language:Lang}|undefined;}
-  private review(){return this.db.prepare('SELECT id,week,facts_json,adjustments_json FROM platform_coach_reviews WHERE organization_id=? AND project_id=? AND week=?').get(...this.args(),coachWeekKey(new Date(),this.coach.timeZone())) as ReviewRow|undefined;}
-  private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
-  private recipients(){return this.db.prepare("SELECT s.user_id,s.language,e.email FROM platform_coach_digest_subscriptions s JOIN platform_account_emails e ON e.user_id=s.user_id JOIN platform_memberships m ON m.user_id=s.user_id AND m.project_id=s.project_id AND m.organization_id=s.organization_id AND m.active=1 JOIN platform_users u ON u.id=s.user_id AND u.active=1 WHERE s.organization_id=? AND s.project_id=?").all(...this.args()) as {user_id:string;language:Lang;email:string}[];}
+  private async email(user=this.scope.subject){return (await this.db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(user) as {email:string}|undefined)?.email||null;}
+  private async subscription(user=this.scope.subject){return await this.db.prepare('SELECT language FROM platform_coach_digest_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(user,...this.args()) as {language:Lang}|undefined;}
+  private async review(){return await this.db.prepare('SELECT id,week,facts_json,adjustments_json FROM platform_coach_reviews WHERE organization_id=? AND project_id=? AND week=?').get(...this.args(),coachWeekKey(new Date(),await this.coach.timeZone())) as ReviewRow|undefined;}
+  private async audit(operation:string){await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
+  private async recipients(){return await this.db.prepare("SELECT s.user_id,s.language,e.email FROM platform_coach_digest_subscriptions s JOIN platform_account_emails e ON e.user_id=s.user_id JOIN platform_memberships m ON m.user_id=s.user_id AND m.project_id=s.project_id AND m.organization_id=s.organization_id AND m.active=1 JOIN platform_users u ON u.id=s.user_id AND u.active=1 WHERE s.organization_id=? AND s.project_id=?").all(...this.args()) as {user_id:string;language:Lang;email:string}[];}
   // The preview follows the member's subscription language, else the language they are viewing in.
-  read(viewLang?:unknown):CoachDigestSnapshot{
-    this.coach.authorize();const review=this.review(),project=this.repo.workspace(this.scope.subject,...this.args())!.project,configuration=digestConfiguration(),subscription=this.subscription(),canSend=this.coach.can('campaign.approve');
-    const counts=review?(this.db.prepare('SELECT state,COUNT(*) n FROM platform_coach_digest_deliveries WHERE organization_id=? AND project_id=? AND review_id=? GROUP BY state').all(...this.args(),review.id) as {state:string;n:number}[]):[];
+  async read(viewLang?:unknown):Promise<CoachDigestSnapshot>{
+    await this.coach.authorize();const review=await this.review(),project=(await this.repo.workspace(this.scope.subject,...this.args()))!.project,configuration=digestConfiguration(),subscription=await this.subscription(),canSend=await this.coach.can('campaign.approve');
+    const counts=review?(await this.db.prepare('SELECT state,COUNT(*) n FROM platform_coach_digest_deliveries WHERE organization_id=? AND project_id=? AND review_id=? GROUP BY state').all(...this.args(),review.id) as {state:string;n:number}[]):[];
     const lang=subscription?.language||(viewLang==='en'||viewLang==='tr'?viewLang:project.language)||'tr';
-    return {subscribed:Boolean(subscription),language:subscription?.language||null,hasVerifiedEmail:Boolean(this.email()),enabled:Boolean(configuration),canSend,
-      recipients:canSend?this.recipients().length:null,reviewId:review?.id||null,deliveries:Object.fromEntries(counts.map(item=>[item.state,item.n])),
-      preview:review?digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),lang,project,configuration?.origin||'https://ryzevo.com',new CoachAssignments(this.db,this.scope).read().mine):null};
+    return {subscribed:Boolean(subscription),language:subscription?.language||null,hasVerifiedEmail:Boolean(await this.email()),enabled:Boolean(configuration),canSend,
+      recipients:canSend?(await this.recipients()).length:null,reviewId:review?.id||null,deliveries:Object.fromEntries(counts.map(item=>[item.state,item.n])),
+      preview:review?digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),lang,project,configuration?.origin||'https://ryzevo.com',(await new CoachAssignments(this.db,this.scope).read()).mine):null};
   }
-  subscribe(raw:Record<string,unknown>){
-    this.coach.authorize();const language=coachChoice(['tr','en'] as const,raw.language);
-    if(!this.email())throw new MarketingStoreError('Özeti e-postayla almak için önce hesap e-postanızı doğrulayın.',409);
-    this.db.transaction(()=>{this.coach.authorize();this.db.prepare('INSERT INTO platform_coach_digest_subscriptions(user_id,organization_id,project_id,language,created_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,organization_id,project_id) DO UPDATE SET language=excluded.language').run(this.scope.subject,...this.args(),language,new Date().toISOString());this.audit('coach.digest.subscribe');}).immediate();
-    return this.read();
+  async subscribe(raw:Record<string,unknown>){
+    await this.coach.authorize();const language=coachChoice(['tr','en'] as const,raw.language);
+    if(!await this.email())throw new MarketingStoreError('Özeti e-postayla almak için önce hesap e-postanızı doğrulayın.',409);
+    await this.db.transaction(async ()=>{await this.coach.authorize();await this.db.prepare('INSERT INTO platform_coach_digest_subscriptions(user_id,organization_id,project_id,language,created_at) VALUES(?,?,?,?,?) ON CONFLICT(user_id,organization_id,project_id) DO UPDATE SET language=excluded.language').run(this.scope.subject,...this.args(),language,new Date().toISOString());await this.audit('coach.digest.subscribe');});
+    return await this.read();
   }
-  unsubscribe(){
-    this.coach.authorize();this.db.transaction(()=>{this.db.prepare('DELETE FROM platform_coach_digest_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').run(this.scope.subject,...this.args());this.audit('coach.digest.unsubscribe');}).immediate();return this.read();
+  async unsubscribe(){
+    await this.coach.authorize();await this.db.transaction(async ()=>{await this.db.prepare('DELETE FROM platform_coach_digest_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').run(this.scope.subject,...this.args());await this.audit('coach.digest.unsubscribe');});return await this.read();
   }
   // Queues this week's review for current subscribers. Re-sending the same review never mails anyone twice.
-  send(raw:Record<string,unknown>){
-    this.coach.authorize('campaign.approve',SEND_DENIED);if(!digestConfiguration())throw new MarketingStoreError('E-posta özeti bu platformda etkin değil; yalnız önizleme kullanılabilir.',503);
-    return this.db.transaction(()=>{
-      this.coach.authorize('campaign.approve',SEND_DENIED);const review=this.review();if(!review||review.id!==raw.reviewId)throw new MarketingStoreError('Yalnız bu haftanın özeti gönderilebilir.',409);
-      const recipients=this.recipients();if(!recipients.length)throw new MarketingStoreError('Bu özete abone olmuş ve e-postası doğrulanmış ekip üyesi yok.',409);
+  async send(raw:Record<string,unknown>){
+    await this.coach.authorize('campaign.approve',SEND_DENIED);if(!digestConfiguration())throw new MarketingStoreError('E-posta özeti bu platformda etkin değil; yalnız önizleme kullanılabilir.',503);
+    return await this.db.transaction(async ()=>{
+      await this.coach.authorize('campaign.approve',SEND_DENIED);const review=await this.review();if(!review||review.id!==raw.reviewId)throw new MarketingStoreError('Yalnız bu haftanın özeti gönderilebilir.',409);
+      const recipients=await this.recipients();if(!recipients.length)throw new MarketingStoreError('Bu özete abone olmuş ve e-postası doğrulanmış ekip üyesi yok.',409);
       const now=new Date().toISOString(),insert=this.db.prepare("INSERT OR IGNORE INTO platform_coach_digest_deliveries(id,organization_id,project_id,review_id,user_id,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,'queued',?,?,?)");
-      let queued=0;for(const item of recipients)queued+=insert.run(`digest_${randomUUID()}`,...this.args(),review.id,item.user_id,this.scope.subject,now,now).changes;
-      this.audit('coach.digest.send');return {queued,snapshot:this.read()};
-    }).immediate();
+      let queued=0;for(const item of recipients)queued+=(await insert.run(`digest_${randomUUID()}`,...this.args(),review.id,item.user_id,this.scope.subject,now,now)).changes;
+      await this.audit('coach.digest.send');return {queued,snapshot:await this.read()};
+    });
   }
 }
 // Worker step: claims one queued digest, re-checks membership/subscription/verified email, marks it submitted before
 // the provider call (never retried) and records sent or uncertain.
-export async function deliverNextCoachDigest(db:Database.Database,deliver:DigestDelivery=deliverCoachDigest,configuration=digestConfiguration()){
+export async function deliverNextCoachDigest(db:Db,deliver:DigestDelivery=deliverCoachDigest,configuration=digestConfiguration()){
   if(!configuration)return false;
-  const claimed=db.transaction(()=>{
-    const row=db.prepare("SELECT d.id,d.organization_id,d.project_id,d.review_id,d.user_id FROM platform_coach_digest_deliveries d WHERE d.state='queued' ORDER BY d.created_at,d.rowid LIMIT 1").get() as {id:string;organization_id:string;project_id:string;review_id:string;user_id:string}|undefined;
+  const claimed=await db.transaction(async ()=>{
+    const row=await db.prepare("SELECT d.id,d.organization_id,d.project_id,d.review_id,d.user_id FROM platform_coach_digest_deliveries d WHERE d.state='queued' ORDER BY d.created_at,d.rowid LIMIT 1").get() as {id:string;organization_id:string;project_id:string;review_id:string;user_id:string}|undefined;
     if(!row)return null;
-    const now=new Date().toISOString(),skip=(reason:string)=>{db.prepare("UPDATE platform_coach_digest_deliveries SET state='skipped',reason=?,updated_at=? WHERE id=?").run(reason,now,row.id);return 'skipped' as const;};
-    const repo=new PlatformRepository(db),workspace=repo.can(row.user_id,row.organization_id,row.project_id,'read')?repo.workspace(row.user_id,row.organization_id,row.project_id):null;
-    const subscription=db.prepare('SELECT language FROM platform_coach_digest_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(row.user_id,row.organization_id,row.project_id) as {language:Lang}|undefined;
-    const email=(db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as {email:string}|undefined)?.email;
-    const review=db.prepare('SELECT facts_json,adjustments_json FROM platform_coach_reviews WHERE id=? AND organization_id=? AND project_id=?').get(row.review_id,row.organization_id,row.project_id) as {facts_json:string;adjustments_json:string}|undefined;
-    if(!workspace||!ryzevoFeature(workspace.project.productPack,'coach'))return skip('membership');if(!subscription)return skip('unsubscribed');if(!email)return skip('email');if(!review)return skip('review');
-    db.prepare("UPDATE platform_coach_digest_deliveries SET state='submitted',updated_at=? WHERE id=? AND state='queued'").run(now,row.id);
-    const assigned=new CoachAssignments(db,{subject:row.user_id,organizationId:row.organization_id,projectId:row.project_id}).read().mine;
+    const now=new Date().toISOString(),skip=async (reason:string)=>{await db.prepare("UPDATE platform_coach_digest_deliveries SET state='skipped',reason=?,updated_at=? WHERE id=?").run(reason,now,row.id);return 'skipped' as const;};
+    const repo=new PlatformRepository(db),workspace=await repo.can(row.user_id,row.organization_id,row.project_id,'read')?await repo.workspace(row.user_id,row.organization_id,row.project_id):null;
+    const subscription=await db.prepare('SELECT language FROM platform_coach_digest_subscriptions WHERE user_id=? AND organization_id=? AND project_id=?').get(row.user_id,row.organization_id,row.project_id) as {language:Lang}|undefined;
+    const email=(await db.prepare('SELECT email FROM platform_account_emails WHERE user_id=?').get(row.user_id) as {email:string}|undefined)?.email;
+    const review=await db.prepare('SELECT facts_json,adjustments_json FROM platform_coach_reviews WHERE id=? AND organization_id=? AND project_id=?').get(row.review_id,row.organization_id,row.project_id) as {facts_json:string;adjustments_json:string}|undefined;
+    if(!workspace||!ryzevoFeature(workspace.project.productPack,'coach'))return await skip('membership');if(!subscription)return await skip('unsubscribed');if(!email)return await skip('email');if(!review)return await skip('review');
+    await db.prepare("UPDATE platform_coach_digest_deliveries SET state='submitted',updated_at=? WHERE id=? AND state='queued'").run(now,row.id);
+    const assigned=(await new CoachAssignments(db,{subject:row.user_id,organizationId:row.organization_id,projectId:row.project_id}).read()).mine;
     return {id:row.id,mail:{to:email,...digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),subscription.language,workspace.project,configuration.origin,assigned)}};
-  }).immediate();
+  });
   if(!claimed||claimed==='skipped')return Boolean(claimed);
   let state:'sent'|'uncertain'='sent';try{await deliver(claimed.mail,configuration);}catch{state='uncertain';}
-  db.prepare('UPDATE platform_coach_digest_deliveries SET state=?,updated_at=? WHERE id=?').run(state,new Date().toISOString(),claimed.id);
+  await db.prepare('UPDATE platform_coach_digest_deliveries SET state=?,updated_at=? WHERE id=?').run(state,new Date().toISOString(),claimed.id);
   return true;
 }

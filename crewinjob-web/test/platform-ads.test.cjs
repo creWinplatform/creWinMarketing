@@ -12,7 +12,7 @@ const graph=(answers={})=>{const calls=[];let next=900;const fn=async(method,pat
   if(key.startsWith('POST act_#/'))return {id:String(++next)};if(key.endsWith('/insights'))return {data:[{spend:'12.34',impressions:'5400',clicks:'87'}]};return {success:true};};fn.calls=calls;return fn;};
 const ads=(f,g=graph(),scope=f.scope)=>new ProjectAds(f.db,scope,KEY,g);
 const plan=(extra={})=>({name:'Spring traffic',objective:'OUTCOME_TRAFFIC',dailyBudgetMinor:2000,startDate:day(1),endDate:day(10),countries:['tr','DE'],linkUrl:'https://example.com/spring',...extra});
-const ready=async(f,g)=>{await ads(f,g).connect({adAccountId:'123456',accessToken:TOKEN});return ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});};
+const ready=async(f,g)=>{await ads(f,g).connect({adAccountId:'123456',accessToken:TOKEN});return await ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:0});};
 
 test('the project connects its own ad account; the token is checked, stored encrypted and never shown',coachRun(async f=>{
   const g=graph();let snapshot=await ads(f,g).connect({adAccountId:'123456',accessToken:TOKEN});
@@ -20,29 +20,29 @@ test('the project connects its own ad account; the token is checked, stored encr
   assert.doesNotMatch(JSON.stringify(snapshot)+JSON.stringify(f.db.prepare('SELECT * FROM platform_connections').all()),/EAAFixture/);
   await assert.rejects(ads(f,graph({'GET act_#':new Error('denied')})).connect({adAccountId:'act_999',accessToken:TOKEN}),error=>error.status===502);
   await assert.rejects(ads(f).connect({adAccountId:'not-an-id',accessToken:TOKEN}),/act_123/);
-  const editor=f.member('editor');await assert.rejects(ads(f,g,editor).connect({adAccountId:'123456',accessToken:TOKEN}),error=>error.status===403);
-  assert.equal(ads(f,g,f.other).read().account,null,'other projects see nothing');
+  const editor=await f.member('editor');await assert.rejects(ads(f,g,editor).connect({adAccountId:'123456',accessToken:TOKEN}),error=>error.status===403);
+  assert.equal((await ads(f,g,f.other).read()).account,null,'other projects see nothing');
   assert.equal(adMinorUnit('USD'),100);assert.equal(adMinorUnit('JPY'),1);
 }));
 test('plans stay inside the caps, need an end date and are approved on their exact content',coachRun(async f=>{
   const g=graph();await ads(f,g).connect({adAccountId:'123456',accessToken:TOKEN});
-  assert.throws(()=>ads(f,g).savePlan(plan()),/bütçe tavanı/,'a cap comes first');
+  await assert.rejects(async ()=>await ads(f,g).savePlan(plan()),/bütçe tavanı/,'a cap comes first');
   await ready(f,g);
-  for(const [extra,pattern] of [[{dailyBudgetMinor:6000},/günlük tavan/],[{endDate:day(40)},/31 gün/],[{startDate:day(-1)},/başlangıç/],[{countries:['TUR']},/ülke/],[{linkUrl:'http://example.com'},/https/],[{objective:'OUTCOME_SALES'},/hedef/]])assert.throws(()=>ads(f,g).savePlan(plan(extra)),pattern,JSON.stringify(extra));
-  assert.throws(()=>ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:4000,expectedRevision:1}),/aylık tavan/);
-  ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:15000,expectedRevision:1});
-  assert.throws(()=>ads(f,g).savePlan(plan()),/aylık tavanı/,'2000 × 10 days exceeds a 15000 monthly cap');
-  ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:2});
-  const editor=f.member('editor');let snapshot=ads(f,g,editor).savePlan(plan());let item=snapshot.plans[0];
+  for(const [extra,pattern] of [[{dailyBudgetMinor:6000},/günlük tavan/],[{endDate:day(40)},/31 gün/],[{startDate:day(-1)},/başlangıç/],[{countries:['TUR']},/ülke/],[{linkUrl:'http://example.com'},/https/],[{objective:'OUTCOME_SALES'},/hedef/]])await assert.rejects(async ()=>await ads(f,g).savePlan(plan(extra)),pattern,JSON.stringify(extra));
+  await assert.rejects(async ()=>await ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:4000,expectedRevision:1}),/aylık tavan/);
+  await ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:15000,expectedRevision:1});
+  await assert.rejects(async ()=>await ads(f,g).savePlan(plan()),/aylık tavanı/,'2000 × 10 days exceeds a 15000 monthly cap');
+  await ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:60000,expectedRevision:2});
+  const editor=await f.member('editor');let snapshot=await ads(f,g,editor).savePlan(plan());let item=snapshot.plans[0];
   assert.equal(item.state,'draft');assert.equal(item.totalMinor,20000);assert.deepEqual(plain(item.countries),['TR','DE']);
-  assert.throws(()=>ads(f,g,editor).approve({id:item.id,expectedRevision:item.revision}),error=>error.status===403);
-  item=ads(f,g).approve({id:item.id,expectedRevision:item.revision}).plans[0];assert.equal(item.state,'approved');assert.equal(item.approved,true);
-  item=ads(f,g,editor).savePlan({...plan({name:'Spring traffic v2'}),id:item.id,expectedRevision:item.revision}).plans[0];assert.equal(item.state,'draft','an edit clears the approval');assert.equal(item.approved,false);
+  await assert.rejects(async ()=>await ads(f,g,editor).approve({id:item.id,expectedRevision:item.revision}),error=>error.status===403);
+  item=(await ads(f,g).approve({id:item.id,expectedRevision:item.revision})).plans[0];assert.equal(item.state,'approved');assert.equal(item.approved,true);
+  item=(await ads(f,g,editor).savePlan({...plan({name:'Spring traffic v2'}),id:item.id,expectedRevision:item.revision})).plans[0];assert.equal(item.state,'draft','an edit clears the approval');assert.equal(item.approved,false);
 }));
 test('creating puts a PAUSED campaign and ad set on Meta; starting needs the switch, acknowledgement and the monthly cap',coachRun(async f=>{
   // The monthly cap counts this month's days only, so this test's plans start today: on a month's last day a plan
   // starting tomorrow would have no days in the month.
-  const g=graph();await ready(f,g);let item=ads(f,g).savePlan(plan({startDate:day(0)})).plans[0];item=ads(f,g).approve({id:item.id,expectedRevision:item.revision}).plans[0];
+  const g=graph();await ready(f,g);let item=(await ads(f,g).savePlan(plan({startDate:day(0)}))).plans[0];item=(await ads(f,g).approve({id:item.id,expectedRevision:item.revision})).plans[0];
   item=(await ads(f,g).create({id:item.id})).plans[0];assert.equal(item.state,'created');assert.ok(item.providerCampaignId);
   const created=g.calls.filter(call=>call.method==='POST');assert.deepEqual(plain(created.map(call=>call.params.status)),['PAUSED','PAUSED']);assert.equal(created[1].params.daily_budget,'2000');assert.equal(created[1].params.optimization_goal,'LINK_CLICKS');assert.equal(created[0].params.special_ad_categories,'[]');
   process.env.PLATFORM_ADS_ENABLED='0';
@@ -50,12 +50,12 @@ test('creating puts a PAUSED campaign and ad set on Meta; starting needs the swi
   process.env.PLATFORM_ADS_ENABLED='1';
   try{
     await assert.rejects(ads(f,g).start({id:item.id}),/açık onay/);
-    const editor=f.member('editor');await assert.rejects(ads(f,g,editor).start({id:item.id,acknowledged:true}),error=>error.status===403);
+    const editor=await f.member('editor');await assert.rejects(ads(f,g,editor).start({id:item.id,acknowledged:true}),error=>error.status===403);
     item=(await ads(f,g).start({id:item.id,acknowledged:true})).plans[0];assert.equal(item.state,'active');
     // A second plan that would push this month's planned spend over the cap cannot start. The cap stays at least the
     // daily cap, and the second plan's one day today is one unit more than the room left under it, on any date.
-    const planned=ads(f,g).read().plannedActiveMinor;assert.ok(planned>=2000);const cap=Math.max(planned+2000,5000);ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:cap,expectedRevision:1});
-    let second=ads(f,g).savePlan(plan({name:'Second',dailyBudgetMinor:cap-planned+1,startDate:day(0),endDate:day(0)})).plans.find(row=>row.name==='Second');second=ads(f,g).approve({id:second.id,expectedRevision:second.revision}).plans.find(row=>row.id===second.id);
+    const planned=(await ads(f,g).read()).plannedActiveMinor;assert.ok(planned>=2000);const cap=Math.max(planned+2000,5000);await ads(f,g).setPolicy({dailyCapMinor:5000,monthlyCapMinor:cap,expectedRevision:1});
+    let second=(await ads(f,g).savePlan(plan({name:'Second',dailyBudgetMinor:cap-planned+1,startDate:day(0),endDate:day(0)}))).plans.find(row=>row.name==='Second');second=(await ads(f,g).approve({id:second.id,expectedRevision:second.revision})).plans.find(row=>row.id===second.id);
     second=(await ads(f,g).create({id:second.id})).plans.find(row=>row.id===second.id);
     await assert.rejects(ads(f,g).start({id:second.id,acknowledged:true}),/aylık tavanı/);
     // Any writer can pause; Meta's reported spend is stored as reported.
@@ -64,12 +64,12 @@ test('creating puts a PAUSED campaign and ad set on Meta; starting needs the swi
   }finally{process.env.PLATFORM_ADS_ENABLED='0';}
 }));
 test('provider failures are recorded honestly; a refused start leaves the campaign paused',coachRun(async f=>{
-  const g=graph({'POST act_#/adsets':new Error('rejected')});await ready(f,g);let item=ads(f,g).savePlan(plan()).plans[0];item=ads(f,g).approve({id:item.id,expectedRevision:item.revision}).plans[0];
+  const g=graph({'POST act_#/adsets':new Error('rejected')});await ready(f,g);let item=(await ads(f,g).savePlan(plan())).plans[0];item=(await ads(f,g).approve({id:item.id,expectedRevision:item.revision})).plans[0];
   item=(await ads(f,g).create({id:item.id})).plans[0];assert.equal(item.state,'failed');assert.match(item.lastError,/reklam seti/);
-  const ok=graph({'POST #':new Error('no payment method')});let other=ads(f,ok).savePlan(plan({name:'Other'})).plans.find(row=>row.name==='Other');other=ads(f,ok).approve({id:other.id,expectedRevision:other.revision}).plans.find(row=>row.id===other.id);
+  const ok=graph({'POST #':new Error('no payment method')});let other=(await ads(f,ok).savePlan(plan({name:'Other'}))).plans.find(row=>row.name==='Other');other=(await ads(f,ok).approve({id:other.id,expectedRevision:other.revision})).plans.find(row=>row.id===other.id);
   other=(await ads(f,ok).create({id:other.id})).plans.find(row=>row.id===other.id);process.env.PLATFORM_ADS_ENABLED='1';
   try{other=(await ads(f,ok).start({id:other.id,acknowledged:true})).plans.find(row=>row.id===other.id);assert.equal(other.state,'paused');assert.match(other.lastError,/reddetti/);}finally{process.env.PLATFORM_ADS_ENABLED='0';}
-  const viewer=f.member('viewer');assert.equal(ads(f,ok,viewer).read().plans.length,2);assert.throws(()=>ads(f,ok,viewer).savePlan(plan()),error=>error.status===403);
+  const viewer=await f.member('viewer');assert.equal((await ads(f,ok,viewer).read()).plans.length,2);await assert.rejects(async ()=>await ads(f,ok,viewer).savePlan(plan()),error=>error.status===403);
 }));
 test('the Graph client keeps the token in the header, fixes the host and rejects other paths',async()=>{
   const original=globalThis.fetch,calls=[];globalThis.fetch=async(url,options)=>{calls.push({url:String(url),options});return Response.json({id:'1'});};

@@ -24,9 +24,9 @@ export async function POST(request: NextRequest) {
       },
       accounts = new PlatformAccounts(platformDatabase());
     if (input.action === 'invite')
-      return NextResponse.json(accounts.invite(scope, input));
+      return NextResponse.json(await accounts.invite(scope, input));
     if (input.action === 'password' && access.identity.mode === 'platform') {
-      accounts.changePassword(scope, input.currentPassword, input.nextPassword);
+      await accounts.changePassword(scope, input.currentPassword, input.nextPassword);
       const response = NextResponse.json({ ok: true });
       response.cookies.set(COOKIE_NAME, '', {
         httpOnly: true,

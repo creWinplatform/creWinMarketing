@@ -14,15 +14,15 @@ const fake=(overrides={})=>{const calls=[];const fn=async request=>{const url=ne
   if(url.pathname.endsWith('/200_1/comments'))return {status:200,header:()=>null,payload:{id:'200_99'}};
   if(url.pathname.endsWith('/100/messages'))return {status:200,header:()=>null,payload:{recipient_id:'777',message_id:'mid.reply1'}};
   return {status:404,header:()=>null,payload:{}};};fn.calls=calls;return fn;};
-function setup(){
-  Object.assign(process.env,{PLATFORM_META_GRAPH_VERSION:'v25.0',PLATFORM_SOCIAL_PUBLISH_ENABLED:'0'});const f=fixture();
-  f.page=f.store.saveConnection({provider:'social',integrationId:'facebook:100',accountName:'QA Page',accessToken:'private-page-token',expiresAt:Date.now()+86400000,social:{platform:'facebook',accountId:'100',graphVersion:'v25.0'}},KEY,{appId:'12345',userAccessToken:'private-user-token'});
+async function setup(){
+  Object.assign(process.env,{PLATFORM_META_GRAPH_VERSION:'v25.0',PLATFORM_SOCIAL_PUBLISH_ENABLED:'0'});const f=await fixture();
+  f.page=await f.store.saveConnection({provider:'social',integrationId:'facebook:100',accountName:'QA Page',accessToken:'private-page-token',expiresAt:Date.now()+86400000,social:{platform:'facebook',accountId:'100',graphVersion:'v25.0'}},KEY,{appId:'12345',userAccessToken:'private-user-token'});
   const now=new Date().toISOString();
   f.db.prepare("INSERT INTO platform_jobs(id,organization_id,project_id,actor_id,connection_id,revision,idempotency_key,status,created_at,updated_at,job_type) VALUES('job-1',?,?,?,?,'r','social:k1','completed',?,?,'social.publish')").run(f.scope.organizationId,f.scope.projectId,f.scope.subject,f.page.id,now,now);
   f.db.prepare("INSERT INTO platform_social_publications(job_id,organization_id,project_id,source_kind,source_id,source_digest,body_digest,encrypted_snapshot,mode,scheduled_at,timezone,configuration_revision,state,submitted_at,provider_post_id,provider_url) VALUES('job-1',?,?,'content','c1','d','b','x','publish',?,'UTC','cfg','accepted',?,'100_200','https://www.facebook.com/100_200')").run(f.scope.organizationId,f.scope.projectId,now,now);
   f.http=fake();f.inbox=(scope=f.scope,http=f.http)=>new ProjectSocialInbox(f.db,scope,KEY,http);return f;
 }
-const run=fn=>async()=>{const f=setup();try{await fn(f);}finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}};
+const run=fn=>async()=>{const f=await setup();try{await fn(f);}finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}};
 
 test('the inbox client reaches only Meta and LinkedIn, with the token in the header',async()=>{
   for(const url of ['https://evil.example/x','https://graph.facebook.com/v25.0/1?access_token=x'])await assert.rejects(inboxHttp({method:'GET',url,token:'t'}),url);
@@ -35,31 +35,31 @@ test('comments under our own posts and recent messages are read with masked text
   assert.doesNotMatch(JSON.stringify(f.db.prepare('SELECT * FROM platform_social_inbox').all()),/"(555|777)"|Ayşe|Mehmet|ayse@/,'no names, sender ids or contact details are stored in clear');
   assert.equal((await f.inbox().sync({connectionId:f.page.id})).added,0,'nothing is stored twice');
   assert.ok(f.http.calls.every(call=>call.token==='private-page-token'));
-  const editor=f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'inbox-editor',password:'fixture-password-123',role:'editor'}).userId;
-  assert.equal(f.inbox({...f.scope,subject:editor}).read().items.length,0,'without the reading duty nothing is shown');
+  const editor=(await f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'inbox-editor',password:'fixture-password-123',role:'editor'})).userId;
+  assert.equal((await f.inbox({...f.scope,subject:editor}).read()).items.length,0,'without the reading duty nothing is shown');
 }));
 test('replies are drafted, then sent once with the publish duty, the switch and acknowledgement',run(async f=>{
   let snapshot=(await f.inbox().sync({connectionId:f.page.id})).snapshot;const comment=snapshot.items.find(item=>item.kind==='comment'),message=snapshot.items.find(item=>item.text==='Fiyat nedir?'),old=snapshot.items.find(item=>item.text==='Eski soru');
-  assert.throws(()=>f.inbox().saveReply({id:comment.id,expectedRevision:comment.revision,reply:'Bize 0532 111 22 33 numaradan ulaşın'}),/telefon/);
-  snapshot=f.inbox().saveReply({id:comment.id,expectedRevision:comment.revision,reply:'Yeni dönem 3 Kasım’da başlıyor; ayrıntıları özel mesajla paylaşabiliriz.'});let current=snapshot.items.find(item=>item.id===comment.id);
+  await assert.rejects(async ()=>await f.inbox().saveReply({id:comment.id,expectedRevision:comment.revision,reply:'Bize 0532 111 22 33 numaradan ulaşın'}),/telefon/);
+  snapshot=await f.inbox().saveReply({id:comment.id,expectedRevision:comment.revision,reply:'Yeni dönem 3 Kasım’da başlıyor; ayrıntıları özel mesajla paylaşabiliriz.'});let current=snapshot.items.find(item=>item.id===comment.id);
   await assert.rejects(f.inbox().send({id:current.id,expectedRevision:current.revision,acknowledged:true}),error=>error.status===409,'the switch is off');
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
-  const admin=f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'inbox-admin',password:'fixture-password-123',role:'admin'}).userId;
+  const admin=(await f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'inbox-admin',password:'fixture-password-123',role:'admin'})).userId;
   await assert.rejects(f.inbox({...f.scope,subject:admin}).send({id:current.id,expectedRevision:current.revision,acknowledged:true}),error=>error.status===403,'an admin without the publish duty cannot send');
   snapshot=await f.inbox().send({id:current.id,expectedRevision:current.revision,acknowledged:true});current=snapshot.items.find(item=>item.id===comment.id);
   assert.equal(current.replyState,'sent');assert.equal(current.state,'replied');
   const sent=f.http.calls.find(call=>call.path.endsWith('/200_1/comments'));assert.equal(sent.form.message,'Yeni dönem 3 Kasım’da başlıyor; ayrıntıları özel mesajla paylaşabiliriz.');
   await assert.rejects(f.inbox().send({id:current.id,expectedRevision:current.revision,acknowledged:true}),error=>error.status===409,'a reply is sent once');
-  let m=f.inbox().saveReply({id:message.id,expectedRevision:message.revision,reply:'Fiyatı web sitemizdeki sayfada bulabilirsiniz.'}).items.find(item=>item.id===message.id);
+  let m=(await f.inbox().saveReply({id:message.id,expectedRevision:message.revision,reply:'Fiyatı web sitemizdeki sayfada bulabilirsiniz.'})).items.find(item=>item.id===message.id);
   snapshot=await f.inbox().send({id:m.id,expectedRevision:m.revision,acknowledged:true});assert.equal(snapshot.items.find(item=>item.id===message.id).replyState,'sent');
   const dm=f.http.calls.find(call=>call.path.endsWith('/100/messages'));assert.deepEqual(plain(dm.json),{recipient:{id:'777'},messaging_type:'RESPONSE',message:{text:'Fiyatı web sitemizdeki sayfada bulabilirsiniz.'}});
-  const o=f.inbox().saveReply({id:old.id,expectedRevision:old.revision,reply:'Merhaba'}).items.find(item=>item.id===old.id);
+  const o=(await f.inbox().saveReply({id:old.id,expectedRevision:old.revision,reply:'Merhaba'})).items.find(item=>item.id===old.id);
   await assert.rejects(f.inbox().send({id:o.id,expectedRevision:o.revision,acknowledged:true}),/24 saat/,'the 24-hour window is enforced');
   assert.ok(f.db.prepare("SELECT COUNT(*) n FROM platform_audit WHERE operation LIKE 'inbox.%'").get().n>=5);
 }));
 test('an unclear send outcome is recorded as uncertain and never repeated',run(async f=>{
   const snapshot=(await f.inbox().sync({connectionId:f.page.id})).snapshot,message=snapshot.items.find(item=>item.text==='Fiyat nedir?');
-  const m=f.inbox().saveReply({id:message.id,expectedRevision:message.revision,reply:'Merhaba, yardımcı olalım.'}).items.find(item=>item.id===message.id);
+  const m=(await f.inbox().saveReply({id:message.id,expectedRevision:message.revision,reply:'Merhaba, yardımcı olalım.'})).items.find(item=>item.id===message.id);
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';const broken=fake({'/100/messages':new Error('connection reset')});
   const after=(await f.inbox(f.scope,broken).send({id:m.id,expectedRevision:m.revision,acknowledged:true})).items.find(item=>item.id===message.id);
   assert.equal(after.replyState,'uncertain');await assert.rejects(f.inbox(f.scope,broken).send({id:after.id,expectedRevision:after.revision,acknowledged:true}),error=>error.status===409);

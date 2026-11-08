@@ -11,15 +11,15 @@ const botApi=(answers={})=>{const calls=[];const original=globalThis.fetch;
     if(answer instanceof Error)throw answer;if(typeof answer==='number')return new Response('{"ok":false}',{status:answer,headers:{'Content-Type':'application/json'}});
     return Response.json(answer);};
   return {calls,restore:()=>{globalThis.fetch=original;}};};
-function setup(){
-  const f=fixture();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';
-  f.tg=f.store.saveConnection({provider:'social',integrationId:'telegram',accountName:'QA channel',accessToken:TOKEN,social},KEY);
-  f.content={id:'tg-source',platform:'telegram',language:'tr',headline:'Telegram QA',content:'Yeni sürüm yayında. https://example.com/notes',timestamp:Date.now(),prompt:''};f.store.saveContent(f.content,true);
+async function setup(){
+  const f=await fixture();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';
+  f.tg=await f.store.saveConnection({provider:'social',integrationId:'telegram',accountName:'QA channel',accessToken:TOKEN,social},KEY);
+  f.content={id:'tg-source',platform:'telegram',language:'tr',headline:'Telegram QA',content:'Yeni sürüm yayında. https://example.com/notes',timestamp:Date.now(),prompt:''};await f.store.saveContent(f.content,true);
   f.service=new SocialPublications(f.db,f.scope,KEY);
-  f.input=(patch={})=>({sourceKind:'content',sourceId:f.content.id,expectedDigest:f.service.workspace().sources.find(s=>s.id===f.content.id).digest,expectedTargetRevision:f.service.workspace().targets.find(t=>t.id===f.tg.id).revision,connectionId:f.tg.id,mode:'rehearsal',idempotencyKey:'telegram-fixture-intent',...patch});
+  f.input=async (patch={})=>({sourceKind:'content',sourceId:f.content.id,expectedDigest:(await f.service.workspace()).sources.find(s=>s.id===f.content.id).digest,expectedTargetRevision:(await f.service.workspace()).targets.find(t=>t.id===f.tg.id).revision,connectionId:f.tg.id,mode:'rehearsal',idempotencyKey:'telegram-fixture-intent',...patch});
   return f;
 }
-const run=async fn=>{const f=setup();try{await fn(f);}finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}};
+const run=async fn=>{const f=await setup();try{await fn(f);}finally{f.db.close();process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';}};
 
 test('Telegram channels are addressed by @username or -100 id; the bot and channel are verified without auth headers',async()=>{
   assert.equal(normalizeSocialConfiguration({platform:'telegram',accountId:'@ryzevo_qa'}).accountId,'@ryzevo_qa');
@@ -35,50 +35,50 @@ test('Telegram channels are addressed by @username or -100 id; the bot and chann
 });
 test('Telegram sources allow 4096 characters of text and no media; rehearsal never contacts Telegram',()=>run(async f=>{
   const api=botApi({sendMessage:new Error('Rehearsal contacted Telegram')});
-  try{const job=f.service.enqueue(f.input());await f.service.process(job.id);assert.equal(f.service.get(job.id).state,'rehearsed');assert.equal(api.calls.length,0);}finally{api.restore();}
-  for(const patch of [{content:'x'.repeat(4097)},{imageData:'image'},{content:'{{firstName}}'}]){f.store.saveContent({...f.content,...patch},false);assert.equal(f.service.workspace().sources.find(s=>s.id===f.content.id).eligible,false);}
-  f.store.saveContent({...f.content,content:'x'.repeat(4096)},false);assert.equal(f.service.workspace().sources.find(s=>s.id===f.content.id).eligible,true);
-  assert.doesNotMatch(JSON.stringify(f.service.workspace()),/AAFixtureTelegram/,'the bot token never reaches the browser');
+  try{const job=await f.service.enqueue(await f.input());await f.service.process(job.id);assert.equal((await f.service.get(job.id)).state,'rehearsed');assert.equal(api.calls.length,0);}finally{api.restore();}
+  for(const patch of [{content:'x'.repeat(4097)},{imageData:'image'},{content:'{{firstName}}'}]){await f.store.saveContent({...f.content,...patch},false);assert.equal((await f.service.workspace()).sources.find(s=>s.id===f.content.id).eligible,false);}
+  await f.store.saveContent({...f.content,content:'x'.repeat(4096)},false);assert.equal((await f.service.workspace()).sources.find(s=>s.id===f.content.id).eligible,true);
+  assert.doesNotMatch(JSON.stringify(await f.service.workspace()),/AAFixtureTelegram/,'the bot token never reaches the browser');
 }));
 test('publishing needs the switch, an admin bot with post rights and acknowledgement; the post link is the channel message',()=>run(async f=>{
-  assert.throws(()=>f.service.enqueue(f.input({mode:'publish',acknowledged:true})),e=>e.status===409,'switch off');
+  await assert.rejects(async ()=>await f.service.enqueue(await f.input({mode:'publish',acknowledged:true})),e=>e.status===409,'switch off');
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
   const member=botApi({getChatMember:{ok:true,result:{status:'administrator',can_post_messages:false}}});
   try{await assert.rejects(f.service.check(f.tg.id),e=>e.status===409&&/Telegram yayın izni/.test(e.message));}finally{member.restore();}
   const api=botApi();
   try{
-    await f.service.check(f.tg.id);const job=f.service.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-publish-1'}));await f.service.process(job.id);
-    const done=f.service.get(job.id);assert.equal(done.state,'accepted');assert.equal(done.providerPostId,'-1001234567890:42');assert.equal(done.providerUrl,'https://t.me/ryzevo_qa/42');assert.equal(done.engagement.status,'unsupported');
+    await f.service.check(f.tg.id);const job=await f.service.enqueue(await f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-publish-1'}));await f.service.process(job.id);
+    const done=await f.service.get(job.id);assert.equal(done.state,'accepted');assert.equal(done.providerPostId,'-1001234567890:42');assert.equal(done.providerUrl,'https://t.me/ryzevo_qa/42');assert.equal(done.engagement.status,'unsupported');
     const send=api.calls.find(call=>call.method==='sendMessage');assert.deepEqual(send.body,{chat_id:'@ryzevo_qa',text:'Yeni sürüm yayında. '+tagged(f.scope,'content',f.content.id,'https://example.com/notes','telegram')},'the channel gets the approved, tagged own-site link');
-    assert.throws(()=>f.service.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-publish-2'})),e=>e.status===409,'the same text is not posted twice');
+    await assert.rejects(async ()=>await f.service.enqueue(await f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-publish-2'})),e=>e.status===409,'the same text is not posted twice');
   }finally{api.restore();}
   const audit=JSON.stringify(f.db.prepare('SELECT * FROM platform_audit').all())+JSON.stringify(f.db.prepare('SELECT * FROM platform_social_publications').all());assert.doesNotMatch(audit,/AAFixtureTelegram/,'the token is stored only encrypted');
 }));
 test('a non-owner needs the publish messaging duty, checked again when the queued job runs',()=>run(async f=>{
-  const {ProjectMessaging}=load('messaging-sources.ts'),admin={...f.scope,subject:f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'telegram-admin',password:'fixture-password-123',role:'admin'}).userId};
+  const {ProjectMessaging}=load('messaging-sources.ts'),admin={...f.scope,subject:(await f.repo.addMember(f.scope.subject,f.scope.organizationId,f.scope.projectId,{username:'telegram-admin',password:'fixture-password-123',role:'admin'})).userId};
   const asAdmin=new SocialPublications(f.db,admin,KEY),owner=new ProjectMessaging(f.db,f.scope,KEY);process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
   const api=botApi();
   try{
     await asAdmin.check(f.tg.id);
-    assert.throws(()=>asAdmin.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-duty-1'})),e=>e.status===403,'without the duty an admin cannot publish');
-    assert.ok(asAdmin.enqueue(f.input({idempotencyKey:'telegram-duty-rehearsal'})).id,'rehearsal stays open');
-    owner.setDuty({userId:admin.subject,duty:'publish',granted:true});
-    const job=asAdmin.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-duty-2'}));
-    owner.setDuty({userId:admin.subject,duty:'publish',granted:false});await asAdmin.process(job.id);
-    assert.notEqual(asAdmin.get(job.id).state,'accepted');assert.equal(api.calls.some(call=>call.method==='sendMessage'),false,'a duty taken away while queued stops the post');
+    await assert.rejects(async ()=>await asAdmin.enqueue(await f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-duty-1'})),e=>e.status===403,'without the duty an admin cannot publish');
+    assert.ok((await asAdmin.enqueue(await f.input({idempotencyKey:'telegram-duty-rehearsal'}))).id,'rehearsal stays open');
+    await owner.setDuty({userId:admin.subject,duty:'publish',granted:true});
+    const job=await asAdmin.enqueue(await f.input({mode:'publish',acknowledged:true,idempotencyKey:'telegram-duty-2'}));
+    await owner.setDuty({userId:admin.subject,duty:'publish',granted:false});await asAdmin.process(job.id);
+    assert.notEqual((await asAdmin.get(job.id)).state,'accepted');assert.equal(api.calls.some(call=>call.method==='sendMessage'),false,'a duty taken away while queued stops the post');
   }finally{api.restore();}
 }));
 test('Telegram refusals and network failures are recorded as rejected or uncertain, never as success',()=>run(async f=>{
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
   for(const [answer,state] of [[403,'rejected'],[new Error('network'),'uncertain']]){
     const proof=botApi();try{await f.service.check(f.tg.id);}finally{proof.restore();}
-    f.store.saveContent({...f.content,content:`Deneme ${state}`},false);
-    const api=botApi({sendMessage:answer});try{const job=f.service.enqueue(f.input({mode:'publish',acknowledged:true,idempotencyKey:`telegram-${state}`}));await f.service.process(job.id);assert.equal(f.service.get(job.id).state,state);assert.equal(f.service.get(job.id).providerUrl,null);}finally{api.restore();}
+    await f.store.saveContent({...f.content,content:`Deneme ${state}`},false);
+    const api=botApi({sendMessage:answer});try{const job=await f.service.enqueue(await f.input({mode:'publish',acknowledged:true,idempotencyKey:`telegram-${state}`}));await f.service.process(job.id);assert.equal((await f.service.get(job.id)).state,state);assert.equal((await f.service.get(job.id)).providerUrl,null);}finally{api.restore();}
   }
 }));
 test('schema43 keeps existing social accounts and is repeatable',async()=>{
-  const f=fixture();try{
-    f.store.saveConnection({provider:'social',integrationId:'li',accountName:'LinkedIn',accessToken:'other',social:{platform:'linkedin',accountId:'user'}},KEY);
+  const f=await fixture();try{
+    await f.store.saveConnection({provider:'social',integrationId:'li',accountName:'LinkedIn',accessToken:'other',social:{platform:'linkedin',accountId:'user'}},KEY);
     const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'telegram-')),'fixture.sqlite');
     await f.db.backup(file);let db=openPlatformDatabase(file);require('./schema-fixture.cjs').removeTelegramSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,42);
     assert.throws(()=>db.prepare("INSERT INTO platform_social_accounts(connection_id,platform,account_id) VALUES('x','telegram','@abcdef')").run(),/CHECK|FOREIGN/);db.close();

@@ -26,13 +26,13 @@ test('a scan audits only the project site, page by page, and keeps findings once
   const robots=snapshot.findings.find(item=>item.siteWide);assert.equal(robots.url,'https://example.com');assert.deepEqual(plain(robots.events.map(item=>item.kind)),['detected']);
   assert.equal(snapshot.findings[0].impact,'high','open findings are ordered by impact');
   assert.equal(f.db.prepare('SELECT COUNT(*) n FROM platform_audit WHERE operation=?').get(compassSiteReceipt('https://example.com')).n,1,'the coach and Compass see the audit');
-  assert.equal(seo(f,deps,f.other).read().findings.length,0,'other projects see nothing');
+  assert.equal((await seo(f,deps,f.other).read()).findings.length,0,'other projects see nothing');
 }));
 test('fixed, reopened and ignored findings follow the evidence; failed pages never mark anything fixed',coachRun(async f=>{
   const {state,deps}=site();state.urls=['https://example.com/','https://example.com/pricing'];
   state.pages={'https://example.com/':[finding('Meta açıklaması eksik'),finding('Alt metni olmayan görseller var','Erişilebilirlik','low')],'https://example.com/pricing':[finding('H1 başlığı eksik')]};
   let snapshot=await run(f,deps);const ids=Object.fromEntries(snapshot.findings.map(item=>[item.title,item]));
-  seo(f,deps).decide({id:ids['Alt metni olmayan görseller var'].id,decision:'ignore',expectedRevision:ids['Alt metni olmayan görseller var'].revision});
+  await seo(f,deps).decide({id:ids['Alt metni olmayan görseller var'].id,decision:'ignore',expectedRevision:ids['Alt metni olmayan görseller var'].revision});
   // Second scan: the meta description is fixed; the pricing page cannot be fetched, so its finding stays open.
   state.pages={'https://example.com/':[finding('Alt metni olmayan görseller var','Erişilebilirlik','low')],'https://example.com/pricing':new Error('timeout')};
   snapshot=await run(f,deps);const second=Object.fromEntries(snapshot.findings.map(item=>[item.title,item]));
@@ -43,48 +43,48 @@ test('fixed, reopened and ignored findings follow the evidence; failed pages nev
   state.pages={'https://example.com/':[finding('Meta açıklaması eksik')],'https://example.com/pricing':[finding('H1 başlığı eksik')]};
   snapshot=await run(f,deps);const third=Object.fromEntries(snapshot.findings.map(item=>[item.title,item]));
   assert.equal(third['Meta açıklaması eksik'].state,'open');assert.deepEqual(plain(third['Meta açıklaması eksik'].events.map(item=>item.kind)),['reopened','fixed','detected']);
-  const restored=seo(f,deps).decide({id:third['Alt metni olmayan görseller var'].id,decision:'restore',expectedRevision:third['Alt metni olmayan görseller var'].revision});
+  const restored=await seo(f,deps).decide({id:third['Alt metni olmayan görseller var'].id,decision:'restore',expectedRevision:third['Alt metni olmayan görseller var'].revision});
   assert.equal(restored.findings.find(item=>item.title==='Alt metni olmayan görseller var').state,'open');
-  assert.throws(()=>seo(f,deps).decide({id:third['H1 başlığı eksik'].id,decision:'ignore',expectedRevision:0}),error=>error.status===409,'stale revision');
+  await assert.rejects(async ()=>await seo(f,deps).decide({id:third['H1 başlığı eksik'].id,decision:'ignore',expectedRevision:0}),error=>error.status===409,'stale revision');
 }));
 test('a finding gets one work item while its task is open; cancelling keeps findings without fixing anything',coachRun(async f=>{
   const {state,deps}=site();state.urls=['https://example.com/','https://example.com/pricing'];state.pages={'https://example.com/':[finding('Meta açıklaması eksik')],'https://example.com/pricing':[finding('H1 başlığı eksik')]};
   let snapshot=await run(f,deps);const meta=snapshot.findings.find(item=>item.title==='Meta açıklaması eksik');
-  const first=seo(f,deps).plan({id:meta.id}),again=seo(f,deps).plan({id:meta.id});
+  const first=await seo(f,deps).plan({id:meta.id}),again=await seo(f,deps).plan({id:meta.id});
   assert.equal(first.created,true);assert.equal(again.created,false);assert.equal(again.task.id,first.task.id);assert.match(first.task.note,/^seo-finding:/);
-  assert.equal(new ProjectOperations(f.db,f.scope).tasks().filter(task=>task.note.includes(meta.id)).length,1,'no duplicate work items');
-  new ProjectOperations(f.db,f.scope).saveTask({...first.task,status:'completed'});assert.equal(seo(f,deps).plan({id:meta.id}).created,true,'a new task after the previous one is completed');
-  state.pages={'https://example.com/':[],'https://example.com/pricing':[]};snapshot=await seo(f,deps).start();snapshot=await seo(f,deps).step();snapshot=seo(f,deps).cancel();
+  assert.equal((await new ProjectOperations(f.db,f.scope).tasks()).filter(task=>task.note.includes(meta.id)).length,1,'no duplicate work items');
+  await new ProjectOperations(f.db,f.scope).saveTask({...first.task,status:'completed'});assert.equal((await seo(f,deps).plan({id:meta.id})).created,true,'a new task after the previous one is completed');
+  state.pages={'https://example.com/':[],'https://example.com/pricing':[]};snapshot=await seo(f,deps).start();snapshot=await seo(f,deps).step();snapshot=await seo(f,deps).cancel();
   assert.equal(snapshot.scan.state,'cancelled');assert.equal(snapshot.counts.fixed,0,'an incomplete scan fixes nothing');assert.equal(snapshot.counts.open,2);
 }));
 test('viewers read only; changing the website cancels a running scan; the worker continues abandoned scans',coachRun(async f=>{
   const {state,deps}=site();state.urls=['https://example.com/','https://example.com/a','https://example.com/b'];state.pages={'https://example.com/':[finding('Meta açıklaması eksik')]};
-  const viewer=f.member('viewer');
+  const viewer=await f.member('viewer');
   await assert.rejects(seo(f,deps,viewer).start(),error=>error.status===403);
   let snapshot=await seo(f,deps).start();
-  await assert.rejects(seo(f,deps,viewer).step(),error=>error.status===403);assert.equal(seo(f,deps,viewer).read().scan.id,snapshot.scan.id);
+  await assert.rejects(seo(f,deps,viewer).step(),error=>error.status===403);assert.equal((await seo(f,deps,viewer).read()).scan.id,snapshot.scan.id);
   // An abandoned scan (no step for over two minutes) is advanced by the worker, one page per tick.
   f.db.prepare('UPDATE platform_seo_scans SET updated_at=?').run(new Date(Date.now()-300000).toISOString());
-  assert.equal(await advanceSeoScans(f.db,deps),1);assert.equal(seo(f,deps).read().scan.pages.done,1);
+  assert.equal(await advanceSeoScans(f.db,deps),1);assert.equal((await seo(f,deps).read()).scan.pages.done,1);
   // The starter loses content rights: the worker cancels instead of acting without authority.
-  const editor=f.member('editor');f.db.prepare("UPDATE platform_seo_scans SET started_by=?,updated_at=?").run(editor.subject,new Date(Date.now()-300000).toISOString());
+  const editor=await f.member('editor');f.db.prepare("UPDATE platform_seo_scans SET started_by=?,updated_at=?").run(editor.subject,new Date(Date.now()-300000).toISOString());
   f.db.prepare("UPDATE platform_memberships SET role='viewer' WHERE user_id=?").run(editor.subject);
-  await advanceSeoScans(f.db,deps);assert.equal(seo(f,deps).read().scan.state,'cancelled');
-  snapshot=await seo(f,deps).start();const project=f.repo.workspace(f.scope.subject,f.a.organizationId,f.a.projectId).project;
-  f.repo.updateProject(f.scope.subject,f.a.organizationId,f.a.projectId,{name:project.name,website:'https://changed.example',timezone:project.timezone,language:project.language,brandVoice:project.brandVoice||'',goals:project.goals});
+  await advanceSeoScans(f.db,deps);assert.equal((await seo(f,deps).read()).scan.state,'cancelled');
+  snapshot=await seo(f,deps).start();const project=(await f.repo.workspace(f.scope.subject,f.a.organizationId,f.a.projectId)).project;
+  await f.repo.updateProject(f.scope.subject,f.a.organizationId,f.a.projectId,{name:project.name,website:'https://changed.example',timezone:project.timezone,language:project.language,brandVoice:project.brandVoice||'',goals:project.goals});
   assert.equal((await seo(f,deps).step()).scan.state,'cancelled','a scan never continues on a different site');
 }));
 test('Search Console opportunities follow fixed rules and are visible only to connection managers',coachRun(async f=>{
   const {deps}=site(),{organizationId,projectId}=f.scope,now=new Date().toISOString();
-  assert.equal(seo(f,deps).opportunities().state,'not_connected');
+  assert.equal((await seo(f,deps).opportunities()).state,'not_connected');
   f.db.prepare("INSERT INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,active,updated_at) VALUES('qa-gsc',?,?,'search_console','https://example.com/','QA','{}',1,?)").run(organizationId,projectId,now);
-  assert.equal(seo(f,deps).opportunities().state,'not_fetched');
+  assert.equal((await seo(f,deps).opportunities()).state,'not_fetched');
   const rows=[{query:'near',clicks:1,impressions:120,position:11.4},{query:'low ctr',clicks:0,impressions:300,position:3.1},{query:'fine',clicks:40,impressions:200,position:2},{query:'tiny',clicks:0,impressions:5,position:12}];
   f.db.prepare("INSERT INTO platform_coach_seo_queries(organization_id,project_id,connection_id,status,date_from,date_to,rows_json,checked_at) VALUES(?,?,'qa-gsc','ready','2026-09-19','2026-10-16',?,?)").run(organizationId,projectId,JSON.stringify(rows),now);
-  const snapshot=seo(f,deps).opportunities();
+  const snapshot=await seo(f,deps).opportunities();
   assert.equal(snapshot.state,'ready');assert.equal(snapshot.queries,4);assert.deepEqual(plain(snapshot.items.map(item=>[item.query,item.kind])),[['low ctr','low_ctr'],['near','near_first_page']]);
   assert.equal(snapshot.items[1].ctr,1/120,'CTR is computed from the stored clicks and impressions only');
-  const editor=f.member('editor');assert.deepEqual(plain(seo(f,deps,editor).opportunities()),{state:'restricted',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false,watch:{state:'restricted',currentFrom:null,currentTo:null,clicks:null,impressions:null,previousClicks:null,previousImpressions:null,checkedAt:null,drop:false}});
+  const editor=await f.member('editor');assert.deepEqual(plain(await seo(f,deps,editor).opportunities()),{state:'restricted',from:null,to:null,checkedAt:null,queries:0,items:[],canRefresh:false,watch:{state:'restricted',currentFrom:null,currentTo:null,clicks:null,impressions:null,previousClicks:null,previousImpressions:null,checkedAt:null,drop:false}});
 }));
 test('schema40 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'seo-ops-')),'fixture.sqlite');

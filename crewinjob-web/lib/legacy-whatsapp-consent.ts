@@ -105,10 +105,10 @@ export function legacyWhatsAppGate(numbers: unknown[], file = LEGACY_WHATSAPP_FI
 export const isTurkishNumber = (phone: string) => /^\+90\d{10}$/.test(phone);
 // What happened on the İYS side: queued for İYS, too old to report (its İYS status must be queried) or not queued.
 type IysTally = { queued: number; tooOld: number; failed: number };
-function reportToIys(iys: CrewinIys, phones: string[], report: (phone: string) => CrewinIysReport): IysTally {
+async function reportToIys(iys: CrewinIys, phones: string[], report: (phone: string) => Promise<CrewinIysReport>): Promise<IysTally> {
   const tally: IysTally = { queued: 0, tooOld: 0, failed: 0 };
   for (const phone of phones.filter(isTurkishNumber)) {
-    try { const result = report(phone); if (result === 'queued') tally.queued++; else if (result === 'too_old') tally.tooOld++; else if (result === 'invalid') tally.failed++; }
+    try { const result = await report(phone); if (result === 'queued') tally.queued++; else if (result === 'too_old') tally.tooOld++; else if (result === 'invalid') tally.failed++; }
     catch { tally.failed++; }
   }
   return tally;
@@ -125,7 +125,7 @@ export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evid
     throw new LegacyWhatsAppError('Geçerli bir izin tarihi girin; gelecek tarih olamaz.');
   const phones = phoneList(raw.numbers);
   const source = typeof raw.source === 'string' && (IYS_SOURCES as readonly string[]).includes(raw.source) ? raw.source as IysSource : null;
-  if (iys?.scope() === 'tr' && !source && phones.some(isTurkishNumber)) throw new LegacyWhatsAppError('Türk numaraları İYS’ye bildirilir: izin nasıl alındı, seçin.');
+  if (iys && await iys.scope() === 'tr' && !source && phones.some(isTurkishNumber)) throw new LegacyWhatsAppError('Türk numaraları İYS’ye bildirilir: izin nasıl alındı, seçin.');
   const fresh: string[] = [];
   const result = await withFileLock(file, () => {
     const list = readStore(file), now = new Date().toISOString();
@@ -144,7 +144,7 @@ export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evid
     return { added, renewed, existing };
   });
   // Only new consents go to İYS; one already on record was reported (or queried) when it was recorded.
-  return iys ? { ...result, iys: reportToIys(iys, fresh, phone => iys.report(phone, 'ONAY', source, consentAt, actor)) } : result;
+  return iys ? { ...result, iys: await reportToIys(iys, fresh, phone => iys.report(phone, 'ONAY', source, consentAt, actor)) } : result;
 }
 
 const OPT_OUT_ACTORS: Record<OptOutSource, string> = { team: 'panel', reply: 'whatsapp-webhook', meta: 'whatsapp-send' };
@@ -168,7 +168,7 @@ export async function recordLegacyWhatsAppOptOut(numbers: unknown, source: OptOu
     return { optedOut, already };
   });
   const today = new Date().toISOString();
-  return iys ? { ...result, iys: reportToIys(iys, fresh, phone => iys.report(phone, 'RET', null, today, actor)) } : result;
+  return iys ? { ...result, iys: await reportToIys(iys, fresh, phone => iys.report(phone, 'RET', null, today, actor)) } : result;
 }
 
 /** What the record says about each of up to 50 numbers. */
@@ -285,22 +285,22 @@ function skipCounts(skipped: { reason: SkipReason }[], withIys: boolean): Partia
 export async function sendLegacyWhatsApp(raw: unknown, sender: LegacyWhatsAppSender, file = LEGACY_WHATSAPP_FILE, iys?: CrewinIys): Promise<{ status: number; body: Record<string, unknown> }> {
   const body = object(raw) || {};
   const { mode, to, numbers, text, templateName, langCode, components } = body;
-  const gate = (list: unknown[]) => {
+  const gate = async (list: unknown[]) => {
     const { allowed, skipped } = legacyWhatsAppGate(list, file);
     if (!iys) return { allowed, skipped };
     const pass: string[] = [];
-    for (const phone of allowed) { const reason = iys.gate(phone); if (reason) skipped.push({ hint: hint(phone), reason: 'iys', iys: reason }); else pass.push(phone); }
+    for (const phone of allowed) { const reason = await iys.gate(phone); if (reason) skipped.push({ hint: hint(phone), reason: 'iys', iys: reason }); else pass.push(phone); }
     return { allowed: pass, skipped };
   };
-  const blocked = () => { const message = iys?.block(); return message ? { status: 409, body: { error: message } } : null; };
+  const blocked = async () => { const message = await iys?.block(); return message ? { status: 409, body: { error: message } } : null; };
   if (mode === 'single' || mode === 'template') {
     if (mode === 'single' && (typeof to !== 'string' || !to || typeof text !== 'string' || !text)) return { status: 400, body: { error: '"to" and "text" are required.' } };
     if (mode === 'template' && (typeof to !== 'string' || !to || typeof templateName !== 'string' || !templateName || typeof langCode !== 'string' || !langCode)) {
       return { status: 400, body: { error: '"to", "templateName" and "langCode" are required.' } };
     }
     if (!secret()) return { status: 503, body: { error: 'WhatsApp izin kaydı için sunucuda TRACKING_SECRET veya AUTH_SECRET gerekli.' } };
-    const stop = blocked(); if (stop) return stop;
-    const { allowed, skipped } = gate([to]);
+    const stop = await blocked(); if (stop) return stop;
+    const { allowed, skipped } = await gate([to]);
     if (!allowed.length) return { status: skipped[0].reason === 'invalid' ? 400 : 409, body: { error: SKIP_ERRORS[skipped[0].reason], skipped: skipCounts(skipped, Boolean(iys)), skippedNumbers: skipped } };
     const result = mode === 'single'
       ? await sender.sendWhatsAppMessage(allowed[0], text as string)
@@ -312,8 +312,8 @@ export async function sendLegacyWhatsApp(raw: unknown, sender: LegacyWhatsAppSen
     if (!Array.isArray(numbers) || numbers.length === 0 || typeof text !== 'string' || !text) return { status: 400, body: { error: '"numbers" and "text" are required.' } };
     if (numbers.length > LEGACY_WHATSAPP_LIMITS.numbers) return { status: 400, body: { error: 'Max 500 numbers per request.' } };
     if (!secret()) return { status: 503, body: { error: 'WhatsApp izin kaydı için sunucuda TRACKING_SECRET veya AUTH_SECRET gerekli.' } };
-    const stop = blocked(); if (stop) return stop;
-    const { allowed, skipped } = gate(numbers), counts = skipCounts(skipped, Boolean(iys));
+    const stop = await blocked(); if (stop) return stop;
+    const { allowed, skipped } = await gate(numbers), counts = skipCounts(skipped, Boolean(iys));
     if (!allowed.length) {
       const error = counts.iys ? 'Listedeki numaraların hiçbirine gönderilemedi (izin, çıkış veya İYS kontrolü); gönderim yapılmadı.' : 'Listedeki hiçbir numara için geçerli WhatsApp izni yok; gönderim yapılmadı.';
       return { status: 409, body: { error, sent: 0, failed: 0, errors: [], skipped: counts, skippedNumbers: skipped } };

@@ -1,3 +1,5 @@
+import { flatMapSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -42,90 +44,90 @@ export function parseWeeklyDraft(output: string, item: Item): Pick<HistoryItem, 
   return { headline, content };
 }
 
-function settings(db: Database.Database, scope: { organizationId: string; projectId: string }) {
-  return db.prepare('SELECT * FROM platform_coach_weekly_pack WHERE organization_id=? AND project_id=?').get(...args(scope)) as Row | undefined;
+async function settings(db: Db, scope: { organizationId: string; projectId: string }) {
+  return await db.prepare('SELECT * FROM platform_coach_weekly_pack WHERE organization_id=? AND project_id=?').get(...args(scope)) as Row | undefined;
 }
 export class CoachWeeklyPack {
   coach: GrowthCoach;
-  constructor(public db: Database.Database, public scope: MarketingScope) { this.coach = new GrowthCoach(db, scope); }
-  view(): CoachWeeklyPackView {
-    this.coach.authorize(); const row = settings(this.db, this.scope), week = coachWeekKey(new Date(), this.coach.timeZone());
-    const user = (id: string | null) => id ? (this.db.prepare('SELECT username FROM platform_users WHERE id=?').get(id) as { username: string } | undefined)?.username || null : null;
-    const ready = this.coach.crewin() ? 0 : new ProjectMarketingStore(this.db, this.scope).history().filter(item => item.starter && item.coachWeek === week).length;
-    return { enabled: Boolean(row?.enabled), enabledBy: user(row?.enabled_by || null), enabledAt: row?.enabled_at || null, lastWeek: row?.last_week || null, lastRunAt: row?.last_run_at || null, lastDrafts: row?.last_drafts || 0, lastAi: row?.last_ai || 0, note: row?.last_note || null,
-      readyThisWeek: ready, available: !this.coach.crewin(), canManage: this.coach.can('campaign.approve'), aiConfigured: Boolean(process.env.PLATFORM_GEMINI_API_KEY && process.env.PLATFORM_GEMINI_MODEL) };
+  constructor(public db: Db, public scope: MarketingScope) { this.coach = new GrowthCoach(db, scope); }
+  async view(): Promise<CoachWeeklyPackView> {
+    await this.coach.authorize(); const row = await settings(this.db, this.scope), week = coachWeekKey(new Date(), await this.coach.timeZone());
+    const user = async (id: string | null) => id ? (await this.db.prepare('SELECT username FROM platform_users WHERE id=?').get(id) as { username: string } | undefined)?.username || null : null;
+    const ready = await this.coach.crewin() ? 0 : (await new ProjectMarketingStore(this.db, this.scope).history()).filter(item => item.starter && item.coachWeek === week).length;
+    return { enabled: Boolean(row?.enabled), enabledBy: await user(row?.enabled_by || null), enabledAt: row?.enabled_at || null, lastWeek: row?.last_week || null, lastRunAt: row?.last_run_at || null, lastDrafts: row?.last_drafts || 0, lastAi: row?.last_ai || 0, note: row?.last_note || null,
+      readyThisWeek: ready, available: !await this.coach.crewin(), canManage: await this.coach.can('campaign.approve'), aiConfigured: Boolean(process.env.PLATFORM_GEMINI_API_KEY && process.env.PLATFORM_GEMINI_MODEL) };
   }
   // Turning it on names the member whose rights the weekly run uses; it stops if they lose the right to write content.
-  setEnabled(raw: Record<string, unknown>) {
-    this.coach.authorize('campaign.approve', 'Pazartesi paketini yalnız onay yetkisi olan ekip üyeleri açıp kapatabilir.');
+  async setEnabled(raw: Record<string, unknown>) {
+    await this.coach.authorize('campaign.approve', 'Pazartesi paketini yalnız onay yetkisi olan ekip üyeleri açıp kapatabilir.');
     if (typeof raw.enabled !== 'boolean') throw new MarketingStoreError('Geçersiz ayar.');
-    if (this.coach.crewin()) throw new MarketingStoreError('Crewin çalışma alanında içerikler kendi kütüphanesinde hazırlanır.', 409);
-    if (raw.enabled && !this.coach.approved().brief) throw new MarketingStoreError('Önce strateji briefini onaylayın.', 409);
+    if (await this.coach.crewin()) throw new MarketingStoreError('Crewin çalışma alanında içerikler kendi kütüphanesinde hazırlanır.', 409);
+    if (raw.enabled && !(await this.coach.approved()).brief) throw new MarketingStoreError('Önce strateji briefini onaylayın.', 409);
     const now = new Date().toISOString();
-    this.db.transaction(() => {
-      this.db.prepare(`INSERT INTO platform_coach_weekly_pack(organization_id,project_id,enabled,enabled_by,enabled_at) VALUES(?,?,?,?,?) ON CONFLICT(organization_id,project_id) DO UPDATE SET enabled=excluded.enabled,enabled_by=excluded.enabled_by,enabled_at=excluded.enabled_at`)
+    await this.db.transaction(async () => {
+      await this.db.prepare(`INSERT INTO platform_coach_weekly_pack(organization_id,project_id,enabled,enabled_by,enabled_at) VALUES(?,?,?,?,?) ON CONFLICT(organization_id,project_id) DO UPDATE SET enabled=excluded.enabled,enabled_by=excluded.enabled_by,enabled_at=excluded.enabled_at`)
         .run(...args(this.scope), raw.enabled ? 1 : 0, this.scope.subject, now);
-      this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), raw.enabled ? 'coach.weekly_pack.on' : 'coach.weekly_pack.off', now);
-    }).immediate();
-    return this.view();
+      await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), raw.enabled ? 'coach.weekly_pack.on' : 'coach.weekly_pack.off', now);
+    });
+    return await this.view();
   }
   // This week's plan items without a draft yet, earliest first, one per channel when the plan allows.
-  private items(week: string): Item[] {
+  private async items(week: string): Promise<Item[]> {
     // A week can span two months: both months' plans are read (this month's is prepared first when it is empty).
-    const end = zonedShiftDays(week, 6), plan = new CoachContentPlan(this.db, this.scope); plan.seedStarter();
-    const open = [...new Set([week.slice(0, 7), end.slice(0, 7)])].flatMap(month => { try { return plan.read(month).items; } catch { return []; } })
+    const end = zonedShiftDays(week, 6), plan = new CoachContentPlan(this.db, this.scope); await plan.seedStarter();
+    const open = (await flatMapSeries([...new Set([week.slice(0, 7), end.slice(0, 7)])], async month => { try { return (await plan.read(month)).items; } catch { return []; } }))
       .filter(item => item.state !== 'dismissed' && item.channel !== 'email' && item.plannedFor >= week && item.plannedFor <= end).sort((a, b) => a.plannedFor.localeCompare(b.plannedFor));
-    const done = new Set(new ProjectMarketingStore(this.db, this.scope).history().map(item => item.coachRef).filter(Boolean)), picked: Item[] = [];
+    const done = new Set((await new ProjectMarketingStore(this.db, this.scope).history()).map(item => item.coachRef).filter(Boolean)), picked: Item[] = [];
     for (const fresh of [(item: Item) => !picked.some(other => other.channel === item.channel), () => true])
       for (const item of open) if (picked.length < DRAFTS && !picked.includes(item) && !done.has(`content:${item.id}`) && fresh(item)) picked.push(item);
     return picked;
   }
   async run(generator?: CoachGenerator, now = new Date()) {
-    const week = coachWeekKey(now, this.coach.timeZone()), finish = (drafts: number, ai: number, note: string | null) => {
-      this.db.prepare('UPDATE platform_coach_weekly_pack SET last_week=?,last_run_at=?,last_drafts=?,last_ai=?,last_note=? WHERE organization_id=? AND project_id=?').run(week, now.toISOString(), drafts, ai, note, ...args(this.scope));
+    const week = coachWeekKey(now, await this.coach.timeZone()), finish = async (drafts: number, ai: number, note: string | null) => {
+      await this.db.prepare('UPDATE platform_coach_weekly_pack SET last_week=?,last_run_at=?,last_drafts=?,last_ai=?,last_note=? WHERE organization_id=? AND project_id=?').run(week, now.toISOString(), drafts, ai, note, ...args(this.scope));
       return { week, drafts, ai, note };
     };
-    const { brief } = this.coach.approved();
-    if (!brief) return finish(0, 0, 'no_brief');
-    if (!this.coach.can('content.write')) return finish(0, 0, 'no_rights');
-    const project = this.coach.repo.workspace(this.scope.subject, ...args(this.scope))!.project, store = new ProjectMarketingStore(this.db, this.scope), operations = new ProjectOperations(this.db, this.scope);
+    const { brief } = await this.coach.approved();
+    if (!brief) return await finish(0, 0, 'no_brief');
+    if (!await this.coach.can('content.write')) return await finish(0, 0, 'no_rights');
+    const project = (await this.coach.repo.workspace(this.scope.subject, ...args(this.scope)))!.project, store = new ProjectMarketingStore(this.db, this.scope), operations = new ProjectOperations(this.db, this.scope);
     let drafts = 0, ai = 0, note: string | null = generator ? null : 'ai_unavailable';
-    for (const item of this.items(week)) {
+    for (const item of await this.items(week)) {
       const frame = coachStarterDraft(item, brief, project.website || '');
       let draft: HistoryItem = { ...frame, id: `weekly_${randomUUID()}` };
       if (generator && note !== 'ai_quota') {
-        let reservation: ReturnType<ProjectOperations['reserveAi']> | null = null;
-        try { reservation = operations.reserveAi(); } catch { note = 'ai_quota'; }
+        let reservation: Awaited<ReturnType<ProjectOperations['reserveAi']>> | null = null;
+        try { reservation = await operations.reserveAi(); } catch { note = 'ai_quota'; }
         if (reservation) {
           let completed = false;
           try {
             const output = await generator(weeklyDraftPrompt(item, brief, { name: project.name, website: project.website || '', brandVoice: project.brandVoice || '' }));
             const text = typeof output === 'string' ? output : output.text, parsed = parseWeeklyDraft(text, item);
             draft = { ...draft, headline: parsed.headline, content: parsed.content };
-            this.db.transaction(() => { operations.completeAi(reservation!); if (typeof output !== 'string' && output.usage) recordAiUsage(this.db, this.scope, reservation!, output.usage); })(); completed = true; ai++;
+            await this.db.transaction(async () => { await operations.completeAi(reservation!); if (typeof output !== 'string' && output.usage) await recordAiUsage(this.db, this.scope, reservation!, output.usage); }); completed = true; ai++;
           } catch { note = note || 'ai_failed'; }
-          finally { if (!completed) { try { operations.refundAi(reservation); } catch { console.error('platform_usage_release_failed'); } } }
+          finally { if (!completed) { try { await operations.refundAi(reservation); } catch { console.error('platform_usage_release_failed'); } } }
         }
       }
-      try { store.saveContent({ ...draft, coachWeek: week }, true); drafts++; } catch { note = 'content_limit'; break; }
+      try { await store.saveContent({ ...draft, coachWeek: week }, true); drafts++; } catch { note = 'content_limit'; break; }
     }
-    this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), 'coach.weekly_pack.run', now.toISOString());
-    return finish(drafts, ai, note);
+    await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, ...args(this.scope), 'coach.weekly_pack.run', now.toISOString());
+    return await finish(drafts, ai, note);
   }
 }
 
 // Worker: one project per tick whose pack is on and not yet prepared this week (from Monday 06:00 in its time zone).
-export async function deliverNextWeeklyPack(db: Database.Database, generator?: CoachGenerator, now = new Date()) {
-  const rows = db.prepare('SELECT * FROM platform_coach_weekly_pack WHERE enabled=1 AND enabled_by IS NOT NULL ORDER BY COALESCE(last_run_at,\'\') LIMIT 50').all() as Row[];
+export async function deliverNextWeeklyPack(db: Db, generator?: CoachGenerator, now = new Date()) {
+  const rows = await db.prepare('SELECT * FROM platform_coach_weekly_pack WHERE enabled=1 AND enabled_by IS NOT NULL ORDER BY COALESCE(last_run_at,\'\') LIMIT 50').all() as Row[];
   for (const row of rows) {
     const scope = { subject: row.enabled_by!, organizationId: row.organization_id, projectId: row.project_id }, pack = new CoachWeeklyPack(db, scope);
-    let zone = 'UTC'; try { zone = pack.coach.timeZone(); } catch { continue; }
+    let zone = 'UTC'; try { zone = await pack.coach.timeZone(); } catch { continue; }
     const week = coachWeekKey(now, zone), hour = Number(new Intl.DateTimeFormat('en', { timeZone: zone, hour: 'numeric', hourCycle: 'h23' }).format(now));
     if (row.last_week === week) continue;
     // Monday before 06:00 local waits; later in the week a missed Monday still runs once.
     const local = new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
     if (local === week && hour < 6) continue;
-    try { return await pack.run(generator, now); } catch { db.prepare('UPDATE platform_coach_weekly_pack SET last_week=?,last_run_at=?,last_note=? WHERE organization_id=? AND project_id=?').run(week, now.toISOString(), 'failed', row.organization_id, row.project_id); return null; }
+    try { return await pack.run(generator, now); } catch { await db.prepare('UPDATE platform_coach_weekly_pack SET last_week=?,last_run_at=?,last_note=? WHERE organization_id=? AND project_id=?').run(week, now.toISOString(), 'failed', row.organization_id, row.project_id); return null; }
   }
   return null;
 }

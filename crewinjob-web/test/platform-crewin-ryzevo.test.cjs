@@ -26,43 +26,43 @@ test('the feature rule: standard projects get everything, Crewin only what it ha
 
 test('Crewin’s account reaches the opened features and not the others',coachRun(async f=>{
   const opened={
-    coach:()=>new (load('coach.ts').GrowthCoach)(f.db,CREWIN).read(),
-    seo:()=>new (load('seo-operations.ts').SeoOperations)(f.db,CREWIN).read(),
-    aiVisibility:()=>new (load('ai-visibility.ts').AiVisibility)(f.db,CREWIN).read(),
-    alerts:()=>new (load('team-alerts.ts').TeamAlerts)(f.db,CREWIN).read(),
-    approvals:()=>new (load('approvals.ts').ProjectApprovals)(f.db,CREWIN).read(),
-    measurements:()=>new (load('measurements.ts').ProjectMeasurements)(f.db,CREWIN,KEY).workspace(),
-    monthlyReport:()=>new (load('monthly-report.ts').MonthlyReports)(f.db,CREWIN).read(),
-    budget:()=>new (load('budget-planner.ts').BudgetPlanner)(f.db,CREWIN).read(),
-    inbox:()=>new (load('social-inbox.ts').ProjectSocialInbox)(f.db,CREWIN,KEY).read(),
-    push:()=>new (load('web-push.ts').WebPush)(f.db,CREWIN,KEY).read(),
-    productEvents:()=>new (load('product-webhooks.ts').ProductWebhooks)(f.db,CREWIN).list(),
-    attribution:()=>new (load('attribution.ts').ProjectAttribution)(f.db,CREWIN).report(30),
+    coach:async ()=>await new (load('coach.ts').GrowthCoach)(f.db,CREWIN).read(),
+    seo:async ()=>await new (load('seo-operations.ts').SeoOperations)(f.db,CREWIN).read(),
+    aiVisibility:async ()=>await new (load('ai-visibility.ts').AiVisibility)(f.db,CREWIN).read(),
+    alerts:async ()=>await new (load('team-alerts.ts').TeamAlerts)(f.db,CREWIN).read(),
+    approvals:async ()=>await new (load('approvals.ts').ProjectApprovals)(f.db,CREWIN).read(),
+    measurements:async ()=>await new (load('measurements.ts').ProjectMeasurements)(f.db,CREWIN,KEY).workspace(),
+    monthlyReport:async ()=>await new (load('monthly-report.ts').MonthlyReports)(f.db,CREWIN).read(),
+    budget:async ()=>await new (load('budget-planner.ts').BudgetPlanner)(f.db,CREWIN).read(),
+    inbox:async ()=>await new (load('social-inbox.ts').ProjectSocialInbox)(f.db,CREWIN,KEY).read(),
+    push:async ()=>await new (load('web-push.ts').WebPush)(f.db,CREWIN,KEY).read(),
+    productEvents:async ()=>await new (load('product-webhooks.ts').ProductWebhooks)(f.db,CREWIN).list(),
+    attribution:async ()=>await new (load('attribution.ts').ProjectAttribution)(f.db,CREWIN).report(30),
   };
   for(const [name,run] of Object.entries(opened)){try{await run();}catch(error){assert.notEqual(error.status,403,`${name} is open to Crewin: ${error.message}`);}}
   const closed={
-    socialPublications:()=>new (load('social-publications.ts').SocialPublications)(f.db,CREWIN,KEY).workspace(),
-    segments:()=>new (load('segments.ts').ProductSegments)(f.db,CREWIN).list(),
-    restDataSources:()=>new (load('product-data.ts').ProductDataSources)(f.db,CREWIN).list(),
-    emailSender:()=>new (load('email-sender.ts').EmailSenders)(f.db,CREWIN,KEY).get(),
-    prospects:()=>new (load('prospects.ts').ProjectProspects)(f.db,CREWIN).read(),
-    ads:()=>new (load('ad-manager.ts').ProjectAds)(f.db,CREWIN,KEY).read(),
-    automations:()=>new (load('automations.ts').ProjectAutomations)(f.db,CREWIN,KEY).read(),
-    whatsapp:()=>new (load('whatsapp.ts').ProjectWhatsApp)(f.db,CREWIN,KEY).read(),
-    messaging:()=>new (load('messaging-sources.ts').ProjectMessaging)(f.db,CREWIN,KEY).read(),
+    socialPublications:async ()=>await new (load('social-publications.ts').SocialPublications)(f.db,CREWIN,KEY).workspace(),
+    segments:async ()=>await new (load('segments.ts').ProductSegments)(f.db,CREWIN).list(),
+    restDataSources:async ()=>await new (load('product-data.ts').ProductDataSources)(f.db,CREWIN).list(),
+    emailSender:async ()=>await new (load('email-sender.ts').EmailSenders)(f.db,CREWIN,KEY).get(),
+    prospects:async ()=>await new (load('prospects.ts').ProjectProspects)(f.db,CREWIN).read(),
+    ads:async ()=>await new (load('ad-manager.ts').ProjectAds)(f.db,CREWIN,KEY).read(),
+    automations:async ()=>await new (load('automations.ts').ProjectAutomations)(f.db,CREWIN,KEY).read(),
+    whatsapp:async ()=>await new (load('whatsapp.ts').ProjectWhatsApp)(f.db,CREWIN,KEY).read(),
+    messaging:async ()=>await new (load('messaging-sources.ts').ProjectMessaging)(f.db,CREWIN,KEY).read(),
     repurpose:()=>new (load('content-repurpose.ts').ContentRepurpose)(f.db,CREWIN).repurpose({}),
-    mobile:()=>new (load('mobile-store.ts').MobileGrowth)(f.db,CREWIN,KEY).apps(),
+    mobile:async ()=>await new (load('mobile-store.ts').MobileGrowth)(f.db,CREWIN,KEY).apps(),
   };
   for(const [name,run] of Object.entries(closed))await assert.rejects(async()=>run(),denied,`${name} stays closed for Crewin: it has its own tool`);
-  assert.throws(()=>f.repo.updateProject('legacy-admin','crewin','crewinjob',{name:'X',website:'https://example.com',timezone:'Europe/Istanbul',language:'tr',brandVoice:'',goals:[]}),/existing adapter/,'Crewin’s name, site and goals stay with its adapter');
-  const ws=f.repo.updateBrandVoice('legacy-admin','crewin','crewinjob','Kısa ve net.');
+  await assert.rejects(async ()=>await f.repo.updateProject('legacy-admin','crewin','crewinjob',{name:'X',website:'https://example.com',timezone:'Europe/Istanbul',language:'tr',brandVoice:'',goals:[]}),/existing adapter/,'Crewin’s name, site and goals stay with its adapter');
+  const ws=await f.repo.updateBrandVoice('legacy-admin','crewin','crewinjob','Kısa ve net.');
   assert.equal(ws.project.brandVoice,'Kısa ve net.');assert.equal(ws.project.goals.length,2,'Crewin’s own goals are kept');assert.equal(ws.project.productPack,'crewin');
 }));
 
 test('Crewin has no AI or scan cap; usage is still recorded',coachRun(async f=>{
-  const rights=projectEntitlement(f.db,CREWIN);assert.equal(rights.limits.ai,Infinity);assert.equal(rights.limits.audits,Infinity);
-  assert.equal(projectEntitlement(f.db,{organizationId:f.a.organizationId,projectId:f.a.projectId}).limits.ai<Infinity,true,'standard projects keep their limits');
-  const usage=new ProjectUsage(f.db,CREWIN);for(let i=0;i<60;i++)usage.complete(usage.reserve('ai'));
+  const rights=await projectEntitlement(f.db,CREWIN);assert.equal(rights.limits.ai,Infinity);assert.equal(rights.limits.audits,Infinity);
+  assert.equal((await projectEntitlement(f.db,{organizationId:f.a.organizationId,projectId:f.a.projectId})).limits.ai<Infinity,true,'standard projects keep their limits');
+  const usage=new ProjectUsage(f.db,CREWIN);for(let i=0;i<60;i++)await usage.complete(await usage.reserve('ai'));
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM platform_usage_reservations WHERE organization_id='crewin' AND status='committed'").get().n,60);
 }));
 
@@ -72,15 +72,15 @@ test('the coach reads Crewin’s own content and accounts, and adds no starter d
     fs.writeFileSync(path.join(dir,'content-history.json'),JSON.stringify([{platform:'instagram',prompt:'x',content:'a',timestamp:Date.now()},{platform:'linkedin',prompt:'y',content:'b',timestamp:Date.now()-40*86400000},{platform:'facebook',prompt:'Reklam Kampanyası · facebook',content:'ad',timestamp:Date.now()}]));
     fs.writeFileSync(path.join(dir,'social-tokens.json'),JSON.stringify({facebook:{accessToken:'qa'}}));
     fs.writeFileSync(path.join(dir,'post-history.json'),JSON.stringify([{platform:'linkedin',postId:'1',postUrl:'https://www.linkedin.com/feed/update/1',content:'Yeni ilanlar',publishedAt:Date.now()}]));
-    const month=new Date().toISOString().slice(0,7),report=new (load('monthly-report.ts').MonthlyReports)(f.db,CREWIN).facts(month);
+    const month=new Date().toISOString().slice(0,7),report=await new (load('monthly-report.ts').MonthlyReports)(f.db,CREWIN).facts(month);
     assert.equal(report.publications.total,1,'the monthly report counts the posts Crewin published with its own tools');assert.equal(report.publications.top[0].sessions,null,'no site figures are made up');
-    assert.deepEqual(plain(draftsByPlatform(f.db,['crewin','crewinjob'],Date.now()-30*86400000)),{instagram:1},'ad drafts are not channel posts; old drafts fall outside the window');
-    assert.equal(draftTotal(f.db,['crewin','crewinjob']),2);assert.equal(draftTotal(f.db,[f.a.organizationId,f.a.projectId]),0,'standard projects keep reading their tables');
-    assert.ok(crewinConnectedChannels({}).has('facebook'));assert.ok(!crewinConnectedChannels({}).has('linkedin'));assert.ok(crewinConnectedChannels({SMTP_HOST:'h',SMTP_USER:'u',SMTP_PASSWORD:'qa',SMTP_FROM_EMAIL:'qa@example.test'}).has('email'));
+    assert.deepEqual(plain(await draftsByPlatform(f.db,['crewin','crewinjob'],Date.now()-30*86400000)),{instagram:1},'ad drafts are not channel posts; old drafts fall outside the window');
+    assert.equal(await draftTotal(f.db,['crewin','crewinjob']),2);assert.equal(await draftTotal(f.db,[f.a.organizationId,f.a.projectId]),0,'standard projects keep reading their tables');
+    assert.ok(await crewinConnectedChannels({}).has('facebook'));assert.ok(!await crewinConnectedChannels({}).has('linkedin'));assert.ok(await crewinConnectedChannels({SMTP_HOST:'h',SMTP_USER:'u',SMTP_PASSWORD:'qa',SMTP_FROM_EMAIL:'qa@example.test'}).has('email'));
     const {GrowthCoach}=load('coach.ts'),coach=new GrowthCoach(f.db,CREWIN);
-    const drafted=await coach.diagnose({answers:f.answers,language:'tr',mode:'template',expectedRevision:coach.read().revision});
-    const approved=coach.approve({brief:drafted.draft,expectedRevision:drafted.revision});
-    assert.ok(approved.brief);assert.equal(seedCoachFirstWeek(f.db,CREWIN).drafts,0);
+    const drafted=await coach.diagnose({answers:f.answers,language:'tr',mode:'template',expectedRevision:(await coach.read()).revision});
+    const approved=await coach.approve({brief:drafted.draft,expectedRevision:drafted.revision});
+    assert.ok(approved.brief);assert.equal((await seedCoachFirstWeek(f.db,CREWIN)).drafts,0);
     assert.equal(f.db.prepare("SELECT COUNT(*) n FROM platform_content_history WHERE organization_id='crewin'").get().n,0,'Crewin’s library stays its own');
     for(const action of approved.actions||[])assert.ok(!/campaignView=|planning=social|guideProvider=/.test(action.href),`${action.id} opens a Crewin tab: ${action.href}`);
   }finally{if(saved===undefined)delete process.env.CREWIN_WEB_DATA_DIR;else process.env.CREWIN_WEB_DATA_DIR=saved;resetFileSummaries();fs.rmSync(dir,{recursive:true,force:true});}
@@ -105,7 +105,7 @@ test('the Crewin job guide adds the Ryzevo jobs, read from the platform tables',
     f.db.prepare("INSERT INTO platform_worker_observations(component,run_id,first_observed_at,started_at,finished_at,outcome,checked,failed,last_success_at,consecutive_failures) VALUES('platform-worker','r',?,?,?,'completed',0,0,?,0)").run(...Array(4).fill(new Date().toISOString()));
     resetCrewinGuideCache();assert.equal((await crewinJobGuide({...deps,now:Date.now()})).jobs.find(item=>item.id==='crewin_search').steps.find(step=>step.id==='worker').state,'done','a recent worker run ticks it');
     for(const item of view.jobs)for(const step of item.steps)assert.match(step.href,/^\/\?tab=[a-z_]+(&(view|section|settings|setup)=[a-z_]+)*$/,`${item.id}/${step.id}`);
-    const {GrowthCoach}=load('coach.ts'),coach=new GrowthCoach(f.db,CREWIN);await coach.diagnose({answers:f.answers,language:'tr',mode:'template',expectedRevision:coach.read().revision});
+    const {GrowthCoach}=load('coach.ts'),coach=new GrowthCoach(f.db,CREWIN);await coach.diagnose({answers:f.answers,language:'tr',mode:'template',expectedRevision:(await coach.read()).revision});
     resetCrewinGuideCache();view=await crewinJobGuide({...deps,now:Date.now()});
     assert.deepEqual(plain(job('crewin_growth').steps.map(step=>[step.id,step.state])),[['diagnose','done'],['approve','todo'],['review','todo']]);
     assert.equal(job('crewin_growth').badge.count,1,'a draft waiting for approval is shown');

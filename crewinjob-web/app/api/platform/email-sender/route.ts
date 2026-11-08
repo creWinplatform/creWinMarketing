@@ -12,10 +12,10 @@ async function handle(request:NextRequest){
   try{
     const access=await getPlatformAccess('connections.manage');if(!access||access.identity.mode!=='platform')throw new MarketingStoreError('Proje gönderen erişimi gerekli.',403);
     const senders=new EmailSenders(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},credentialEncryptionKey());
-    if(request.method==='GET')return NextResponse.json(senders.get(),{headers});
+    if(request.method==='GET')return NextResponse.json(await senders.get(),{headers});
     if(!hasSameRequestOrigin(request))throw new MarketingStoreError('İstek kaynağı geçersiz.',403);
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz gönderen isteği.');
-    const value=input.action==='select'?senders.select(input):input.action==='renew'?senders.renew(input.expectedRevision):input.action==='verify'?await senders.verify(input.expectedRevision):input.action==='allow'?senders.allow(input):input.action==='remove'?senders.remove(input):null;
+    const value=input.action==='select'?await senders.select(input):input.action==='renew'?await senders.renew(input.expectedRevision):input.action==='verify'?await senders.verify(input.expectedRevision):input.action==='allow'?await senders.allow(input):input.action==='remove'?await senders.remove(input):null;
     if(!value)throw new MarketingStoreError('Geçersiz gönderen işlemi.');return NextResponse.json(value,{headers});
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Gönderen işlemi tamamlanamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

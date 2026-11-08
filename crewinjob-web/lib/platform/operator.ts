@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -37,7 +38,7 @@ function paytrItem(): ReadinessItem {
     return item('paytr', 'billing', 'missing', label, l(`Canlı ödeme anahtarı açık ama eksik: ${missing}.`, `The live switch is on but these are missing: ${missing}.`), env); }
   return item('paytr', 'billing', config?.readiness.ready ? 'warning' : 'off', label, config?.readiness.ready ? l('Yalnız sandbox: gerçek ödeme alınmaz.', 'Sandbox only: no real payment is taken.') : l('Kapalı.', 'Off.'), env);
 }
-export function operatorReadiness(db: Database.Database): ReadinessSnapshot {
+export async function operatorReadiness(db: Db): Promise<ReadinessSnapshot> {
   const encryption = process.env.PLATFORM_ENCRYPTION_KEY || '';
   const keyFile = join(dirname(process.env.PLATFORM_DATABASE_PATH || join(process.cwd(), 'data', 'platform.sqlite')), 'platform-credentials.key');
   const admin = process.env.ADMIN_PASSWORD || '', gemini = Boolean(process.env.PLATFORM_GEMINI_API_KEY && process.env.PLATFORM_GEMINI_MODEL);
@@ -83,9 +84,10 @@ export function operatorReadiness(db: Database.Database): ReadinessSnapshot {
   ];
   // Customer connections in standard projects: how many are active and how many passed a publish check this week.
   const week = new Date(Date.now() - 7 * 86400000).toISOString();
-  const connections = db.prepare(`SELECT COALESCE(s.platform,c.provider) provider,COUNT(*) active,COUNT(DISTINCT c.project_id) projects,
-      SUM(CASE WHEN EXISTS(SELECT 1 FROM platform_social_publish_checks k WHERE k.connection_id=c.id AND k.checked_at>=?) THEN 1 ELSE 0 END) checkedRecently
+  const connections = await db.prepare(`SELECT COALESCE(s.platform,c.provider) provider,COUNT(*) active,COUNT(DISTINCT c.project_id) projects,
+      SUM(CASE WHEN k.connection_id IS NOT NULL THEN 1 ELSE 0 END) checkedRecently
     FROM platform_connections c JOIN platform_projects p ON p.id=c.project_id AND p.organization_id=c.organization_id
+    LEFT JOIN (SELECT DISTINCT connection_id FROM platform_social_publish_checks WHERE checked_at>=?) k ON k.connection_id=c.id
     LEFT JOIN platform_social_accounts s ON s.connection_id=c.id
     WHERE c.active=1 AND p.product_pack='standard' GROUP BY COALESCE(s.platform,c.provider) ORDER BY active DESC`).all(week) as ConnectionHealth[];
   return {
@@ -111,9 +113,9 @@ export async function probeGemini(fetcher: ProbeFetch = (url, init) => fetch(url
 
 // Funnel over standard projects created in the last `days` days. A project counts for a step when it reached it;
 // it is "stalled" at a step when it reached it, did not reach the next one and is older than `stalledAfterDays`.
-export function operatorFunnel(db: Database.Database, days = 90, stalledAfterDays = 3): FunnelSnapshot {
+export async function operatorFunnel(db: Db, days = 90, stalledAfterDays = 3): Promise<FunnelSnapshot> {
   const since = new Date(Date.now() - days * 86400000).toISOString(), stale = new Date(Date.now() - stalledAfterDays * 86400000).toISOString();
-  const rows = db.prepare(`SELECT o.created_at created,
+  const rows = await db.prepare(`SELECT o.created_at created,
       EXISTS(SELECT 1 FROM platform_growth_coach g WHERE g.organization_id=p.organization_id AND g.project_id=p.id) diagnosis,
       EXISTS(SELECT 1 FROM platform_growth_coach g WHERE g.organization_id=p.organization_id AND g.project_id=p.id AND g.approved_at IS NOT NULL) brief,
       EXISTS(SELECT 1 FROM platform_compass_preferences c WHERE c.organization_id=p.organization_id AND c.project_id=p.id AND c.deferred=0) path,
@@ -132,7 +134,7 @@ export function operatorFunnel(db: Database.Database, days = 90, stalledAfterDay
     return { id, reached: hit.length, stalled: next ? hit.filter(row => !reached(row, next) && row.created < stale).length : 0 };
   });
   const now = new Date().toISOString();
-  const trial = db.prepare(`SELECT SUM(CASE WHEN e.mode='trial' AND e.ends_at>? THEN 1 ELSE 0 END) active,SUM(CASE WHEN e.mode='trial' AND e.ends_at<=? THEN 1 ELSE 0 END) ended,SUM(CASE WHEN e.mode='pilot' THEN 1 ELSE 0 END) pilot
+  const trial = await db.prepare(`SELECT SUM(CASE WHEN e.mode='trial' AND e.ends_at>? THEN 1 ELSE 0 END) active,SUM(CASE WHEN e.mode='trial' AND e.ends_at<=? THEN 1 ELSE 0 END) ended,SUM(CASE WHEN e.mode='pilot' THEN 1 ELSE 0 END) pilot
     FROM platform_project_entitlements e JOIN platform_projects p ON p.id=e.project_id AND p.organization_id=e.organization_id WHERE p.product_pack='standard'`).get(now, now) as { active: number | null; ended: number | null; pilot: number | null };
   return { generatedAt: now, days, stalledAfterDays, steps, trials: { active: trial.active || 0, ended: trial.ended || 0, pilot: trial.pilot || 0 } };
 }

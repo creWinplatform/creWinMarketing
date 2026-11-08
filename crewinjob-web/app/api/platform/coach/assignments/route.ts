@@ -5,9 +5,9 @@ import { coachBody,coachRoute } from '../shared';
 export const dynamic='force-dynamic';
 const handle=coachRoute(async(scope,request)=>{
   const assignments=new CoachAssignments(platformDatabase(),scope);
-  if(request.method==='GET')return assignments.read();
+  if(request.method==='GET')return await assignments.read();
   const raw=await coachBody(request);
-  if(raw.action==='assign')return assignments.assign(raw);
+  if(raw.action==='assign')return await assignments.assign(raw);
   throw new MarketingStoreError('Geçersiz atama işlemi.');
 });
 export const GET=handle,POST=handle;

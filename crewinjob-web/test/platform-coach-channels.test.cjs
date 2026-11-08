@@ -27,12 +27,12 @@ test('paid ads are never proposed without a stated budget, in any goal',()=>{
   }
 });
 
-test('with a budget and a leads goal, paid ads join the brief with connect, campaign and spend-review steps',()=>{
+test('with a budget and a leads goal, paid ads join the brief with connect, campaign and spend-review steps',async ()=>{
   const brief=coachStarterBrief({...b2b,goal:'leads',budget:'high',hours:'5to10'},'en','Ledger');
   assert.ok(ids(brief).includes('ads'));assert.ok(content.includes(brief.channels[0].id),'first channel is a studio channel');
   const ads=brief.plan.filter(item=>item.channel==='ads');
   assert.deepEqual(plain(ads.map(item=>[item.week,item.tool])),[[2,'connections'],[3,'ads'],[4,'ads']]);
-  assert.match(ads[1].how,/paused/);assert.match(brief.channels.find(item=>item.id==='ads').rationale,/paused/);
+  assert.match(ads[1].how,/paused/);assert.match((await brief.channels.find(item=>item.id==='ads')).rationale,/paused/);
 });
 
 test('local individual buyers get WhatsApp with consent steps; business-only audiences do not',()=>{
@@ -88,17 +88,17 @@ test('the monthly content plan rotates only over studio channels',()=>{
 });
 
 test('a saved ad account from any provider resolves the ad connection step',async()=>{
-  const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);repo.bootstrapLegacy('admin');
+  const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);await repo.bootstrapLegacy('admin');
   try{
-    const a=repo.provision('legacy-admin',{organizationName:'alpha',projectName:'alpha',website:'https://example.com',username:'alpha',password:'fixture-password-123'});
+    const a=await repo.provision('legacy-admin',{organizationName:'alpha',projectName:'alpha',website:'https://example.com',username:'alpha',password:'fixture-password-123'});
     const scope={subject:a.userId,organizationId:a.organizationId,projectId:a.projectId},coach=new GrowthCoach(db,scope);
     const drafted=await coach.diagnose({answers:{...b2b,goal:'leads',budget:'high',hours:'5to10'},language:'en',mode:'template',expectedRevision:0});
-    const approved=coach.approve({brief:drafted.draft,expectedRevision:drafted.revision});
-    const connect=approved.brief.plan.find(item=>item.tool==='connections'&&item.channel==='ads');assert.ok(connect);
-    const all=()=>coach.actions(),find=()=>all().find(item=>item.tool==='connections'&&item.channel==='ads');
-    assert.equal(find().state,'open');assert.equal(find().href,'/?tab=campaigns&campaignView=ads');
+    const approved=await coach.approve({brief:drafted.draft,expectedRevision:drafted.revision});
+    const connect=await approved.brief.plan.find(item=>item.tool==='connections'&&item.channel==='ads');assert.ok(connect);
+    const all=async ()=>await coach.actions(),find=async ()=>await (await all()).find(item=>item.tool==='connections'&&item.channel==='ads');
+    assert.equal((await find()).state,'open');assert.equal((await find()).href,'/?tab=campaigns&campaignView=ads');
     db.prepare("INSERT INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,active,updated_at) VALUES('qa-google-ads',?,?,'google_ads','123-456-7890','QA','{}',1,?)").run(a.organizationId,a.projectId,new Date().toISOString());
-    assert.equal(find().state,'done');
-    assert.ok(all().filter(item=>item.channel==='ads'&&item.tool==='ads').every(item=>item.prefill===null),'ad steps carry no studio pre-fill');
+    assert.equal((await find()).state,'done');
+    assert.ok((await all()).filter(item=>item.channel==='ads'&&item.tool==='ads').every(item=>item.prefill===null),'ad steps carry no studio pre-fill');
   }finally{db.close();}
 });

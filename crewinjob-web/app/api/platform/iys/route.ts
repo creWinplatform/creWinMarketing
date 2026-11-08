@@ -24,25 +24,25 @@ async function handle(request:NextRequest){
     // Crewin also sees its email mode (measure or enforce) and the addresses waiting for an İYS check (lib/crewin-iys-email.ts).
     const crewin=isLegacyScope(scope.organizationId,scope.projectId);
     const withCrewin=(view:IysView):IysView=>crewin?{...view,crewinEmail:{...crewinEmailMode(),pending:crewinPendingCount()}}:view;
-    if(request.method==='GET')return NextResponse.json(withCrewin(service.view()),{headers});
+    if(request.method==='GET')return NextResponse.json(withCrewin(await service.view()),{headers});
     if(!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz istek.');
-    if(input.action==='declare')return NextResponse.json(withCrewin(service.declare(input)),{headers});
+    if(input.action==='declare')return NextResponse.json(withCrewin(await service.declare(input)),{headers});
     if(input.action==='connect')return NextResponse.json(withCrewin(await service.connect(input)),{headers});
-    if(input.action==='revoke')return NextResponse.json(withCrewin(service.revoke()),{headers});
-    if(input.action==='retry')return NextResponse.json(withCrewin(service.retry(input)),{headers});
-    if(input.action==='merchant_exemption')return NextResponse.json(withCrewin(service.setMerchantExemption(input)),{headers});
-    if(input.action==='merchant_add')return NextResponse.json(withCrewin(service.addMerchants(input)),{headers});
-    if(input.action==='merchant_remove')return NextResponse.json(withCrewin(service.removeMerchant(input)),{headers});
+    if(input.action==='revoke')return NextResponse.json(withCrewin(await service.revoke()),{headers});
+    if(input.action==='retry')return NextResponse.json(withCrewin(await service.retry(input)),{headers});
+    if(input.action==='merchant_exemption')return NextResponse.json(withCrewin(await service.setMerchantExemption(input)),{headers});
+    if(input.action==='merchant_add')return NextResponse.json(withCrewin(await service.addMerchants(input)),{headers});
+    if(input.action==='merchant_remove')return NextResponse.json(withCrewin(await service.removeMerchant(input)),{headers});
     if(input.action==='crewin_email_mode'){
-      if(!crewin||!access.repository.can(access.subject,scope.organizationId,scope.projectId,'connections.manage'))throw new MarketingStoreError('İYS ayarlarına erişim reddedildi.',403);
+      if(!crewin||!await access.repository.can(access.subject,scope.organizationId,scope.projectId,'connections.manage'))throw new MarketingStoreError('İYS ayarlarına erişim reddedildi.',403);
       if(input.mode!=='measure'&&input.mode!=='enforce')throw new MarketingStoreError('Geçersiz işlem.');
       await setCrewinEmailMode(input.mode,access.subject);
-      return NextResponse.json(withCrewin(service.view()),{headers});
+      return NextResponse.json(withCrewin(await service.view()),{headers});
     }
     // Crewin keeps only one-way keys of its numbers: it re-checks the numbers İYS already reported on.
-    if(input.action==='query'&&isLegacyScope(scope.organizationId,scope.projectId))return NextResponse.json(await service.query(crewinKnownIysPhones(db,key).map(value=>({channel:'MESAJ' as const,value}))),{headers});
-    if(input.action==='query')return NextResponse.json(await service.query([...allowlistedEmails(db,scope,key).map(value=>({channel:'EPOSTA' as const,value})),...whatsAppContactPhones(db,scope,key).map(value=>({channel:'MESAJ' as const,value}))]),{headers});
+    if(input.action==='query'&&isLegacyScope(scope.organizationId,scope.projectId))return NextResponse.json(await service.query((await crewinKnownIysPhones(db,key)).map(value=>({channel:'MESAJ' as const,value}))),{headers});
+    if(input.action==='query')return NextResponse.json(await service.query([...(await allowlistedEmails(db,scope,key)).map(value=>({channel:'EPOSTA' as const,value})),...(await whatsAppContactPhones(db,scope,key)).map(value=>({channel:'MESAJ' as const,value}))]),{headers});
     throw new MarketingStoreError('Geçersiz işlem.');
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'İYS işlemi tamamlanamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

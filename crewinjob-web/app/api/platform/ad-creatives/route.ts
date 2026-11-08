@@ -17,13 +17,13 @@ async function handle(request:NextRequest){
     if(request.method!=='GET'&&!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const scope={subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId};
     const pick=(value:unknown):AdProvider=>value==='tiktok'?'tiktok':'meta';
-    if(request.method==='GET'){const query=request.nextUrl.searchParams;return NextResponse.json(new AdCreatives(platformDatabase(),scope,credentialEncryptionKey(),pick(query.get('provider'))).list(query.get('planId')),{headers});}
+    if(request.method==='GET'){const query=request.nextUrl.searchParams;return NextResponse.json(await new AdCreatives(platformDatabase(),scope,credentialEncryptionKey(),pick(query.get('provider'))).list(query.get('planId')),{headers});}
     let raw:Record<string,unknown>;try{const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readBoundedJsonBytes(request,8*1024*1024)));if(!value||typeof value!=='object'||Array.isArray(value))throw new Error();raw=value;}catch{throw new MarketingStoreError('Geçersiz istek.');}
     const creatives=new AdCreatives(platformDatabase(),scope,credentialEncryptionKey(),pick(raw.provider));let result:unknown;
     switch(raw.action){
       case 'save':result=await creatives.save(raw);break;
-      case 'approve':result=creatives.approve(raw);break;
-      case 'delete':result=creatives.remove(raw);break;
+      case 'approve':result=await creatives.approve(raw);break;
+      case 'delete':result=await creatives.remove(raw);break;
       case 'upload':result=await creatives.upload(raw);break;
       case 'refreshStats':result=await creatives.refreshStats(raw);break;
       case 'setupTikTok':result=await creatives.setupTikTok(raw);break;

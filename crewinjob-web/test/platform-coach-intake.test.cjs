@@ -25,7 +25,7 @@ function site(overrides={}){
  const reader=async(url,accept)=>{calls.push({url:url.toString(),accept});const item=pages[url.toString()];if(item instanceof Error)throw item;if(!item)return {url:url.toString(),status:404,type:'text/html',body:'',redirects:[]};return {url:item.url||url.toString(),status:item.status||200,type:item.type,body:item.body,redirects:[]};};
  return {calls,reader};
 }
-const intake=(f,input={},options={})=>new CoachIntakeService(f.db,f.scope).run({website:'defter.example',language:'tr',mode:'template',...input},{reader:site().reader,...options});
+const intake=async (f,input={},options={})=>await new CoachIntakeService(f.db,f.scope).run({website:'defter.example',language:'tr',mode:'template',...input},{reader:site().reader,...options});
 
 test('page facts, key pages and robots rules are read from HTML alone',()=>{
  const home=pageFacts(HOME,'https://defter.example/');
@@ -86,7 +86,7 @@ test('AI suggestions keep only valid choices that name a page read; the page tex
 }));
 
 test('reading needs the write right, a valid address and stays within the rate limit',coachRun(async f=>{
- await assert.rejects(new CoachIntakeService(f.db,f.member('viewer')).run({website:'defter.example'},{reader:site().reader}),error=>error.status===403);
+ await assert.rejects(new CoachIntakeService(f.db,await f.member('viewer')).run({website:'defter.example'},{reader:site().reader}),error=>error.status===403);
  for(const website of ['ftp://defter.example','https://user:pw@defter.example'])await assert.rejects(intake(f,{website}),/Geçerli bir site adresi/,website);
  await assert.rejects(intake(f,{website:'',description:''}),/Site adresi veya kısa bir tanıtım/);
  for(let i=0;i<5;i++)await intake(f);
@@ -105,11 +105,11 @@ test('a voice start comes from the site wording, and the AI voice keeps only cle
 test('site findings become planned Calendar tasks once, with the right and valid input only',coachRun(async f=>{
  const findings=[{priority:'high',title:'Meta description yok',recommendation:'Sayfa faydasını anlatan bir açıklama ekleyin.'},{priority:'low',title:'Canonical bağlantı yok',recommendation:'Kopya URL riskini azaltın.'}];
  const service=new CoachIntakeService(f.db,f.scope);
- assert.deepEqual(plain(service.addTasks({findings})),{created:2,skipped:0});
+ assert.deepEqual(plain(await service.addTasks({findings})),{created:2,skipped:0});
  const tasks=f.db.prepare("SELECT title,status,due_at,note FROM platform_work_items WHERE organization_id=? AND project_id=? ORDER BY due_at").all(f.a.organizationId,f.a.projectId);
  assert.deepEqual(tasks.map(task=>task.title),['Site: Meta description yok','Site: Canonical bağlantı yok']);assert.ok(tasks.every(task=>task.status==='planned'&&task.note.startsWith('coach-intake:site')));
  assert.ok(Date.parse(tasks[0].due_at)-Date.now()<1.1*86400000,'an important fix is due tomorrow');
- assert.deepEqual(plain(service.addTasks({findings})),{created:0,skipped:2},'an open task is not added twice');
- for(const bad of [[],Array.from({length:6},()=>findings[0]),[{...findings[0],priority:'urgent'}],[{...findings[0],title:''}]])assert.throws(()=>service.addTasks({findings:bad}),JSON.stringify(bad).slice(0,40));
- assert.throws(()=>new CoachIntakeService(f.db,f.member('viewer')).addTasks({findings}),error=>error.status===403);
+ assert.deepEqual(plain(await service.addTasks({findings})),{created:0,skipped:2},'an open task is not added twice');
+ for(const bad of [[],Array.from({length:6},()=>findings[0]),[{...findings[0],priority:'urgent'}],[{...findings[0],title:''}]])await assert.rejects(async ()=>await service.addTasks({findings:bad}),JSON.stringify(bad).slice(0,40));
+ await assert.rejects(async ()=>await new CoachIntakeService(f.db,await f.member('viewer')).addTasks({findings}),error=>error.status===403);
 }));

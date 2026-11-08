@@ -15,7 +15,7 @@ async function handle(request:NextRequest){
     if(!access)return NextResponse.json({error:'Giriş gerekli.'},{status:401,headers});
     if(access.identity.mode!=='platform')return NextResponse.json({error:'Bu alan Ryzevo proje hesaplarına açıktır.'},{status:403,headers});
     const service=new ProjectBilling(platformDatabase(),{subject:access.subject,organizationId:access.identity.organizationId,projectId:access.identity.projectId},credentialEncryptionKey());
-    if(request.method==='GET')return NextResponse.json(service.read(),{headers});
+    if(request.method==='GET')return NextResponse.json(await service.read(),{headers});
     if(!request.headers.get('origin')||!hasSameRequestOrigin(request)||request.headers.get('sec-fetch-site')==='cross-site')return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);
     if(input?.action==='check')return NextResponse.json(await service.check(input),{headers});

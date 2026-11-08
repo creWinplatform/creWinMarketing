@@ -9,15 +9,15 @@ const env={PLATFORM_PAYTR_MERCHANT_ID:'123456',PLATFORM_PAYTR_MERCHANT_KEY:'live
 const config={origin:'https://ryzevo.example',region:'eu-central-1',from:'no-reply@ryzevo.example',accessKeyId:'AKIAFIXTUREONLY00000',secretAccessKey:'x'.repeat(40),revision:'r'};
 const run=fn=>async()=>{
   const original=Object.fromEntries(keys.map(key=>[key,process.env[key]]));Object.assign(process.env,env);
-  const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);repo.bootstrapLegacy('admin');
+  const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);await repo.bootstrapLegacy('admin');
   try{
-    const a=repo.provision('legacy-admin',{organizationName:'alpha',projectName:'alpha',website:'https://example.com',username:'alpha',password:'fixture-password-123'});
+    const a=await repo.provision('legacy-admin',{organizationName:'alpha',projectName:'alpha',website:'https://example.com',username:'alpha',password:'fixture-password-123'});
     const scope={subject:a.userId,organizationId:a.organizationId,projectId:a.projectId};db.prepare('INSERT INTO platform_account_emails VALUES(?,?,?)').run(a.userId,'owner@alpha.example',new Date().toISOString());
     const start=new Date(),end=new Date(start.getTime()+14*86400000);
     db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(a.userId,start.toISOString(),end.toISOString(),a.organizationId,a.projectId);
     const service=new ProjectLiveBilling(db,scope,KEY);
-    const order=async(language='tr',key='contract-attempt-001')=>service.start({planId:'launch',cadence:'monthly',idempotencyKey:key,acceptTerms:true,language,contact:{name:'Fixture Ltd',phone:'+90 555 000 0000',address:'Fixture address only'}},'203.0.113.5',async()=>({state:'accepted',token:'livecheckouttoken1234567890'}));
-    const pay=id=>{const value={merchant_oid:id,status:'success',total_amount:'2900',currency:'USD',test_mode:'0',payment_amount:'2900',payment_type:'card'};value.hash=createHmac('sha256',env.PLATFORM_PAYTR_MERCHANT_KEY).update(value.merchant_oid+env.PLATFORM_PAYTR_MERCHANT_SALT+value.status+value.total_amount).digest('base64');return receivePaytrLiveNotification(db,new URLSearchParams(value).toString());};
+    const order=async(language='tr',key='contract-attempt-001')=>await service.start({planId:'launch',cadence:'monthly',idempotencyKey:key,acceptTerms:true,language,contact:{name:'Fixture Ltd',phone:'+90 555 000 0000',address:'Fixture address only'}},'203.0.113.5',async()=>({state:'accepted',token:'livecheckouttoken1234567890'}));
+    const pay=async id=>{const value={merchant_oid:id,status:'success',total_amount:'2900',currency:'USD',test_mode:'0',payment_amount:'2900',payment_type:'card'};value.hash=createHmac('sha256',env.PLATFORM_PAYTR_MERCHANT_KEY).update(value.merchant_oid+env.PLATFORM_PAYTR_MERCHANT_SALT+value.status+value.total_amount).digest('base64');return await receivePaytrLiveNotification(db,new URLSearchParams(value).toString());};
     const queue=()=>db.prepare('SELECT * FROM platform_billing_contract_emails').all();
     await fn({db,a,scope,service,order,pay,queue});
   }finally{db.close();for(const key of keys){if(original[key]===undefined)delete process.env[key];else process.env[key]=original[key];}}
@@ -39,31 +39,31 @@ test('the page and the email use one document; the plain text keeps every sectio
 test('the accepted text is frozen with the order and a copy is queued only when the payment is confirmed',run(async f=>{
   const created=await f.order('en');const row=f.db.prepare('SELECT terms_version,terms_language,terms_text,terms_digest FROM platform_billing_live_orders WHERE id=?').get(created.id);
   assert.equal(row.terms_language,'en');assert.match(row.terms_text,/MESAFELİ SATIŞ SÖZLEŞMESİ/);assert.match(row.terms_digest,/^[a-f0-9]{64}$/);
-  assert.equal(created.contract,true);assert.equal(created.contractEmail,null);assert.equal(f.queue().length,0,'nothing is queued before PayTR confirms');
-  const download=f.service.contract(created.id);assert.equal(download.text,row.terms_text);assert.match(download.filename,/^ryzevo-sozlesme-RZLIVE[a-f0-9]{32}\.txt$/);
-  assert.throws(()=>f.service.contract('RZLIVE'+'0'.repeat(32)),error=>error.status===404);assert.throws(()=>f.service.contract('../etc'),error=>error.status===404);
-  f.pay(created.id);f.pay(created.id);
-  assert.equal(f.queue().length,1,'a repeated notification does not queue a second copy');assert.equal(f.queue()[0].state,'queued');
-  assert.equal(f.service.read().orders[0].contractEmail,'queued');
+  assert.equal(created.contract,true);assert.equal(created.contractEmail,null);assert.equal((await f.queue()).length,0,'nothing is queued before PayTR confirms');
+  const download=await f.service.contract(created.id);assert.equal(download.text,row.terms_text);assert.match(download.filename,/^ryzevo-sozlesme-RZLIVE[a-f0-9]{32}\.txt$/);
+  await assert.rejects(async ()=>await f.service.contract('RZLIVE'+'0'.repeat(32)),error=>error.status===404);await assert.rejects(async ()=>await f.service.contract('../etc'),error=>error.status===404);
+  await f.pay(created.id);await f.pay(created.id);
+  assert.equal((await f.queue()).length,1,'a repeated notification does not queue a second copy');assert.equal((await f.queue())[0].state,'queued');
+  assert.equal((await f.service.read()).orders[0].contractEmail,'queued');
 }));
 
 test('the worker sends the copy once to the verified email, with the order details and the frozen text',run(async f=>{
-  const created=await f.order('tr');f.pay(created.id);const sent=[];
-  assert.equal(await deliverNextContractEmail(f.db,async mail=>{sent.push(mail);},null),false,'without account email configured the copy waits');assert.equal(f.queue()[0].state,'queued');
+  const created=await f.order('tr');await f.pay(created.id);const sent=[];
+  assert.equal(await deliverNextContractEmail(f.db,async mail=>{sent.push(mail);},null),false,'without account email configured the copy waits');assert.equal((await f.queue())[0].state,'queued');
   assert.equal(await deliverNextContractEmail(f.db,async mail=>{sent.push(mail);},config),'sent');
   assert.equal(sent.length,1);const mail=sent[0];assert.equal(mail.to,'owner@alpha.example');
   assert.match(mail.subject,new RegExp(created.id));assert.match(mail.text,/Plan: Ryzevo Launch \(aylık\)/);assert.match(mail.text,/Tutar: \$29 \(USD\)/);assert.match(mail.text,/Dönem: \d{4}-\d{2}-\d{2} – \d{4}-\d{2}-\d{2} \(UTC\)/);
   assert.ok(mail.text.endsWith(f.db.prepare('SELECT terms_text t FROM platform_billing_live_orders WHERE id=?').get(created.id).t),'the email carries the exact frozen text');
   assert.equal(await deliverNextContractEmail(f.db,async mail=>{sent.push(mail);},config),null,'nothing left to send');assert.equal(sent.length,1);
-  assert.equal(f.service.read().orders[0].contractEmail,'sent');
+  assert.equal((await f.service.read()).orders[0].contractEmail,'sent');
 }));
 
 test('an unclear provider outcome is uncertain and never resent; a buyer without a verified email is skipped',run(async f=>{
-  const first=await f.order('tr','contract-attempt-002');f.pay(first.id);let calls=0;
+  const first=await f.order('tr','contract-attempt-002');await f.pay(first.id);let calls=0;
   assert.equal(await deliverNextContractEmail(f.db,async()=>{calls++;throw new Error('timeout');},config),'uncertain');
   assert.equal(await deliverNextContractEmail(f.db,async()=>{calls++;},config),null);assert.equal(calls,1);
   f.db.prepare("UPDATE platform_billing_contract_emails SET state='queued'").run();f.db.prepare('DELETE FROM platform_account_emails').run();
-  assert.equal(await deliverNextContractEmail(f.db,async()=>{calls++;},config),'skipped');assert.equal(calls,1);assert.equal(f.queue()[0].reason,'no_verified_email');
+  assert.equal(await deliverNextContractEmail(f.db,async()=>{calls++;},config),'skipped');assert.equal(calls,1);assert.equal((await f.queue())[0].reason,'no_verified_email');
 }));
 
 test('the email message is bilingual by order language and states no figures beyond the order',()=>{

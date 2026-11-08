@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
 import { isIP } from 'node:net';
@@ -131,16 +132,16 @@ export async function readChannelAccount(platform: ChannelPlatform, accessToken:
 
 // A fresh access token for the connection: the stored one while it is valid, otherwise from the refresh token.
 const cache = new Map<string, { token: string; expiresAt: number; revision: string }>();
-export async function channelAccess(db: Database.Database, args: readonly [string, string], key: string, connection: { id: string; encrypted_credentials: string }, credentials: StoredCredentials, http: ChannelHttp = channelHttp) {
+export async function channelAccess(db: Db, args: readonly [string, string], key: string, connection: { id: string; encrypted_credentials: string }, credentials: StoredCredentials, http: ChannelHttp = channelHttp) {
   const platform = credentials.social?.platform, revision = hash(connection.encrypted_credentials), grant = credentials.channelPublishing;
   if (!platform || !isChannelPlatform(platform) || !grant) throw new Error('Not a channel connection.');
   const hit = cache.get(connection.id);
   if (hit && hit.revision === revision && hit.expiresAt > Date.now() + 120000) return { token: hit.token, expiresAt: hit.expiresAt };
   if (!hit && grant.accessExpiresAt > Date.now() + 120000) return { token: credentials.accessToken, expiresAt: grant.accessExpiresAt };
-  const stored = db.prepare('SELECT encrypted_refresh FROM platform_channel_tokens WHERE connection_id=? AND organization_id=? AND project_id=? AND revision=?').get(connection.id, ...args, revision) as { encrypted_refresh: string } | undefined;
+  const stored = await db.prepare('SELECT encrypted_refresh FROM platform_channel_tokens WHERE connection_id=? AND organization_id=? AND project_id=? AND revision=?').get(connection.id, ...args, revision) as { encrypted_refresh: string } | undefined;
   const refresh = stored ? decryptCredentials<{ refreshToken: string }>(stored.encrypted_refresh, key, ...args, `channel-refresh:${connection.id}`).refreshToken : credentials.refreshToken;
   const fresh = token(platform, await tokenRequest(platform, { grant_type: 'refresh_token', refresh_token: refresh }, http), refresh);
-  if (fresh.refreshToken !== refresh) db.prepare('INSERT INTO platform_channel_tokens(connection_id,organization_id,project_id,revision,encrypted_refresh,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(connection_id) DO UPDATE SET revision=excluded.revision,encrypted_refresh=excluded.encrypted_refresh,updated_at=excluded.updated_at')
+  if (fresh.refreshToken !== refresh) await db.prepare('INSERT INTO platform_channel_tokens(connection_id,organization_id,project_id,revision,encrypted_refresh,updated_at) VALUES(?,?,?,?,?,?) ON CONFLICT(connection_id) DO UPDATE SET revision=excluded.revision,encrypted_refresh=excluded.encrypted_refresh,updated_at=excluded.updated_at')
     .run(connection.id, ...args, revision, encryptCredentials({ refreshToken: fresh.refreshToken }, key, ...args, `channel-refresh:${connection.id}`), new Date().toISOString());
   cache.set(connection.id, { token: fresh.accessToken, expiresAt: fresh.expiresAt, revision });
   return { token: fresh.accessToken, expiresAt: fresh.expiresAt };
@@ -162,8 +163,8 @@ export async function checkChannelPublishing(platform: ChannelPlatform, accessTo
 const outcome = (error: unknown): PublishResult => ({ state: typeof (error as { status?: number })?.status === 'number' && (error as { status: number }).status >= 400 && (error as { status: number }).status < 500 ? 'rejected' : 'uncertain', postId: null });
 // TikTok pulls the approved file from the team's address (its domain must be verified in the TikTok app). The publish
 // id is what TikTok returns; the post itself appears after TikTok processes it.
-export async function publishTikTokVideo(accessToken: string, text: string, video: PublicationVideo, reserve: () => boolean, http: ChannelHttp = channelHttp): Promise<PublishResult> {
-  if (!reserve()) return { state: 'blocked', postId: null };
+export async function publishTikTokVideo(accessToken: string, text: string, video: PublicationVideo, reserve: () => boolean | Promise<boolean>, http: ChannelHttp = channelHttp): Promise<PublishResult> {
+  if (!(await reserve())) return { state: 'blocked', postId: null };
   try {
     const payload = await channelJson('https://open.tiktokapis.com/v2/post/publish/video/init/', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' },
       body: JSON.stringify({ post_info: { title: text.slice(0, 2200), privacy_level: tiktokPrivacy(), disable_comment: false, disable_duet: false, disable_stitch: false }, source_info: { source: 'PULL_FROM_URL', video_url: video.url } }), signal: AbortSignal.timeout(20000) }, http);
@@ -174,9 +175,9 @@ export async function publishTikTokVideo(accessToken: string, text: string, vide
 export const tiktokPublishId = (value: string) => /^[A-Za-z0-9_.~:-]{1,200}$/.test(value);
 // One pin on the connected board: the approved image, the first line as title, the text as description and the first
 // link to the team's site (already tagged) as the pin's link.
-export async function publishPinterestPin(accessToken: string, boardId: string, title: string, text: string, image: PublicationImage, reserve: () => boolean, http: ChannelHttp = channelHttp): Promise<PublishResult> {
+export async function publishPinterestPin(accessToken: string, boardId: string, title: string, text: string, image: PublicationImage, reserve: () => boolean | Promise<boolean>, http: ChannelHttp = channelHttp): Promise<PublishResult> {
   const link = text.match(/https:\/\/[^\s<>"'`]+/)?.[0]?.replace(/[.,;:!?)\]}»”’]+$/, '');
-  if (!reserve()) return { state: 'blocked', postId: null };
+  if (!(await reserve())) return { state: 'blocked', postId: null };
   try {
     const payload = await channelJson('https://api.pinterest.com/v5/pins', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ board_id: boardId, title: title.slice(0, 100), description: text.slice(0, 500), ...(link ? { link } : {}), media_source: { source_type: 'image_base64', content_type: 'image/jpeg', data: image.data } }), signal: AbortSignal.timeout(20000) }, http);
@@ -186,7 +187,7 @@ export async function publishPinterestPin(accessToken: string, boardId: string, 
 export const pinterestPinId = (value: string) => /^\d{1,30}$/.test(value);
 // A Short: the approved file is streamed from the team's address (SSRF-safe fetcher) into YouTube's resumable upload.
 // The title is the first line (with #Shorts when it fits), the description the whole text.
-export async function publishYouTubeShort(accessToken: string, text: string, video: PublicationVideo, reserve: () => boolean, http: ChannelHttp = channelHttp, source: typeof fetchPublic = fetchPublic): Promise<PublishResult> {
+export async function publishYouTubeShort(accessToken: string, text: string, video: PublicationVideo, reserve: () => boolean | Promise<boolean>, http: ChannelHttp = channelHttp, source: typeof fetchPublic = fetchPublic): Promise<PublishResult> {
   const first = text.split('\n').find(line => line.trim())?.trim() || 'Short', title = (first.length <= 91 ? `${first} #Shorts` : first).slice(0, 100);
   let upload: string;
   try {
@@ -201,7 +202,7 @@ export async function publishYouTubeShort(accessToken: string, text: string, vid
   let file: Response;
   try { file = (await source(new URL(video.url), 'video/mp4,video/quicktime')).response; } catch { return { state: 'blocked', postId: null }; }
   if (file.status !== 200 || Number(file.headers.get('content-length')) !== video.bytes || !file.body) { await file.body?.cancel().catch(() => undefined); return { state: 'blocked', postId: null }; }
-  if (!reserve()) { await file.body.cancel().catch(() => undefined); return { state: 'blocked', postId: null }; }
+  if (!(await reserve())) { await file.body.cancel().catch(() => undefined); return { state: 'blocked', postId: null }; }
   try {
     const response = await http(upload, { method: 'PUT', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(14 * 60000), headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': video.contentType, 'Content-Length': String(video.bytes) }, body: file.body, duplex: 'half' } as RequestInit);
     const payload = response.body ? await readSocialResponse(response).catch(() => ({} as Record<string, unknown>)) : {};
@@ -221,10 +222,10 @@ export function publicMediaOrigin() {
   return url.origin;
 }
 // A TikTok photo post: 1-5 approved images, the first line (up to 90) as title and the text as description.
-export async function publishTikTokPhotos(accessToken: string, text: string, imageUrls: string[], reserve: () => boolean, http: ChannelHttp = channelHttp): Promise<PublishResult> {
+export async function publishTikTokPhotos(accessToken: string, text: string, imageUrls: string[], reserve: () => boolean | Promise<boolean>, http: ChannelHttp = channelHttp): Promise<PublishResult> {
   if (!imageUrls.length || imageUrls.length > 5) return { state: 'blocked', postId: null };
   const title = (text.split('\n').find(line => line.trim())?.trim() || '').slice(0, 90);
-  if (!reserve()) return { state: 'blocked', postId: null };
+  if (!(await reserve())) return { state: 'blocked', postId: null };
   try {
     const payload = await channelJson('https://open.tiktokapis.com/v2/post/publish/content/init/', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json; charset=UTF-8' },
       body: JSON.stringify({ post_info: { title, description: text.slice(0, 4000), privacy_level: tiktokPrivacy(), disable_comment: false, auto_add_music: true }, source_info: { source: 'PULL_FROM_URL', photo_cover_index: 0, photo_images: imageUrls }, post_mode: 'DIRECT_POST', media_type: 'PHOTO' }), signal: AbortSignal.timeout(20000) }, http);
@@ -236,7 +237,7 @@ export async function publishTikTokPhotos(accessToken: string, text: string, ima
 // A Pinterest video pin: the approved file is registered, streamed to Pinterest's upload address (multipart, built as a
 // stream so a 300 MB file is never held in memory), processed, then pinned to the board.
 const UPLOAD_HOST = /^[a-z0-9.-]+\.amazonaws\.com$/;
-export async function publishPinterestVideoPin(accessToken: string, boardId: string, title: string, text: string, video: PublicationVideo, reserve: () => boolean, http: ChannelHttp = channelHttp, source: typeof fetchPublic = fetchPublic, wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))): Promise<PublishResult> {
+export async function publishPinterestVideoPin(accessToken: string, boardId: string, title: string, text: string, video: PublicationVideo, reserve: () => boolean | Promise<boolean>, http: ChannelHttp = channelHttp, source: typeof fetchPublic = fetchPublic, wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))): Promise<PublishResult> {
   let mediaId: string;
   try {
     const media = await channelJson('https://api.pinterest.com/v5/media', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ media_type: 'video' }) }, http);
@@ -262,7 +263,7 @@ export async function publishPinterestVideoPin(accessToken: string, boardId: str
     }
   } catch { return { state: 'blocked', postId: null }; }
   const link = text.match(/https:\/\/[^\s<>"'`]+/)?.[0]?.replace(/[.,;:!?)\]}»”’]+$/, '');
-  if (!reserve()) return { state: 'blocked', postId: null };
+  if (!(await reserve())) return { state: 'blocked', postId: null };
   try {
     const payload = await channelJson('https://api.pinterest.com/v5/pins', accessToken, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ board_id: boardId, title: title.slice(0, 100), description: text.slice(0, 500), ...(link ? { link } : {}), media_source: { source_type: 'video_id', media_id: mediaId, cover_image_key_frame_time: 1 } }), signal: AbortSignal.timeout(20000) }, http);

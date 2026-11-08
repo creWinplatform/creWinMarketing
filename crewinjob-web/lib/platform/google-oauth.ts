@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { CodeChallengeMethod } from 'google-auth-library';
@@ -10,29 +11,29 @@ import { verifyGoogleConnection } from './connection-jobs';
 export const GOOGLE_BROWSER_COOKIE = 'platform_google_oauth';
 
 export class ProjectGoogleOAuth {
-  constructor(private db: Database.Database, private scope: MarketingScope, private key: string, private clientFactory = googleClient) {}
-  private authorize() { new ProjectMarketingStore(this.db, this.scope).connections(); }
+  constructor(private db: Db, private scope: MarketingScope, private key: string, private clientFactory = googleClient) {}
+  private async authorize() { await new ProjectMarketingStore(this.db, this.scope).connections(); }
   async start(input: { provider: string; resource: string; accountName: string }) {
-    this.authorize();
+    await this.authorize();
     if (!['ga4', 'search_console', 'google_ads'].includes(input.provider) || typeof input.resource !== 'string' || !input.resource || input.resource.length > 160 || typeof input.accountName !== 'string' || !input.accountName.trim() || input.accountName.length > 160) throw new MarketingStoreError('Google sağlayıcısı, mülk ve hesap adı gerekli.');
     if (input.provider === 'ga4' && !/^\d{1,20}$/.test(input.resource)) throw new MarketingStoreError('GA4 Property ID sayısal olmalı.');
     if (input.provider === 'google_ads' && !/^\d{10}$/.test(input.resource.replace(/-/g, ''))) throw new MarketingStoreError('Google Ads müşteri kimliği 10 haneli olmalı.');
     if (input.provider === 'google_ads') input = { ...input, resource: input.resource.replace(/-/g, '') };
     // Connecting a Google Ads account is an ad-management step: it also needs the approval right, as in Ads.
-    if (input.provider === 'google_ads' && !new PlatformRepository(this.db).can(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'campaign.approve')) throw new MarketingStoreError('Google Ads hesabını yalnız bağlantı yönetimi ve onay yetkisi olanlar bağlayabilir.', 403);
+    if (input.provider === 'google_ads' && !await new PlatformRepository(this.db).can(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'campaign.approve')) throw new MarketingStoreError('Google Ads hesabını yalnız bağlantı yönetimi ve onay yetkisi olanlar bağlayabilir.', 403);
     if (input.provider === 'search_console' && !/^sc-domain:[a-z0-9.-]+$/i.test(input.resource)) {
       try { const url = new URL(input.resource); if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash || url.search) throw new Error(); }
       catch { throw new MarketingStoreError('Geçerli Search Console mülkü gerekli.'); }
     }
     const client = this.clientFactory(), { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
-    const { state, browser } = new OAuthRequests(this.db, this.scope, this.key).create(input.provider, input.resource, input.accountName.trim(), { codeVerifier });
+    const { state, browser } = await new OAuthRequests(this.db, this.scope, this.key).create(input.provider, input.resource, input.accountName.trim(), { codeVerifier });
     return { browser, authorizationUrl: client.generateAuthUrl({ access_type: 'offline', prompt: 'consent', scope: [GOOGLE_SCOPES[input.provider]], state, code_challenge: codeChallenge, code_challenge_method: CodeChallengeMethod.S256 }) };
   }
   async complete(state: string, browser: string, code: string, verify = verifyGoogleConnection) {
-    this.authorize();
+    await this.authorize();
     if (!/^[a-zA-Z0-9_-]{43}$/.test(state) || !/^[a-zA-Z0-9_-]{43}$/.test(browser) || !code || code.length > 4096) throw new MarketingStoreError('Google bağlantı isteği geçersiz.', 400);
     const requests = new OAuthRequests(this.db, this.scope, this.key);
-    const pending = requests.claim(state, browser, ['ga4', 'search_console', 'google_ads']);
+    const pending = await requests.claim(state, browser, ['ga4', 'search_console', 'google_ads']);
     try {
       const { codeVerifier } = requests.secret<{ codeVerifier: string }>(pending);
       const { tokens } = await this.clientFactory().getToken({ code, codeVerifier });
@@ -40,15 +41,15 @@ export class ProjectGoogleOAuth {
       const result = await verify(pending.provider, pending.resource, tokens.access_token);
       if (result.status !== 'verified') throw new MarketingStoreError(result.message, 400);
       // Never use the current browser project as a fallback for an earlier OAuth request.
-      return requests.finish(pending, () => {
+      return await requests.finish(pending, async () => {
         const store = new ProjectMarketingStore(this.db, this.scope);
-        const saved = store.saveConnection({ provider: pending.provider, integrationId: pending.resource, accountName: pending.account_name, accessToken: tokens.access_token!, refreshToken: tokens.refresh_token || '', googleOAuth: true, expiresAt: tokens.expiry_date! }, this.key);
+        const saved = await store.saveConnection({ provider: pending.provider, integrationId: pending.resource, accountName: pending.account_name, accessToken: tokens.access_token!, refreshToken: tokens.refresh_token || '', googleOAuth: true, expiresAt: tokens.expiry_date! }, this.key);
         // Only one Google Ads account is active per project; plans keep their own account id.
-        if (pending.provider === 'google_ads' && saved) this.db.prepare("UPDATE platform_connections SET active=0,updated_at=? WHERE organization_id=? AND project_id=? AND provider='google_ads' AND id<>?").run(new Date().toISOString(), this.scope.organizationId, this.scope.projectId, saved.id);
+        if (pending.provider === 'google_ads' && saved) await this.db.prepare("UPDATE platform_connections SET active=0,updated_at=? WHERE organization_id=? AND project_id=? AND provider='google_ads' AND id<>?").run(new Date().toISOString(), this.scope.organizationId, this.scope.projectId, saved.id);
         return saved;
       });
     } catch (error) {
-      requests.discard(pending);
+      await requests.discard(pending);
       if (error instanceof MarketingStoreError) throw error;
       throw new MarketingStoreError('Google bağlantısı tamamlanamadı. Yeniden bağlanmayı deneyin.', 400);
     }

@@ -13,10 +13,10 @@ async function handle(request:NextRequest){
   try{
     const access=await getPlatformAccess();if(!access||access.identity.mode!=='platform')return NextResponse.json({error:'Proje oturumu gerekli.'},{status:403,headers});
     const db=platformDatabase(),current={organizationId:access.identity.organizationId,projectId:access.identity.projectId};
-    if(request.method==='GET')return NextResponse.json(portfolio(db,access.subject,current),{headers});
+    if(request.method==='GET')return NextResponse.json(await portfolio(db,access.subject,current),{headers});
     if(!hasSameRequestOrigin(request))return NextResponse.json({error:'İstek kaynağı geçersiz.'},{status:403,headers});
     const input=await readAuthenticationJson(request);if(!input||typeof input!=='object'||Array.isArray(input))throw new MarketingStoreError('Geçersiz istek.');
-    if(input.action==='decide'){const result=decideInvite(db,access.subject,input);return NextResponse.json({...result,portfolio:portfolio(db,access.subject,current)},{headers});}
+    if(input.action==='decide'){const result=await decideInvite(db,access.subject,input);return NextResponse.json({...result,portfolio:await portfolio(db,access.subject,current)},{headers});}
     throw new MarketingStoreError('Geçersiz işlem.');
   }catch(error){return NextResponse.json({error:error instanceof MarketingStoreError?error.message:'Portföy alınamadı.'},{status:error instanceof MarketingStoreError?error.status:400,headers});}
 }

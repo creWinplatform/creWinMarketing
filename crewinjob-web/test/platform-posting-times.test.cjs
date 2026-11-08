@@ -25,7 +25,7 @@ test('a slot is suggested only with enough posts and when it beats the channelâ€
 });
 
 test('the view needs project access and is empty without measured posts',coachRun(async f=>{
- assert.deepEqual(plain(new PostingTimes(f.db,f.scope).view()).channels,[]);
- assert.equal(new PostingTimes(f.db,f.member('viewer')).view().days,180,'viewers can read it');
- assert.throws(()=>new PostingTimes(f.db,{...f.other,organizationId:f.scope.organizationId,projectId:f.scope.projectId}).view(),error=>error.status===403);
+ assert.deepEqual(plain(await new PostingTimes(f.db,f.scope).view()).channels,[]);
+ assert.equal((await new PostingTimes(f.db,await f.member('viewer')).view()).days,180,'viewers can read it');
+ await assert.rejects(async ()=>await new PostingTimes(f.db,{...f.other,organizationId:f.scope.organizationId,projectId:f.scope.projectId}).view(),error=>error.status===403);
 }));

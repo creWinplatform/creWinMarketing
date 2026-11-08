@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import { fetchPublic, inspectHtml, readLimited } from '../site-audit';
@@ -148,40 +149,40 @@ export function parseIntake(output: string, pages: number, hasDescription: boole
 }
 
 export class CoachIntakeService {
-  constructor(private db: Database.Database, private scope: MarketingScope) {}
+  constructor(private db: Db, private scope: MarketingScope) {}
   // The site findings the team chose become planned Calendar tasks (important ones due tomorrow). An open task with the
   // same title is not added twice; nothing is changed on the site.
-  addTasks(raw: Record<string, unknown>) {
-    new GrowthCoach(this.db, this.scope).authorize('content.write');
+  async addTasks(raw: Record<string, unknown>) {
+    await new GrowthCoach(this.db, this.scope).authorize('content.write');
     const list = Array.isArray(raw.findings) ? raw.findings : [];
     if (!list.length || list.length > 5) throw new MarketingStoreError('Eklenecek 1–5 site bulgusu seçin.');
     const clean = (value: unknown, max: number) => { if (typeof value !== 'string' || !value.trim() || value.length > max || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value)) throw new MarketingStoreError('Site bulgusu geçersiz.'); return value.trim(); };
     const findings = list.map(item => { const value = item && typeof item === 'object' ? item as Record<string, unknown> : {}; const priority = value.priority === 'high' || value.priority === 'medium' || value.priority === 'low' ? value.priority as 'high' | 'medium' | 'low' : null; if (!priority) throw new MarketingStoreError('Site bulgusu geçersiz.'); return { priority, title: clean(value.title, 160), recommendation: clean(value.recommendation, 400) }; });
     const operations = new Operations(this.db, this.scope), days = { high: 1, medium: 3, low: 7 } as const;
-    return this.db.transaction(() => {
-      const open = new Set(operations.tasks().filter(task => !['completed', 'cancelled'].includes(task.status)).map(task => task.title));
+    return await this.db.transaction(async () => {
+      const open = new Set((await operations.tasks()).filter(task => !['completed', 'cancelled'].includes(task.status)).map(task => task.title));
       let created = 0, skipped = 0;
       for (const item of findings) {
         const title = clip(`Site: ${item.title}`, 160);
         if (open.has(title)) { skipped++; continue; }
-        operations.saveTask({ title, dueAt: new Date(Date.now() + days[item.priority] * 86400000).toISOString(), status: 'planned', note: ['coach-intake:site', item.recommendation].join('\n') });
+        await operations.saveTask({ title, dueAt: new Date(Date.now() + days[item.priority] * 86400000).toISOString(), status: 'planned', note: ['coach-intake:site', item.recommendation].join('\n') });
         open.add(title); created++;
       }
-      this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'coach.intake.tasks', new Date().toISOString());
+      await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, this.scope.organizationId, this.scope.projectId, 'coach.intake.tasks', new Date().toISOString());
       return { created, skipped };
-    }).immediate();
+    });
   }
   // At most five reads per project in ten minutes, so the button cannot be used to crawl sites.
-  private consume() {
+  private async consume() {
     const key = `coach-intake:${this.scope.organizationId}:${this.scope.projectId}`, now = Date.now();
-    this.db.transaction(() => {
-      const old = this.db.prepare('SELECT count,expires_at FROM platform_login_limits WHERE key=?').get(key) as { count: number; expires_at: number } | undefined;
+    await this.db.transaction(async () => {
+      const old = await this.db.prepare('SELECT count,expires_at FROM platform_login_limits WHERE key=?').get(key) as { count: number; expires_at: number } | undefined;
       if (old && old.expires_at > now && old.count >= LIMITS.perWindow) throw new MarketingStoreError('Site okuma sınırına ulaşıldı. Birkaç dakika sonra tekrar deneyin.', 429);
-      this.db.prepare('INSERT INTO platform_login_limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=excluded.count,expires_at=excluded.expires_at').run(key, old && old.expires_at > now ? old.count + 1 : 1, old && old.expires_at > now ? old.expires_at : now + LIMITS.windowMinutes * 60000);
-    }).immediate();
+      await this.db.prepare('INSERT INTO platform_login_limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=excluded.count,expires_at=excluded.expires_at').run(key, old && old.expires_at > now ? old.count + 1 : 1, old && old.expires_at > now ? old.expires_at : now + LIMITS.windowMinutes * 60000);
+    });
   }
   async run(raw: Record<string, unknown>, { reader = readIntakePage, generator }: { reader?: IntakeReader; generator?: CoachGenerator } = {}): Promise<CoachIntake> {
-    const coach = new GrowthCoach(this.db, this.scope); coach.authorize('content.write');
+    const coach = new GrowthCoach(this.db, this.scope); await coach.authorize('content.write');
     const language = raw.language === 'en' ? 'en' : 'tr', mode = raw.mode === 'ai' ? 'ai' : 'template';
     const description = typeof raw.description === 'string' ? raw.description.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g, ' ').trim().slice(0, LIMITS.description) : '';
     let start: URL | null = null;
@@ -192,7 +193,7 @@ export class CoachIntakeService {
       if (!start || !/^https?:$/.test(start.protocol) || start.username || start.password || raw.website.length > 300) throw new MarketingStoreError('Geçerli bir site adresi girin (ör. https://ornek.com).');
     }
     if (!start && !description) throw new MarketingStoreError('Site adresi veya kısa bir tanıtım girin.');
-    this.consume();
+    await this.consume();
     const notes: CoachIntakeNote[] = [], pages: Facts[] = [], started = Date.now();
     let homeAudit: ReturnType<typeof inspectHtml> | null = null;
     if (start) {
@@ -218,19 +219,19 @@ export class CoachIntakeService {
     let result = rules, used: 'ai' | 'template' = 'template';
     if (mode === 'ai' && !generator) notes.push('ai_unavailable');
     if (mode === 'ai' && generator) {
-      const operations = new ProjectOperations(this.db, this.scope), reservation = operations.reserveAi(); let completed = false;
+      const operations = new ProjectOperations(this.db, this.scope), reservation = await operations.reserveAi(); let completed = false;
       try {
         const output = await generator(intakePrompt(pages, description, language)), text = typeof output === 'string' ? output : output.text;
         const ai = parseIntake(text, pages.length, Boolean(description));
         // Fixed signals keep the channel list; the model fills what the page text says.
         result = { answers: { ...rules.answers, ...ai.answers }, evidence: { ...rules.evidence, ...ai.evidence }, voice: { ...rules.voice, ...ai.voice } }; used = 'ai';
-        this.db.transaction(() => { operations.completeAi(reservation); if (typeof output !== 'string' && output.usage) recordAiUsage(this.db, this.scope, reservation, output.usage); })(); completed = true;
+        await this.db.transaction(async () => { await operations.completeAi(reservation); if (typeof output !== 'string' && output.usage) await recordAiUsage(this.db, this.scope, reservation, output.usage); }); completed = true;
       } catch {
-        if (!completed) { try { operations.refundAi(reservation); } catch { console.error('platform_usage_release_failed'); } }
+        if (!completed) { try { await operations.refundAi(reservation); } catch { console.error('platform_usage_release_failed'); } }
         notes.push('ai_failed');
       }
     }
-    this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, this.scope.organizationId, this.scope.projectId, used === 'ai' ? 'coach.intake.ai' : 'coach.intake.template', new Date().toISOString());
+    await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject, this.scope.organizationId, this.scope.projectId, used === 'ai' ? 'coach.intake.ai' : 'coach.intake.template', new Date().toISOString());
     const order = { high: 0, medium: 1, low: 2 } as const;
     return { mode: used, pages: pages.map(page => ({ url: page.url, title: page.title })), answers: result.answers, evidence: result.evidence, voice: result.voice, notes,
       findings: (homeAudit?.findings || []).sort((a, b) => order[a.priority] - order[b.priority]).slice(0, 5).map(item => ({ priority: item.priority, title: item.title, recommendation: item.recommendation })) };

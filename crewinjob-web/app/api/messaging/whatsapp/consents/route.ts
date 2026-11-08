@@ -25,10 +25,10 @@ export const maxDuration = 60;
 // Yalnız eski panel oturumu kullanır; Ryzevo hesapları middleware'de eski API'lere giremez.
 // İYS (lib/crewin-iys.ts): beyan ve bağlantı durumu gösterilir; +90 izin ve çıkışları İYS'ye bildirilmek üzere kuyruğa girer.
 const iys = () => crewinIys(platformDatabase(), credentialEncryptionKey());
-const summary = () => { if (!iysEnabled()) return { ...legacyWhatsAppSummary(), iys: null }; const service = iys(); return { ...legacyWhatsAppSummary(), iys: { scope: service.scope(), connected: service.connected() } }; };
+const summary = async () => { if (!iysEnabled()) return { ...legacyWhatsAppSummary(), iys: null }; const service = iys(); return { ...legacyWhatsAppSummary(), iys: { scope: await service.scope(), connected: await service.connected() } }; };
 
 export async function GET() {
-  try { return NextResponse.json(summary()); }
+  try { return NextResponse.json(await summary()); }
   catch (error) {
     // The consent list stays readable even when the platform store cannot be opened; İYS then shows as unknown.
     console.error('[whatsapp-consents] iys', error instanceof Error ? error.message : error);
@@ -49,18 +49,18 @@ export async function POST(request: NextRequest) {
     const actor = await getSessionFromRequest(request) || 'panel';
     if (body.action === 'consent') {
       const result = await recordLegacyWhatsAppConsent(body, actor, undefined, iys());
-      return NextResponse.json({ ...result, summary: summary() });
+      return NextResponse.json({ ...result, summary: await summary() });
     }
     if (body.action === 'opt_out') {
       const result = await recordLegacyWhatsAppOptOut(body.numbers, 'team', undefined, iys(), actor);
-      return NextResponse.json({ ...result, summary: summary() });
+      return NextResponse.json({ ...result, summary: await summary() });
     }
     if (body.action === 'check') return NextResponse.json({ items: legacyWhatsAppStatus(body.numbers) });
     // Asks İYS about the typed Turkish numbers (at most 50); nothing is sent to them.
     if (body.action === 'iys_check') {
       const phones = (Array.isArray(body.numbers) ? body.numbers : []).map(normalizeWhatsAppNumber).filter((phone): phone is string => Boolean(phone && isTurkishNumber(phone)));
       if (!phones.length) return NextResponse.json({ error: 'İYS’de sorgulanacak +90 numara girin.' }, { status: 400 });
-      return NextResponse.json({ ...await iys().query(phones), summary: summary() });
+      return NextResponse.json({ ...await iys().query(phones), summary: await summary() });
     }
     return NextResponse.json({ error: 'Geçersiz istek.' }, { status: 400 });
   } catch (error) {

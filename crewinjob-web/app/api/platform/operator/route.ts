@@ -32,13 +32,13 @@ export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get('view');
   // Setup guide: callback addresses are derived from the address this panel is opened from (the provider must send the
   // browser back to the same place).
-  if (view === 'setup') return NextResponse.json(serverSetup(platformDatabase(), panelOrigin(request), process.env, Date.now(), setupExtra()), { headers });
+  if (view === 'setup') return NextResponse.json(await serverSetup(platformDatabase(), panelOrigin(request), process.env, Date.now(), setupExtra()), { headers });
   if (view === 'checklist') return NextResponse.json(goLiveChecklist(checklistFile()), { headers });
   if (view === 'funnel') {
     const days = Number(request.nextUrl.searchParams.get('days') || 90);
-    return NextResponse.json(operatorFunnel(platformDatabase(), [30, 90, 365].includes(days) ? days : 90), { headers });
+    return NextResponse.json(await operatorFunnel(platformDatabase(), [30, 90, 365].includes(days) ? days : 90), { headers });
   }
-  return NextResponse.json(operatorReadiness(platformDatabase()), { headers });
+  return NextResponse.json(await operatorReadiness(platformDatabase()), { headers });
 }
 export async function POST(request: NextRequest) {
   if (!hasSameRequestOrigin(request)) return NextResponse.json({ error: 'İstek kaynağı geçersiz.' }, { status: 403, headers });

@@ -7,7 +7,7 @@ import type { PublicationImage } from './publication-image';
 
 // Single-image posts for LinkedIn (member or company page) and X. The image is uploaded first (that creates no post);
 // only after the publication is reserved is the post itself created, and a lost answer is never retried.
-export type ImagePublisher=(token:string,accountId:string,text:string,image:PublicationImage,reserve:()=>boolean)=>Promise<PublishResult>;
+export type ImagePublisher=(token:string,accountId:string,text:string,image:PublicationImage,reserve:() => boolean | Promise<boolean>)=>Promise<PublishResult>;
 const unsafeText=(text:string)=>/\{\{[\s\S]*?\}\}|[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text);
 const badToken=(token:string)=>!token||token.length>16384||/[\r\n\x00]/.test(token);
 
@@ -25,7 +25,7 @@ function linkedInImagePublisher(accountType:'person'|'organization'):ImagePublis
     const upload=await fetch(uploadUrl,{method:'PUT',headers:{Authorization:`Bearer ${token}`,'Content-Type':'image/jpeg'},body:Buffer.from(image.data,'base64'),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(20000)});
     await upload.body?.cancel();if(upload.status<200||upload.status>=300)return {state:'blocked',postId:null};
   }catch{return {state:'blocked',postId:null};}
-  if(!reserve())return {state:'blocked',postId:null};
+  if(!(await reserve()))return {state:'blocked',postId:null};
   try{
     const response=await fetch('https://api.linkedin.com/rest/posts',{method:'POST',headers:{...headers,'Content-Type':'application/json'},
       body:JSON.stringify({author:owner,commentary:escapeLinkedInText(text),visibility:'PUBLIC',distribution:{feedDistribution:'MAIN_FEED',targetEntities:[],thirdPartyDistributionChannels:[]},content:{media:{id:imageUrn}},lifecycleState:'PUBLISHED',isReshareDisabledByAuthor:false}),
@@ -48,7 +48,7 @@ export const publishXImage:ImagePublisher=async(token,accountId,text,image,reser
     if(upload.status!==200&&upload.status!==201){await upload.body?.cancel();return {state:'blocked',postId:null};}
     const id=((await readSocialResponse(upload)).data as Record<string,unknown>|undefined)?.id;if(typeof id!=='string'||!/^\d{1,25}$/.test(id))return {state:'blocked',postId:null};mediaId=id;
   }catch{return {state:'blocked',postId:null};}
-  if(!reserve())return {state:'blocked',postId:null};
+  if(!(await reserve()))return {state:'blocked',postId:null};
   try{
     const response=await fetch('https://api.x.com/2/tweets',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({text,media:{media_ids:[mediaId]}}),cache:'no-store',redirect:'error',signal:AbortSignal.timeout(10000)});
     if([400,401,402,403,404,405,409,422,429].includes(response.status)){await response.body?.cancel();return {state:'rejected',postId:null};}

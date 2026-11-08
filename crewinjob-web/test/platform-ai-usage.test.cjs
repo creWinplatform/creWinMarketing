@@ -12,11 +12,11 @@ test('provider-reported token counts are kept with the quota, never as a price, 
   await runCoachAi(f.db,f.scope,async()=>'{"ok":true}','prompt',output=>JSON.parse(output),value=>value);
   await assert.rejects(runCoachAi(f.db,f.scope,async()=>({text:'not json',usage}),'prompt',output=>JSON.parse(output),value=>value),'a failed parse refunds and records nothing');
   await runCoachAi(f.db,f.scope,async()=>({text:'{"ok":true}',usage:{...usage,prompt:-5}}),'prompt',output=>JSON.parse(output),value=>value);
-  const snapshot=new ProjectUsage(f.db,f.scope).read();
+  const snapshot=await new ProjectUsage(f.db,f.scope).read();
   assert.deepEqual(plain(snapshot.providerUsage),[{provider:'gemini',model:'gemini-2.5-flash',calls:2,prompt:2000,output:440,thinking:500,total:2940}],'only plain, completed provider counts are summed');
   assert.equal(f.aiUsage(),4,'the quota still counts every completed call');
   assert.doesNotMatch(JSON.stringify(f.db.prepare('PRAGMA table_info(platform_ai_provider_usage)').all()),/price|cost|amount/,'no price is stored');
-  assert.equal(new ProjectUsage(f.db,f.other).read().providerUsage.length,0,'other projects see nothing');
+  assert.equal((await new ProjectUsage(f.db,f.other).read()).providerUsage.length,0,'other projects see nothing');
 }));
 test('schema50 is additive and repeatable',coachRun(async f=>{
   const fs=require('node:fs'),path=require('node:path'),{openPlatformDatabase}=load('database.ts'),file=path.join(fs.mkdtempSync(path.join(require('node:os').tmpdir(),'ai-usage-')),'fixture.sqlite');

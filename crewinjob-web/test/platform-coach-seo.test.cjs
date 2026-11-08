@@ -52,7 +52,7 @@ test('connected Search Console rows are used exactly as reported; failures are "
 }));
 test('Search Console data is only for connection managers; others get brief-based topics and a note',coachRun(async f=>{
   await f.approve();connect(f);let calls=0;const reader=async()=>{calls++;return rows;};
-  const editor=new CoachSeo(f.db,f.member('editor'),KEY),viewer=new CoachSeo(f.db,f.member('viewer'),KEY);
+  const editor=new CoachSeo(f.db,await f.member('editor'),KEY),viewer=new CoachSeo(f.db,await f.member('viewer'),KEY);
   let snapshot=await editor.generate({mode:'template'},{reader,refresh:noRefresh});
   assert.equal(calls,0,'an editor never triggers a Search Console read');assert.equal(snapshot.searchConsole.state,'restricted');assert.equal(snapshot.searchConsole.canRefresh,false);
   assert.ok(snapshot.topics.length>=3,'editors still get product/brief-based topics');assert.ok(snapshot.topics.flatMap(topic=>topic.keywords).every(keyword=>keyword.source==='suggested'&&keyword.impressions===null));
@@ -61,11 +61,11 @@ test('Search Console data is only for connection managers; others get brief-base
   snapshot=await seo(f).generate({mode:'template'},{reader,refresh:noRefresh});assert.equal(calls,1);assert.equal(snapshot.searchConsole.state,'ready');assert.equal(snapshot.searchConsole.canRefresh,true);assert.equal(snapshot.topics[0].keywords[0].impressions,340);
   // …which other members never see: no rows, no phrases, no period, no counts (matched as a JSON number, since random
   // topic ids can contain the same digits).
-  for(const member of [editor,viewer]){const view=member.read(),text=JSON.stringify(view);
+  for(const member of [editor,viewer]){const view=await member.read(),text=JSON.stringify(view);
     assert.equal(view.searchConsole.state,'restricted');assert.equal(view.searchConsole.queries,0);assert.equal(view.searchConsole.from,null);assert.equal(view.searchConsole.checkedAt,null);
     assert.ok(!text.includes('bookkeeping app for shops')&&!/[:,[]340[,\]}]/.test(text)&&!text.includes('search_console'),'no Search Console data leaks to non-managers');}
   // An editor's AI brief prompt never receives Search Console phrases either.
-  const topic=seo(f).read().topics.find(item=>item.keywords.some(keyword=>keyword.source==='search_console'));let prompt='';
+  const topic=(await seo(f).read()).topics.find(item=>item.keywords.some(keyword=>keyword.source==='search_console'));let prompt='';
   await editor.draftBrief({topicId:topic.id,mode:'ai'},async value=>{prompt=value;return JSON.stringify({targetKeyword:'shop books',intent:'informational',title:'T',outline:['A','B','C'],questions:[],internalLinks:[],notes:''});});
   assert.doesNotMatch(prompt,/bookkeeping app for shops|how to do shop bookkeeping/);
 }));
@@ -83,14 +83,14 @@ test('content briefs are drafted, edited and approved before they can become a b
   await f.approve();let snapshot=await seo(f).generate({mode:'template'});const topic=snapshot.topics[0];
   snapshot=await seo(f).draftBrief({topicId:topic.id,mode:'template'});let current=snapshot.topics.find(item=>item.id===topic.id);
   assert.equal(current.briefState,'draft');assert.equal(current.prefill,null);assert.ok(current.brief.outline.length>=3);assert.match(current.brief.internalLinks[0].target,/^https:\/\/example\.com\//);
-  assert.throws(()=>seo(f).saveBrief({topicId:topic.id,expectedRevision:current.revision,brief:{...current.brief,internalLinks:[{anchor:'Elsewhere',target:'https://other.example/page'}]}}),error=>error.status===400);
-  assert.throws(()=>seo(f).saveBrief({topicId:topic.id,expectedRevision:current.revision-1,brief:current.brief}),error=>error.status===409);
-  snapshot=seo(f).saveBrief({topicId:topic.id,expectedRevision:current.revision,brief:{...current.brief,title:'Our own title'}});current=snapshot.topics.find(item=>item.id===topic.id);assert.equal(current.briefSource,'human');assert.equal(current.brief.title,'Our own title');
-  snapshot=seo(f).approveBrief({topicId:topic.id,expectedRevision:current.revision});current=snapshot.topics.find(item=>item.id===topic.id);
+  await assert.rejects(async ()=>await seo(f).saveBrief({topicId:topic.id,expectedRevision:current.revision,brief:{...current.brief,internalLinks:[{anchor:'Elsewhere',target:'https://other.example/page'}]}}),error=>error.status===400);
+  await assert.rejects(async ()=>await seo(f).saveBrief({topicId:topic.id,expectedRevision:current.revision-1,brief:current.brief}),error=>error.status===409);
+  snapshot=await seo(f).saveBrief({topicId:topic.id,expectedRevision:current.revision,brief:{...current.brief,title:'Our own title'}});current=snapshot.topics.find(item=>item.id===topic.id);assert.equal(current.briefSource,'human');assert.equal(current.brief.title,'Our own title');
+  snapshot=await seo(f).approveBrief({topicId:topic.id,expectedRevision:current.revision});current=snapshot.topics.find(item=>item.id===topic.id);
   assert.equal(current.briefState,'approved');assert.equal(current.prefill.channel,'blog');assert.equal(current.prefill.name,'Our own title');assert.match(current.prefill.brief,/Outline:/);
   snapshot=await seo(f).generate({mode:'template'});assert.ok(snapshot.topics.some(item=>item.id===topic.id),'topics with a brief survive regeneration');
-  const other=snapshot.topics.find(item=>!item.brief);assert.throws(()=>seo(f).approveBrief({topicId:other.id,expectedRevision:other.revision}),error=>error.status===409);
-  assert.equal(seo(f).remove({topicId:other.id}).topics.some(item=>item.id===other.id),false);
+  const other=snapshot.topics.find(item=>!item.brief);await assert.rejects(async ()=>await seo(f).approveBrief({topicId:other.id,expectedRevision:other.revision}),error=>error.status===409);
+  assert.equal((await seo(f).remove({topicId:other.id})).topics.some(item=>item.id===other.id),false);
   assert.throws(()=>normalizeSeoBrief({targetKeyword:'a',intent:'informational',title:'t',outline:['only one']},'https://example.com'),error=>error.status===400);
 }));
 test('AI briefs reserve usage and reject invented metrics or outside links',coachRun(async f=>{
@@ -103,11 +103,11 @@ test('AI briefs reserve usage and reject invented metrics or outside links',coac
 }));
 test('roles and scope for SEO topics',coachRun(async f=>{
   await f.approve();const [topic]=(await seo(f).generate({mode:'template'})).topics;
-  const viewer=new CoachSeo(f.db,f.member('viewer'),KEY);assert.equal(viewer.read().topics.length>0,true);assert.equal(viewer.read().canWrite,false);
+  const viewer=new CoachSeo(f.db,await f.member('viewer'),KEY);assert.equal((await viewer.read()).topics.length>0,true);assert.equal((await viewer.read()).canWrite,false);
   await assert.rejects(viewer.generate({mode:'template'}),error=>error.status===403);await assert.rejects(viewer.draftBrief({topicId:topic.id,mode:'template'}),error=>error.status===403);
-  assert.throws(()=>viewer.remove({topicId:topic.id}),error=>error.status===403);
-  const foreign=new CoachSeo(f.db,f.other,KEY);assert.equal(foreign.read().topics.length,0);assert.throws(()=>foreign.remove({topicId:topic.id}),error=>error.status===404);
-  assert.doesNotThrow(()=>new CoachSeo(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'},KEY).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
+  await assert.rejects(async ()=>await viewer.remove({topicId:topic.id}),error=>error.status===403);
+  const foreign=new CoachSeo(f.db,f.other,KEY);assert.equal((await foreign.read()).topics.length,0);await assert.rejects(async ()=>await foreign.remove({topicId:topic.id}),error=>error.status===404);
+  await assert.doesNotReject(async ()=>await new CoachSeo(f.db,{subject:'legacy-admin',organizationId:'crewin',projectId:'crewinjob'},KEY).read(),'the Crewin workspace has this Ryzevo feature (lib/platform/ryzevo-features.ts)');
 }));
 test('schema33 is additive and repeatable',coachRun(async f=>{
   await f.approve();await seo(f).generate({mode:'template'});

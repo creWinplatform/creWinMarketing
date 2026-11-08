@@ -24,9 +24,9 @@ const run=fn=>coachRun(async f=>{
   try{
     Object.assign(process.env,{PLATFORM_WHATSAPP_SEND_ENABLED:'0',PLATFORM_SOCIAL_PUBLISH_ENABLED:'0'});
     const wa=new ProjectWhatsApp(f.db,f.scope,KEY,graph);await wa.connect({phoneNumberId:'1234567890',wabaId:'9988776655',accessToken:TOKEN});
-    const hookId=wa.setupHooks({appSecret:SECRET}).snapshot.hook.callbackPath.split('/').pop();
+    const hookId=(await wa.setupHooks({appSecret:SECRET})).snapshot.hook.callbackPath.split('/').pop();
     const {calls,http}=fakeHttp();
-    await fn({...f,wa,hookId,calls,inbox:(scope=f.scope)=>new ProjectSocialInbox(f.db,scope,KEY,http),hook:messages=>{const body=event(messages);return receiveWhatsAppHook(f.db,KEY,hookId,body,sign(body));}});
+    await fn({...f,wa,hookId,calls,inbox:(scope=f.scope)=>new ProjectSocialInbox(f.db,scope,KEY,http),hook:async messages=>{const body=event(messages);return await receiveWhatsAppHook(f.db,KEY,hookId,body,sign(body));}});
   }finally{for(const key of ['PLATFORM_WHATSAPP_SEND_ENABLED','PLATFORM_SOCIAL_PUBLISH_ENABLED'])if(saved[key]===undefined)delete process.env[key];else process.env[key]=saved[key];}
 });
 
@@ -44,8 +44,8 @@ test('inbound messages land in the inbox masked and hashed; STOP opts out and is
   const messages=[{from:'905321112234',id:'wamid.in1==',type:'text',timestamp:seconds(1),text:{body:'Merhaba, fiyat nedir? Numaram 0532 111 22 34'}},
     {from:'905321112235',id:'wamid.in2',type:'image',timestamp:seconds(1),image:{id:'m1'}},{from:'905321112236',id:'wamid.in3',type:'text',timestamp:seconds(),text:{body:'STOP'}},
     {from:'905321112234',id:'wamid.in4',type:'reaction',timestamp:seconds(),reaction:{emoji:'👍'}}];
-  assert.equal(f.hook(messages).inbound,2);assert.equal(f.hook(messages).inbound,0,'the same messages are not stored twice');
-  const snapshot=f.inbox().read(),account=snapshot.accounts.find(item=>item.platform==='whatsapp');
+  assert.equal((await f.hook(messages)).inbound,2);assert.equal((await f.hook(messages)).inbound,0,'the same messages are not stored twice');
+  const snapshot=await f.inbox().read(),account=await snapshot.accounts.find(item=>item.platform==='whatsapp');
   assert.deepEqual(plain({comments:account.comments,messages:account.messages,autoReadAllowed:account.autoReadAllowed,live:account.live}),{comments:false,messages:true,autoReadAllowed:false,live:false});
   assert.ok(account.liveEventAt,'the last webhook time is shown');
   const items=snapshot.items.filter(item=>item.platform==='whatsapp');assert.equal(items.length,2);
@@ -53,42 +53,42 @@ test('inbound messages land in the inbox masked and hashed; STOP opts out and is
   assert.doesNotMatch(JSON.stringify(f.db.prepare('SELECT * FROM platform_social_inbox').all())+JSON.stringify(f.db.prepare('SELECT * FROM platform_audit').all()),/905321112234|0532 111 22 34|Private Name|STOP/,'no numbers, names or stop words are stored in clear');
   assert.ok(f.db.prepare("SELECT 1 FROM platform_audit WHERE operation='whatsapp.hook.inbound'").get());
   await assert.rejects(f.inbox().sync({connectionId:account.id}),error=>error.status===409,'there is no pull API for WhatsApp messages');
-  assert.throws(()=>f.inbox().setAutoRead({connectionId:account.id,autoRead:true}),error=>error.status===409);
+  await assert.rejects(async ()=>await f.inbox().setAutoRead({connectionId:account.id,autoRead:true}),error=>error.status===409);
   assert.equal(f.calls.length,0,'reading the inbox makes no provider call');
 }));
 
 test('a reply goes to the sender once, behind the WhatsApp switch, the publish duty and the 24-hour window',run(async f=>{
-  f.hook([{from:'905321112234',id:'wamid.new',type:'text',timestamp:seconds(2),text:{body:'Yarın açık mısınız?'}},{from:'905321112237',id:'wamid.old',type:'text',timestamp:seconds(30),text:{body:'Eski soru'}}]);
-  const find=text=>f.inbox().read().items.find(item=>item.text===text);
-  let item=find('Yarın açık mısınız?');f.inbox().saveReply({id:item.id,expectedRevision:item.revision,reply:'Evet, 10:00–18:00 arası açığız.'});item=find('Yarın açık mısınız?');
+  await f.hook([{from:'905321112234',id:'wamid.new',type:'text',timestamp:seconds(2),text:{body:'Yarın açık mısınız?'}},{from:'905321112237',id:'wamid.old',type:'text',timestamp:seconds(30),text:{body:'Eski soru'}}]);
+  const find=async text=>await (await f.inbox().read()).items.find(item=>item.text===text);
+  let item=await find('Yarın açık mısınız?');await f.inbox().saveReply({id:item.id,expectedRevision:item.revision,reply:'Evet, 10:00–18:00 arası açığız.'});item=await find('Yarın açık mısınız?');
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='1';
   await assert.rejects(f.inbox().send({id:item.id,expectedRevision:item.revision,acknowledged:true}),error=>error.status===409,'the social switch does not open WhatsApp replies');
   process.env.PLATFORM_SOCIAL_PUBLISH_ENABLED='0';process.env.PLATFORM_WHATSAPP_SEND_ENABLED='1';
-  assert.equal(f.inbox().read().whatsappSendEnabled,true);
+  assert.equal((await f.inbox().read()).whatsappSendEnabled,true);
   await assert.rejects(f.inbox().send({id:item.id,expectedRevision:item.revision,acknowledged:false}),error=>error.status===409,'an explicit acknowledgement is required');
-  const editor=f.member('editor');await assert.rejects(f.inbox(editor).send({id:item.id,expectedRevision:item.revision,acknowledged:true}),error=>error.status===403);
-  const sent=await f.inbox().send({id:item.id,expectedRevision:item.revision,acknowledged:true}),after=sent.items.find(other=>other.id===item.id);
+  const editor=await f.member('editor');await assert.rejects(f.inbox(editor).send({id:item.id,expectedRevision:item.revision,acknowledged:true}),error=>error.status===403);
+  const sent=await f.inbox().send({id:item.id,expectedRevision:item.revision,acknowledged:true}),after=await sent.items.find(other=>other.id===item.id);
   assert.equal(after.replyState,'sent');assert.equal(after.state,'replied');
   assert.equal(f.calls.length,1);const call=f.calls[0];
   assert.equal(call.path,'/v25.0/1234567890/messages');assert.equal(call.token,TOKEN);
   assert.deepEqual(plain(call.json),{messaging_product:'whatsapp',recipient_type:'individual',to:'905321112234',type:'text',text:{preview_url:false,body:'Evet, 10:00–18:00 arası açığız.'}});
   await assert.rejects(f.inbox().send({id:item.id,expectedRevision:after.revision,acknowledged:true}),error=>error.status===409,'a reply is sent once');
-  const old=find('Eski soru');assert.equal(old.windowOpen,false);
-  f.inbox().saveReply({id:old.id,expectedRevision:old.revision,reply:'Merhaba'});const stale=find('Eski soru');
+  const old=await find('Eski soru');assert.equal(old.windowOpen,false);
+  await f.inbox().saveReply({id:old.id,expectedRevision:old.revision,reply:'Merhaba'});const stale=await find('Eski soru');
   await assert.rejects(f.inbox().send({id:stale.id,expectedRevision:stale.revision,acknowledged:true}),error=>error.status===409&&/24/.test(error.message),'outside the window nothing is sent');
   assert.equal(f.calls.length,1);
 }));
 
 test('events for another number are ignored and an unsigned call is refused',run(async f=>{
   const body=event([{from:'905321112234',id:'wamid.x',type:'text',timestamp:seconds(),text:{body:'Merhaba'}}],'111');
-  assert.equal(receiveWhatsAppHook(f.db,KEY,f.hookId,body,sign(body)).inbound,0);
-  assert.throws(()=>receiveWhatsAppHook(f.db,KEY,f.hookId,body,'sha256='+'0'.repeat(64)),error=>error.status===401);
+  assert.equal((await receiveWhatsAppHook(f.db,KEY,f.hookId,body,sign(body))).inbound,0);
+  await assert.rejects(async ()=>await receiveWhatsAppHook(f.db,KEY,f.hookId,body,'sha256='+'0'.repeat(64)),error=>error.status===401);
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM platform_social_inbox WHERE platform='whatsapp'").get().n,0);
 }));
 
 test('offline recovery authenticates WhatsApp phone numbers, the webhook secret and inbox reply addresses',run(async f=>{
-  f.wa.addContacts({phones:'+905321112233',evidence:'QA form',consentAt:'2026-10-01',acknowledged:true});
-  f.hook([{from:'905321112234',id:'wamid.rec',type:'text',timestamp:seconds(),text:{body:'Merhaba'}}]);
+  await f.wa.addContacts({phones:'+905321112233',evidence:'QA form',consentAt:'2026-10-01',acknowledged:true});
+  await f.hook([{from:'905321112234',id:'wamid.rec',type:'text',timestamp:seconds(),text:{body:'Merhaba'}}]);
   const fs=require('node:fs'),path=require('node:path'),folder=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'wa-recovery-')),file=path.join(folder,'snapshot.sqlite');
   try{
     await f.db.backup(file);const {inspectSnapshot}=await import('../scripts/lib/platform-recovery.mjs');

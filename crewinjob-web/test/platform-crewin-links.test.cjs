@@ -43,7 +43,7 @@ test('Crewin tags are the Ryzevo tag of the Crewin scope; only crewinjob.com lin
   assert.equal(tagCrewinLinks('https://evilcrewinjob.com/',tag,'email','email').tagged,0,'a look-alike host is not Crewin');
 });
 
-test('the tag registry keeps the first title, prunes old entries, and campaign names win',()=>withData(dir=>{
+test('the tag registry keeps the first title, prunes old entries, and campaign names win',()=>withData(async dir=>{
   const share=crewinTag('share','s-1'),email=crewinTag('email','Profilinizi tamamlayın'),campaign=crewinTag('campaign','camp-1');
   assert.equal(registerCrewinTag(share,'share','Yeni ilanlar https://www.crewinjob.com/jobs?utm_campaign=x   bu hafta'),true);
   assert.equal(registerCrewinTag(share,'share','başka başlık'),false,'the first registration wins');
@@ -55,45 +55,45 @@ test('the tag registry keeps the first title, prunes old entries, and campaign n
   assert.ok(!stored.some(entry=>entry.tag===old),'entries older than 400 days drop on the next write');
   fs.writeFileSync(path.join(dir,'campaigns.json'),JSON.stringify([{id:'camp-1',name:'Kış ilanları'}]));resetFileSummaries();
   const items=crewinTaggedItems();
-  assert.deepEqual(plain(items.get(share)),{kind:'content',id:share,title:'Yeni ilanlar bu hafta'},'links are stripped from the title');
-  assert.equal(items.get(email).kind,'campaign');assert.equal(items.get(campaign).title,'Kış ilanları','a campaign’s own name wins');
+  assert.deepEqual(plain(await items.get(share)),{kind:'content',id:share,title:'Yeni ilanlar bu hafta'},'links are stripped from the title');
+  assert.equal((await items.get(email)).kind,'campaign');assert.equal((await items.get(campaign)).title,'Kış ilanları','a campaign’s own name wins');
 }));
 
-test('Crewin receives signed events, maps its goal stages and sees which share brought sign-ups',()=>withData(()=>{
-  const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);repo.bootstrapLegacy('admin');
+test('Crewin receives signed events, maps its goal stages and sees which share brought sign-ups',()=>withData(async ()=>{
+  const db=openPlatformDatabase(':memory:'),repo=new PlatformRepository(db);await repo.bootstrapLegacy('admin');
   try{
-    const other=repo.provision('legacy-admin',{organizationName:'other',projectName:'other',website:'https://example.com',username:'other',password:'fixture-password-123'});
+    const other=await repo.provision('legacy-admin',{organizationName:'other',projectName:'other',website:'https://example.com',username:'other',password:'fixture-password-123'});
     const hooks=new ProductWebhooks(db,CREWIN);
-    const saved=hooks.save({name:'Denizci olayları',config:{entityType:'user',attributes:[{key:'platform',type:'string'}],eventNames:['seafarer.registered','seafarer.profile_completed']},secret:SECRET},KEY);
-    const preview=hooks.preview(saved.id,{sourceVersion:1,events:[{id:'preview-1',entityId:'p',eventName:'seafarer.registered',occurredAt:ago(0,1000),attributes:{platform:'web'}}]});
-    assert.equal(preview.canActivate,true);const source=hooks.state(saved.id,1,'activate');assert.equal(source.state,'active');
-    assert.equal(new ProductWebhooks(db,{subject:other.userId,organizationId:other.organizationId,projectId:other.projectId}).list().length,0,'other projects do not see Crewin’s source');
-    assert.throws(()=>new ProductSegments(db,CREWIN).list(),error=>error.status===403,'segments stay standard-only');
-    assert.deepEqual(new ProductSegments(db,CREWIN).eventSources().map(item=>item.id),[saved.id]);
+    const saved=await hooks.save({name:'Denizci olayları',config:{entityType:'user',attributes:[{key:'platform',type:'string'}],eventNames:['seafarer.registered','seafarer.profile_completed']},secret:SECRET},KEY);
+    const preview=await hooks.preview(saved.id,{sourceVersion:1,events:[{id:'preview-1',entityId:'p',eventName:'seafarer.registered',occurredAt:ago(0,1000),attributes:{platform:'web'}}]});
+    assert.equal(preview.canActivate,true);const source=await hooks.state(saved.id,1,'activate');assert.equal(source.state,'active');
+    assert.equal((await new ProductWebhooks(db,{subject:other.userId,organizationId:other.organizationId,projectId:other.projectId}).list()).length,0,'other projects do not see Crewin’s source');
+    await assert.rejects(async ()=>await new ProductSegments(db,CREWIN).list(),error=>error.status===403,'segments stay standard-only');
+    assert.deepEqual([...(await new ProductSegments(db,CREWIN).eventSources()).map(item=>item.id)],[saved.id]);
 
     const measure=new ProjectMeasurements(db,CREWIN,KEY);
-    assert.ok(measure.sources().some(item=>item.id===saved.id&&item.provider==='product_webhook'),'the source can be bound to Crewin’s goals');
-    measure.save({goalId:'seafarer_activation',stageIndex:0,connectionId:saved.id,metric:'unique_entities',eventName:'seafarer.registered',enabled:false,expectedVersion:0});
-    measure.save({goalId:'seafarer_activation',stageIndex:1,connectionId:saved.id,metric:'unique_entities',eventName:'seafarer.profile_completed',enabled:false,expectedVersion:0});
+    assert.ok((await measure.sources()).some(item=>item.id===saved.id&&item.provider==='product_webhook'),'the source can be bound to Crewin’s goals');
+    await measure.save({goalId:'seafarer_activation',stageIndex:0,connectionId:saved.id,metric:'unique_entities',eventName:'seafarer.registered',enabled:false,expectedVersion:0});
+    await measure.save({goalId:'seafarer_activation',stageIndex:1,connectionId:saved.id,metric:'unique_entities',eventName:'seafarer.profile_completed',enabled:false,expectedVersion:0});
 
     const share=newCrewinShareTag();registerCrewinTag(share,'share','Kış ilanları yayında');
-    const send=events=>{
+    const send=async events=>{
       const bytes=Buffer.from(JSON.stringify({sourceVersion:1,events})),timestamp=String(Math.floor(Date.now()/1000));
       const signature='v1='+createHmac('sha256',Buffer.from(SECRET,'hex')).update(`${timestamp}.${saved.id}.`).update(bytes).digest('hex');
-      return authenticateProductWebhook(db,saved.id,new Headers({'x-ryzevo-timestamp':timestamp,'x-ryzevo-signature':signature}),KEY)(bytes);
+      return await (await authenticateProductWebhook(db,saved.id,new Headers({'x-ryzevo-timestamp':timestamp,'x-ryzevo-signature':signature}),KEY))(bytes);
     };
     const registered=(id,entityId,attribution)=>({id,entityId,eventName:'seafarer.registered',occurredAt:ago(1),attributes:{platform:'web'},...(attribution?{attribution}:{})});
-    const result=send([registered('r-1','48213',{campaign:share,source:'linkedin',medium:'social',touchedAt:ago(2)}),registered('r-2','48214')]);
+    const result=await send([registered('r-1','48213',{campaign:share,source:'linkedin',medium:'social',touchedAt:ago(2)}),registered('r-2','48214')]);
     assert.equal(result.accepted,2);assert.equal(result.attribution.recorded,1);
-    send([{id:'p-1',entityId:'48213',eventName:'seafarer.profile_completed',occurredAt:ago(0,60000),attributes:{platform:'android'}}]);
+    await send([{id:'p-1',entityId:'48213',eventName:'seafarer.profile_completed',occurredAt:ago(0,60000),attributes:{platform:'android'}}]);
 
-    const report=new ProjectAttribution(db,CREWIN).report(30);
+    const report=await new ProjectAttribution(db,CREWIN).report(30);
     assert.deepEqual(report.stages.map(stage=>stage.label.tr),['Kayıt','Profil tamamlama'],'Crewin’s own goal stages');
     assert.equal(report.items.length,1);
     assert.deepEqual(plain({title:report.items[0].title,kind:report.items[0].kind,counts:report.items[0].counts,sources:report.items[0].sources}),{title:'Kış ilanları yayında',kind:'content',counts:[1,1],sources:['linkedin']},'the later event counts without a tag');
     assert.deepEqual(plain(report.coverage),{entities:2,touched:1,ryzevo:1});
     assert.equal(report.setup.activeSources,1);assert.equal(report.setup.stagesMapped,true);
-    assert.equal(new ProjectAttribution(db,{subject:other.userId,organizationId:other.organizationId,projectId:other.projectId}).report(30).items.length,0,'nothing leaks into other projects');
+    assert.equal((await new ProjectAttribution(db,{subject:other.userId,organizationId:other.organizationId,projectId:other.projectId}).report(30)).items.length,0,'nothing leaks into other projects');
     assert.ok(!JSON.stringify(db.prepare('SELECT * FROM platform_attribution_touches').all()).includes('48213'),'no backend id is kept');
   }finally{db.close();}
 }));
@@ -108,7 +108,7 @@ test('unsubscribe links are never tagged; X keeps texts that a tag would push pa
   assert.equal(profile.searchParams.get('utm_campaign'),crewinTag('profile','instagram'));assert.equal(profile.searchParams.get('utm_source'),'instagram');
 });
 
-test('the agent computes the same tags, and its appended registry names job posts (the last line for a tag wins)',()=>withData(dir=>{
+test('the agent computes the same tags, and its appended registry names job posts (the last line for a tag wins)',()=>withData(async dir=>{
   const agentDir=path.join(dir,'agent'),file=path.join(agentDir,'data','link-tags.jsonl'),saved=process.env.CREWINJOB_AGENT_DIR,savedFile=process.env.CREWIN_LINK_TAGS_FILE;
   process.env.CREWINJOB_AGENT_DIR=agentDir;process.env.CREWIN_LINK_TAGS_FILE=file;
   try{
@@ -120,8 +120,8 @@ test('the agent computes the same tags, and its appended registry names job post
     agent.jobLink('https://crewinjob.com/jobs/detail/48213','48213','Başka başlık','group');
     fs.appendFileSync(file,'{broken\n');
     const items=crewinTaggedItems();
-    assert.deepEqual(plain(items.get(crewinTag('job','48213'))),{kind:'content',id:crewinTag('job','48213'),title:'İlan: Chief Officer · Bulk Carrier'},'a generic title is replaced once by the real one');
-    assert.equal(items.get(crewinTag('profile','tiktok')).title,'TikTok profil linki');
+    assert.deepEqual(plain(await items.get(crewinTag('job','48213'))),{kind:'content',id:crewinTag('job','48213'),title:'İlan: Chief Officer · Bulk Carrier'},'a generic title is replaced once by the real one');
+    assert.equal((await items.get(crewinTag('profile','tiktok'))).title,'TikTok profil linki');
   }finally{
     if(saved===undefined)delete process.env.CREWINJOB_AGENT_DIR;else process.env.CREWINJOB_AGENT_DIR=saved;
     if(savedFile===undefined)delete process.env.CREWIN_LINK_TAGS_FILE;else process.env.CREWIN_LINK_TAGS_FILE=savedFile;

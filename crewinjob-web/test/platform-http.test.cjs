@@ -159,7 +159,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.equal((await request('/api/platform/identity',alpha,'POST',{email:'owner@alpha.example',currentPassword:'wrong'})).status,400);
     assert.equal((await request('/api/platform/identity',alpha,'POST',{email:'owner@alpha.example',currentPassword:'test-password-12-characters'})).status,200);
     const {load:loadIdentityTest}=require('./platform-loader.cjs'),{decryptCredentials:readIdentityDelivery}=loadIdentityTest('credential-envelope.ts');
-    const identityDb=new (require('better-sqlite3'))(path.join(directory,'test.sqlite'));
+    const identityDb=require('./platform-loader.cjs').asDb(new (require('better-sqlite3'))(path.join(directory,'test.sqlite')));
     const readMail=kind=>{const row=identityDb.prepare('SELECT token_hash,encrypted_delivery FROM platform_identity_challenges WHERE kind=? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1').get(kind);return readIdentityDelivery(row.encrypted_delivery,'12'.repeat(32),'platform-identity','system-email',row.token_hash);};
     try{
       const mail=readMail('verify');assert.equal(mail.to,'owner@alpha.example');
@@ -183,7 +183,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
       assert.equal((await request('/api/platform/billing',beta,'POST',statusInput)).status,404);
       assert.equal((await fetch(`${base}/api/platform/billing`,{method:'POST',headers:{Cookie:alpha,'Content-Type':'application/json',Origin:'https://evil.example'},body:JSON.stringify(statusInput)})).status,403);
       assert.equal(identityDb.prepare('SELECT COUNT(*) AS n FROM platform_billing_checks').get().n,0);
-    }finally{identityDb.close();}
+    }finally{await identityDb.close();}
     assert.equal((await request('/api/platform/data-sources',admin)).status,403);
     assert.equal((await request('/api/platform/ses',admin)).status,403);
     assert.equal((await request('/api/platform/measurements',admin)).status,200,'the Crewin workspace has Ryzevo measurements (lib/platform/ryzevo-features.ts)');
@@ -224,7 +224,8 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.equal(revokedSource.status,200);assert.equal((await revokedSource.json()).state,'revoked');
     assert.equal((await request('/api/platform/data-sources',alpha,'POST',{action:'preview',id:source.id})).status,409);
     assert.equal((await request('/api/platform/product-webhooks')).status,401);
-    assert.equal((await request('/api/platform/product-webhooks',admin)).status,403);
+    // The Crewin workspace may manage signed product-event webhooks (ryzevo-features: product_events, 9ad4a67).
+    assert.equal((await request('/api/platform/product-webhooks',admin)).status,200);
     const {randomBytes,createHmac}=require('node:crypto'),webhookKey=randomBytes(32).toString('hex');
     const hookSaved=await request('/api/platform/product-webhooks',alpha,'POST',{action:'save',name:'HTTP product events',secret:webhookKey,config:{entityType:'user',attributes:[{key:'progress',type:'number'},{key:'email',type:'string'}],eventNames:['profile.updated']},organizationId:b.organizationId,projectId:b.projectId});
     assert.equal(hookSaved.status,200);const hook=await hookSaved.json();assert.ok(!JSON.stringify(hook).includes(webhookKey));
@@ -609,7 +610,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.equal((await request('/api/workspace',alpha)).status,401);
     const changed=await cookieFor('Alpha-owner','http-changed-password-123');assert.equal((await request('/api/workspace',changed)).status,200);
     const identityResult=await request('/api/auth/identity','','POST',{action:'request-reset',email:'owner@alpha.example'});assert.deepEqual(await identityResult.json(),{ok:true});
-    const finishDb=new (require('better-sqlite3'))(path.join(directory,'test.sqlite'));
+    const finishDb=require('./platform-loader.cjs').asDb(new (require('better-sqlite3'))(path.join(directory,'test.sqlite')));
     try{
       const workerBefore = finishDb.prepare('SELECT * FROM platform_worker_observations').get();
       assert.ok(workerBefore); assert.equal(workerBefore.outcome,'completed'); assert.ok(workerBefore.last_success_at);
@@ -635,7 +636,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
       const signup=delivery('signup');
       const registered=await request('/api/auth/identity','','POST',{action:'register',token:signup.token,organizationName:'New startup',projectName:'New project',website:'https://startup.example',password:'http-startup-password-123',timezone:'UTC',organizationId:'crewin',productPack:'crewin'});assert.equal(registered.status,200);assert.equal(registered.headers.get('set-cookie'),null);
       const startup=await cookieFor('startup@example.com','http-startup-password-123'),startupWorkspace=await (await request('/api/workspace',startup)).json();assert.equal(startupWorkspace.project.productPack,'standard');assert.notEqual(startupWorkspace.project.id,a.projectId);assert.equal((await request('/api/stats',startup)).status,403);assert.equal((await (await request('/api/campaigns',startup)).json()).items.length,0);
-    }finally{finishDb.close();}
+    }finally{await finishDb.close();}
   } finally {
     server.kill();
     if (server.exitCode === null) await new Promise(resolve => server.once('exit', resolve));

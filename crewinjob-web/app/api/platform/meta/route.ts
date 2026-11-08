@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const oauth = new ProjectMetaOAuth(platformDatabase(), { subject: access.subject, organizationId: access.identity.organizationId, projectId: access.identity.projectId }, credentialEncryptionKey());
     if (input.action === 'select' || input.action === 'cancel') {
       const cookie = request.cookies.get(META_SELECTION_COOKIE)?.value || '';
-      const result = input.action === 'select' ? await oauth.select(cookie, input.pageId) : (oauth.cancel(cookie), { ok: true });
+      const result = input.action === 'select' ? await oauth.select(cookie, input.pageId) : (await oauth.cancel(cookie), { ok: true });
       const response = json(result);
       response.cookies.set(META_SELECTION_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: request.nextUrl.protocol === 'https:', path: '/api/platform/meta', maxAge: 0 });
       return response;
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     if (input.action !== 'start') throw new MarketingStoreError('Geçerli Meta işlemi gerekli.');
     const configuration = metaConfiguration();
     if (request.headers.get('origin') !== new URL(configuration.redirectUri).origin) throw new MarketingStoreError('Panel adresi Meta dönüş adresiyle eşleşmiyor.');
-    const result = oauth.start(input.target, input.publishing, input.inbox === undefined ? false : input.inbox);
+    const result = await oauth.start(input.target, input.publishing, input.inbox === undefined ? false : input.inbox);
     const response = json({ authorizationUrl: result.authorizationUrl });
     response.cookies.set(META_BROWSER_COOKIE, result.browser, { httpOnly: true, sameSite: 'lax', secure: new URL(configuration.redirectUri).protocol === 'https:', path: '/api/platform/meta/callback', maxAge: 600 });
     response.cookies.set(META_SELECTION_COOKIE, '', { httpOnly: true, sameSite: 'lax', secure: new URL(configuration.redirectUri).protocol === 'https:', path: '/api/platform/meta', maxAge: 0 });

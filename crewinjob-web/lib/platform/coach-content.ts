@@ -1,3 +1,5 @@
+import { mapSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -49,17 +51,17 @@ export function coachContentPrompt(brief:CoachBrief,answers:CoachAnswers|null,mo
 
 export class CoachContentPlan{
   coach:GrowthCoach;
-  constructor(public db:Database.Database,public scope:MarketingScope){this.coach=new GrowthCoach(db,scope);}
+  constructor(public db:Db,public scope:MarketingScope){this.coach=new GrowthCoach(db,scope);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  private project(){return this.coach.repo.workspace(this.scope.subject,...this.args())!.project;}
-  private months(){const timeZone=this.coach.timeZone();return [coachMonthKey(new Date(),0,timeZone),coachMonthKey(new Date(),1,timeZone)];}
-  private month(value:unknown){const months=this.months();if(value===undefined)return months[0];if(!months.includes(value as string))throw new MarketingStoreError('Bu ay veya gelecek ay için plan hazırlanabilir.');return value as string;}
-  private rows(month:string){return this.db.prepare('SELECT id,month,channel,theme,title,angle,goal_id,stage_index,planned_for,state,source,revision,task_id,approved_at FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=? ORDER BY planned_for,created_at,rowid').all(...this.args(),month) as Row[];}
-  private row(id:unknown){const row=typeof id==='string'?this.db.prepare('SELECT id,month,channel,theme,title,angle,goal_id,stage_index,planned_for,state,source,revision,task_id,approved_at FROM platform_coach_content_items WHERE id=? AND organization_id=? AND project_id=?').get(id,...this.args()) as Row|undefined:undefined;if(!row)throw new MarketingStoreError('İçerik planı maddesi bulunamadı.',404);return row;}
-  private brief(){const {brief,answers}=this.coach.approved();if(!brief)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);return {brief,answers};}
-  private audit(operation:string){this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
-  private idea(raw:unknown,month:string,source:'ai'|'human',channels:CoachChannel[]):Idea{
-    const input=coachObject(raw),goals=this.project().goals,goalId=input.goalId===null||input.goalId===undefined||input.goalId===''?null:coachText(input.goalId,100),date=coachText(input.plannedFor??input.date,10);
+  private async project(){return (await this.coach.repo.workspace(this.scope.subject,...this.args()))!.project;}
+  private async months(){const timeZone=await this.coach.timeZone();return [coachMonthKey(new Date(),0,timeZone),coachMonthKey(new Date(),1,timeZone)];}
+  private async month(value:unknown){const months=await this.months();if(value===undefined)return months[0];if(!months.includes(value as string))throw new MarketingStoreError('Bu ay veya gelecek ay için plan hazırlanabilir.');return value as string;}
+  private async rows(month:string){return await this.db.prepare('SELECT id,month,channel,theme,title,angle,goal_id,stage_index,planned_for,state,source,revision,task_id,approved_at FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=? ORDER BY planned_for,created_at,rowid').all(...this.args(),month) as Row[];}
+  private async row(id:unknown){const row=typeof id==='string'?await this.db.prepare('SELECT id,month,channel,theme,title,angle,goal_id,stage_index,planned_for,state,source,revision,task_id,approved_at FROM platform_coach_content_items WHERE id=? AND organization_id=? AND project_id=?').get(id,...this.args()) as Row|undefined:undefined;if(!row)throw new MarketingStoreError('İçerik planı maddesi bulunamadı.',404);return row;}
+  private async brief(){const {brief,answers}=await this.coach.approved();if(!brief)throw new MarketingStoreError('Önce strateji briefini onaylayın.',404);return {brief,answers};}
+  private async audit(operation:string){await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
+  private async idea(raw:unknown,month:string,source:'ai'|'human',channels:CoachChannel[]):Promise<Idea>{
+    const input=coachObject(raw),goals=(await this.project()).goals,goalId=input.goalId===null||input.goalId===undefined||input.goalId===''?null:coachText(input.goalId,100),date=coachText(input.plannedFor??input.date,10);
     if(goalId&&!goals.some(goal=>goal.id===goalId))throw new MarketingStoreError('Hedef bu projede bulunamadı.',404);
     // The goal stage the item should move: one of the chosen goal's stages, or none (an unknown stage is dropped).
     const stage=input.stageIndex??input.stage,stageIndex=goalId&&typeof stage==='number'&&Number.isInteger(stage)&&stage>=0&&stage<(goals.find(goal=>goal.id===goalId)?.stages.length||0)?stage:null;
@@ -69,84 +71,84 @@ export class CoachContentPlan{
     const fit=(value:unknown,max:number)=>source==='ai'&&typeof value==='string'?coachClip(value.trim(),max):value;
     return {channel,theme:coachText(fit(input.theme,60),60),title:coachText(fit(input.title,140),140),angle:coachText(fit(input.angle,400),400),goalId,stageIndex,plannedFor:date};
   }
-  private insert(month:string,ideas:Idea[],source:CoachContentItem['source']){
+  private async insert(month:string,ideas:Idea[],source:CoachContentItem['source']){
     const now=new Date().toISOString(),statement=this.db.prepare('INSERT INTO platform_coach_content_items(id,organization_id,project_id,month,channel,theme,title,angle,goal_id,stage_index,planned_for,state,source,revision,updated_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)');
-    for(const idea of ideas)statement.run(`content_${randomUUID()}`,...this.args(),month,idea.channel,idea.theme,idea.title,idea.angle,idea.goalId,idea.stageIndex,idea.plannedFor,'suggested',source,this.scope.subject,now,now);
+    for(const idea of ideas)await statement.run(`content_${randomUUID()}`,...this.args(),month,idea.channel,idea.theme,idea.title,idea.angle,idea.goalId,idea.stageIndex,idea.plannedFor,'suggested',source,this.scope.subject,now,now);
   }
-  private replaceSuggestions(month:string,ideas:Idea[],source:'ai'|'template'){
-    this.coach.authorize('content.write');
-    this.db.prepare("DELETE FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=? AND state='suggested' AND source<>'human'").run(...this.args(),month);
-    const kept=(this.db.prepare('SELECT COUNT(*) n FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=?').get(...this.args(),month) as {n:number}).n;
-    this.insert(month,ideas.slice(0,Math.max(0,MAX_ITEMS-kept)),source);this.audit(source==='ai'?'coach.content.ai':'coach.content.template');
+  private async replaceSuggestions(month:string,ideas:Idea[],source:'ai'|'template'){
+    await this.coach.authorize('content.write');
+    await this.db.prepare("DELETE FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=? AND state='suggested' AND source<>'human'").run(...this.args(),month);
+    const kept=(await this.db.prepare('SELECT COUNT(*) n FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=?').get(...this.args(),month) as {n:number}).n;
+    await this.insert(month,ideas.slice(0,Math.max(0,MAX_ITEMS-kept)),source);await this.audit(source==='ai'?'coach.content.ai':'coach.content.template');
   }
   // Regenerating replaces only open machine suggestions; approved, dismissed and hand-written items stay.
   async generate(raw:Record<string,unknown>,generator?:CoachGenerator){
-    this.coach.authorize('content.write');const month=this.month(raw.month),mode=coachChoice(['ai','template'] as const,raw.mode),{brief,answers}=this.brief(),goals=this.project().goals,goalId=goals[0]?.id||null;
-    if(mode==='template'){this.db.transaction(()=>this.replaceSuggestions(month,coachStarterContent(brief,answers,month,goalId,new Date(),this.coach.timeZone()),'template')).immediate();return this.read(month);}
+    await this.coach.authorize('content.write');const month=await this.month(raw.month),mode=coachChoice(['ai','template'] as const,raw.mode),{brief,answers}=await this.brief(),goals=(await this.project()).goals,goalId=goals[0]?.id||null;
+    if(mode==='template'){await this.db.transaction(async ()=>await this.replaceSuggestions(month,coachStarterContent(brief,answers,month,goalId,new Date(),await this.coach.timeZone()),'template'));return await this.read(month);}
     if(!generator)throw new MarketingStoreError('Bu platform için AI sağlayıcısı ve model henüz yapılandırılmadı.',503);
     const count={lt2:4,'2to5':8,'5to10':12,gt10:16}[answers?.hours||'2to5'],channels=contentChannels(brief);
-    await runCoachAi(this.db,this.scope,generator,coachContentPrompt(brief,answers,month,goals.map(goal=>({id:goal.id,label:goal.label,stages:goal.stages})),count),output=>{
+    await runCoachAi(this.db,this.scope,generator,coachContentPrompt(brief,answers,month,goals.map(goal=>({id:goal.id,label:goal.label,stages:goal.stages})),count),async output=>{
       const parsed=parseCoachJson(output),items=parsed.items;if(!Array.isArray(items)||!items.length||items.length>MAX_ITEMS)throw new MarketingStoreError('AI yanıtı okunamadı. Başlangıç şablonunu kullanın veya tekrar deneyin.',502);
-      let ideas:Idea[];try{ideas=items.map(item=>this.idea(item,month,'ai',channels));}catch{throw new MarketingStoreError('AI yanıtı okunamadı. Başlangıç şablonunu kullanın veya tekrar deneyin.',502);}
+      let ideas:Idea[];try{ideas=await mapSeries(items, async item=>await this.idea(item,month,'ai',channels));}catch{throw new MarketingStoreError('AI yanıtı okunamadı. Başlangıç şablonunu kullanın veya tekrar deneyin.',502);}
       if(COACH_BANNED.test(JSON.stringify(ideas)))throw new MarketingStoreError('AI taslağı içerik kurallarını geçemedi (oran, garanti veya otomasyon iddiası). Başlangıç şablonunu kullanın veya tekrar deneyin.',422);
       return ideas;
-    },ideas=>this.replaceSuggestions(month,ideas,'ai'));
-    return this.read(month);
+    },async ideas=>await this.replaceSuggestions(month,ideas,'ai'));
+    return await this.read(month);
   }
-  add(raw:Record<string,unknown>){
-    this.coach.authorize('content.write');const month=this.month(raw.month);this.brief();
-    return this.db.transaction(()=>{
-      this.coach.authorize('content.write');const idea=this.idea(raw,month,'human',[]);
-      if((this.db.prepare('SELECT COUNT(*) n FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=?').get(...this.args(),month) as {n:number}).n>=MAX_ITEMS)throw new MarketingStoreError('Bir ay için en fazla 40 içerik planı maddesi olabilir.',429);
-      this.insert(month,[idea],'human');this.audit('coach.content.add');return this.read(month);
-    }).immediate();
+  async add(raw:Record<string,unknown>){
+    await this.coach.authorize('content.write');const month=await this.month(raw.month);await this.brief();
+    return await this.db.transaction(async ()=>{
+      await this.coach.authorize('content.write');const idea=await this.idea(raw,month,'human',[]);
+      if((await this.db.prepare('SELECT COUNT(*) n FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND month=?').get(...this.args(),month) as {n:number}).n>=MAX_ITEMS)throw new MarketingStoreError('Bir ay için en fazla 40 içerik planı maddesi olabilir.',429);
+      await this.insert(month,[idea],'human');await this.audit('coach.content.add');return await this.read(month);
+    });
   }
   // Editing an approved item returns it to "suggested": the changed text needs a fresh approval.
-  update(raw:Record<string,unknown>){
-    this.coach.authorize('content.write');
-    return this.db.transaction(()=>{
-      this.coach.authorize('content.write');const row=this.row(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Plan maddesi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
-      const idea=this.idea(raw,row.month,'human',[]),now=new Date().toISOString();
-      this.db.prepare("UPDATE platform_coach_content_items SET channel=?,theme=?,title=?,angle=?,goal_id=?,stage_index=?,planned_for=?,state=CASE WHEN state='approved' THEN 'suggested' ELSE state END,source='human',approved_by=NULL,approved_at=NULL,revision=revision+1,updated_by=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?").run(idea.channel,idea.theme,idea.title,idea.angle,idea.goalId,idea.stageIndex,idea.plannedFor,this.scope.subject,now,row.id,...this.args());
-      this.audit('coach.content.edit');return this.read(row.month);
-    }).immediate();
+  async update(raw:Record<string,unknown>){
+    await this.coach.authorize('content.write');
+    return await this.db.transaction(async ()=>{
+      await this.coach.authorize('content.write');const row=await this.row(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Plan maddesi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
+      const idea=await this.idea(raw,row.month,'human',[]),now=new Date().toISOString();
+      await this.db.prepare("UPDATE platform_coach_content_items SET channel=?,theme=?,title=?,angle=?,goal_id=?,stage_index=?,planned_for=?,state=CASE WHEN state='approved' THEN 'suggested' ELSE state END,source='human',approved_by=NULL,approved_at=NULL,revision=revision+1,updated_by=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?").run(idea.channel,idea.theme,idea.title,idea.angle,idea.goalId,idea.stageIndex,idea.plannedFor,this.scope.subject,now,row.id,...this.args());
+      await this.audit('coach.content.edit');return await this.read(row.month);
+    });
   }
-  decide(raw:Record<string,unknown>){
-    this.coach.authorize('content.write');const decision=coachChoice(['approve','dismiss','restore'] as const,raw.decision);
-    return this.db.transaction(()=>{
-      this.coach.authorize('content.write');const row=this.row(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Plan maddesi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
+  async decide(raw:Record<string,unknown>){
+    await this.coach.authorize('content.write');const decision=coachChoice(['approve','dismiss','restore'] as const,raw.decision);
+    return await this.db.transaction(async ()=>{
+      await this.coach.authorize('content.write');const row=await this.row(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Plan maddesi başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);
       const now=new Date().toISOString(),state=decision==='approve'?'approved':decision==='dismiss'?'dismissed':'suggested';
-      this.db.prepare('UPDATE platform_coach_content_items SET state=?,approved_by=?,approved_at=?,revision=revision+1,updated_by=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(state,state==='approved'?this.scope.subject:null,state==='approved'?now:null,this.scope.subject,now,row.id,...this.args());
-      this.audit(`coach.content.${decision}`);return this.read(row.month);
-    }).immediate();
+      await this.db.prepare('UPDATE platform_coach_content_items SET state=?,approved_by=?,approved_at=?,revision=revision+1,updated_by=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(state,state==='approved'?this.scope.subject:null,state==='approved'?now:null,this.scope.subject,now,row.id,...this.args());
+      await this.audit(`coach.content.${decision}`);return await this.read(row.month);
+    });
   }
   // Explicit Calendar handoff for an approved item; deduplicated while its task stays open. Sends and notifies nothing.
-  schedule(raw:Record<string,unknown>){
-    this.coach.authorize('content.write');
-    return this.db.transaction(()=>{
-      this.coach.authorize('content.write');const row=this.row(raw.id);if(row.state!=='approved')throw new MarketingStoreError('Takvime yalnız onaylı plan maddeleri eklenebilir.',409);
-      const operations=new ProjectOperations(this.db,this.scope),current=row.task_id?operations.tasks().find(task=>task.id===row.task_id&&!['completed','cancelled'].includes(task.status)):undefined;
-      if(current)return {task:current,created:false,snapshot:this.read(row.month)};
-      const lang=this.coach.approved().brief?.language||'tr',local=zonedInstant(row.planned_for,9,this.coach.timeZone()),due=Date.parse(local)>Date.now()?local:new Date(Date.now()+86400000).toISOString();
-      const task=operations.saveTask({title:`${coachChannelName(row.channel,lang)} · ${row.title}`.slice(0,160),dueAt:due,status:'planned',note:[`coach-content:${row.id}`,row.theme,row.angle].join('\n').slice(0,2000)});
-      this.db.prepare('UPDATE platform_coach_content_items SET task_id=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(task.id,new Date().toISOString(),row.id,...this.args());
-      this.audit('coach.content.schedule');return {task,created:true,snapshot:this.read(row.month)};
-    }).immediate();
+  async schedule(raw:Record<string,unknown>){
+    await this.coach.authorize('content.write');
+    return await this.db.transaction(async ()=>{
+      await this.coach.authorize('content.write');const row=await this.row(raw.id);if(row.state!=='approved')throw new MarketingStoreError('Takvime yalnız onaylı plan maddeleri eklenebilir.',409);
+      const operations=new ProjectOperations(this.db,this.scope),current=row.task_id?(await operations.tasks()).find(task=>task.id===row.task_id&&!['completed','cancelled'].includes(task.status)):undefined;
+      if(current)return {task:current,created:false,snapshot:await this.read(row.month)};
+      const lang=(await this.coach.approved()).brief?.language||'tr',local=zonedInstant(row.planned_for,9,await this.coach.timeZone()),due=Date.parse(local)>Date.now()?local:new Date(Date.now()+86400000).toISOString();
+      const task=await operations.saveTask({title:`${coachChannelName(row.channel,lang)} · ${row.title}`.slice(0,160),dueAt:due,status:'planned',note:[`coach-content:${row.id}`,row.theme,row.angle].join('\n').slice(0,2000)});
+      await this.db.prepare('UPDATE platform_coach_content_items SET task_id=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(task.id,new Date().toISOString(),row.id,...this.args());
+      await this.audit('coach.content.schedule');return {task,created:true,snapshot:await this.read(row.month)};
+    });
   }
   // First week after approval: the rule-based plan for this month, only when the month has no items yet.
   // Returns the month's open items, earliest first; regenerating later still keeps team-made items.
-  seedStarter():Pick<CoachContentItem,'id'|'channel'|'title'|'angle'|'plannedFor'>[]{
-    this.coach.authorize('content.write');const month=this.month(undefined),{brief,answers}=this.brief(),goalId=this.project().goals[0]?.id||null;
-    this.db.transaction(()=>{if(!this.rows(month).length)this.replaceSuggestions(month,coachStarterContent(brief,answers,month,goalId,new Date(),this.coach.timeZone()),'template');}).immediate();
-    return this.rows(month).filter(row=>row.state!=='dismissed').map(row=>({id:row.id,channel:row.channel,title:row.title,angle:row.angle,plannedFor:row.planned_for}));
+  async seedStarter():Promise<Pick<CoachContentItem,'id'|'channel'|'title'|'angle'|'plannedFor'>[]>{
+    await this.coach.authorize('content.write');const month=await this.month(undefined),{brief,answers}=await this.brief(),goalId=(await this.project()).goals[0]?.id||null;
+    await this.db.transaction(async ()=>{if(!(await this.rows(month)).length)await this.replaceSuggestions(month,coachStarterContent(brief,answers,month,goalId,new Date(),await this.coach.timeZone()),'template');});
+    return (await this.rows(month)).filter(row=>row.state!=='dismissed').map(row=>({id:row.id,channel:row.channel,title:row.title,angle:row.angle,plannedFor:row.planned_for}));
   }
-  read(rawMonth?:unknown):CoachContentSnapshot{
-    this.coach.authorize();const month=this.month(rawMonth),{brief}=this.coach.approved(),project=this.project(),tasks=new Map(new ProjectOperations(this.db,this.scope).tasks().map(task=>[task.id,task]));
-    const assignments=coachAssignmentRows(this.db,...this.args(),'content',zonedDateKey(new Date(),this.coach.timeZone()),this.scope.subject);
-    const items=this.rows(month).map((row):CoachContentItem=>({id:row.id,month:row.month,channel:row.channel,theme:row.theme,title:row.title,angle:row.angle,goalId:row.goal_id,stageIndex:row.stage_index??null,plannedFor:row.planned_for,state:row.state,source:row.source,revision:row.revision,
+  async read(rawMonth?:unknown):Promise<CoachContentSnapshot>{
+    await this.coach.authorize();const month=await this.month(rawMonth),{brief}=await this.coach.approved(),project=await this.project(),tasks=new Map((await new ProjectOperations(this.db,this.scope).tasks()).map(task=>[task.id,task]));
+    const assignments=await coachAssignmentRows(this.db,...this.args(),'content',zonedDateKey(new Date(),await this.coach.timeZone()),this.scope.subject);
+    const items=(await this.rows(month)).map((row):CoachContentItem=>({id:row.id,month:row.month,channel:row.channel,theme:row.theme,title:row.title,angle:row.angle,goalId:row.goal_id,stageIndex:row.stage_index??null,plannedFor:row.planned_for,state:row.state,source:row.source,revision:row.revision,
       taskId:row.task_id&&tasks.has(row.task_id)&&tasks.get(row.task_id)!.status!=='cancelled'?row.task_id:null,approvedAt:row.approved_at,
       prefill:row.state==='approved'?{brief:[row.title,row.angle,row.theme].join('\n').slice(0,3000),channel:coachDraftChannel(row.channel),name:row.title,ref:`content:${row.id}`}:null,assignment:assignments.get(row.id)||null}));
-    return {month,months:this.months(),today:zonedDateKey(new Date(),this.coach.timeZone()),items,hasBrief:Boolean(brief),language:brief?.language||null,briefChannels:brief?contentChannels(brief):[],
-      goals:project.goals.map(goal=>({id:goal.id,label:goal.label,stages:goal.stages})),aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:this.coach.can('content.write')};
+    return {month,months:await this.months(),today:zonedDateKey(new Date(),await this.coach.timeZone()),items,hasBrief:Boolean(brief),language:brief?.language||null,briefChannels:brief?contentChannels(brief):[],
+      goals:project.goals.map(goal=>({id:goal.id,label:goal.label,stages:goal.stages})),aiConfigured:Boolean(process.env.PLATFORM_GEMINI_API_KEY&&process.env.PLATFORM_GEMINI_MODEL),canWrite:await this.coach.can('content.write')};
   }
 }

@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         if(form.get('List-Unsubscribe')!=='One-Click')return NextResponse.json({error:INVALID_LINK},{status:400,headers:privateHeaders});
       }
       const db=platformDatabase();
-      return NextResponse.json(processRyzevoUnsubscribe(db,token,action==='inspect',item=>{queueIysUnsubscribe(db,item.scope,credentialEncryptionKey(),item.sourceId,item.entityKey,item.emailKey);}),{headers:privateHeaders});
+      return NextResponse.json(await processRyzevoUnsubscribe(db,token,action==='inspect',async item=>{await queueIysUnsubscribe(db,item.scope,credentialEncryptionKey(),item.sourceId,item.entityKey,item.emailKey);}),{headers:privateHeaders});
     }
 
     // The legacy panel's own links (prospects, companies, manual addresses) are handled here, not by the backend.

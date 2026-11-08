@@ -17,9 +17,9 @@ const promptlyRejects = async (promise, pattern) => {
 
 test('authentication JSON accepts a bounded object and split UTF-8 chunks', async () => {
   const bytes = Buffer.from(JSON.stringify({ username: '\u00e9', password: 'fixture' }));
-  const stream = new ReadableStream({ start(controller) {
-    for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
-    controller.close();
+  const stream = new ReadableStream({ async start(controller) {
+    for (const byte of bytes) await controller.enqueue(Uint8Array.of(byte));
+    await controller.close();
   } });
   assert.equal((await readAuthenticationJson(request(stream, { 'content-type': 'application/json; charset=utf-8' }))).username, '\u00e9');
 });
@@ -53,8 +53,8 @@ test('invalid declared sizes and invalid parser budgets are refused', async () =
 test('actual byte count is enforced without content-length and with an understated header', async () => {
   for (const headers of [{}, { 'content-length': '1' }]) {
     let cancelled = false;
-    const stream = new ReadableStream({ start(controller) {
-      controller.enqueue(new Uint8Array(8)); controller.enqueue(new Uint8Array(9));
+    const stream = new ReadableStream({ async start(controller) {
+      await controller.enqueue(new Uint8Array(8)); await controller.enqueue(new Uint8Array(9));
     }, cancel() { cancelled = true; } });
     await promptlyRejects(readBoundedBodyBytes(request(stream, headers), 16), /Request too large/);
     assert.equal(cancelled, true);
@@ -64,14 +64,14 @@ test('actual byte count is enforced without content-length and with an understat
 
 test('oversize cancellation cannot hold the request open even when upstream cancel never settles', async () => {
   let cancelled = false;
-  const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(17)); },
+  const stream = new ReadableStream({ async start(controller) { await controller.enqueue(new Uint8Array(17)); },
     cancel() { cancelled = true; return new Promise(() => {}); } });
   await promptlyRejects(readBoundedBodyBytes(request(stream), 16), /Request too large/);
   assert.equal(cancelled, true);
 });
 
 test('oversize rejection is preserved when upstream cancellation throws', async () => {
-  const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(17)); },
+  const stream = new ReadableStream({ async start(controller) { await controller.enqueue(new Uint8Array(17)); },
     cancel() { throw new Error('private upstream detail'); } });
   await promptlyRejects(readBoundedBodyBytes(request(stream), 16), /Request too large/);
 });

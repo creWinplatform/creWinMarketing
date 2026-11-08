@@ -1,3 +1,5 @@
+import { mapSeries } from '../db/async-array';
+import type { Db } from '../db/client';
 import 'server-only';
 import { createHash,createHmac,timingSafeEqual } from 'node:crypto';
 import type Database from 'better-sqlite3';
@@ -54,68 +56,68 @@ export function normalizeMobileEvents(provider:MobileProvider,app:MobileApp,conf
   throw new MarketingStoreError('Bu sağlayıcı olay kabul etmiyor.');
 }
 
-export function recordMobileEvents(service:MobileGrowth,app:MobileApp,provider:MobileProvider,events:MobileObservedEvent[]){
+export async function recordMobileEvents(service:MobileGrowth,app:MobileApp,provider:MobileProvider,events:MobileObservedEvent[]){
   const {db,key}=service;
-  return db.transaction(()=>{
-    const source=db.prepare('SELECT c.encrypted_credentials FROM platform_connections c WHERE c.id=? AND c.organization_id=? AND c.project_id=? AND c.active=1').get(app.sourceId,...service.args()) as {encrypted_credentials:string}|undefined;
+  return await db.transaction(async ()=>{
+    const source=await db.prepare('SELECT c.encrypted_credentials FROM platform_connections c WHERE c.id=? AND c.organization_id=? AND c.project_id=? AND c.active=1').get(app.sourceId,...service.args()) as {encrypted_credentials:string}|undefined;
     if(!source)throw new MarketingStoreError('Mobil olay kaynağı kapalı.',409);
     const sourceSecret=decryptCredentials<StoredCredentials>(source.encrypted_credentials,key,...service.args(),app.sourceId).accessToken;
-    const normalized=events.map(event=>{
+    const normalized=await mapSeries(events, async event=>{
       if(Date.parse(event.occurredAt)<Date.now()-90*86400000||Date.parse(event.occurredAt)>Date.now()+300000)throw new MarketingStoreError('Olay tarihi 90 günlük pencere dışında.');
       const id=createHash('sha256').update(JSON.stringify([provider,event.id])).digest('hex'),entityId=mobileEntity(key,app.id,event.entityId),digest=mobileRevision(JSON.stringify(event));
-      const old=db.prepare('SELECT digest FROM platform_mobile_event_details WHERE source_id=? AND event_id=?').get(app.sourceId,id) as {digest:string}|undefined;
+      const old=await db.prepare('SELECT digest FROM platform_mobile_event_details WHERE source_id=? AND event_id=?').get(app.sourceId,id) as {digest:string}|undefined;
       if(old&&old.digest!==digest)throw new MarketingStoreError('Aynı mobil olayın içeriği değiştirilemez.',409);
       return {id,entityId,event,digest};
     });
     const payload={sourceVersion:app.sourceVersion,events:normalized.map(({id,entityId,event})=>({id,entityId,eventName:`mobile.${event.kind}`,occurredAt:event.occurredAt,attributes:{platform:event.platform}}))},body=Buffer.from(JSON.stringify(payload)),timestamp=String(Math.floor(Date.now()/1000));
     const signature=createHmac('sha256',Buffer.from(sourceSecret,'hex')).update(`${timestamp}.${app.sourceId}.`).update(body).digest('hex');
-    const result=authenticateProductWebhook(db,app.sourceId,new Headers({'x-ryzevo-timestamp':timestamp,'x-ryzevo-signature':`v1=${signature}`}),key)(body);
-    for(const item of normalized)db.prepare('INSERT INTO platform_mobile_event_details VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id,event_id) DO NOTHING').run(app.sourceId,item.id,...service.args(),app.id,provider,item.event.kind,item.digest,JSON.stringify(item.event.details));
+    const result=await (await authenticateProductWebhook(db,app.sourceId,new Headers({'x-ryzevo-timestamp':timestamp,'x-ryzevo-signature':`v1=${signature}`}),key))(body);
+    for(const item of normalized)await db.prepare('INSERT INTO platform_mobile_event_details VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id,event_id) DO NOTHING').run(app.sourceId,item.id,...service.args(),app.id,provider,item.event.kind,item.digest,JSON.stringify(item.event.details));
     // "Which work brought customers": a customer-identified event joins the person's trail; an install or attribution
     // from the app's primary attribution source is a first touch when the provider names a campaign.
     const receivedAt=new Date().toISOString();
     for(const item of normalized){const details=item.event.details;if(details.identity!=='customer'||details.environment==='sandbox')continue;
-      linkMobileAttribution(db,service.scope,key,{connectionId:app.sourceId,eventId:item.id,externalId:item.event.entityId,observedAt:item.event.occurredAt,campaign:details.campaign,channel:details.channel,touch:['install','attribution'].includes(item.event.kind)&&provider===app.attributionProvider},receivedAt);}
+      await linkMobileAttribution(db,service.scope,key,{connectionId:app.sourceId,eventId:item.id,externalId:item.event.entityId,observedAt:item.event.occurredAt,campaign:details.campaign,channel:details.channel,touch:['install','attribution'].includes(item.event.kind)&&provider===app.attributionProvider},receivedAt);}
     return result;
-  }).immediate();
+  });
 }
 
-export function registerMobileContact(service:MobileGrowth,app:MobileApp,raw:Record<string,unknown>){
+export async function registerMobileContact(service:MobileGrowth,app:MobileApp,raw:Record<string,unknown>){
   const entityKey=mobileEntity(service.key,app.id,raw.entityId),provider=String(raw.provider),destination=provider==='bridge'?'':mobileText(raw.destination,4096),at=mobileDate(raw.recordedAt),consent=rec(raw.consent);
   if(!['onesignal','firebase','bridge'].includes(provider)||typeof consent.push!=='boolean'||typeof consent.inApp!=='boolean'||provider==='bridge'&&consent.push||Date.parse(at)>Date.now()+300000||/[\r\n]/.test(destination))throw new MarketingStoreError('Kayıt veya açık iletişim izni geçersiz.');
   const evidenceRef=mobileText(raw.evidenceRef,200),id=createHash('sha256').update(JSON.stringify([app.id,entityKey,provider])).digest('hex'),digest=mobileRevision(JSON.stringify([provider,destination,consent,evidenceRef,at]));
-  return service.db.transaction(()=>{
-    const old=service.db.prepare('SELECT * FROM platform_mobile_contacts WHERE id=? AND organization_id=? AND project_id=?').get(id,...service.args()) as {encrypted_destination:string;updated_at:string;allow_pilot:number}|undefined;
+  return await service.db.transaction(async ()=>{
+    const old=await service.db.prepare('SELECT * FROM platform_mobile_contacts WHERE id=? AND organization_id=? AND project_id=?').get(id,...service.args()) as {encrypted_destination:string;updated_at:string;allow_pilot:number}|undefined;
     if(old&&old.updated_at>at)return {id,unchanged:true};
     const previous=old?decryptCredentials<Record<string,unknown>>(old.encrypted_destination,service.key,...service.args(),`mobile-contact:${id}`):null;
     if(old&&old.updated_at===at){if(previous?.digest!==digest)throw new MarketingStoreError('Aynı zamanda çelişen iletişim izni kaydı var.',409);return {id,unchanged:true};}
-    if(!old&&(service.db.prepare('SELECT COUNT(*) n FROM platform_mobile_contacts WHERE organization_id=? AND project_id=?').get(...service.args()) as {n:number}).n>=1000)throw new MarketingStoreError('Mobil alıcı sınırına ulaşıldı.',429);
+    if(!old&&(await service.db.prepare('SELECT COUNT(*) n FROM platform_mobile_contacts WHERE organization_id=? AND project_id=?').get(...service.args()) as {n:number}).n>=1000)throw new MarketingStoreError('Mobil alıcı sınırına ulaşıldı.',429);
     const keepPilot=old?.allow_pilot&&previous?.destination===destination&&previous?.push===consent.push&&previous?.inApp===consent.inApp;
-    service.db.prepare('INSERT INTO platform_mobile_contacts VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET encrypted_destination=excluded.encrypted_destination,push_consent=excluded.push_consent,in_app_consent=excluded.in_app_consent,allow_pilot=excluded.allow_pilot,updated_at=excluded.updated_at').run(id,...service.args(),app.id,entityKey,provider,encryptCredentials({destination,entityId:mobileText(raw.entityId,160),push:consent.push,inApp:consent.inApp,evidenceRef,digest},service.key,...service.args(),`mobile-contact:${id}`),Number(consent.push),Number(consent.inApp),Number(Boolean(keepPilot)),at);
-    service.audit('mobile.contact.consent');return {id,unchanged:false};
-  }).immediate();
+    await service.db.prepare('INSERT INTO platform_mobile_contacts VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET encrypted_destination=excluded.encrypted_destination,push_consent=excluded.push_consent,in_app_consent=excluded.in_app_consent,allow_pilot=excluded.allow_pilot,updated_at=excluded.updated_at').run(id,...service.args(),app.id,entityKey,provider,encryptCredentials({destination,entityId:mobileText(raw.entityId,160),push:consent.push,inApp:consent.inApp,evidenceRef,digest},service.key,...service.args(),`mobile-contact:${id}`),Number(consent.push),Number(consent.inApp),Number(Boolean(keepPilot)),at);
+    await service.audit('mobile.contact.consent');return {id,unchanged:false};
+  });
 }
-export function authenticateMobileHook(db:Database.Database,id:string,headers:Headers,key:string){
-  const row=db.prepare(mobileIntegrationQuery+' AND i.connection_id=?').get(id) as MobileIntegrationRow|undefined;
+export async function authenticateMobileHook(db:Db,id:string,headers:Headers,key:string){
+  const row=await db.prepare(mobileIntegrationQuery+' AND i.connection_id=?').get(id) as MobileIntegrationRow|undefined;
   if(!row?.active||!['bridge','appsflyer','adjust','revenuecat'].includes(row.kind))throw new MarketingStoreError('Mobil webhook doğrulanamadı.',401);
-  const service=new MobileGrowth(db,{subject:row.actor_id,organizationId:row.organization_id,projectId:row.project_id},key);service.authorize('connections.manage');assertProjectWork(db,service.scope);
-  const now=Date.now(),limitKey=`mobile-hook:${id}`,old=db.prepare('SELECT count,expires_at FROM platform_login_limits WHERE key=?').get(limitKey) as {count:number;expires_at:number}|undefined;
+  const service=new MobileGrowth(db,{subject:row.actor_id,organizationId:row.organization_id,projectId:row.project_id},key);await service.authorize('connections.manage');await assertProjectWork(db,service.scope);
+  const now=Date.now(),limitKey=`mobile-hook:${id}`,old=await db.prepare('SELECT count,expires_at FROM platform_login_limits WHERE key=?').get(limitKey) as {count:number;expires_at:number}|undefined;
   if(old&&old.expires_at>now&&old.count>=120)throw new MarketingStoreError('Mobil webhook hız sınırı aşıldı.',429);
-  db.prepare('INSERT INTO platform_login_limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=excluded.count,expires_at=excluded.expires_at').run(limitKey,old&&old.expires_at>now?old.count+1:1,old&&old.expires_at>now?old.expires_at:now+60000);
+  await db.prepare('INSERT INTO platform_login_limits VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET count=excluded.count,expires_at=excluded.expires_at').run(limitKey,old&&old.expires_at>now?old.count+1:1,old&&old.expires_at>now?old.expires_at:now+60000);
   const supplied=headers.get('authorization')||'',expected=`Bearer ${service.secret(row).webhookSecret}`;
   if(headers.has('origin')||supplied.length>1024||!timingSafeEqual(createHash('sha256').update(supplied).digest(),createHash('sha256').update(expected).digest()))throw new MarketingStoreError('Mobil webhook doğrulanamadı.',401);
-  const assertCurrent=()=>{service.authorize('connections.manage');assertProjectWork(db,service.scope);const fresh=service.integration(id);if(!fresh.active||mobileRevision(fresh.encrypted_credentials)!==mobileRevision(row.encrypted_credentials))throw new MarketingStoreError('Mobil bağlantı değişti.',409);};
-  return {service,row,app:service.app(row.app_id),assertCurrent,commit(raw:unknown){
-    return db.transaction(()=>{
-      service.authorize('connections.manage');const fresh=service.integration(id);if(!fresh.active||mobileRevision(fresh.encrypted_credentials)!==mobileRevision(row.encrypted_credentials))throw new MarketingStoreError('Mobil bağlantı değişti.',409);
-      const app=service.app(row.app_id),input=rec(raw);let result:unknown;
-      if(row.kind==='bridge'&&input.action==='register'){if(input.appId!==app.id)throw new MarketingStoreError('Uygulama eşleşmedi.');result=registerMobileContact(service,app,input);}
+  const assertCurrent=async ()=>{await service.authorize('connections.manage');await assertProjectWork(db,service.scope);const fresh=await service.integration(id);if(!fresh.active||mobileRevision(fresh.encrypted_credentials)!==mobileRevision(row.encrypted_credentials))throw new MarketingStoreError('Mobil bağlantı değişti.',409);};
+  return {service,row,app:await service.app(row.app_id),assertCurrent,async commit(raw:unknown){
+    return await db.transaction(async ()=>{
+      await service.authorize('connections.manage');const fresh=await service.integration(id);if(!fresh.active||mobileRevision(fresh.encrypted_credentials)!==mobileRevision(row.encrypted_credentials))throw new MarketingStoreError('Mobil bağlantı değişti.',409);
+      const app=await service.app(row.app_id),input=rec(raw);let result:unknown;
+      if(row.kind==='bridge'&&input.action==='register'){if(input.appId!==app.id)throw new MarketingStoreError('Uygulama eşleşmedi.');result=await registerMobileContact(service,app,input);}
       else if(row.kind==='bridge'&&input.action==='coverage'){
         if(input.appId!==app.id||app.sourceState!=='active')throw new MarketingStoreError('Etkin uygulama kaynağı gerekli.',409);
         const through=mobileDate(input.through);if(Date.parse(through)>Date.now()||Date.parse(through)<Date.now()-90*86400000)throw new MarketingStoreError('Kapsam tarihi geçersiz.');
-        db.prepare('UPDATE platform_mobile_apps SET coverage_through=CASE WHEN coverage_through IS NULL OR coverage_through<? THEN ? ELSE coverage_through END WHERE id=?').run(through,through,app.id);result={accepted:true};
-      }else{const events=normalizeMobileEvents(row.kind,app,JSON.parse(row.config_json),raw);result=events.length?recordMobileEvents(service,app,row.kind,events):{accepted:0,ignored:true};}
-      if(!(result as {ignored?:boolean})?.ignored)db.prepare("UPDATE platform_mobile_integrations SET status='event_received',last_event_at=? WHERE connection_id=?").run(new Date().toISOString(),id);return result;
-    }).immediate();
+        await db.prepare('UPDATE platform_mobile_apps SET coverage_through=CASE WHEN coverage_through IS NULL OR coverage_through<? THEN ? ELSE coverage_through END WHERE id=?').run(through,through,app.id);result={accepted:true};
+      }else{const events=normalizeMobileEvents(row.kind,app,JSON.parse(row.config_json),raw);result=events.length?await recordMobileEvents(service,app,row.kind,events):{accepted:0,ignored:true};}
+      if(!(result as {ignored?:boolean})?.ignored)await db.prepare("UPDATE platform_mobile_integrations SET status='event_received',last_event_at=? WHERE connection_id=?").run(new Date().toISOString(),id);return result;
+    });
   }};
 }

@@ -21,10 +21,10 @@ export function instagramPermalink(value: unknown): string | null {
 }
 export type InstagramPublisher = {
   create: (token:string,id:string,text:string,url:string,story?:boolean) => Promise<string>;
-  createCarousel?: (token:string,id:string,text:string,urls:string[],stillValid:()=>boolean) => Promise<string>;
+  createCarousel?: (token:string,id:string,text:string,urls:string[],stillValid:()=>boolean|Promise<boolean>) => Promise<string>;
   createVideo?: (token:string,id:string,text:string,url:string,format:'reel'|'story') => Promise<string>;
   status: (token:string,id:string) => Promise<string>;
-  publish: (token:string,id:string,container:string,reserve:()=>boolean) => Promise<PublishResult>;
+  publish: (token:string,id:string,container:string,reserve:() => boolean | Promise<boolean>) => Promise<PublishResult>;
 };
 async function post(token:string,id:string,edge:'media'|'media_publish',body:URLSearchParams,signal?:AbortSignal) {
   const {graphVersion}=instagramPublishingConfiguration();
@@ -52,11 +52,11 @@ export const instagramPublisher: InstagramPublisher = {
     if(parsed.some((u,index)=>u.origin!==config.origin||!/^\/api\/platform\/publication-media\/[a-f0-9-]{36}$/.test(u.pathname)||!new RegExp(`^\\?signature=[a-f0-9]{64}&index=${index}$`).test(u.search)))throw new Error('Invalid carousel image.');
     const children:string[]=[];
     for(const url of parsed){
-      if(!stillValid())throw new Error('Preparation cancelled.');
+      if(!(await stillValid()))throw new Error('Preparation cancelled.');
       const result=await post(token,id,'media',new URLSearchParams({image_url:url.href,is_carousel_item:'true'}),signal);
       if(!result.id)throw new Error('Child container outcome unavailable.');children.push(result.id);
     }
-    if(!stillValid())throw new Error('Preparation cancelled.');
+    if(!(await stillValid()))throw new Error('Preparation cancelled.');
     const result=await post(token,id,'media',new URLSearchParams({media_type:'CAROUSEL',children:children.join(','),caption:text}),signal);
     if(!result.id)throw new Error('Carousel outcome unavailable.');return result.id;
   },
@@ -73,7 +73,7 @@ export const instagramPublisher: InstagramPublisher = {
     if(value.id!==id||!['FINISHED','IN_PROGRESS','ERROR','EXPIRED','PUBLISHED'].includes(String(value.status_code)))throw new Error('Invalid container status.');return String(value.status_code);
   },
   async publish(token,id,container,reserve){
-    if(!instagramId(id)||!instagramId(container)||!reserve())return {state:'blocked',postId:null};
+    if(!instagramId(id)||!instagramId(container)||!(await reserve()))return {state:'blocked',postId:null};
     try{
       const result=await post(token,id,'media_publish',new URLSearchParams({creation_id:container}));
       if(result.id){

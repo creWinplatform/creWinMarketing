@@ -1,3 +1,4 @@
+import type { Db } from '../db/client';
 import 'server-only';
 import type Database from 'better-sqlite3';
 import type { MarketingScope } from './marketing-store';
@@ -25,16 +26,16 @@ const mondayOf=(dateKey:string)=>{const day=new Date(`${dateKey.slice(0,10)}T00:
 // never credited causes.
 export class CoachLearning{
   coach:GrowthCoach;
-  constructor(public db:Database.Database,public scope:MarketingScope){this.coach=new GrowthCoach(db,scope);}
+  constructor(public db:Db,public scope:MarketingScope){this.coach=new GrowthCoach(db,scope);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  read():CoachLearningSnapshot{
-    this.coach.authorize();const {brief}=this.coach.approved(),project=this.coach.repo.workspace(this.scope.subject,...this.args())!.project,timeZone=this.coach.timeZone();
-    const drafts=this.db.prepare("SELECT id,payload FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.coachRef') IS NOT NULL AND json_extract(payload,'$.starter') IS NULL ORDER BY updated_at DESC,id LIMIT 200").all(...this.args()) as Draft[];
-    const campaigns=this.db.prepare("SELECT id,payload FROM platform_campaigns WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.coachRef') IS NOT NULL ORDER BY updated_at DESC,id LIMIT 100").all(...this.args()) as Campaign[];
-    const ids=drafts.map(item=>item.id),publications=ids.length?this.db.prepare(`SELECT p.source_id,p.mode,p.state,p.submitted_at,p.scheduled_at,e.counts_json,e.observed_at,e.state engagement_state,p.link_tag FROM platform_social_publications p LEFT JOIN platform_social_engagement e ON e.job_id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND p.source_kind='content' AND p.source_id IN (${ids.map(()=>'?').join(',')})`).all(...this.args(),...ids) as Publication[]:[];
-    const campaignIds=campaigns.map(item=>item.id),pilots=campaignIds.length?this.db.prepare(`SELECT p.campaign_id,p.mode,j.created_at,(SELECT json_group_array(r.state) FROM platform_email_pilot_recipients r WHERE r.job_id=p.job_id) states FROM platform_email_pilots p JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id WHERE p.organization_id=? AND p.project_id=? AND p.campaign_id IN (${campaignIds.map(()=>'?').join(',')})`).all(...this.args(),...campaignIds) as Pilot[]:[];
-    const contentItems=new Map((this.db.prepare('SELECT id,theme,channel,goal_id,stage_index FROM platform_coach_content_items WHERE organization_id=? AND project_id=?').all(...this.args()) as {id:string;theme:string;channel:string;goal_id:string|null;stage_index:number|null}[]).map(row=>[row.id,row]));
-    const topics=new Map((this.db.prepare('SELECT id,cluster FROM platform_coach_seo_topics WHERE organization_id=? AND project_id=?').all(...this.args()) as {id:string;cluster:string}[]).map(row=>[row.id,row.cluster]));
+  async read():Promise<CoachLearningSnapshot>{
+    await this.coach.authorize();const {brief}=await this.coach.approved(),project=(await this.coach.repo.workspace(this.scope.subject,...this.args()))!.project,timeZone=await this.coach.timeZone();
+    const drafts=await this.db.prepare("SELECT id,payload FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.coachRef') IS NOT NULL AND json_extract(payload,'$.starter') IS NULL ORDER BY updated_at DESC,id LIMIT 200").all(...this.args()) as Draft[];
+    const campaigns=await this.db.prepare("SELECT id,payload FROM platform_campaigns WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.coachRef') IS NOT NULL ORDER BY updated_at DESC,id LIMIT 100").all(...this.args()) as Campaign[];
+    const ids=drafts.map(item=>item.id),publications=ids.length?await this.db.prepare(`SELECT p.source_id,p.mode,p.state,p.submitted_at,p.scheduled_at,e.counts_json,e.observed_at,e.state engagement_state,p.link_tag FROM platform_social_publications p LEFT JOIN platform_social_engagement e ON e.job_id=p.job_id WHERE p.organization_id=? AND p.project_id=? AND p.source_kind='content' AND p.source_id IN (${ids.map(()=>'?').join(',')})`).all(...this.args(),...ids) as Publication[]:[];
+    const campaignIds=campaigns.map(item=>item.id),pilots=campaignIds.length?await this.db.prepare(`SELECT p.campaign_id,p.mode,j.created_at,(SELECT json_group_array(r.state) FROM platform_email_pilot_recipients r WHERE r.job_id=p.job_id) states FROM platform_email_pilots p JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id WHERE p.organization_id=? AND p.project_id=? AND p.campaign_id IN (${campaignIds.map(()=>'?').join(',')})`).all(...this.args(),...campaignIds) as Pilot[]:[];
+    const contentItems=new Map((await this.db.prepare('SELECT id,theme,channel,goal_id,stage_index FROM platform_coach_content_items WHERE organization_id=? AND project_id=?').all(...this.args()) as {id:string;theme:string;channel:string;goal_id:string|null;stage_index:number|null}[]).map(row=>[row.id,row]));
+    const topics=new Map((await this.db.prepare('SELECT id,cluster FROM platform_coach_seo_topics WHERE organization_id=? AND project_id=?').all(...this.args()) as {id:string;cluster:string}[]).map(row=>[row.id,row.cluster]));
     const planTitles=new Map((brief?.plan||[]).map(item=>[coachPlanId(item),item.title]));
     const engagement=(list:Publication[]):CoachEngagement=>{const totals:Record<string,number>={};let observed=0;
       for(const item of list){if(item.mode!=='publish'||item.state!=='accepted'||item.engagement_state!=='ready'||!item.observed_at||!item.counts_json)continue;observed++;for(const [key,value] of Object.entries(JSON.parse(item.counts_json) as Record<string,number>))if(Number.isSafeInteger(value)&&value>=0)totals[key]=(totals[key]||0)+value;}
@@ -43,7 +44,7 @@ export class CoachLearning{
     const origin=(coachRef:string)=>{const [kind,...rest]=coachRef.split(':'),ref=rest.join(':'),item=kind==='content'?contentItems.get(ref):undefined;
       return {kind:kind as Row['source'],theme:kind==='content'?item?.theme||'@content':kind==='seo'?topics.get(ref)||'@seo':'@weekly',goalId:item?.goal_id||null};};
     // People who first came through each tag and reached a goal stage in the last 90 days (the team's product events).
-    const counts=new ProjectAttribution(this.db,this.scope).tagCounts(new Date(Date.now()-RESULT_DAYS*DAY).toISOString(),new Date(Date.now()+1000).toISOString());
+    const counts=await new ProjectAttribution(this.db,this.scope).tagCounts(new Date(Date.now()-RESULT_DAYS*DAY).toISOString(),new Date(Date.now()+1000).toISOString());
     const resultsOf=(tag:string)=>counts.stages.length?counts.byTag.get(tag)||counts.stages.map(()=>0):null;
     const accepted=(list:Publication[])=>list.filter(item=>item.mode==='publish'&&item.state==='accepted');
     const earliest=(values:(string|null)[])=>values.filter((value):value is string=>Boolean(value)).sort()[0]||null;
@@ -81,27 +82,27 @@ export class CoachLearning{
       return list.length>=2&&list[0].measured>=2&&list[0].average>list[1].average?list[0]:null;};
     const result=counts.stages.length?byResult('channel')||byResult('theme'):null,best=result?null:pick('channel')||pick('theme');
     // Trend per goal stage and source: manual and automatic readings are never mixed in one line.
-    const since=new Date(Date.now()-56*DAY).toISOString(),entries=this.db.prepare('SELECT goal_id,stage_index,value,observed_at,source FROM platform_metric_entries WHERE organization_id=? AND project_id=? AND observed_at>=? ORDER BY observed_at,id').all(...this.args(),since) as {goal_id:string;stage_index:number;value:number;observed_at:string;source:string}[];
+    const since=new Date(Date.now()-56*DAY).toISOString(),entries=await this.db.prepare('SELECT goal_id,stage_index,value,observed_at,source FROM platform_metric_entries WHERE organization_id=? AND project_id=? AND observed_at>=? ORDER BY observed_at,id').all(...this.args(),since) as {goal_id:string;stage_index:number;value:number;observed_at:string;source:string}[];
     const measurements=project.goals.flatMap(goal=>goal.stages.flatMap((stage,index)=>[...new Set(entries.filter(item=>item.goal_id===goal.id&&item.stage_index===index).map(item=>item.source))].map(source=>{const list=entries.filter(item=>item.goal_id===goal.id&&item.stage_index===index&&item.source===source);return {goal:goal.label,stage,source,first:list[0].value,firstAt:list[0].observed_at,last:list.at(-1)!.value,lastAt:list.at(-1)!.observed_at,entries:list.length};})));
     const email:CoachEmailResults={campaigns:campaigns.length,rehearsals:pilots.filter(item=>item.mode==='rehearsal').length,sends:pilots.filter(item=>item.mode==='send').length,recipients:{accepted:0,delivered:0,bounced:0,complained:0,rejected:0,uncertain:0}};
     for(const pilot of pilots)if(pilot.mode==='send')for(const state of JSON.parse(pilot.states||'[]') as string[])if((RECIPIENTS as readonly string[]).includes(state))email.recipients[state as typeof RECIPIENTS[number]]++;
-    const versions=this.coach.versions(10);
+    const versions=await this.coach.versions(10);
     const leader=result?{dimension:result.dimension,key:result.key,label:result.label,average:Math.round(result.average*10)/10,observed:result.measured,basis:'results' as const,stage:counts.stages[0].label}
       :best?{dimension:best.dimension,key:best.key,label:best.label,average:Math.round(best.average*10)/10,observed:best.observed,basis:'engagement' as const,stage:null}:null;
     return {drafts:rows.map(({pubs,goalId,campaign,ref,tag,measurable,firstPublishedAt,results,...item})=>{void pubs;void goalId;void campaign;void ref;void tag;void measurable;void firstPublishedAt;void results;return item;}).slice(0,50),byChannel,byTheme,leader,measurements,
       versions:versions.map(item=>({revision:item.revision,kind:item.kind,approvedAt:item.approvedAt,channels:item.brief.channels.map(channel=>channel.id),planItems:item.brief.plan.length})),
       changes:versions.length>=2?diffBriefs(versions[1].brief as CoachBrief,versions[0].brief as CoachBrief):null,hasBrief:Boolean(brief),
-      outcomes:this.outcomes(rows,publications,pilots,timeZone),email,site:new LinkTracking(this.db,this.scope).summary(),
+      outcomes:await this.outcomes(rows,publications,pilots,timeZone),email,site:await new LinkTracking(this.db,this.scope).summary(),
       results:counts.stages.length?{stages:counts.stages.map(stage=>stage.label),days:RESULT_DAYS}:null,
-      track:counts.stages.length?this.track(rows,counts,versions.map(item=>item.brief as CoachBrief),contentItems,project.goals):null};
+      track:counts.stages.length?await this.track(rows,counts,versions.map(item=>item.brief as CoachBrief),contentItems,project.goals):null};
   }
   // The coach's track record: every suggestion that became a draft or a campaign, what it was expected to move, and what
   // the team's own product events showed for the people who first came through it.
-  private track(rows:Row[],counts:ReturnType<ProjectAttribution['tagCounts']>,briefs:CoachBrief[],contentItems:Map<string,{goal_id:string|null;stage_index:number|null}>,goals:{id:string;label:LocalizedText;stages:LocalizedText[]}[]):CoachTrack{
+  private async track(rows:Row[],counts:Awaited<ReturnType<ProjectAttribution['tagCounts']>>,briefs:CoachBrief[],contentItems:Map<string,{goal_id:string|null;stage_index:number|null}>,goals:{id:string;label:LocalizedText;stages:LocalizedText[]}[]):Promise<CoachTrack>{
     // Plan ids include the week, so an action that moved or was renewed is found in an older brief version.
     const plans=new Map<string,CoachBrief['plan'][number]>();for(const brief of [...briefs].reverse())for(const item of brief.plan||[])plans.set(coachPlanId(item),item);
     const expected=(goalId:string|null|undefined,stage:number|null|undefined)=>{const goal=goals.find(item=>item.id===goalId),label=goal&&typeof stage==='number'?goal.stages[stage]:undefined;return goal&&label?{goal:goal.label,stage:label}:null;};
-    const sessions=new Map((this.db.prepare('SELECT r.tag,SUM(r.sessions) AS n FROM platform_link_results r JOIN platform_link_tracking l ON l.organization_id=r.organization_id AND l.project_id=r.project_id AND l.connection_id IS NOT NULL WHERE r.organization_id=? AND r.project_id=? GROUP BY r.tag').all(...this.args()) as {tag:string;n:number}[]).map(row=>[row.tag,row.n]));
+    const sessions=new Map((await this.db.prepare('SELECT r.tag,SUM(r.sessions) AS n FROM platform_link_results r JOIN platform_link_tracking l ON l.organization_id=r.organization_id AND l.project_id=r.project_id AND l.connection_id IS NOT NULL WHERE r.organization_id=? AND r.project_id=? GROUP BY r.tag').all(...this.args()) as {tag:string;n:number}[]).map(row=>[row.tag,row.n]));
     const byRef=new Map<string,Row[]>();for(const row of rows)byRef.set(row.ref,[...(byRef.get(row.ref)||[]),row]);
     const zero=()=>counts.stages.map(()=>0),now=Date.now();
     const items:CoachTrackItem[]=[...byRef].map(([ref,list])=>{
@@ -116,19 +117,19 @@ export class CoachLearning{
     const people=zero();for(const item of items)item.counts.forEach((value,index)=>{people[index]+=value;});
     // Tagged items the coach did not suggest, published or sent in the same 90 days.
     const coachTags=new Set(rows.map(row=>row.tag)),since=new Date(now-RESULT_DAYS*DAY).toISOString();
-    const others=new Set([...(this.db.prepare("SELECT DISTINCT link_tag FROM platform_social_publications WHERE organization_id=? AND project_id=? AND mode='publish' AND state='accepted' AND link_tag IS NOT NULL AND COALESCE(submitted_at,scheduled_at)>=?").all(...this.args(),since) as {link_tag:string}[]).map(row=>row.link_tag),
-      ...(this.db.prepare("SELECT DISTINCT p.campaign_id FROM platform_email_pilots p JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='send' AND j.created_at>=?").all(...this.args(),since) as {campaign_id:string}[]).map(row=>linkTag(this.scope,'campaign',row.campaign_id))].filter(tag=>!coachTags.has(tag)));
+    const others=new Set([...(await this.db.prepare("SELECT DISTINCT link_tag FROM platform_social_publications WHERE organization_id=? AND project_id=? AND mode='publish' AND state='accepted' AND link_tag IS NOT NULL AND COALESCE(submitted_at,scheduled_at)>=?").all(...this.args(),since) as {link_tag:string}[]).map(row=>row.link_tag),
+      ...(await this.db.prepare("SELECT DISTINCT p.campaign_id FROM platform_email_pilots p JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id WHERE p.organization_id=? AND p.project_id=? AND p.mode='send' AND j.created_at>=?").all(...this.args(),since) as {campaign_id:string}[]).map(row=>linkTag(this.scope,'campaign',row.campaign_id))].filter(tag=>!coachTags.has(tag)));
     const baseline=others.size>=2?{items:others.size,average:Math.round([...others].reduce((sum,tag)=>sum+(counts.byTag.get(tag)?.[0]||0),0)/others.size*10)/10}:null;
     return {items:items.filter(item=>item.state!=='not_published').slice(0,20),used:items.length,published:items.filter(item=>item.state!=='not_published').length,withResults:items.filter(item=>item.counts[0]>0).length,people,baseline};
   }
   // Week-by-week view: each reading and each piece of work falls into exactly one project-time-zone week, so nothing is
   // counted twice and no outcome is credited to a piece of work.
-  private outcomes(rows:Row[],publications:Publication[],pilots:Pilot[],timeZone:string):CoachOutcomes{
-    const project=this.coach.repo.workspace(this.scope.subject,...this.args())!.project,current=coachWeekKey(new Date(),timeZone);
+  private async outcomes(rows:Row[],publications:Publication[],pilots:Pilot[],timeZone:string):Promise<CoachOutcomes>{
+    const project=(await this.coach.repo.workspace(this.scope.subject,...this.args()))!.project,current=coachWeekKey(new Date(),timeZone);
     const weeks=Array.from({length:WEEKS},(_,index)=>zonedShiftDays(current,-7*(WEEKS-1-index))),start=zonedInstant(weeks[0],0,timeZone),slot=(week:string)=>weeks.indexOf(week);
     const weekOf=(iso:string)=>coachWeekKey(new Date(iso),timeZone);
     // Automatic readings are fetched after their period ends, so look back a little further than the first week.
-    const entries=this.db.prepare('SELECT goal_id,stage_index,value,observed_at,source,period_from,period_to FROM platform_metric_entries WHERE organization_id=? AND project_id=? AND observed_at>=? ORDER BY observed_at,id').all(...this.args(),new Date(Date.parse(start)-40*DAY).toISOString()) as Entry[];
+    const entries=await this.db.prepare('SELECT goal_id,stage_index,value,observed_at,source,period_from,period_to FROM platform_metric_entries WHERE organization_id=? AND project_id=? AND observed_at>=? ORDER BY observed_at,id').all(...this.args(),new Date(Date.parse(start)-40*DAY).toISOString()) as Entry[];
     const table=new Map<string,CoachOutcomeRow>();
     for(const goal of project.goals)goal.stages.forEach((stage,index)=>{
       for(const entry of entries){
@@ -145,8 +146,8 @@ export class CoachLearning{
     for(const row of rows)bump(row.createdAt,item=>{if(row.campaign)item.campaigns++;else item.drafts++;if(row.goalId)item.byGoal[row.goalId]=(item.byGoal[row.goalId]||0)+1;});
     for(const item of publications)if(item.mode==='publish'&&item.state==='accepted')bump(item.submitted_at||item.scheduled_at,week=>week.publications++);
     for(const pilot of pilots)if(pilot.mode==='send'){const sent=(JSON.parse(pilot.states||'[]') as string[]).filter(state=>['accepted','delivered','bounced','complained'].includes(state)).length;bump(pilot.created_at,week=>week.emailRecipients+=sent);}
-    for(const item of this.db.prepare("SELECT updated_at FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=? AND state='done' AND updated_at>=?").all(...this.args(),start) as {updated_at:string}[])bump(item.updated_at,week=>week.actionsDone++);
-    for(const item of this.db.prepare('SELECT approved_at FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND approved_at>=?').all(...this.args(),start) as {approved_at:string}[])bump(item.approved_at,week=>week.planApproved++);
+    for(const item of await this.db.prepare("SELECT updated_at FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=? AND state='done' AND updated_at>=?").all(...this.args(),start) as {updated_at:string}[])bump(item.updated_at,week=>week.actionsDone++);
+    for(const item of await this.db.prepare('SELECT approved_at FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND approved_at>=?').all(...this.args(),start) as {approved_at:string}[])bump(item.approved_at,week=>week.planApproved++);
     return {weeks,rows:[...table.values()],activity,timeZone};
   }
 }
