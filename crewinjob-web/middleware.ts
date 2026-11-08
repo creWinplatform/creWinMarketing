@@ -59,6 +59,11 @@ export async function middleware(req: NextRequest) {
     if (pathname === '/' && [...req.nextUrl.searchParams.keys()].every(key => key === 'lang')) {
       const landing = req.nextUrl.clone();
       landing.pathname = '/welcome';
+      // Behind IIS/ARR the URL carries the forwarded https scheme, so Next treats the rewrite as external and
+      // proxies it over TLS to its own plain-HTTP port (EPROTO, 500). Point it at the panel's own HTTP address.
+      if (req.headers.get('x-forwarded-proto')) {
+        return NextResponse.rewrite(new URL(`/welcome${landing.search}`, `http://127.0.0.1:${process.env.PORT || '3033'}`));
+      }
       return NextResponse.rewrite(landing);
     }
     if (pathname.startsWith('/api/')) {
