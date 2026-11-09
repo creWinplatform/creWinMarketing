@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, useRef, useState, type FormEvent } from 'react';
+import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ArrowRight, Eye, EyeOff, LoaderCircle } from 'lucide-react';
 import Brand from '@/components/platform/Brand';
@@ -14,7 +14,17 @@ function LoginForm() {
     [password, setPassword] = useState(''),
     [loading, setLoading] = useState(false),
     [error, setError] = useState(''),
-    [show, setShow] = useState(false);
+    [show, setShow] = useState(false),
+    // Recovery and self-service sign-up appear only when the server has them on (account email, public sign-up).
+    [capabilities, setCapabilities] = useState({ emailEnabled: false, signupEnabled: false });
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/auth/identity', { cache: 'no-store', signal: controller.signal })
+      .then(response => (response.ok ? response.json() : null))
+      .then(value => { if (value && typeof value === 'object') setCapabilities({ emailEnabled: value.emailEnabled === true, signupEnabled: value.signupEnabled === true }); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const usernameRef = useRef<HTMLInputElement>(null),
     passwordRef = useRef<HTMLInputElement>(null);
   const submit = async (event: FormEvent) => {
@@ -156,14 +166,16 @@ function LoginForm() {
           </button>
         </form>
         <div className="auth-divider" />
+        <div className="auth-links">
         <a className="studio-text-button" href="/join">
           {tr
             ? 'Davetle yeni çalışma alanı'
             : 'New workspace with an invitation'}
           <ArrowRight size={14} />
         </a>
-        <a className="studio-text-button identity-back" href="/recover">{tr?'Şifremi unuttum':'Forgot password'}<ArrowRight size={14}/></a>
-        <a className="studio-text-button identity-back" href="/register">{tr?'Yeni çalışma alanı':'New workspace'}<ArrowRight size={14}/></a>
+        {capabilities.emailEnabled && <a className="studio-text-button identity-back" href="/recover">{tr?'Şifremi unuttum':'Forgot password'}<ArrowRight size={14}/></a>}
+        {capabilities.signupEnabled && <a className="studio-text-button identity-back" href="/register">{tr?'Yeni çalışma alanı':'New workspace'}<ArrowRight size={14}/></a>}
+        </div>
       </section>
       <p className="auth-footer">
         {tr

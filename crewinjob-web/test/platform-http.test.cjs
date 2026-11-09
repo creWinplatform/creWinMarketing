@@ -65,7 +65,11 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
     assert.match(await root.text(), /class="ryz-map"/);
     const deep = await request('/?tab=campaigns');
     assert.equal(deep.status, 307);
-    assert.match(deep.headers.get('location') || '', /\/login\?from=/);
+    assert.match(deep.headers.get('location') || '', /\/login\?from=%2F%3Ftab%3Dcampaigns$/, 'sign-in returns to the same tab');
+    // Search engine files are public; link previews have Open Graph tags.
+    const robots = await request('/robots.txt'); assert.equal(robots.status, 200); assert.match(await robots.text(), /Disallow: \/api\//);
+    const sitemap = await request('/sitemap.xml'); assert.equal(sitemap.status, 200); assert.match(await sitemap.text(), /<loc>[^<]*\/guide<\/loc>/);
+    assert.match(await (await request('/')).text(), /<meta property="og:title"/);
     // Public guide and legal pages need no session; the legal drafts stay out of search engines and the footer.
     assert.match(welcomeHtml, /href="\/guide"/);
     assert.doesNotMatch(welcomeHtml, /href="\/legal\/(sales|privacy)"/, 'draft legal pages are not linked yet');

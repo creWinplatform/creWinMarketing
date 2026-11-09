@@ -41,6 +41,8 @@ export async function middleware(req: NextRequest) {
   // The web app manifest is fetched without cookies; it holds only the name, colours and icon paths.
   if(pathname==='/manifest.webmanifest')return NextResponse.next();
   if(['/recover','/register','/account/verify','/api/auth/identity'].includes(pathname))return NextResponse.next();
+  // Search engine files (app/robots.ts, app/sitemap.ts): public, without a session.
+  if(pathname==='/robots.txt'||pathname==='/sitemap.xml')return NextResponse.next();
   // Shared monthly report: the page reads its token from the URL fragment and the API checks it (hash, expiry, revocation).
   if(pathname==='/report'||pathname==='/api/report')return NextResponse.next();
   if (['/welcome','/join','/api/auth/enroll','/api/platform/worker'].includes(pathname) || PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
@@ -63,7 +65,8 @@ export async function middleware(req: NextRequest) {
       return NextResponse.json({ error: 'Yetkisiz — lütfen giriş yapın' }, { status: 401 });
     }
     const loginUrl = loginLocation(req.url, req.headers.get('host'), process.env.PLATFORM_AUTH_ORIGIN);
-    loginUrl.searchParams.set('from', pathname);
+    // Keep the query (?tab=…) so sign-in returns to the exact screen; the login page accepts only same-origin paths.
+    loginUrl.searchParams.set('from', pathname + req.nextUrl.search);
     return NextResponse.redirect(loginUrl);
   }
 

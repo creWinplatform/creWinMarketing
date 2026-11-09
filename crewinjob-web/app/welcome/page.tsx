@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
-import { ArrowRight, ArrowUpRight, CalendarCheck2, ChartNoAxesCombined, Fingerprint, PenLine, ShieldCheck, Target } from 'lucide-react';
+import { ArrowUpRight, CalendarCheck2, ChartNoAxesCombined, Fingerprint, PenLine, ShieldCheck, Target } from 'lucide-react';
 import Brand from '@/components/platform/Brand';
 import WorkspaceMap from '@/components/marketing/WorkspaceMap';
 import ToolCollapse from '@/components/marketing/ToolCollapse';
 import Reveal from '@/components/marketing/Reveal';
+import MobileMenuClose from '@/components/marketing/MobileMenuClose';
 import CoachShowcase from '@/components/marketing/CoachShowcase';
 import '../landing-coach.css';
 import { LangToggle } from '@/lib/lang';
@@ -21,12 +22,18 @@ const l = (tr: string, en: string): L => ({ tr, en });
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const lang = await requestLang((await searchParams).lang);
+  const title = lang === 'en' ? 'A growth workspace built around your product' : 'Ürününe özel büyüme çalışma alanı';
+  const description = lang === 'en'
+    ? 'Ryzevo brings your AI-assisted content, campaigns, SEO work and team together around one goal.'
+    : 'Ryzevo: AI destekli içeriklerini, kampanyalarını, SEO çalışmalarını ve ekibini aynı hedef etrafında buluştur.';
   return {
-    title: lang === 'en' ? 'A growth workspace built around your product' : 'Ürününe özel büyüme çalışma alanı',
-    description: lang === 'en'
-      ? 'Ryzevo brings your AI-assisted content, campaigns, SEO work and team together around one goal.'
-      : 'Ryzevo: AI destekli içeriklerini, kampanyalarını, SEO çalışmalarını ve ekibini aynı hedef etrafında buluştur.',
+    title,
+    description,
     alternates: { canonical: '/', languages: { tr: '/?lang=tr', en: '/?lang=en' } },
+    // Link previews (WhatsApp, LinkedIn, X): absolute URLs from the public origin.
+    metadataBase: new URL(process.env.PLATFORM_PUBLIC_ORIGIN || 'https://ryzevo.com'),
+    openGraph: { type: 'website', siteName: 'Ryzevo', url: '/', locale: lang === 'en' ? 'en_US' : 'tr_TR', title, description, images: [{ url: '/brand/ryzevo-brand-board.png', alt: 'Ryzevo' }] },
+    twitter: { card: 'summary_large_image', title, description, images: ['/brand/ryzevo-brand-board.png'] },
   };
 }
 
@@ -86,6 +93,7 @@ export default async function WelcomePage({ searchParams }: Props) {
           <div className="rm-nav-mobile"><LangToggle className="rm-btn rm-btn-line rm-lang" /><label className="rm-burger" htmlFor="rm-menu">{t('Menü', 'Menu')}</label></div>
         </div>
       </header>
+      <MobileMenuClose toggle="rm-menu" menu=".rm-mobile" />
       <div className="rm-mobile">
         {nav}
         <a className="rm-btn rm-btn-line" href="/login">{t('Giriş yap', 'Sign in')}</a><a className="rm-btn rm-btn-ink" href="/join">{t('Davetle katıl', 'Join by invite')} <ArrowUpRight size={16} /></a>
@@ -135,7 +143,7 @@ export default async function WelcomePage({ searchParams }: Props) {
 
       <footer className="rm-footer">
         <div className="rm-wrap">
-          <div className="rm-foot"><div><BrandPair /><div className="rm-tag" lang="en">Grow with intent.</div></div><nav aria-label={t('Alt bağlantılar', 'Footer links')}><a href="/guide">{t('Kullanım rehberi', 'User guide')}</a>{salesTermsReady() && <a href="/legal/sales">{t('Satış sözleşmesi', 'Terms of sale')}</a>}{privacyReady() && <a href="/legal/privacy">{t('Aydınlatma metni', 'Privacy notice')}</a>}<a href="/login">{t('Giriş yap', 'Sign in')}</a><a href="/join">{t('Davetle katıl', 'Join by invite')}</a><a href="/login">{t('Çalışma alanına dön', 'Back to your workspace')} <ArrowRight size={14} /></a></nav></div>
+          <div className="rm-foot"><div><BrandPair /><div className="rm-tag" lang="en">Grow with intent.</div></div><nav aria-label={t('Alt bağlantılar', 'Footer links')}><a href="/guide">{t('Kullanım rehberi', 'User guide')}</a>{salesTermsReady() && <a href="/legal/sales">{t('Satış sözleşmesi', 'Terms of sale')}</a>}{privacyReady() && <a href="/legal/privacy">{t('Aydınlatma metni', 'Privacy notice')}</a>}<a href="/login">{t('Giriş yap', 'Sign in')}</a><a href="/join">{t('Davetle katıl', 'Join by invite')}</a></nav></div>
           <div className="rm-copy"><span>© {new Date().getFullYear()} Ryzevo · ryzevo.com</span><span>{t('Projene özel. Ekibinle birlikte.', 'Built for your project. Together with your team.')}</span></div>
         </div>
       </footer>

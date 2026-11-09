@@ -72,6 +72,9 @@
 .auth-password input { padding-right:48px; }
 .auth-password button { position:absolute; right:5px; top:4px; }
 .auth-divider { height:1px; background:var(--studio-border); margin:24px 0; }
+/* The links under the sign-in form: one per line, so they never crowd each other on a phone. */
+.auth-links { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+.auth-links .identity-back { margin-top:0; }
 .auth-footer { font-size:11px; color:var(--studio-muted); margin:24px 0 0; text-align:center; }
 .auth-recovery,.auth-project-fields { font-size:11px; margin-top:18px; line-height:1.8; color:var(--studio-muted); }
 .auth-recovery summary,.auth-project-fields summary { cursor:pointer; }
