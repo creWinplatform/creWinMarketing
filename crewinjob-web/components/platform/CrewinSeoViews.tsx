@@ -1,12 +1,12 @@
 'use client';
-import dynamic from 'next/dynamic';
+import { lazyTab } from '@/components/lazy-tab';
 import { ArrowLeft } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 
-const SeoOperations = dynamic(() => import('./SeoOperations'));
-const SeoOpportunities = dynamic(() => import('./SeoOpportunities'));
-const AiVisibilityPanel = dynamic(() => import('./AiVisibilityPanel'));
-const CoachSeo = dynamic(() => import('./CoachSeo'));
+const SeoOperations = lazyTab(() => import('./SeoOperations'));
+const SeoOpportunities = lazyTab(() => import('./SeoOpportunities'));
+const AiVisibilityPanel = lazyTab(() => import('./AiVisibilityPanel'));
+const CoachSeo = lazyTab(() => import('./CoachSeo'));
 
 // Ryzevo's SEO automation inside Crewin's SEO & Blog tab: scheduled scans with Search Console watch, search
 // opportunities, AI assistant visibility and coach SEO topics. Crewin's own tools (blog, site audit…) stay as they are.

@@ -32,3 +32,19 @@
   .ryzevo-site .ryz-scene-controls .ryz-scene-pause { width:44px; height:44px; }
   .ryzevo-site .ryz-footer a { display:inline-flex; align-items:center; min-height:44px; }
 }
+
+/* A tab that failed to load or crashed (components/TabErrorBoundary.tsx): a card in the tab's own area. */
+.tab-error-card{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;padding:18px;border:1px solid var(--rz-line);border-left:4px solid var(--rz-bad);border-radius:var(--rz-r-card);background:var(--rz-surface);color:var(--rz-ink);margin:12px 0}
+.tab-error-card>svg{color:var(--rz-bad);flex:none;margin-top:2px}
+.tab-error-card>div{flex:1 1 220px;min-width:0}
+.tab-error-card p{margin:4px 0 0;color:var(--rz-muted)}
+.tab-error-card button{display:inline-flex;align-items:center;gap:6px;min-height:44px}
+/* The whole-page fallback (app/error.tsx, app/global-error.tsx). */
+.app-error{min-height:100vh;display:grid;place-items:center;padding:24px 16px;background:var(--rz-paper);color:var(--rz-ink);font-family:var(--rz-font)}
+.app-error-panel{max-width:440px;width:100%;text-align:left;display:grid;gap:14px}
+.app-error-panel h1{font-size:24px;line-height:1.25;margin:8px 0 0}
+.app-error-panel p{margin:0;color:var(--rz-muted)}
+.app-error-actions{display:flex;flex-wrap:wrap;gap:10px}
+.app-error-actions button,.app-error-actions a{min-height:44px;display:inline-flex;align-items:center;justify-content:center;padding:0 16px;border-radius:var(--rz-r-control);font-weight:700;text-decoration:none;cursor:pointer;font:inherit}
+.app-error-actions .primary{background:var(--rz-ink);color:var(--rz-paper);border:0}
+.app-error-actions .secondary{background:transparent;color:var(--rz-ink);border:1px solid var(--rz-line-2)}

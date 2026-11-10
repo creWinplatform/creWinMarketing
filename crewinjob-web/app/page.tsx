@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import Script from 'next/script';
-import dynamic from 'next/dynamic';
+import { lazyTab } from '@/components/lazy-tab';
+import TabErrorBoundary from '@/components/TabErrorBoundary';
 import ModelPicker from '@/components/ModelPicker';
 import ActivityLogPanel from '@/components/ActivityLogPanel';
 import { useLang } from '@/lib/lang';
@@ -30,66 +31,26 @@ function TabLoading() {
     </div>
   );
 }
-const SocialTab = dynamic(() => import('@/components/tabs/SocialTab'), {
-  loading: TabLoading,
-});
-const GrowthTab = dynamic(() => import('@/components/tabs/GrowthTab'), {
-  loading: TabLoading,
-});
-const RetentionTab = dynamic(() => import('@/components/tabs/RetentionTab'), {
-  loading: TabLoading,
-});
-const SeoTab = dynamic(() => import('@/components/tabs/SeoTab'), {
-  loading: TabLoading,
-});
-const AdsTab = dynamic(() => import('@/components/tabs/AdsTab'), {
-  loading: TabLoading,
-});
-const CampaignHubTab = dynamic(
-  () => import('@/components/tabs/CampaignHubTab'),
-  { loading: TabLoading },
-);
-const MessagingTab = dynamic(() => import('@/components/tabs/MessagingTab'), {
-  loading: TabLoading,
-});
-const TelegramBotTab = dynamic(
-  () => import('@/components/tabs/TelegramBotTab'),
-  { loading: TabLoading },
-);
-const JobBotTab = dynamic(() => import('@/components/tabs/JobBotTab'), {
-  loading: TabLoading,
-});
-const PipelineTab = dynamic(() => import('@/components/tabs/PipelineTab'), {
-  loading: TabLoading,
-});
-const AnalyticsTab = dynamic(() => import('@/components/tabs/AnalyticsTab'), {
-  loading: TabLoading,
-});
-const KpiTab = dynamic(() => import('@/components/tabs/KpiTab'), {
-  loading: TabLoading,
-});
-const CalendarTab = dynamic(() => import('@/components/tabs/CalendarTab'), {
-  loading: TabLoading,
-});
-const DashboardTab = dynamic(() => import('@/components/tabs/DashboardTab'), {
-  loading: TabLoading,
-});
-const FirmaKrediTab = dynamic(() => import('@/components/tabs/FirmaKrediTab'), {
-  loading: TabLoading,
-});
-const ContentLibraryTab = dynamic(
-  () => import('@/components/tabs/ContentLibraryTab'),
-  { loading: TabLoading },
-);
-const ProfileFillRatePanel = dynamic(
-  () => import('@/components/ProfileFillRatePanel'),
-  { loading: TabLoading },
-);
-const BreakdownPanel = dynamic(() => import('@/components/BreakdownPanel'), {
-  loading: TabLoading,
-});
-const ProjectCampaignCenter=dynamic(()=>import('@/components/platform/ProjectCampaignCenter'),{loading:TabLoading});
-const MobileGrowthCenter=dynamic(()=>import('@/components/platform/MobileGrowthCenter'),{loading:TabLoading});
+const SocialTab = lazyTab(() => import('@/components/tabs/SocialTab'), TabLoading);
+const GrowthTab = lazyTab(() => import('@/components/tabs/GrowthTab'), TabLoading);
+const RetentionTab = lazyTab(() => import('@/components/tabs/RetentionTab'), TabLoading);
+const SeoTab = lazyTab(() => import('@/components/tabs/SeoTab'), TabLoading);
+const AdsTab = lazyTab(() => import('@/components/tabs/AdsTab'), TabLoading);
+const CampaignHubTab = lazyTab(() => import('@/components/tabs/CampaignHubTab'), TabLoading);
+const MessagingTab = lazyTab(() => import('@/components/tabs/MessagingTab'), TabLoading);
+const TelegramBotTab = lazyTab(() => import('@/components/tabs/TelegramBotTab'), TabLoading);
+const JobBotTab = lazyTab(() => import('@/components/tabs/JobBotTab'), TabLoading);
+const PipelineTab = lazyTab(() => import('@/components/tabs/PipelineTab'), TabLoading);
+const AnalyticsTab = lazyTab(() => import('@/components/tabs/AnalyticsTab'), TabLoading);
+const KpiTab = lazyTab(() => import('@/components/tabs/KpiTab'), TabLoading);
+const CalendarTab = lazyTab(() => import('@/components/tabs/CalendarTab'), TabLoading);
+const DashboardTab = lazyTab(() => import('@/components/tabs/DashboardTab'), TabLoading);
+const FirmaKrediTab = lazyTab(() => import('@/components/tabs/FirmaKrediTab'), TabLoading);
+const ContentLibraryTab = lazyTab(() => import('@/components/tabs/ContentLibraryTab'), TabLoading);
+const ProfileFillRatePanel = lazyTab(() => import('@/components/ProfileFillRatePanel'), TabLoading);
+const BreakdownPanel = lazyTab(() => import('@/components/BreakdownPanel'), TabLoading);
+const ProjectCampaignCenter=lazyTab(() => import('@/components/platform/ProjectCampaignCenter'), TabLoading);
+const MobileGrowthCenter=lazyTab(() => import('@/components/platform/MobileGrowthCenter'), TabLoading);
 
 export default function Home() {
   const { lang } = useLang(),
@@ -212,6 +173,8 @@ export default function Home() {
         ) : undefined
       }
     >
+    {/* A tab that crashes or whose code fails to download shows a card in its own area; the menu keeps working. */}
+    <TabErrorBoundary resetKey={activeTab}>
       {isCrewin && (
         <>
           <Script
@@ -363,6 +326,7 @@ export default function Home() {
           {activeTab === 'firma_kredi' && <FirmaKrediTab />}
         </>
       )}
+    </TabErrorBoundary>
     </WorkspaceShell>
     </JobGuideProvider>
     </GrowthCompassProvider>

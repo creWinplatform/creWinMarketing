@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import dynamic from 'next/dynamic';
+import { lazyTab } from '@/components/lazy-tab';
 import {
   CalendarDays,
   Plus,
@@ -18,8 +18,8 @@ import type { OperationsSummary } from './ProjectOverview';
 import { projectRequest, projectDateKey } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
-const SocialPublicationCenter=dynamic(()=>import('./SocialPublicationCenter'));
-const CoachContentPlan=dynamic(()=>import('./CoachContentPlan'));
+const SocialPublicationCenter=lazyTab(() => import('./SocialPublicationCenter'));
+const CoachContentPlan=lazyTab(() => import('./CoachContentPlan'));
 const blank = {
   title: '',
   campaignId: '',

@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
+import { lazyTab } from '@/components/lazy-tab';
 import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck, Rocket } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { localeTag } from '@/lib/i18n/shared';
@@ -13,13 +13,13 @@ import IysPanel from './IysPanel';
 import GoLivePanel from './GoLivePanel';
 import { iysEnabled } from '@/lib/platform/iys-types';
 import { ryzevoFeature } from '@/lib/platform/ryzevo-features';
-const ProductDataSources=dynamic(()=>import('./ProductDataSources'));
-const ProjectPlan=dynamic(()=>import('./ProjectPlan'));
-const ProjectBilling=dynamic(()=>import('./ProjectBilling'));
-const LiveBilling=dynamic(()=>import('./LiveBilling'));
-const ProjectAccountInvites=dynamic(()=>import('./ProjectAccountInvites'));
-const AgencyLinksPanel=dynamic(()=>import('./AgencyLinksPanel'));
-const OperatorConsole=dynamic(()=>import('./OperatorConsole'));
+const ProductDataSources=lazyTab(() => import('./ProductDataSources'));
+const ProjectPlan=lazyTab(() => import('./ProjectPlan'));
+const ProjectBilling=lazyTab(() => import('./ProjectBilling'));
+const LiveBilling=lazyTab(() => import('./LiveBilling'));
+const ProjectAccountInvites=lazyTab(() => import('./ProjectAccountInvites'));
+const AgencyLinksPanel=lazyTab(() => import('./AgencyLinksPanel'));
+const OperatorConsole=lazyTab(() => import('./OperatorConsole'));
 export default function ProjectSettings({
   workspace,
   lang,

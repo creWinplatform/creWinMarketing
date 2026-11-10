@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import dynamic from 'next/dynamic';
+import { lazyTab } from '@/components/lazy-tab';
 import {
   Plus,
   Pencil,
@@ -29,7 +29,7 @@ import SegmentBindingPicker from './SegmentBindingPicker';
 import ContentRepurpose from './ContentRepurpose';
 import Msg from '@/components/Msg';
 import { COACH_PREFILL_KEY, COACH_REF } from '@/lib/platform/coach-types';
-const CampaignReviewPanel=dynamic(()=>import('./CampaignReviewPanel'));
+const CampaignReviewPanel=lazyTab(() => import('./CampaignReviewPanel'));
 const channels = [
   'email',
   'linkedin',

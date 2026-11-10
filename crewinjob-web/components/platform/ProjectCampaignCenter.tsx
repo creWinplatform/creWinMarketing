@@ -1,18 +1,18 @@
 'use client';
 import {useEffect,useRef,useState} from 'react';
-import dynamic from 'next/dynamic';
+import { lazyTab } from '@/components/lazy-tab';
 import {Megaphone,UsersRound,ShieldCheck,MailCheck,Workflow,Building2,BadgeDollarSign,MessagesSquare,MessageCircle,Inbox} from 'lucide-react';
 import type {WorkspaceContext,Locale} from '@/lib/platform/catalog';
 import ProjectDrafts from './ProjectDrafts';
-const ProjectSegments=dynamic(()=>import('./ProjectSegments'));
-const ProjectRecipients=dynamic(()=>import('./ProjectRecipients'));
-const ProjectEmailSender=dynamic(()=>import('./ProjectEmailSender'));
-const ProjectAutomations=dynamic(()=>import('./ProjectAutomations'));
-const ProjectProspects=dynamic(()=>import('./ProjectProspects'));
-const ProjectAds=dynamic(()=>import('./ProjectAds'));
-const ProjectMessaging=dynamic(()=>import('./ProjectMessaging'));
-const ProjectWhatsApp=dynamic(()=>import('./ProjectWhatsApp'));
-const ProjectSocialInbox=dynamic(()=>import('./ProjectSocialInbox'));
+const ProjectSegments=lazyTab(() => import('./ProjectSegments'));
+const ProjectRecipients=lazyTab(() => import('./ProjectRecipients'));
+const ProjectEmailSender=lazyTab(() => import('./ProjectEmailSender'));
+const ProjectAutomations=lazyTab(() => import('./ProjectAutomations'));
+const ProjectProspects=lazyTab(() => import('./ProjectProspects'));
+const ProjectAds=lazyTab(() => import('./ProjectAds'));
+const ProjectMessaging=lazyTab(() => import('./ProjectMessaging'));
+const ProjectWhatsApp=lazyTab(() => import('./ProjectWhatsApp'));
+const ProjectSocialInbox=lazyTab(() => import('./ProjectSocialInbox'));
 export default function ProjectCampaignCenter({workspace,lang}:{workspace:WorkspaceContext;lang:Locale}){
   const [view,setView]=useState<'drafts'|'segments'|'recipients'|'sender'|'automations'|'prospects'|'ads'|'messaging'|'whatsapp'|'inbox'>('drafts'),tr=lang==='tr';
   const navigation=useRef<HTMLElement>(null);
