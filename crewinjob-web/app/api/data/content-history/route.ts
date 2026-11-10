@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import fs from 'fs';
 import path from 'path';
 import {
   isRecord,
@@ -47,14 +48,35 @@ function lite(request: NextRequest, items: HistoryItem[]) {
     return { ...item, hasImage: Boolean(imageData || images?.length || rawBgData) };
   });
 }
+// The file is ~20 MB (base64 images). Parsing it blocks the server for a noticeable time, and a page sends several of
+// these requests at once, so the parsed list is kept until the file changes (mtime + size), and concurrent GETs share
+// one backend merge that stays fresh for a few seconds. Writes update or drop both caches.
+type Parsed = { key: string; items: HistoryItem[] };
+type Merge = { at: number; promise: Promise<HistoryItem[]> };
+const cache = globalThis as typeof globalThis & { __crewinContentHistory?: Parsed | null; __crewinContentHistoryMerge?: Merge | null };
+const MERGE_FRESH_MS = 10_000;
+function statKey(): string | null {
+  try { const stat = fs.statSync(FILE); return `${stat.mtimeMs}:${stat.size}`; } catch { return null; }
+}
 function load(): HistoryItem[] {
+  const key = statKey();
+  if (!key) return [];
+  const hit = cache.__crewinContentHistory;
+  if (hit?.key === key) return hit.items;
   // bozuk yerel yedek backend verisini engellememeli → readJson hata yerine [] döner
   const list = readJson<HistoryItem[]>(FILE, []);
-  return Array.isArray(list) ? list : [];
+  const items = Array.isArray(list) ? list : [];
+  cache.__crewinContentHistory = { key, items };
+  return items;
 }
 
 function save(items: HistoryItem[]) {
-  writeJsonAtomic(FILE, items.slice(0, 100));
+  const next = items.slice(0, 100);
+  // Compact JSON: the file is read far more often than a person opens it.
+  writeJsonAtomic(FILE, next, false);
+  const key = statKey();
+  cache.__crewinContentHistory = key ? { key, items: next } : null;
+  cache.__crewinContentHistoryMerge = null;
 }
 
 /** Büyük alanlar (imageData vb.) çoğunlukla aynı referans — önce === ile ucuz karşılaştırma. */
@@ -168,28 +190,42 @@ async function persistRemote(item: HistoryItem): Promise<HistoryItem> {
   return isRecord(result) ? normalizeRemote(result, withAsset) : withAsset;
 }
 
+async function mergeWithBackend(): Promise<HistoryItem[]> {
+  const result = await marketingBackend().marketingContentHistoryGet('GetAll', {
+    skipCount: 0,
+    maxResultCount: 200,
+  });
+  return withFileLock(FILE, () => {
+    // Backend beklenirken yazılmış yerel değişiklikler kaybolmasın → yeniden oku
+    const current  = load();
+    const byId     = new Map(current.map(item => [item.id, item]));
+    const remote   = records(result).map(item => normalizeRemote(item, byId.get(stringValue(item.id))));
+    const ids      = new Set(remote.map(item => item.id));
+    const next     = [...remote, ...current.filter(item => !ids.has(item.id))]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, 100);
+    // Her GET'te ~20 MB dosyayı yeniden yazma — yalnızca gerçekten değiştiyse
+    if (!sameList(next, current)) save(next);
+    return next;
+  });
+}
+
+// Concurrent and back-to-back GETs (several panels on one page) share one merge for MERGE_FRESH_MS.
+function mergedHistory(): Promise<HistoryItem[]> {
+  const now = Date.now(), hit = cache.__crewinContentHistoryMerge;
+  if (hit && now - hit.at < MERGE_FRESH_MS) return hit.promise;
+  const promise = mergeWithBackend();
+  const entry: Merge = { at: now, promise };
+  cache.__crewinContentHistoryMerge = entry;
+  promise.catch(() => { if (cache.__crewinContentHistoryMerge === entry) cache.__crewinContentHistoryMerge = null; });
+  return promise;
+}
+
 export async function GET(req: NextRequest) {
   const scoped = await projectHistoryResponse(req);
   if (scoped) return scoped;
   try {
-    const result = await marketingBackend().marketingContentHistoryGet('GetAll', {
-      skipCount: 0,
-      maxResultCount: 200,
-    });
-    const merged = await withFileLock(FILE, () => {
-      // Backend beklenirken yazılmış yerel değişiklikler kaybolmasın → yeniden oku
-      const current  = load();
-      const byId     = new Map(current.map(item => [item.id, item]));
-      const remote   = records(result).map(item => normalizeRemote(item, byId.get(stringValue(item.id))));
-      const ids      = new Set(remote.map(item => item.id));
-      const next     = [...remote, ...current.filter(item => !ids.has(item.id))]
-        .sort((a, b) => b.timestamp - a.timestamp)
-        .slice(0, 100);
-      // Her GET'te ~20 MB dosyayı yeniden yazma — yalnızca gerçekten değiştiyse
-      if (!sameList(next, current)) save(next);
-      return next;
-    });
-    return NextResponse.json(lite(req, merged));
+    return NextResponse.json(lite(req, await mergedHistory()));
   } catch {
     return NextResponse.json(lite(req, load()));
   }

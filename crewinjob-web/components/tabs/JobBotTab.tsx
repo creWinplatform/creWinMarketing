@@ -339,7 +339,7 @@ export default function JobBotTab() {
 
   useEffect(() => {
     loadQueue();
-    pollRef.current = setInterval(loadQueue, 5000);
+    pollRef.current = setInterval(() => { if (!document.hidden) loadQueue(); }, 5000); // paused while the browser tab is hidden
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [loadQueue]);
 

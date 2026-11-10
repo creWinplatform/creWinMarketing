@@ -309,7 +309,8 @@ export default function KpiTab({ stats }: Props) {
     if (kpiHistory.length > 0 && !force) { setShowKpiHistory(true); return; }
     setHistoryLoading(true);
     try {
-      const res = await fetch('/api/data/content-history');
+      // KPI reports carry no images, so the light list (without base64 image data) is enough.
+      const res = await fetch('/api/data/content-history?lite=1');
       const data: KpiHistoryItem[] = await res.json();
       setKpiHistory(data.filter(h => h.platform === 'kpi'));
     } catch { /* ignore */ }

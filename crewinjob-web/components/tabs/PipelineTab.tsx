@@ -94,7 +94,7 @@ export default function PipelineTab() {
       } catch {}
     };
     checkStatus();
-    statusRef.current = setInterval(checkStatus, 3000);
+    statusRef.current = setInterval(() => { if (!document.hidden) checkStatus(); }, 3000); // paused while the browser tab is hidden
     return () => { if (statusRef.current) clearInterval(statusRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -109,7 +109,7 @@ export default function PipelineTab() {
 
   useEffect(() => {
     loadScheduler();
-    schedRef.current = setInterval(loadScheduler, 5000);
+    schedRef.current = setInterval(() => { if (!document.hidden) loadScheduler(); }, 5000);
     return () => { if (schedRef.current) clearInterval(schedRef.current); };
   }, [loadScheduler]);
 
@@ -130,7 +130,7 @@ export default function PipelineTab() {
 
   useEffect(() => {
     void loadMarketingJobs();
-    const timer = setInterval(loadMarketingJobs, 10000);
+    const timer = setInterval(() => { if (!document.hidden) loadMarketingJobs(); }, 10000);
     return () => clearInterval(timer);
   }, [loadMarketingJobs]);
 
@@ -161,7 +161,7 @@ export default function PipelineTab() {
       } catch {}
     };
     poll();
-    pollRef.current = setInterval(poll, 2000);
+    pollRef.current = setInterval(() => { if (!document.hidden) poll(); }, 2000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [busy]);
 

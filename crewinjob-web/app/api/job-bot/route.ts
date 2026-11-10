@@ -84,7 +84,8 @@ function runCli(action: string, input: Record<string, unknown> = {}): Promise<Re
   const timeout = PIPELINE_ACTIONS.has(action) ? 600000 : 30000; // 10dk pipeline, 30s diğerleri
   return new Promise((resolve, reject) => {
     const args = [CLI_SCRIPT, action, JSON.stringify(input)];
-    execFile('node', args, { cwd: AGENT_DIR, timeout, maxBuffer: 8 * 1024 * 1024 },
+    // The Node that runs this server: the release bundles its own node.exe, which need not be on PATH.
+    execFile(process.execPath, args, { cwd: AGENT_DIR, timeout, maxBuffer: 8 * 1024 * 1024 },
       (err, stdout, stderr) => {
         const execErr = err as (NodeJS.ErrnoException & { killed?: boolean; signal?: string | null }) | null;
         const timedOut = !!execErr && execErr.killed === true && !!execErr.signal
@@ -113,6 +114,29 @@ function runCli(action: string, input: Record<string, unknown> = {}): Promise<Re
   });
 }
 
+// Every CLI call starts a new Node process that loads the agent and signs in to the Crewin API (seconds each). A tab
+// sends several at once and polls, so read-only calls share one run while it is in flight and reuse its result briefly:
+// the Crewin lookup lists (positions, companies, …) for 30 minutes, everything else for a few seconds. Any POST drops
+// the short-lived entries.
+const LOOKUPS = new Set(['positions', 'countries', 'companies', 'languages', 'certificates', 'cities']);
+type CliEntry = { at: number; ttl: number; promise: Promise<Record<string, unknown>> };
+const cliCache = (globalThis as typeof globalThis & { __crewinJobBotCli?: Map<string, CliEntry> }).__crewinJobBotCli
+  ??= new Map<string, CliEntry>();
+function cachedCli(action: string, input: Record<string, unknown> = {}, ttl = LOOKUPS.has(action) ? 30 * 60_000 : 5_000) {
+  const key = `${action}\u0000${JSON.stringify(input)}`, now = Date.now(), hit = cliCache.get(key);
+  if (hit && now - hit.at < hit.ttl) return hit.promise;
+  const promise = runCli(action, input);
+  const entry: CliEntry = { at: now, ttl, promise };
+  cliCache.set(key, entry);
+  // Failed or not-ok results are not reused once they settle.
+  promise.then(result => { if (result?.ok === false && cliCache.get(key) === entry) cliCache.delete(key); },
+    () => { if (cliCache.get(key) === entry) cliCache.delete(key); });
+  return promise;
+}
+function dropShortLivedCli() {
+  for (const [key, entry] of cliCache) if (!LOOKUPS.has(key.split('\u0000')[0])) cliCache.delete(key);
+}
+
 // ── Kuyruk doğrudan oku (hızlı — CLI gerektirmez) ────────────────────────────
 function readQueue(): unknown[] {
   try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8')); }
@@ -126,7 +150,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'positions') {
     try {
-      const result = await runCli('positions');
+      const result = await cachedCli('positions');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, positions: [], error: (e as Error).message });
@@ -135,7 +159,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'countries') {
     try {
-      const result = await runCli('countries');
+      const result = await cachedCli('countries');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, countries: [], error: (e as Error).message });
@@ -144,7 +168,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'companies') {
     try {
-      const result = await runCli('companies');
+      const result = await cachedCli('companies');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, companies: [], error: (e as Error).message });
@@ -153,7 +177,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'languages') {
     try {
-      const result = await runCli('languages');
+      const result = await cachedCli('languages');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, languages: [], error: (e as Error).message });
@@ -162,7 +186,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'certificates') {
     try {
-      const result = await runCli('certificates');
+      const result = await cachedCli('certificates');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, certificates: [], error: (e as Error).message });
@@ -173,7 +197,7 @@ export async function GET(req: NextRequest) {
     const countryId = searchParams.get('countryId');
     if (!countryId) return NextResponse.json({ ok: true, cities: [] });
     try {
-      const result = await runCli('cities', { countryId: Number(countryId) });
+      const result = await cachedCli('cities', { countryId: Number(countryId) });
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, cities: [], error: (e as Error).message });
@@ -183,7 +207,7 @@ export async function GET(req: NextRequest) {
   // Keşfedilen ama katılınmamış gruplar: katılma yalnız buradan seçilip onaylanarak yapılır.
   if (action === 'suggested_groups') {
     try {
-      const result = await runCli('suggested_groups');
+      const result = await cachedCli('suggested_groups');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, groups: [], error: (e as Error).message });
@@ -192,7 +216,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'discovered_groups') {
     try {
-      const result = await runCli('joined_groups');
+      const result = await cachedCli('joined_groups');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, groups: [], error: (e as Error).message });
@@ -201,7 +225,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'posted_jobs') {
     try {
-      const result = await runCli('posted_jobs');
+      const result = await cachedCli('posted_jobs');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, jobs: [], error: (e as Error).message });
@@ -210,7 +234,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'job_stats') {
     try {
-      const result = await runCli('job_stats');
+      const result = await cachedCli('job_stats');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, jobs: [], error: (e as Error).message });
@@ -219,7 +243,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'pipeline_logs') {
     try {
-      const result = await runCli('pipeline_logs');
+      const result = await cachedCli('pipeline_logs', {}, 1_500);
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, lines: [], error: (e as Error).message });
@@ -243,7 +267,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'review_queue') {
     try {
-      const result = await runCli('review_queue');
+      const result = await cachedCli('review_queue');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, queue: [], error: (e as Error).message });
@@ -252,7 +276,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'group_stats') {
     try {
-      const result = await runCli('group_stats');
+      const result = await cachedCli('group_stats');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, stats: [], error: (e as Error).message });
@@ -261,7 +285,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'api_usage') {
     try {
-      const result = await runCli('api_usage');
+      const result = await cachedCli('api_usage');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, usage: {}, error: (e as Error).message });
@@ -270,7 +294,7 @@ export async function GET(req: NextRequest) {
 
   if (action === 'agent_config') {
     try {
-      const result = await runCli('get_config');
+      const result = await cachedCli('get_config');
       return NextResponse.json(result);
     } catch (e: unknown) {
       return NextResponse.json({ ok: false, config: {}, error: (e as Error).message });
@@ -292,6 +316,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({})) as Record<string, unknown>;
   const { action } = body;
+  // A write may change queues, groups or settings: the next read runs the CLI again.
+  dropShortLivedCli();
 
   if (action === 'parse_ai') {
     const text = (body.text as string || '').trim();

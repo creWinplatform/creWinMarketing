@@ -84,7 +84,8 @@ export async function getHistory({ lite = false }: { lite?: boolean } = {}): Pro
 }
 
 export async function attachImageToLatest(payload: ImagePayload): Promise<void> {
-  const items = await getHistory();
+  // Only the newest id is needed; the full list would carry every base64 image.
+  const items = await getHistory({ lite: true });
   if (!items.length) return;
   await fetch(`${BASE}?id=${items[0].id}`, {
     method:  'PATCH',
