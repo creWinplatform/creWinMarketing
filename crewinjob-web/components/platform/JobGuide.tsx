@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { ArrowRight, BarChart3, Briefcase, Building2, Check, ChevronDown, CircleAlert, FolderOpen, LockKeyhole, Mail, Megaphone, MessagesSquare, Search, Send, Shuffle, Sparkles, UserPlus, UserRoundCheck, Wallet, X } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest, searchText } from '@/lib/platform/client';
@@ -11,6 +11,16 @@ const ICONS: Record<JobId, typeof Send> = { social_post: Send, inbox: MessagesSq
   crewin_growth: Sparkles, crewin_ai: Sparkles, crewin_search: Search, crewin_inbox: MessagesSquare };
 // The Crewin workspace has its own jobs; only the search examples differ.
 const EXAMPLES = { ryzevo: { tr: 'Ör. instagram, rapor, google, reklam…', en: 'E.g. instagram, report, google, ads…' }, crewin: { tr: 'Ör. ilan, lead, profil, rapor, havale…', en: 'E.g. job ad, lead, profile, report, transfer…' } };
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+// Keeps keyboard focus inside the open dialog: Tab from the last control goes to the first and Shift+Tab the other way.
+function trapTab(event: ReactKeyboardEvent<HTMLDialogElement>, panel: HTMLDialogElement | null) {
+  if (event.key !== 'Tab' || !panel) return;
+  const items = [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(item => item.offsetParent !== null);
+  if (!items.length) { event.preventDefault(); return; }
+  const first = items[0], last = items[items.length - 1], active = document.activeElement;
+  if (event.shiftKey && (active === first || !panel.contains(active))) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && (active === last || !panel.contains(active))) { event.preventDefault(); first.focus(); }
+}
 // open(query, focus): the dialog, optionally filtered or with one job already open.
 type Context = { data: JobGuideView | null; error: string; loading: boolean; refresh: () => void; open: (query?: string, focus?: JobId) => void; variant: keyof typeof EXAMPLES };
 const JobGuideContext = createContext<Context | null>(null);
@@ -41,7 +51,10 @@ export function JobGuideProvider({ enabled, lang, variant = 'ryzevo', children }
   const value: Context = { data, error, loading, refresh, open, variant };
   if (!enabled) return <>{children}</>;
   return <JobGuideContext.Provider value={value}>{children}
-    <dialog ref={dialog} className="growth-compass job-guide-dialog" aria-labelledby="job-guide-dialog-title" onCancel={event => { event.preventDefault(); setOpened(false); }} onClick={event => { if (event.target === dialog.current) setOpened(false); }}>
+    {/* role and aria-modal are stated explicitly: some screen readers do not announce a showModal() <dialog> as a modal
+        dialog on their own. Tab wraps inside; Escape keeps its native order (the search field clears first, then the
+        cancel event closes the dialog). */}
+    <dialog ref={dialog} role="dialog" aria-modal="true" className="growth-compass job-guide-dialog" aria-labelledby="job-guide-dialog-title" onCancel={event => { event.preventDefault(); setOpened(false); }} onClick={event => { if (event.target === dialog.current) setOpened(false); }} onKeyDown={event => trapTab(event, dialog.current)}>
       <header className="compass-header"><span className="compass-symbol"><Search size={21} /></span><div><p>{tr ? 'İş rehberi' : 'Job guide'}</p><h2 id="job-guide-dialog-title">{tr ? 'Ne yapmak istiyorsunuz?' : 'What would you like to do?'}</h2></div><button type="button" className="icon-button" aria-label={tr ? 'Kapat' : 'Close'} title={tr ? 'Kapat' : 'Close'} onClick={() => setOpened(false)}><X size={19} /></button></header>
       <div className="compass-scroll">{opened && <JobGuideBody lang={lang} initialQuery={query} initialExpanded={focus} showAll onNavigate={() => setOpened(false)} />}</div>
     </dialog>
