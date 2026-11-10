@@ -19,6 +19,18 @@ function isStaticAsset(pathname: string): boolean {
   );
 }
 
+// ?lang=en|tr reaches the root layout as a request header, so the server prints <html lang> in that language
+// (the layout cannot read search params). A header sent by the client is never trusted as is.
+const LANG_HEADER = 'x-ryzevo-lang';
+function requestHeaders(req: NextRequest): Headers {
+  const headers = new Headers(req.headers);
+  headers.delete(LANG_HEADER);
+  const lang = req.nextUrl.searchParams.get('lang');
+  if (lang === 'tr' || lang === 'en') headers.set(LANG_HEADER, lang);
+  return headers;
+}
+const pass = (req: NextRequest) => NextResponse.next({ request: { headers: requestHeaders(req) } });
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
@@ -39,14 +51,14 @@ export async function middleware(req: NextRequest) {
   // Exact PayTR notification route validates its provider HMAC and bound test order.
   if (pathname === '/api/platform/billing/paytr/notify') return NextResponse.next();
   // The web app manifest is fetched without cookies; it holds only the name, colours and icon paths.
-  if(pathname==='/manifest.webmanifest')return NextResponse.next();
-  if(['/recover','/register','/account/verify','/api/auth/identity'].includes(pathname))return NextResponse.next();
+  if(pathname==='/manifest.webmanifest')return pass(req);
+  if(['/recover','/register','/account/verify','/api/auth/identity'].includes(pathname))return pass(req);
   // Search engine files (app/robots.ts, app/sitemap.ts): public, without a session.
-  if(pathname==='/robots.txt'||pathname==='/sitemap.xml')return NextResponse.next();
+  if(pathname==='/robots.txt'||pathname==='/sitemap.xml')return pass(req);
   // Shared monthly report: the page reads its token from the URL fragment and the API checks it (hash, expiry, revocation).
-  if(pathname==='/report'||pathname==='/api/report')return NextResponse.next();
+  if(pathname==='/report'||pathname==='/api/report')return pass(req);
   if (['/welcome','/join','/api/auth/enroll','/api/platform/worker'].includes(pathname) || PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
-    return NextResponse.next();
+    return pass(req);
   }
 
   const token = req.cookies.get(COOKIE_NAME)?.value;
@@ -62,9 +74,9 @@ export async function middleware(req: NextRequest) {
       // Behind IIS/ARR the URL carries the forwarded https scheme, so Next treats the rewrite as external and
       // proxies it over TLS to its own plain-HTTP port (EPROTO, 500). Point it at the panel's own HTTP address.
       if (req.headers.get('x-forwarded-proto')) {
-        return NextResponse.rewrite(new URL(`/welcome${landing.search}`, `http://127.0.0.1:${process.env.PORT || '3033'}`));
+        return NextResponse.rewrite(new URL(`/welcome${landing.search}`, `http://127.0.0.1:${process.env.PORT || '3033'}`), { request: { headers: requestHeaders(req) } });
       }
-      return NextResponse.rewrite(landing);
+      return NextResponse.rewrite(landing, { request: { headers: requestHeaders(req) } });
     }
     if (pathname.startsWith('/api/')) {
       return NextResponse.json({ error: 'Yetkisiz — lütfen giriş yapın' }, { status: 401 });
@@ -84,7 +96,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Oturum geçerli — sliding window yenile
-  const res   = NextResponse.next();
+  const res   = pass(req);
   const fresh = identity?.mode === 'platform' ? await createPlatformSessionToken(identity) : await createSessionToken(username);
   res.cookies.set(COOKIE_NAME, fresh, {
     httpOnly: true,

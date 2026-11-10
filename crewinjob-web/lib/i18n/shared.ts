@@ -6,6 +6,8 @@ export const LANGS: readonly Lang[] = ['tr', 'en'];
 export const DEFAULT_LANG: Lang = 'tr';
 /** Sunucunun okuduğu tercih (sayfa ilk yüklemede doğru dille gelir). */
 export const LANG_COOKIE = 'ryzevo_lang';
+/** Request header middleware sets from ?lang= so the root layout prints the right <html lang> on the first response. */
+export const LANG_HEADER = 'x-ryzevo-lang';
 /** Eski istemci anahtarı; mevcut kullanıcıların seçimini taşımak için okunur ve güncel tutulur. */
 export const LEGACY_LANG_KEY = 'crewinjob_lang';
 
