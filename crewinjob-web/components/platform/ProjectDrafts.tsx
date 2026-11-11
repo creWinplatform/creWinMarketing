@@ -80,6 +80,7 @@ export default function ProjectDrafts({
   const [items, setItems] = useState<Draft[]>([]),
     [form, setForm] = useState({ ...empty, language: defaultLanguage }),
     [editingId, setEditingId] = useState<string | null>(null),
+    [editingVersion, setEditingVersion] = useState(''),
     [showEditor, setShowEditor] = useState(false),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -175,6 +176,8 @@ export default function ProjectDrafts({
         channel: item.platform,
       });
     setEditingId(clone ? null : item.id);
+    // The version this editor starts from; the server refuses the save if the draft changed since.
+    setEditingVersion(clone ? '' : item.updatedAt || '');
     setCoachRef('');
     setShowEditor(true);
     setError('');
@@ -224,7 +227,7 @@ export default function ProjectDrafts({
     try {
       await projectRequest(url, {
         method: editingId ? 'PATCH' : 'POST',
-        body: JSON.stringify(body),
+        body: JSON.stringify(editingId && editingVersion ? { ...body, expectedUpdatedAt: editingVersion } : body),
       });
       setShowEditor(false);
       setEditingId(null);

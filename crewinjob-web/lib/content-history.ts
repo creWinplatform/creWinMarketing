@@ -10,6 +10,8 @@ export interface HistoryItem {
   content:   string;
   prompt:    string;
   timestamp: number;
+  /** Project workspaces: when the stored row last changed; an editor sends it back to detect a conflicting edit. */
+  updatedAt?: string;
   imageData?: string;
   imageMime?: string;
   images?: { data: string; mime: string }[];

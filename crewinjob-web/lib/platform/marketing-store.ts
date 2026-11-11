@@ -14,6 +14,8 @@ import { MarketingStoreError } from './errors';
 export { MarketingStoreError } from './errors';
 
 export type MarketingScope = { subject: string; organizationId: string; projectId: string };
+// Shown when a draft changed (in another tab or by a teammate) after this editor opened it.
+export const EDIT_CONFLICT = 'Bu taslak siz düzenlerken başka bir yerde değiştirildi. Değişikliklerinizi kopyalayın, sayfayı yenileyip son hâlinin üzerinde tekrar kaydedin.';
 type ConnectionRow = { id: string; provider: string; integrationId: string; accountName: string; active: number; updatedAt: string };
 
 export class ProjectMarketingStore {
@@ -34,7 +36,9 @@ export class ProjectMarketingStore {
     const row = await this.db.prepare('SELECT payload FROM platform_campaigns WHERE id=? AND organization_id=? AND project_id=?').get(id, this.scope.organizationId, this.scope.projectId) as { payload: string } | undefined;
     return row ? JSON.parse(row.payload) : null;
   }
-  async saveCampaign(campaign: UnifiedCampaign, creating: boolean) {
+  // expectedUpdatedAt: the version the editor opened. When it is given and the stored row has changed since, the save is
+  // refused with 409 instead of silently overwriting the other edit.
+  async saveCampaign(campaign: UnifiedCampaign, creating: boolean, expectedUpdatedAt?: string) {
     return await this.db.transaction(async () => {
       await this.authorize('content.write');
       const rights=await assertProjectWork(this.db,this.scope);
@@ -49,8 +53,13 @@ export class ProjectMarketingStore {
       if(creating && (await this.listCampaigns()).length>=rights.limits.campaigns) throw new MarketingStoreError('Kampanya kayıt sınırına ulaşıldı.',429);
       if (creating) await this.db.prepare('INSERT INTO platform_campaigns VALUES(?,?,?,?,?)').run(campaign.id, this.scope.organizationId, this.scope.projectId, JSON.stringify(campaign), campaign.updatedAt);
       else {
-        const result = await this.db.prepare('UPDATE platform_campaigns SET payload=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(JSON.stringify(campaign), campaign.updatedAt, campaign.id, this.scope.organizationId, this.scope.projectId);
-        if (!result.changes) throw new MarketingStoreError('Kampanya bulunamadı.', 404);
+        const result = expectedUpdatedAt === undefined
+          ? await this.db.prepare('UPDATE platform_campaigns SET payload=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(JSON.stringify(campaign), campaign.updatedAt, campaign.id, this.scope.organizationId, this.scope.projectId)
+          : await this.db.prepare('UPDATE platform_campaigns SET payload=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=? AND updated_at=?').run(JSON.stringify(campaign), campaign.updatedAt, campaign.id, this.scope.organizationId, this.scope.projectId, expectedUpdatedAt);
+        if (!result.changes) {
+          if (expectedUpdatedAt !== undefined && await this.db.prepare('SELECT 1 AS found FROM platform_campaigns WHERE id=? AND organization_id=? AND project_id=?').get(campaign.id, this.scope.organizationId, this.scope.projectId)) throw new MarketingStoreError(EDIT_CONFLICT, 409);
+          throw new MarketingStoreError('Kampanya bulunamadı.', 404);
+        }
       }
       await this.audit(creating ? 'campaign.create' : 'campaign.update');
       return campaign;
@@ -67,23 +76,32 @@ export class ProjectMarketingStore {
 
   async history(): Promise<HistoryItem[]> {
     await this.authorize('read');
-    return (await this.db.prepare('SELECT payload FROM platform_content_history WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC,id').all(this.scope.organizationId, this.scope.projectId))
-      .map(row => JSON.parse((row as { payload: string }).payload));
+    // updatedAt comes from the row, so an editor can send it back as the version it started from.
+    return (await this.db.prepare('SELECT payload,updated_at FROM platform_content_history WHERE organization_id=? AND project_id=? ORDER BY updated_at DESC,id').all(this.scope.organizationId, this.scope.projectId))
+      .map(row => ({ ...JSON.parse((row as { payload: string }).payload), updatedAt: (row as { updated_at: string }).updated_at }));
   }
-  async saveContent(item: HistoryItem, creating: boolean) {
+  // expectedUpdatedAt: as for saveCampaign, a stale version is refused with 409.
+  async saveContent(input: HistoryItem, creating: boolean, expectedUpdatedAt?: string) {
+    const { updatedAt: _ignored, ...item } = input;
+    const at = new Date().toISOString();
     return await this.db.transaction(async () => {
       await this.authorize('content.write');
       const rights=await assertProjectWork(this.db,this.scope);
       const imageSize=(await this.db.prepare("SELECT COALESCE(SUM(COALESCE(length(json_extract(payload,'$.imageData')),0)+COALESCE(length(json_extract(payload,'$.images')),0)),0) AS n FROM platform_content_history WHERE organization_id=? AND project_id=? AND id<>?").get(this.scope.organizationId,this.scope.projectId,item.id) as {n:number}).n;
       if(imageSize+(item.imageData?.length||0)+(item.images?JSON.stringify(item.images).length:0)>32*1024*1024)throw new MarketingStoreError('Pilot görsel saklama sınırına ulaşıldı.',429);
       if(creating && (await this.history()).length>=rights.limits.content) throw new MarketingStoreError('İçerik kayıt sınırına ulaşıldı.',429);
-      if (creating) await this.db.prepare('INSERT INTO platform_content_history VALUES(?,?,?,?,?)').run(item.id, this.scope.organizationId, this.scope.projectId, JSON.stringify(item), new Date().toISOString());
+      if (creating) await this.db.prepare('INSERT INTO platform_content_history VALUES(?,?,?,?,?)').run(item.id, this.scope.organizationId, this.scope.projectId, JSON.stringify(item), at);
       else {
-        const result = await this.db.prepare('UPDATE platform_content_history SET payload=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(JSON.stringify(item), new Date().toISOString(), item.id, this.scope.organizationId, this.scope.projectId);
-        if (!result.changes) throw new MarketingStoreError('İçerik bulunamadı.', 404);
+        const result = expectedUpdatedAt === undefined
+          ? await this.db.prepare('UPDATE platform_content_history SET payload=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=?').run(JSON.stringify(item), at, item.id, this.scope.organizationId, this.scope.projectId)
+          : await this.db.prepare('UPDATE platform_content_history SET payload=?,updated_at=? WHERE id=? AND organization_id=? AND project_id=? AND updated_at=?').run(JSON.stringify(item), at, item.id, this.scope.organizationId, this.scope.projectId, expectedUpdatedAt);
+        if (!result.changes) {
+          if (expectedUpdatedAt !== undefined && await this.db.prepare('SELECT 1 AS found FROM platform_content_history WHERE id=? AND organization_id=? AND project_id=?').get(item.id, this.scope.organizationId, this.scope.projectId)) throw new MarketingStoreError(EDIT_CONFLICT, 409);
+          throw new MarketingStoreError('İçerik bulunamadı.', 404);
+        }
       }
       await this.audit(creating ? 'content.create' : 'content.update');
-      return item;
+      return { ...item, updatedAt: at } as HistoryItem;
     });
   }
   async deleteContent(id?: string) {

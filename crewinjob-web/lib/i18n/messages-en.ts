@@ -488,6 +488,7 @@ export const MESSAGES_EN: Record<string, string> = {
   "Kampanya kayıt sınırına ulaşıldı.": "Campaign record limit reached.",
   "Kampanya kimliği gerekli.": "Campaign ID is required.",
   "Kampanya kitle bağı geçersiz.": "The campaign's audience link is invalid.",
+  "Bu taslak siz düzenlerken başka bir yerde değiştirildi. Değişikliklerinizi kopyalayın, sayfayı yenileyip son hâlinin üzerinde tekrar kaydedin.": "This draft was changed elsewhere while you were editing it. Copy your changes, reload the page and save again on its latest version.",
   "Kampanya oluşturulamadı: {0}{1}": "Couldn't create the campaign: {0}{1}",
   "Kampanya oluşturulamadı.": "Couldn't create the campaign.",
   "Kampanya seçilen projeye/hedefe ait değil.": "The campaign doesn't belong to the selected project/goal.",

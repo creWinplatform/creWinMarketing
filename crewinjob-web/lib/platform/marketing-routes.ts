@@ -6,7 +6,7 @@ import { buildCampaign, type CampaignContent, type CreateCampaignInput, type Uni
 import type { HistoryItem } from '@/lib/content-history';
 import { getPlatformAccess, getRyzevoAccess } from './workspace-server';
 import { platformDatabase } from './database';
-import { ProjectMarketingStore, MarketingStoreError } from './marketing-store';
+import { ProjectMarketingStore, MarketingStoreError, EDIT_CONFLICT } from './marketing-store';
 import { hasSameRequestOrigin } from './request-origin';
 import { credentialEncryptionKey } from './credential-key';
 import { ConnectionJobs } from './connection-jobs';
@@ -58,6 +58,13 @@ function campaignInput(raw: Record<string, unknown>, timezone: string, goalIds: 
     channels: { social: Array.from(new Set(platforms)) as string[], email: channels.email === true, whatsapp: false, telegram: false, paidAds: [] },
     content: { text, subject: string(content.subject, 200), ctaUrl: ctaUrl || undefined, ...(video ? { video } : {}) }, timezone };
 }
+
+// The version an editor started from (the item's updatedAt). Optional: callers that do not send it keep the old behaviour.
+const expectedVersion = (raw: Record<string, unknown>) => {
+  if (raw.expectedUpdatedAt === undefined || raw.expectedUpdatedAt === null) return undefined;
+  if (typeof raw.expectedUpdatedAt !== 'string' || raw.expectedUpdatedAt.length > 64) throw new MarketingStoreError('Alan türü veya uzunluğu geçersiz.');
+  return raw.expectedUpdatedAt;
+};
 
 // Growth coach origin of a draft; optional, never required, kept on later edits.
 const coachRef = (value: unknown, current?: string) => {
@@ -152,11 +159,13 @@ export async function projectCampaignResponse(request: NextRequest, id?: string)
       if (!current) throw new MarketingStoreError('Kampanya bulunamadı.', 404);
       const raw = object(await request.json());
       const input = campaignInput({ name: current.name, goalId: current.goalId, objective: current.objective, channels: current.channels, content: current.content, ...raw }, workspace.project.timezone, workspace.project.goals.map(goal => goal.id));
+      const expected = expectedVersion(raw);
+      if (expected !== undefined && expected !== current.updatedAt) throw new MarketingStoreError(EDIT_CONFLICT, 409);
       const binding=await segmentBinding(raw,scope.segments,input.goalId||'',current.segmentBinding);
       const next: UnifiedCampaign = { ...buildCampaign(input), id: current.id, status: 'draft', createdAt: current.createdAt,
         utm: current.utm, updatedAt: new Date().toISOString(),...(binding?{segmentBinding:binding}:{}),...coachRef(raw.coachRef,current.coachRef) };
       next.deliveries = next.deliveries.map((delivery, index) => ({ ...delivery, id: `${current.id}_d${index + 1}` }));
-      return response(await store.saveCampaign(next, false));
+      return response(await store.saveCampaign(next, false, expected));
     }
     throw new MarketingStoreError('Desteklenmeyen işlem.', 405);
   } catch (error) { return failure(error); }
@@ -174,7 +183,10 @@ export async function projectHistoryResponse(request: NextRequest): Promise<Next
     if (request.method === 'PATCH' && id) {
       const current = (await store.history()).find(item => item.id === id);
       if (!current) throw new MarketingStoreError('İçerik bulunamadı.', 404);
-      return response(await store.saveContent(await contentInput(object(JSON.parse(new TextDecoder().decode(await readBoundedJsonBytes(request,8*1024*1024)))), current), false));
+      const raw = object(JSON.parse(new TextDecoder().decode(await readBoundedJsonBytes(request,8*1024*1024))));
+      const expected = expectedVersion(raw);
+      if (expected !== undefined && expected !== current.updatedAt) throw new MarketingStoreError(EDIT_CONFLICT, 409);
+      return response(await store.saveContent(await contentInput(raw, current), false, expected));
     }
     throw new MarketingStoreError('Geçerli içerik kimliği gerekli.');
   } catch (error) { return failure(error); }
