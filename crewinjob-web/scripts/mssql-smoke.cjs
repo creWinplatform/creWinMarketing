@@ -71,6 +71,28 @@ async function resetDatabase() {
     if (!campaigns.some(c => c.name === 'Smoke ğüşıöç 😀')) throw new Error('Unicode round trip failed');
     return `${campaigns.length} campaign, ${history.length} content`;
   });
+  await step('draft edit conflict (stale version refused)', async () => {
+    const { ProjectMarketingStore } = load('marketing-store.ts');
+    const store = new ProjectMarketingStore(db, scope);
+    const opened = (await store.history()).find(item => item.id === 'smoke-content');
+    if (!opened?.updatedAt) throw new Error('history returned no updatedAt');
+    await new Promise(resolve => setTimeout(resolve, 5));
+    await store.saveContent({ ...opened, content: 'A' }, false, opened.updatedAt);
+    let refused = false;
+    try { await store.saveContent({ ...opened, content: 'B' }, false, opened.updatedAt); } catch (error) { refused = error.status === 409; }
+    if (!refused) throw new Error('a stale version was not refused');
+    if ((await store.history()).find(item => item.id === 'smoke-content').content !== 'A') throw new Error('the first edit was lost');
+    return '409 on the stale save, first edit kept';
+  });
+  // The brand voice AI path end to end with a stand-in model: usage reservation, the write and the token record.
+  await step('brand voice with AI (fake model)', async () => {
+    const { CoachBrand } = load('coach-brand.ts');
+    const brand = new CoachBrand(db, scope), before = await brand.read();
+    const generator = async () => ({ text: JSON.stringify({ voice: 'Sakin, açık ve yardımsever bir dil. Siz diye hitap eder.' }), usage: { provider: 'google', model: 'gemini-2.5-flash', prompt: 120, output: 40, thinking: 0, total: 160 } });
+    const value = await brand.draftVoice({ action: 'voice', mode: 'ai', answers: { traits: 'sakin, açık', avoid: 'abartılı', address: 'formal', useWords: '', avoidWords: '', example: '' }, expectedRevision: before.revision }, generator);
+    if (!value.voiceDraft) throw new Error('no draft');
+    return `source ${value.voiceSource}`;
+  });
   await step('growth coach read', async () => { const { GrowthCoach } = load('coach.ts'); const coach = await new GrowthCoach(db, scope).read(); return `revision ${coach.revision}`; });
   await step('job guide', async () => { const { jobGuide } = load('job-guide.ts'); const view = await jobGuide(db, scope); return `${view.jobs.length} jobs`; });
   await step('team alerts', async () => { const { teamAlerts } = load('team-alerts.ts'); return `${(await teamAlerts(db, scope)).length} alerts`; });

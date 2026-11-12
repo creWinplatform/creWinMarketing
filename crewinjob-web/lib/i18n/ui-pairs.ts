@@ -218,6 +218,7 @@ export const UI_PAIRS: Record<string, string> = {
   "karakter": "chars",
   "Karar kaydedildi. Gönderim yapılmadı.": "Decision recorded. No message was sent.",
   "Kaydedilemedi; tekrar deneyin.": "Could not save; try again.",
+  "Kaydedilemedi. Tekrar deneyin.": "Couldn't save. Try again.",
   "kaydı yok": "no record",
   "Kayıt": "Registrations",
   "Kayıt yeniden kuyruğa alındı.": "The record was queued again.",

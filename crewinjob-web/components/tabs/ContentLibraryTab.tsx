@@ -7,6 +7,7 @@ import SharePanel from '@/components/SharePanel';
 import { useLang } from '@/lib/lang';
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
+import { translateMessage } from '@/lib/i18n/messages';
 import { loadPartnerLogo } from '@/lib/partner-logo';
 
 const LOGO_KEY = 'crewinjob_brand_logo';
@@ -44,6 +45,8 @@ export default function ContentLibraryTab() {
   const [partnerLogoBase64, setPartnerLogoBase64] = useState('');
   const [editingId,    setEditingId]    = useState<string | null>(null);
   const [editValue,    setEditValue]    = useState('');
+  const [editBase,     setEditBase]     = useState('');
+  const [editError,    setEditError]    = useState<string | null>(null);
 
   useEffect(() => {
     getHistory().then(setItems).catch(() => {});
@@ -83,11 +86,20 @@ export default function ContentLibraryTab() {
   const startEdit = (item: HistoryItem) => {
     setEditingId(item.id);
     setEditValue(item.content);
+    setEditBase(item.content);
+    setEditError(null);
   };
 
+  // The text the editor started from goes along, so an edit made meanwhile elsewhere is not overwritten. On a
+  // conflict or error the editor stays open with the reader's text.
   const saveEdit = async (id: string) => {
-    await updateHistoryContent(id, editValue);
+    const result = await updateHistoryContent(id, editValue, editBase);
+    if (!result.ok) {
+      setEditError(result.error || (lang === 'tr' ? 'Kaydedilemedi. Tekrar deneyin.' : "Couldn't save. Try again."));
+      return;
+    }
     setEditingId(null);
+    setEditError(null);
     reload();
   };
 
@@ -317,6 +329,11 @@ export default function ContentLibraryTab() {
                         className="w-full border border-ocean/50 rounded-lg px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-ocean bg-white dark:bg-slate-700 dark:text-slate-100 leading-relaxed"
                         autoFocus
                       />
+                      {editError && (
+                        <p role="alert" className="text-xs text-red-600 dark:text-red-300 leading-relaxed">
+                          {translateMessage(editError, lang)}
+                        </p>
+                      )}
                       <div className="flex gap-1.5">
                         <button
                           onClick={() => saveEdit(item.id)}
@@ -325,7 +342,7 @@ export default function ContentLibraryTab() {
                           ✅ {lang === 'tr' ? 'Kaydet' : 'Save'}
                         </button>
                         <button
-                          onClick={() => setEditingId(null)}
+                          onClick={() => { setEditingId(null); setEditError(null); }}
                           className="text-xs border border-slate-200 dark:border-slate-600 text-slate-500 px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                         >
                           {lang === 'tr' ? 'İptal' : 'Cancel'}

@@ -12,6 +12,10 @@ import {
 } from '@/lib/marketing-backend';
 import { readJson, withFileLock, writeJsonAtomic } from '@/lib/json-store';
 import { projectHistoryResponse } from '@/lib/platform/marketing-routes';
+import { EDIT_CONFLICT } from '@/lib/platform/marketing-store';
+
+// Line endings and surrounding spaces are not a change; the backend round trip may alter them.
+const sameText = (value: unknown) => String(value ?? '').replace(/\r\n/g, '\n').trim();
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -263,8 +267,13 @@ export async function PATCH(req: NextRequest) {
     } catch { /* 404 aşağıda işlenir */ }
   }
   if (!current) return NextResponse.json({ error: 'Bulunamadı' }, { status: 404 });
+  // The library editor sends the text it started from; a different stored text means another edit landed meanwhile.
+  const { expectedContent, ...changes } = body as Partial<HistoryItem> & { expectedContent?: unknown };
+  if (typeof expectedContent === 'string' && sameText(expectedContent) !== sameText(current.content)) {
+    return NextResponse.json({ error: EDIT_CONFLICT }, { status: 409 });
+  }
 
-  let updated: HistoryItem = { ...current, ...body, id: current.id };
+  let updated: HistoryItem = { ...current, ...changes, id: current.id };
   // Görsel değiştiyse eski asset artık bu görseli temsil etmiyor → yeniden yüklensin
   if (body.imageData !== undefined && body.imageData !== current.imageData) {
     const meta = { ...(updated.metadata || {}) };

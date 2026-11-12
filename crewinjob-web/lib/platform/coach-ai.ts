@@ -21,6 +21,10 @@ export async function runCoachAi<T,R>(db:Db,scope:MarketingScope,generator:Coach
     completed=true;return result;
   }catch(error){
     if(!completed){try{await operations.refundAi(reservation);}catch{console.error('platform_usage_release_failed');}}
+    // The reader only sees a generic message; the server log keeps the cause (provider, quota, model, database).
+    // Values that look like keys or tokens are masked before logging.
+    if(!(error instanceof MarketingStoreError)){const message=String(error instanceof Error?error.message:error).replace(/([?&](?:key|api_key|token|access_token)=)[^&\s"']+/gi,'$1…').replace(/\bAIza[0-9A-Za-z_-]{20,}/g,'AIza…').replace(/\bBearer\s+\S+/gi,'Bearer …').slice(0,400);
+      console.error('platform_coach_ai_failed',JSON.stringify({name:error instanceof Error?error.name:typeof error,message}));}
     throw error instanceof MarketingStoreError?error:new MarketingStoreError('AI önerisi hazırlanamadı. Başlangıç şablonunu kullanabilir veya tekrar deneyebilirsiniz.',502);
   }
 }

@@ -104,12 +104,19 @@ export async function attachImageToItem(id: string, payload: ImagePayload): Prom
   });
 }
 
-export async function updateHistoryContent(id: string, content: string): Promise<void> {
-  await fetch(`${BASE}?id=${encodeURIComponent(id)}`, {
-    method:  'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ content }),
-  });
+// expectedContent: the text the editor started from. When given and the stored text has changed since (another tab or
+// teammate), the server refuses the save (409) instead of overwriting it. Returns the server's error, if any.
+export async function updateHistoryContent(id: string, content: string, expectedContent?: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${BASE}?id=${encodeURIComponent(id)}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(expectedContent === undefined ? { content } : { content, expectedContent }),
+    });
+    if (res.ok) return { ok: true };
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    return { ok: false, error: data.error };
+  } catch { return { ok: false }; }
 }
 
 export async function deleteFromHistory(id: string): Promise<HistoryItem[]> {
