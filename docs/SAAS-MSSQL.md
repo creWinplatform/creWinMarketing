@@ -324,8 +324,14 @@ commands. With `PLATFORM_DATABASE_PROVIDER=mssql` they use SQL Server, whatever 
 - **Run by hand on 12 November.** A copy of the real `platform.sqlite` was migrated to schema 79 in a temporary
   folder and copied into the local `RyzevoLocalCopy` database (154 tables, 102 rows, verified). Backup, verification
   and both drills passed.
-- **Not yet.** `monitor:platform` still checks the SQLite file (database size, worker state). It is to be pointed at
-  SQL Server at the switch.
+- **Monitoring (`monitor:platform`).** With `PLATFORM_DATABASE_PROVIDER=mssql` the database checks run on SQL Server
+  (`ConnectionStrings.Platform`): schema version, database id, worker observation, the job queue and the uncertain
+  deliveries.
+  - The SQL is SQLite's, run through the translator; named parameters become positional.
+  - The backup, drill and off-site checks stay local. The disk check covers the folder that holds the backups.
+  - The report says `"provider":"mssql"`.
+  - Tested by `test/platform-mssql-recovery.test.cjs` and by hand against the local copy: readable, schema 79, queue
+    checked, backup verified, no alerts.
 
 ## Phase 4: the platform data copy (8 November)
 
@@ -343,6 +349,47 @@ commands. With `PLATFORM_DATABASE_PROVIDER=mssql` they use SQL Server, whatever 
   repository's `workspace()` returns the same result on both databases.
 - **Not yet:** the Crewin JSON stores (phase 2 added their tables and `db:copy-legacy`). The panel still runs on SQLite, so writes made after the
   copy are not in `Ryzevo`. The copy has to be redone, or the difference moved, at the switch.
+
+### Phase 4 for the Crewin stores on RDS (tools ready 12 November; run by the publisher)
+
+The live Crewin JSON files are on the live server, so the copy runs there. The steps are in `docs/YAYIN-PROMPTU-9.md`:
+
+- **A, safe with any deploy:**
+  1. Deploy.
+  2. `backup:platform` with `PLATFORM_DATABASE_PROVIDER=mssql`, then `verify:backup`.
+  3. `npm run db:upgrade` shows the plan; `npm run db:upgrade -- --apply` adds the two empty tables and records
+     schema 79.
+  4. `monitor:platform`.
+- **B, a short maintenance window:**
+  1. Stop the panel, the worker and the agent.
+  2. Take a fresh backup.
+  3. `npm run db:copy-legacy -- --live`, then `--verify-only`.
+  4. Turn on `PLATFORM_LEGACY_STORE=mssql` and start everything again.
+  5. Rollback: remove the switch. Writes made while it was on stay only in the tables.
+
+- **`npm run db:upgrade` (`scripts/mssql-upgrade.cjs`).** It brings an existing database up to
+  `lib/db/mssql-schema.sql` when the new versions only add tables, indexes and foreign keys.
+  - It refuses columns that are missing on existing tables.
+  - Without `--apply` it changes nothing.
+  - With `--apply` it works in one transaction and records the versions (`IDENTITY_INSERT`, since
+    `platform_migrations.version` is an identity column).
+- **`db:copy-legacy -- --live`.**
+  - A server that is not local is refused without `--live`.
+  - With `--live` it also refuses:
+    - when `PLATFORM_LEGACY_STORE=mssql` is already on, since the tables may hold newer data than the files;
+    - when the tables are missing (run `db:upgrade` first).
+- **The guard (`scripts/lib/live-guard.cjs`).** Before `db:upgrade --apply` or `db:copy-legacy --live` write to a
+  server that is not local, it requires a backup that:
+  - is a SQL Server backup (format 3);
+  - is of the same server and database;
+  - carries the same `database_id`;
+  - verifies offline;
+  - is at most 24 hours old (`--backup <folder>` picks one).
+- **Tested on the local server.**
+  - `test/platform-mssql-recovery.test.cjs`: a schema-78 database is upgraded to 79 (plan, apply, then "up to date").
+    The guard accepts the fresh backup and refuses a stale one and one of another database.
+  - `test/legacy-store.test.cjs`: the copy refuses a remote server without `--live`, and with the switch already on.
+- **Nothing was written to RDS from the development PC.**
 
 ## The test database: `Ryzevo_Trial`
 

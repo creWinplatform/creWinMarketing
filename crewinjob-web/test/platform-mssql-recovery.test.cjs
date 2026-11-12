@@ -48,7 +48,7 @@ async function fixture(t) {
     fs.rmSync(directory, { recursive: true, force: true });
   });
   const backup = () => { const result = run('scripts/platform-backup.mjs'); const folders = fs.existsSync(backups) ? fs.readdirSync(backups).sort() : []; return { result, folder: folders.length ? path.join(backups, folders.at(-1)) : null }; };
-  return { directory, backups, run, backup };
+  return { directory, backups, target, run, backup };
 }
 const manifestAt = folder => JSON.parse(fs.readFileSync(path.join(folder, 'manifest.json'), 'utf8'));
 const allFiles = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? allFiles(path.join(dir, entry.name)) : [path.join(dir, entry.name)]);
@@ -83,6 +83,15 @@ test('SQL Server backup: one file per table, verified offline with the encrypted
   const wrong = copyOf('wrong-key');
   fs.writeFileSync(path.join(wrong, 'platform-credentials.key'), wrongKey);
   assert.match(f.run('scripts/platform-verify-backup.mjs', [wrong]).stderr, /key_mismatch/);
+
+  // monitor:platform reads the same database on SQL Server: schema, worker, queue (translated SQL) and the backup binding.
+  const monitored = f.run('scripts/platform-monitor.mjs', [], { PLATFORM_DRILL_PATH: path.join(f.directory, 'no-drills') });
+  const status = JSON.parse(monitored.stdout);
+  assert.equal(status.provider, 'mssql');
+  assert.deepEqual(status.database, { status: 'readable', schemaVersion: 79 });
+  assert.equal(status.queue.status, 'checked');
+  assert.equal(status.backup.status, 'verified', JSON.stringify(status.alerts));
+  assert.ok(!status.alerts.some(item => /database|backup/.test(item.code)), JSON.stringify(status.alerts));
 });
 
 test('SQL Server restore drill: offline by default, into a new drill database with --server, never without a drill server', { skip: !local && 'no local SQL Server test connection' }, async t => {
@@ -106,4 +115,30 @@ test('SQL Server restore drill: offline by default, into a new drill database wi
   assert.equal(restored.tables, 154); assert.equal(restored.constraints, 'trusted'); assert.equal(restored.values, 'match'); assert.equal(restored.kept, false);
   const sql = require('mssql'), master = await new sql.ConnectionPool(withDatabase(connection, 'master')).connect();
   try { assert.equal((await master.request().query(`SELECT DB_ID('${restored.database}') id`)).recordset[0].id, null, 'the drill database is dropped'); } finally { await master.close(); }
+});
+
+test('phase 4 tools: db:upgrade adds the missing tables in one step; the live guard wants a fresh backup of this very database', { skip: !local && 'no local SQL Server test connection' }, async t => {
+  const f = await fixture(t), sql = require('mssql');
+  // The fixture database plays RDS at schema 78: without the Crewin store tables.
+  const pool = await new sql.ConnectionPool(f.target).connect();
+  try { await pool.request().batch('DROP TABLE legacy_records; DROP TABLE legacy_stores; DELETE FROM platform_migrations WHERE version = 79;'); } finally { await pool.close(); }
+  const plan = f.run('scripts/mssql-upgrade.cjs');
+  assert.equal(plan.status, 0, plan.stderr);
+  assert.match(plan.stdout, /Schema: database 78, code 79[\s\S]*\+ table legacy_records[\s\S]*\+ table legacy_stores[\s\S]*record schema version\(s\) 79[\s\S]*Plan only/);
+  const applied = f.run('scripts/mssql-upgrade.cjs', ['--apply']);
+  assert.equal(applied.status, 0, applied.stderr); assert.match(applied.stdout, /Applied 3 change\(s\); schema 79/);
+  assert.match(f.run('scripts/mssql-upgrade.cjs').stdout, /Up to date/);
+
+  // The guard: a verified SQL Server backup of this database from the last 24 hours, nothing else.
+  const { result } = f.backup();
+  assert.equal(result.status, 0, result.stderr);
+  const { requireFreshBackup } = require('../scripts/lib/live-guard.cjs');
+  const own = f.target;
+  const saved = process.env.PLATFORM_BACKUP_PATH; process.env.PLATFORM_BACKUP_PATH = f.backups;
+  try {
+    const ok = await requireFreshBackup({ connection: own });
+    assert.equal(ok.schemaVersion, 79);
+    await assert.rejects(requireFreshBackup({ connection: own, now: Date.now() + 25 * 3600000 }), /older than 24 hours/);
+    await assert.rejects(requireFreshBackup({ connection: withDatabase(connection, 'master') }), /not .*master/);
+  } finally { if (saved === undefined) delete process.env.PLATFORM_BACKUP_PATH; else process.env.PLATFORM_BACKUP_PATH = saved; }
 });

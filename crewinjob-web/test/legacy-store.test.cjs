@@ -227,3 +227,13 @@ if (connection) dbSuite('mssql (agent adapter)', async () => {
   const db = records.mssqlRecordsDb(connection);
   return { db, close: () => db.close() };
 });
+
+test('db:copy-legacy refuses a server that is not local without --live, and with the switch already on', () => {
+  const { spawnSync } = require('node:child_process');
+  const run = (args, extra = {}) => spawnSync(process.execPath, ['scripts/legacy-copy.cjs', ...args], { cwd: path.join(__dirname, '..'), encoding: 'utf8', timeout: 30000,
+    env: { ...process.env, PLATFORM_MSSQL_CONNECTION: 'Server=rds.example.invalid,1433;Database=Ryzevo;User Id=u;Password=not-a-secret', PLATFORM_LEGACY_STORE: '', ...extra } });
+  const plain = run([]);
+  assert.equal(plain.status, 2); assert.match(plain.stderr, /needs --live/); assert.doesNotMatch(plain.stderr + plain.stdout, /not-a-secret/);
+  const on = run(['--live'], { PLATFORM_LEGACY_STORE: 'mssql' });
+  assert.equal(on.status, 2); assert.match(on.stderr, /already on/);
+});

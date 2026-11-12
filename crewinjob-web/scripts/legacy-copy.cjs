@@ -7,8 +7,10 @@
 //     --agent-dir <dir>   the agent folder (default: CREWINJOB_AGENT_DIR or ../crewinjob-agent)
 //     --replace           overwrite stores that already have rows (default: refuse)
 //     --verify-only       compare the tables with the files again, write nothing
+//     --live              allow a server that is not local (phase 4): needs db:upgrade first, the switch off and a
+//                         verified SQL Server backup of this database from the last 24 hours (--backup <folder> picks one)
 //
-// It refuses any server that is not local: the copy into RDS is phase 4 and needs the owner's approval and a backup.
+// Without --live it refuses any server that is not local: the copy into RDS is phase 4 and needs the owner's approval.
 // The panel and the agent keep using the files until PLATFORM_LEGACY_STORE=mssql is set, which is the step after this
 // copy (set it with the panel and the agent stopped, so no file write lands between the copy and the switch).
 const fs = require('node:fs');
@@ -24,7 +26,11 @@ const agentDir = path.resolve(option('--agent-dir') || process.env.CREWINJOB_AGE
 
 const value = connectionString(), target = describe(value);
 if (!value) { console.error('No connection string: set PLATFORM_APPSETTINGS_PATH (e.g. appsettings.Test.json) or PLATFORM_MSSQL_CONNECTION.'); process.exit(2); }
-if (!/^(127\.0\.0\.1|localhost)(,\d+)?$/i.test(target.server)) { console.error(`Refusing ${target.server}: this copy runs only against a local test server.`); process.exit(2); }
+const { isLocal, requireFreshBackup } = require('./lib/live-guard.cjs');
+// Phase 4 on RDS: only with --live, with the switch still off, after db:upgrade and a fresh verified backup (checked below).
+const live = !isLocal(target.server);
+if (live && !flag('--live')) { console.error(`Refusing ${target.server}: a server that is not local needs --live (phase 4, with a fresh backup).`); process.exit(2); }
+if (live && records.legacyStoreMode() === 'db' && !flag('--verify-only')) { console.error('Refusing: PLATFORM_LEGACY_STORE=mssql is already on, so the tables may hold newer data than the files. Copy with the switch off.'); process.exit(2); }
 
 // A store's data as the panel and the agent read it from its file (missing → null, skipped).
 function fromFile(owner, file, options) {
@@ -59,7 +65,7 @@ async function ensureTables(db) {
   }
   // A platform database copied at schema 78 records the new tables as migration 79.
   if (created && await db.get("SELECT 1 AS x FROM sys.tables WHERE name = 'platform_migrations'") && !await db.get('SELECT 1 AS x FROM platform_migrations WHERE version = 79'))
-    await db.run("INSERT INTO platform_migrations(version, applied_at) VALUES(79, CONVERT(NVARCHAR(30), SYSUTCDATETIME(), 126))");
+    await db.run("SET IDENTITY_INSERT platform_migrations ON; INSERT INTO platform_migrations(version, applied_at) VALUES(79, CONVERT(NVARCHAR(30), SYSUTCDATETIME(), 126)); SET IDENTITY_INSERT platform_migrations OFF;");
   return created;
 }
 
@@ -68,7 +74,12 @@ async function ensureTables(db) {
   const report = [];
   let failed = 0;
   try {
-    const created = flag('--verify-only') ? 0 : await ensureTables(db);
+    let created = 0;
+    if (live && !flag('--verify-only')) {
+      if (!await db.get("SELECT 1 AS x FROM sys.tables WHERE name = 'legacy_records'")) throw new Error('The tables are missing: run npm run db:upgrade -- --apply first.');
+      const backup = await requireFreshBackup({ connection: value, folder: option('--backup') });
+      console.log(`Backup: ${path.basename(backup.folder)} (${backup.createdAt}) verified.`);
+    } else if (!flag('--verify-only')) created = await ensureTables(db);
     const all = [...Object.entries(records.WEB_STORES).map(([file, options]) => ['web', file, options]), ...Object.entries(records.AGENT_STORES).map(([file, options]) => ['agent', file, options])];
     for (const [owner, file, options] of all) {
       const name = records.storeName(owner, file), source = fromFile(owner, file, options);

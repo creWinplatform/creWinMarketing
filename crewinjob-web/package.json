@@ -20,6 +20,7 @@
     "db:smoke": "node scripts/mssql-smoke.cjs",
     "db:copy": "node scripts/mssql-copy.cjs",
     "db:copy-legacy": "node scripts/legacy-copy.cjs",
+    "db:upgrade": "node scripts/mssql-upgrade.cjs",
     "local:start": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-autostart.ps1 -Action Start",
     "local:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/local-autostart.ps1 -Action Stop",
     "test:platform:http": "node --test test/platform-http.test.cjs",

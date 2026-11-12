@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { createRequire } from 'node:module';
 import { readdir, readFile, statfs } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { BACKUP_FOLDER, MAX_RECOVERY_SCHEMA, latestBackupFolder, rejectLinks, verifyBackup } from './platform-recovery.mjs';
@@ -26,28 +27,64 @@ export function monitorConfiguration(env = process.env) {
   };
 }
 
-function databaseChecks(file, options, now, alert) {
+// The same read-only checks on SQLite (the database file) and SQL Server (PLATFORM_DATABASE_PROVIDER=mssql). The SQL is
+// SQLite's; on SQL Server the platform's translator (lib/db/translate.cjs, through lib/db/client.ts) runs it. Named
+// parameters (@at) become positional.
+const positional = (sql, params) => {
+  if (Array.isArray(params) || params === undefined) return [sql, params || []];
+  const values = [];
+  return [sql.replace(/@(\w+)/g, (_, name) => { values.push(params[name]); return '?'; }), values];
+};
+export function sqliteMonitorDb(file) {
+  const handle = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 });
+  handle.pragma('trusted_schema = OFF');
+  handle.pragma('query_only = ON');
+  const run = (sql, params, method) => Array.isArray(params) ? handle.prepare(sql)[method](...params) : params === undefined ? handle.prepare(sql)[method]() : handle.prepare(sql)[method](params);
+  return {
+    check: async () => handle.pragma('quick_check(1)', { simple: true }) === 'ok',
+    get: async (sql, params) => run(sql, params, 'get'),
+    all: async (sql, params) => run(sql, params, 'all'),
+    tables: async () => new Set(handle.prepare("SELECT name FROM sqlite_schema WHERE type='table'").all().map(row => row.name)),
+    close: async () => handle.close(),
+  };
+}
+export async function mssqlMonitorDb(connection) {
+  const require = createRequire(import.meta.url), sql = require('mssql');
+  const { load } = require('../../test/platform-loader.cjs');
+  const config = sql.ConnectionPool.parseConnectionString(connection);
+  config.requestTimeout = 30000; config.pool = { max: 2, min: 0 };
+  const pool = await new sql.ConnectionPool(config).connect();
+  const db = load('../db/client.ts').mssqlDb(pool, sql);
+  return {
+    // RDS keeps the storage healthy; the check is that the database answers and is writable state is not asked.
+    check: async () => (await db.get('SELECT 1 AS ok'))?.ok === 1,
+    get: async (text, params) => { const [s, v] = positional(text, params); return db.get(s, ...v); },
+    all: async (text, params) => { const [s, v] = positional(text, params); return db.all(s, ...v); },
+    tables: async () => new Set((await pool.request().query('SELECT name FROM sys.tables WHERE is_ms_shipped = 0')).recordset.map(row => row.name)),
+    close: () => pool.close(),
+  };
+}
+
+async function databaseChecks(open, options, now, alert) {
   let db;
   const report = { database: { status: 'unavailable', schemaVersion: null }, databaseId: null, worker: { status: 'not_observed', expected: options.workerExpected }, queue: { status: 'not_checked' } };
   try {
-    db = new Database(file, { readonly: true, fileMustExist: true, timeout: 5000 });
-    db.pragma('trusted_schema = OFF');
-    db.pragma('query_only = ON');
-    if (db.pragma('quick_check(1)', { simple: true }) !== 'ok') throw new Error('database_check_failed');
-    const versions = db.prepare('SELECT version FROM platform_migrations ORDER BY version').all().map(row => row.version);
+    db = await open();
+    if (!(await db.check())) throw new Error('database_check_failed');
+    const versions = (await db.all('SELECT version FROM platform_migrations ORDER BY version')).map(row => row.version);
     const version = versions.at(-1);
     if (!Number.isSafeInteger(version) || version < 1 || version > MAX_RECOVERY_SCHEMA || versions.some((value, index) => value !== index + 1)) {
       alert('database_schema_unsupported', 'critical'); return report;
     }
     report.database = { status: 'readable', schemaVersion: version };
     if (version >= 27) {
-      report.databaseId = db.prepare("SELECT value FROM platform_operation_metadata WHERE key='database_id'").get()?.value;
+      report.databaseId = (await db.get("SELECT value FROM platform_operation_metadata WHERE key='database_id'"))?.value;
       if (typeof report.databaseId !== 'string' || !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/.test(report.databaseId)) throw new Error('invalid_database_id');
     }
     if (version < MAX_RECOVERY_SCHEMA) alert('database_schema_upgrade_pending', 'warning');
-    const has = table => Boolean(db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table));
+    const tables = await db.tables(), has = table => tables.has(table);
     if (has('platform_worker_observations')) {
-      const row = db.prepare("SELECT first_observed_at,started_at,finished_at,outcome,last_success_at,checked,failed,consecutive_failures FROM platform_worker_observations WHERE component='platform-worker'").get();
+      const row = await db.get("SELECT first_observed_at,started_at,finished_at,outcome,last_success_at,checked,failed,consecutive_failures FROM platform_worker_observations WHERE component='platform-worker'");
       if (row) {
         const times = [row.first_observed_at, row.started_at, row.finished_at, row.last_success_at].filter(value => value !== null).map(value => Date.parse(value));
         const invalid = times.some(value => !Number.isFinite(value) || value > now + 30000) ||
@@ -78,14 +115,14 @@ function databaseChecks(file, options, now, alert) {
     const readyAt = "CASE "+(social?"WHEN j.job_type='social.publish' THEN MAX(j.created_at,p.scheduled_at,COALESCE(p.next_check_at,p.scheduled_at)) ":'')+(mobile?"WHEN j.job_type='mobile.message' THEN MAX(j.created_at,m.scheduled_at) ":'')+"ELSE j.created_at END";
     const known = JOB_TYPES.map(() => '?').join(',');
     const supported = `j.job_type IN (${JOB_TYPES.map(type => `'${type}'`).join(',')})`;
-    const queued = db.prepare(`SELECT COUNT(*) AS n FROM platform_jobs WHERE status='queued'`).get().n;
-    const running = db.prepare("SELECT COUNT(*) AS n FROM platform_jobs WHERE status='running'").get().n;
-    const ready = db.prepare(`SELECT COUNT(*) AS n,MIN(${readyAt}) AS oldest FROM ${from} WHERE j.status='queued' AND ${supported} AND ${due}`).get({ at });
-    const delayed = db.prepare(`SELECT COUNT(*) AS n FROM ${from} WHERE j.status='queued' AND ${supported} AND ${due} AND ${readyAt}<@cutoff`).get({ at, cutoff }).n;
-    const expiredLeases = db.prepare("SELECT COUNT(*) AS n FROM platform_jobs WHERE status='running' AND (lease_until IS NULL OR lease_until<?)").get(at).n;
-    const failedRecent = db.prepare("SELECT COUNT(*) AS n FROM platform_jobs WHERE status='failed' AND updated_at>=? AND updated_at<=?").get(recent, at).n;
-    const unsupported = db.prepare(`SELECT COUNT(*) AS n FROM platform_jobs WHERE status IN ('queued','running') AND job_type NOT IN (${known})`).get(...JOB_TYPES).n;
-    const missingPayload = (social ? db.prepare("SELECT COUNT(*) AS n FROM platform_jobs j LEFT JOIN platform_social_publications p ON p.job_id=j.id WHERE j.job_type='social.publish' AND j.status IN ('queued','running') AND p.job_id IS NULL").get().n : 0)+(mobile?db.prepare("SELECT COUNT(*) n FROM platform_jobs j LEFT JOIN platform_mobile_messages m ON m.job_id=j.id WHERE j.job_type='mobile.message' AND j.status IN ('queued','running') AND m.job_id IS NULL").get().n:0);
+    const queued = (await db.get(`SELECT COUNT(*) AS n FROM platform_jobs WHERE status='queued'`)).n;
+    const running = (await db.get("SELECT COUNT(*) AS n FROM platform_jobs WHERE status='running'")).n;
+    const ready = await db.get(`SELECT COUNT(*) AS n,MIN(${readyAt}) AS oldest FROM ${from} WHERE j.status='queued' AND ${supported} AND ${due}`, { at });
+    const delayed = (await db.get(`SELECT COUNT(*) AS n FROM ${from} WHERE j.status='queued' AND ${supported} AND ${due} AND ${readyAt}<@cutoff`, { at, cutoff })).n;
+    const expiredLeases = (await db.get("SELECT COUNT(*) AS n FROM platform_jobs WHERE status='running' AND (lease_until IS NULL OR lease_until<?)", [at])).n;
+    const failedRecent = (await db.get("SELECT COUNT(*) AS n FROM platform_jobs WHERE status='failed' AND updated_at>=? AND updated_at<=?", [recent, at])).n;
+    const unsupported = (await db.get(`SELECT COUNT(*) AS n FROM platform_jobs WHERE status IN ('queued','running') AND job_type NOT IN (${known})`, JOB_TYPES)).n;
+    const missingPayload = (social ? (await db.get("SELECT COUNT(*) AS n FROM platform_jobs j LEFT JOIN platform_social_publications p ON p.job_id=j.id WHERE j.job_type='social.publish' AND j.status IN ('queued','running') AND p.job_id IS NULL")).n : 0)+(mobile?(await db.get("SELECT COUNT(*) n FROM platform_jobs j LEFT JOIN platform_mobile_messages m ON m.job_id=j.id WHERE j.job_type='mobile.message' AND j.status IN ('queued','running') AND m.job_id IS NULL")).n:0);
     report.queue = { status: 'checked', queued, running, ready: ready.n, oldestReadyAt: ready.oldest, delayed, expiredLeases, failedRecent, unsupported };
     if (delayed) alert('queue_delayed', 'warning', delayed);
     if (expiredLeases) alert('queue_expired_leases', 'warning', expiredLeases);
@@ -93,19 +130,19 @@ function databaseChecks(file, options, now, alert) {
     if (unsupported) alert('queue_unsupported_jobs', 'warning', unsupported);
     if (missingPayload) alert('queue_missing_payload', 'critical', missingPayload);
     if (!options.workerExpected && ready.n) alert('worker_not_expected_with_ready_jobs', 'warning', ready.n);
-    const countIf = (table, where, args = []) => has(table) ? db.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`).get(...args).n : 0;
+    const countIf = async (table, where, args = []) => has(table) ? (await db.get(`SELECT COUNT(*) AS n FROM ${table} WHERE ${where}`, args)).n : 0;
     for (const [code, severity, count] of [
-      ['email_delivery_uncertain', 'critical', countIf('platform_email_pilot_recipients', "state='uncertain'")],
-      ['social_publication_uncertain', 'critical', countIf('platform_social_publications', "state='uncertain'")],
-      ['mobile_delivery_uncertain','critical',countIf('platform_mobile_deliveries',"state='uncertain'")],
-      ['identity_delivery_uncertain', 'warning', countIf('platform_identity_challenges', "delivery_state IN ('submitted','uncertain')")],
-      ['billing_requires_review', 'warning', countIf('platform_billing_orders', "state IN ('review','uncertain')")],
-      ['billing_inquiry_interrupted', 'warning', countIf('platform_billing_checks', "outcome='checking' AND created_at<?", [new Date(now - 60000).toISOString()])],
+      ['email_delivery_uncertain', 'critical', await countIf('platform_email_pilot_recipients', "state='uncertain'")],
+      ['social_publication_uncertain', 'critical', await countIf('platform_social_publications', "state='uncertain'")],
+      ['mobile_delivery_uncertain','critical',await countIf('platform_mobile_deliveries',"state='uncertain'")],
+      ['identity_delivery_uncertain', 'warning', await countIf('platform_identity_challenges', "delivery_state IN ('submitted','uncertain')")],
+      ['billing_requires_review', 'warning', await countIf('platform_billing_orders', "state IN ('review','uncertain')")],
+      ['billing_inquiry_interrupted', 'warning', await countIf('platform_billing_checks', "outcome='checking' AND created_at<?", [new Date(now - 60000).toISOString()])],
     ]) if (count) alert(code, severity, count);
   } catch {
     report.database.status = 'unavailable';
     alert('database_unavailable', 'critical');
-  } finally { db?.close(); }
+  } finally { await db?.close().catch(() => undefined); }
   return report;
 }
 
@@ -154,13 +191,18 @@ async function drillChecks(root, options, now, alert) {
   return { status: 'missing' };
 }
 
-export async function monitorPlatform({ databasePath, backupRoot, drillRoot = resolve(backupRoot, '..', 'recovery-drills'), offsiteStatePath = join(dirname(resolve(databasePath)), 'offsite-state.json'), environmentKey = process.env.PLATFORM_ENCRYPTION_KEY,
+export async function monitorPlatform({ databasePath, backupRoot, mssqlConnection = null, drillRoot = resolve(backupRoot, '..', 'recovery-drills'), offsiteStatePath = join(dirname(resolve(databasePath)), 'offsite-state.json'), environmentKey = process.env.PLATFORM_ENCRYPTION_KEY,
   options = monitorConfiguration(), now = Date.now(), diskStats = statfs }) {
   const alerts = [];
   const alert = (code, severity, count) => alerts.push({ code, severity, ...(count === undefined ? {} : { count }) });
   const file = resolve(databasePath);
   let checks;
-  try { await rejectLinks(file); checks = databaseChecks(file, options, now, alert); }
+  // With PLATFORM_DATABASE_PROVIDER=mssql the caller passes the SQL Server connection string; the disk check then covers
+  // the folder that holds the backups.
+  try {
+    if (mssqlConnection) checks = await databaseChecks(() => mssqlMonitorDb(mssqlConnection), options, now, alert);
+    else { await rejectLinks(file); checks = await databaseChecks(() => sqliteMonitorDb(file), options, now, alert); }
+  }
   catch { checks = { database: { status: 'unavailable' }, worker: { status: 'not_checked' }, queue: { status: 'not_checked' } }; alert('database_unavailable', 'critical'); }
   const { databaseId, ...publicChecks } = checks;
   const backup = await backupChecks(resolve(backupRoot), options, now, environmentKey, databaseId, alert);
@@ -168,7 +210,7 @@ export async function monitorPlatform({ databasePath, backupRoot, drillRoot = re
   const offsite = await offsiteChecks(offsiteStatePath, { expected: options.offsiteExpected, maxAgeHours: options.offsiteMaxAgeHours }, now, alert);
   let disk = { status: 'unavailable' };
   try {
-    const stat = await diskStats(dirname(file));
+    const stat = await diskStats(mssqlConnection ? resolve(backupRoot, '..') : dirname(file));
     const bytes = Number(stat.bavail) * Number(stat.bsize);
     if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error('invalid_disk_stats');
     const freeMb = Math.floor(bytes / 1024 ** 2), low = freeMb < options.minFreeMb;
@@ -178,5 +220,5 @@ export async function monitorPlatform({ databasePath, backupRoot, drillRoot = re
   alerts.sort((a, b) => a.code.localeCompare(b.code));
   const severity = alerts.some(item => item.severity === 'critical') ? 'critical' : alerts.length ? 'warning' : 'ok';
   return { checkedAt: new Date(now).toISOString(), status: severity, exitCode: severity === 'critical' ? 2 : severity === 'warning' ? 1 : 0,
-    ...publicChecks, backup, drill, offsite, disk, alerts, http: 'not_checked', notificationsSent: false, productionReadinessAssessed: false };
+    provider: mssqlConnection ? 'mssql' : 'sqlite', ...publicChecks, backup, drill, offsite, disk, alerts, http: 'not_checked', notificationsSent: false, productionReadinessAssessed: false };
 }
