@@ -25,7 +25,8 @@ function text(value: unknown, max: number): string {
 }
 
 export async function GET() {
-  return NextResponse.json(listSeoWorkItems());
+  // listSeoWorkItems is async since the stores moved behind PLATFORM_LEGACY_STORE; without await the list was sent as {}.
+  return NextResponse.json(await listSeoWorkItems());
 }
 
 export async function POST(req: NextRequest) {

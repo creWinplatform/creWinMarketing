@@ -237,3 +237,9 @@ test('db:copy-legacy refuses a server that is not local without --live, and with
   const on = run(['--live'], { PLATFORM_LEGACY_STORE: 'mssql' });
   assert.equal(on.status, 2); assert.match(on.stderr, /already on/);
 });
+
+test('routes await the async Crewin store reads (an unawaited list was sent as {})', () => {
+  const route = fs.readFileSync(path.join(__dirname, '..', 'app', 'api', 'data', 'seo-work-items', 'route.ts'), 'utf8');
+  assert.match(route, /NextResponse\.json\(await listSeoWorkItems\(\)\)/);
+  assert.doesNotMatch(route, /NextResponse\.json\(listSeoWorkItems\(\)\)/);
+});
