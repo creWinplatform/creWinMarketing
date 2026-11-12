@@ -62,11 +62,13 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         console.warn('[scheduler] agent config yazılamadı:', (e as Error).message);
       }
-      const proc = spawn('node', [SCHED_FILE], {
+      // The Node that runs this panel (the Windows release bundles node.exe; it is not on PATH).
+      const proc = spawn(process.execPath, [SCHED_FILE], {
         cwd:      AGENT_DIR,
         detached: true,
         stdio:    'ignore',
       });
+      proc.on('error', (e) => console.warn('[scheduler] başlatılamadı:', e.message));
       proc.unref();
       const startedAt = new Date().toISOString();
       fs.mkdirSync(path.dirname(PID_FILE), { recursive: true });

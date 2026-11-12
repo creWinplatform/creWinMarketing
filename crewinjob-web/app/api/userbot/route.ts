@@ -138,13 +138,16 @@ export async function POST(req: NextRequest) {
     try { agentConfig().writeAgentConfigFile(process.env); }
     catch (e) { return NextResponse.json({ ok: false, message: `Config yazılamadı: ${(e as Error).message}` }); }
 
-    botProc = spawn('node', ['userbot.js'], {
+    // The Node that runs this panel: the Windows release bundles its own node.exe, which is not on PATH.
+    botProc = spawn(process.execPath, ['userbot.js'], {
       cwd:   AGENT_DIR,
       stdio: 'pipe',
       env:   { ...process.env, PATH: process.env.PATH || '', SYSTEMROOT: process.env.SYSTEMROOT || '', FORCE_COLOR: '0' },
     });
 
     const proc1 = botProc;
+    // A launch error (missing file, no permission) is logged instead of crashing the panel as an unhandled 'error'.
+    proc1.on('error', (e) => { appendLog(`⚠ Userbot başlatılamadı: ${e.message}`); botProc = null; });
     proc1.stdout?.on('data', (d: Buffer) => {
       String(d).split('\n').filter(Boolean).forEach(appendLog);
     });
@@ -219,12 +222,13 @@ export async function POST(req: NextRequest) {
     try { agentConfig().writeAgentConfigFile(process.env); }
     catch (e) { return NextResponse.json({ ok: false, message: `Config yazılamadı: ${(e as Error).message}` }); }
 
-    botProc = spawn('node', ['userbot.js'], {
+    botProc = spawn(process.execPath, ['userbot.js'], {
       cwd:   AGENT_DIR,
       stdio: 'pipe',
       env:   { ...process.env, PATH: process.env.PATH || '', SYSTEMROOT: process.env.SYSTEMROOT || '', FORCE_COLOR: '0' },
     });
     const proc2 = botProc;
+    proc2.on('error', (e) => { appendLog(`⚠ Userbot başlatılamadı: ${e.message}`); botProc = null; });
     proc2.stdout?.on('data', (d: Buffer) => String(d).split('\n').filter(Boolean).forEach(appendLog));
     proc2.stderr?.on('data', (d: Buffer) => String(d).split('\n').filter(Boolean).forEach(l => appendLog(`⚠ ${l}`)));
     proc2.on('exit', (code) => { appendLog(`■ Userbot durdu (exit ${code ?? '?'})`); botProc = null; });
