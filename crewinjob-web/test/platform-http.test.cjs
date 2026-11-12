@@ -11,7 +11,7 @@ test('monolith HTTP: login, provisioning, cross-scope denial, revocation and leg
   const base = `http://127.0.0.1:${port}`;
   const server = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'start', '-p', String(port)], {
     cwd: path.join(__dirname, '..'), windowsHide: true,
-    env: { ...process.env, NEXT_DIST_DIR: '.next-monolith-platform', PLATFORM_DATABASE_PATH: path.join(directory, 'test.sqlite'),
+    env: { ...process.env, NEXT_DIST_DIR: '.next-monolith-platform', PLATFORM_DATABASE_PROVIDER: 'sqlite', PLATFORM_DATABASE_PATH: path.join(directory, 'test.sqlite'),
       AUTH_SECRET: 'test-only-platform-session-secret', PLATFORM_ENCRYPTION_KEY: '12'.repeat(32), ADMIN_USERNAME: 'fixture-admin', ADMIN_PASSWORD: 'fixture-admin-password', PORT: String(port), PLATFORM_GEMINI_API_KEY:'', CRON_SECRET:'fixture-cron-only', PLATFORM_EMAIL_PILOT_SEND_ENABLED:'0', PLATFORM_PUBLIC_ORIGIN:'',
       PLATFORM_GOOGLE_CLIENT_ID: 'fixture-google-client', PLATFORM_GOOGLE_CLIENT_SECRET: 'fixture-google-secret', PLATFORM_GOOGLE_REDIRECT_URI: `${base}/api/platform/google/callback`,
       PLATFORM_LINKEDIN_CLIENT_ID: 'fixture-linkedin-client', PLATFORM_LINKEDIN_CLIENT_SECRET: 'fixture-linkedin-secret', PLATFORM_LINKEDIN_REDIRECT_URI: `${base}/api/platform/social/callback`, PLATFORM_LINKEDIN_API_VERSION:'202609', PLATFORM_SOCIAL_PUBLISH_ENABLED:'0',

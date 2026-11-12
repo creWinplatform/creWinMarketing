@@ -33,7 +33,7 @@ async function fixture(t, { environment = false, noKey = false, encrypted = true
       encryptCredentials({ accessToken: 'DO-NOT-PRINT-SECRET', refreshToken: '' }, key, project.organizationId, project.projectId, id), new Date().toISOString());
   }
   if (!environment && !noKey) fs.writeFileSync(path.join(directory, 'platform-credentials.key'), key);
-  const env = { ...process.env, PLATFORM_DATABASE_PATH: source, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: environment ? key : '' };
+  const env = { ...process.env, PLATFORM_DATABASE_PROVIDER: 'sqlite', PLATFORM_DATABASE_PATH: source, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: environment ? key : '' };
   const run = (script, args = [], extra = {}) => spawnSync(process.execPath, [`scripts/${script}.mjs`, ...args], { cwd, windowsHide: true, encoding: 'utf8', timeout: 30000, env: { ...env, ...extra } });
   const backup = () => {
     const result = run('platform-backup');

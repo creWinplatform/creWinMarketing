@@ -29,7 +29,10 @@ export default function CoachBrandStudio({workspace,lang,onUpdate}:{workspace:Wo
   useEffect(()=>{load();},[load]);
   const run=async(key:string,body:object,message:string)=>{if(busy||!data)return false;setBusy(key);setError('');setNotice('');try{const value=await projectRequest<CoachBrandSnapshot>('/api/platform/coach/brand',{method:'POST',body:JSON.stringify({...body,expectedRevision:data.revision}),signal:AbortSignal.timeout(45000)});apply(value);setNotice(message);setFallback('');return value;}catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));
     // The error tells people to use the starter template; when the AI attempt failed, offer that template here.
-    if((key==='voice'||key==='analyze')&&(body as {mode?:string}).mode==='ai')setFallback(key);load();return false;}finally{setBusy('');}};
+    // The typed answers stay on screen for that template: a full reload would replace them with the saved, often empty,
+    // answers and leave the template button disabled. The rest of the snapshot (revision, draft) is still refreshed.
+    if((key==='voice'||key==='analyze')&&(body as {mode?:string}).mode==='ai'){setFallback(key);projectRequest<CoachBrandSnapshot>('/api/platform/coach/brand').then(value=>{const typed=answers;apply(value);setAnswers(typed);}).catch(()=>{});}
+    else load();return false;}finally{setBusy('');}};
   if(error&&!data)return <p className="studio-error" role="alert"><Msg text={error}/></p>;
   if(!data)return <p className="studio-skeleton" role="status">{tr?'Marka çalışması yükleniyor…':'Loading the brand workshop…'}</p>;
   const mode=data.aiConfigured?'ai':'template';

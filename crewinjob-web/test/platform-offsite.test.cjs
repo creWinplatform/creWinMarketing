@@ -21,7 +21,7 @@ async function fixture(t) {
   const file = path.join(directory, 'platform.sqlite'), backups = path.join(directory, 'backups'), key = crypto.randomBytes(32).toString('hex');
   const db = openPlatformDatabase(file); await new PlatformRepository(db).bootstrapLegacy('offsite-admin'); db.close();
   fs.writeFileSync(path.join(directory, 'platform-credentials.key'), key);
-  const backup = () => { const result = spawnSync(process.execPath, ['scripts/platform-backup.mjs'], { cwd, windowsHide: true, encoding: 'utf8', timeout: 30000, env: { ...process.env, PLATFORM_DATABASE_PATH: file, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: '' } }); assert.equal(result.status, 0, result.stderr); return path.join(backups, fs.readdirSync(backups).sort().at(-1)); };
+  const backup = () => { const result = spawnSync(process.execPath, ['scripts/platform-backup.mjs'], { cwd, windowsHide: true, encoding: 'utf8', timeout: 30000, env: { ...process.env, PLATFORM_DATABASE_PROVIDER: 'sqlite', PLATFORM_DATABASE_PATH: file, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: '' } }); assert.equal(result.status, 0, result.stderr); return path.join(backups, fs.readdirSync(backups).sort().at(-1)); };
   return { directory, file, backups, backup, statePath: path.join(directory, 'offsite-state.json') };
 }
 // A small S3 stand-in: stores what was put (once), answers HEAD with the stored size and checksum.

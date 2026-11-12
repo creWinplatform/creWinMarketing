@@ -32,7 +32,7 @@ async function fixture(t) {
   insert('platform_connections', { ...scope, id: 'private-connection', provider: 'custom', integration_id: 'fixture', account_name: 'Private Account',
     encrypted_credentials: encryptCredentials({ accessToken: 'DO-NOT-PRINT-MONITOR-SECRET' }, key, a.organizationId, a.projectId, 'private-connection'), updated_at: at(0) });
   fs.writeFileSync(path.join(directory, 'platform-credentials.key'), key);
-  const env = { ...process.env, PLATFORM_DATABASE_PATH: file, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: '', PLATFORM_WORKER_EXPECTED: '1' };
+  const env = { ...process.env, PLATFORM_DATABASE_PROVIDER: 'sqlite', PLATFORM_DATABASE_PATH: file, PLATFORM_BACKUP_PATH: backups, PLATFORM_ENCRYPTION_KEY: '', PLATFORM_WORKER_EXPECTED: '1' };
   const run = (script, args = [], extra = {}) => spawnSync(process.execPath, [`scripts/${script}.mjs`, ...args], { cwd, windowsHide: true, encoding: 'utf8', timeout: 30000, env: { ...env, ...extra } });
   const backup = () => { const result = run('platform-backup'); assert.equal(result.status, 0, result.stderr); return path.join(backups, fs.readdirSync(backups).sort().at(-1)); };
   const success = async (offset = 0) => { const id = await startWorkerObservation(db, new Date(now + offset)); await finishWorkerObservation(db, id, 'completed', 0, 0, new Date(now + offset + 1)); return id; };

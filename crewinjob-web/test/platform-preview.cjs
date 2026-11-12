@@ -10,7 +10,7 @@ const port = 31450;
 const base = `http://127.0.0.1:${port}`;
 const server = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'start', '-p', String(port)], {
   cwd: path.join(__dirname, '..'), windowsHide: true,
-  env: { ...process.env, NEXT_DIST_DIR: '.next-monolith-platform', PLATFORM_DATABASE_PATH: path.join(directory, 'preview.sqlite'),
+  env: { ...process.env, NEXT_DIST_DIR: '.next-monolith-platform', PLATFORM_DATABASE_PROVIDER: 'sqlite', PLATFORM_DATABASE_PATH: path.join(directory, 'preview.sqlite'),
     AUTH_SECRET: 'test-only-platform-preview-session-secret', PLATFORM_ENCRYPTION_KEY: '12'.repeat(32), ADMIN_USERNAME: 'fixture-admin', ADMIN_PASSWORD: 'fixture-admin-password', PORT: String(port),
     PLATFORM_GOOGLE_CLIENT_ID: 'fixture-google-client', PLATFORM_GOOGLE_CLIENT_SECRET: 'fixture-google-secret', PLATFORM_GOOGLE_REDIRECT_URI: `${base}/api/platform/google/callback`,
     PLATFORM_LINKEDIN_CLIENT_ID: 'fixture-linkedin-client', PLATFORM_LINKEDIN_CLIENT_SECRET: 'fixture-linkedin-secret', PLATFORM_LINKEDIN_REDIRECT_URI: `${base}/api/platform/social/callback`,
