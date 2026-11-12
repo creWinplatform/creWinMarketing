@@ -5,7 +5,7 @@ import { lstat, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { join, parse, relative, resolve, sep } from 'node:path';
 
 // Bump alongside schema changes and add any new encrypted-column AAD contracts.
-export const MAX_RECOVERY_SCHEMA = 78;
+export const MAX_RECOVERY_SCHEMA = 79;
 const MAX_DATABASE_BYTES = 4 * 1024 ** 3;
 const identifier = value => `"${value.replaceAll('"', '""')}"`;
 export class RecoveryError extends Error {
@@ -178,9 +178,15 @@ export async function verifyBackup(directory, environmentKey = process.env.PLATF
   const folder = resolve(directory);
   await rejectLinks(folder);
   const manifestFile = join(folder, 'manifest.json');
-  await fileDigest(manifestFile, 8192);
+  // A SQL Server backup (format 3) lists every table, so its manifest may be larger than a SQLite one.
+  const manifestSize = (await fileDigest(manifestFile, 1024 * 1024)).bytes;
   const manifest = JSON.parse(await readFile(manifestFile, 'utf8'));
+  if (manifest.formatVersion === 3) {
+    const { verifyMssqlBackup } = await import('./mssql-backup.mjs');
+    return { folder, manifest, checks: await verifyMssqlBackup(folder, manifest, environmentKey) };
+  }
   if (manifest.formatVersion !== 2) fail('unsupported_backup_format');
+  if (manifestSize > 8192) fail('invalid_manifest');
   if (manifest.database !== 'platform.sqlite' || !['file', 'environment', 'not_created'].includes(manifest.keySource) ||
       !Number.isSafeInteger(manifest.databaseBytes) || manifest.databaseBytes < 1 || manifest.databaseBytes > MAX_DATABASE_BYTES ||
       !/^[a-f0-9]{64}$/.test(manifest.databaseSha256) || !Number.isFinite(Date.parse(manifest.createdAt)) ||

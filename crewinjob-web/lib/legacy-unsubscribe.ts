@@ -6,9 +6,11 @@
 import 'server-only';
 import path from 'path';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { readJson, withFileLock, writeJsonAtomic } from './json-store';
+import { readStore, webStore, withStore } from './legacy-store';
 
 export const LEGACY_SUPPRESSIONS_FILE = path.join(process.cwd(), 'data', 'email-suppressions.json');
+// The file, or legacy_records 'web:email-suppressions' (one row per address key) with PLATFORM_DATABASE_PROVIDER=mssql.
+const suppressionStore = (file: string) => webStore(path.basename(file), 'object', { file });
 const PREFIX = 'cwl1_';
 const VALID_DAYS = 365;
 const MAX_ENTRIES = 100000;
@@ -47,19 +49,19 @@ export async function processLegacyUnsubscribe(token: string, file = LEGACY_SUPP
   const [, key, expiresText, given] = match, expires = Number(expiresText);
   const wanted = Buffer.from(signature(key, expires, value)), actual = Buffer.from(given);
   if (wanted.length !== actual.length || !timingSafeEqual(wanted, actual) || expires < today()) throw new Error('invalid');
-  await withFileLock(file, () => {
-    const list = readJson<Suppressions>(file, {});
+  await withStore<Suppressions>(suppressionStore(file), ({ load, save }) => {
+    const list = load();
     if (list[key]) return;
     if (Object.keys(list).length >= MAX_ENTRIES) throw new Error('full');
     list[key] = { reason: 'unsubscribe', at: new Date().toISOString() };
-    writeJsonAtomic(file, list);
+    save(list);
   });
   return { unsubscribed: true };
 }
 
 /** Lower-cased addresses from `emails` that have unsubscribed through a legacy link. */
-export function legacySuppressed(emails: string[], file = LEGACY_SUPPRESSIONS_FILE): Set<string> {
-  const list = readJson<Suppressions>(file, {}), out = new Set<string>();
+export async function legacySuppressed(emails: string[], file = LEGACY_SUPPRESSIONS_FILE): Promise<Set<string>> {
+  const list = await readStore(suppressionStore(file)) as Suppressions, out = new Set<string>();
   for (const email of emails) {
     const key = legacyEmailKey(email);
     if (key && list[key]) out.add(email.trim().toLowerCase());

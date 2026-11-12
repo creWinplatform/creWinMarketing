@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import path from 'path';
-import { readJson } from '@/lib/json-store';
+import { readStore, webStore } from '@/lib/legacy-store';
 import { publishToSocial, recordPublishedPosts } from '@/lib/scheduled-posts-backend';
 
 export const dynamic = 'force-dynamic';
@@ -41,7 +40,6 @@ interface RunResult {
   error?:   string;
 }
 
-const CALENDAR_FILE = path.join(process.cwd(), 'data', 'calendar.json');
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 /** YYYY-MM-DD — verilen saat dilimindeki bugün (en-CA biçimi ISO tarih verir) */
@@ -86,7 +84,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ published: 0, failed: 0, results: [], message: 'Bugün için bekleyen etkinlik yok.' });
     }
 
-    const storedById = new Map(readJson<ScheduleEvent[]>(CALENDAR_FILE, []).map(e => [e.id, e]));
+    const storedById = new Map((await readStore<ScheduleEvent>(webStore('calendar.json', 'array'))).map(e => [e.id, e]));
 
     const results: RunResult[] = await Promise.all(
       toRun.map(async (ev): Promise<RunResult> => {

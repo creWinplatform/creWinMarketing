@@ -63,7 +63,7 @@ async function main() {
     return;
   }
   if (action === 'add_to_queue') {
-    data = bot.addToQueue(input.jobData || {}, input.source || 'manual');
+    data = await bot.addToQueue(input.jobData || {}, input.source || 'manual');
     process.stdout.write(JSON.stringify({ ok: true, item: data }));
     return;
   }
@@ -73,17 +73,17 @@ async function main() {
     return;
   }
   if (action === 'update') {
-    data = bot.updateQueueItem(input.id, { data: input.jobData });
+    data = await bot.updateQueueItem(input.id, { data: input.jobData });
     process.stdout.write(JSON.stringify({ ok: true, item: data }));
     return;
   }
   if (action === 'remove') {
-    bot.removeFromQueue(input.id);
+    await bot.removeFromQueue(input.id);
     process.stdout.write(JSON.stringify({ ok: true }));
     return;
   }
   if (action === 'queue') {
-    const queue = bot.readQueue();
+    const queue = await bot.readQueue();
     process.stdout.write(JSON.stringify({ ok: true, queue }));
     return;
   }
@@ -104,12 +104,12 @@ async function main() {
   }
   if (action === 'suggested_groups') {
     const { listSuggestions } = require('./modules/group-discovery');
-    process.stdout.write(JSON.stringify({ ok: true, groups: listSuggestions() }));
+    process.stdout.write(JSON.stringify({ ok: true, groups: await listSuggestions() }));
     return;
   }
   if (action === 'dismiss_groups') {
     const { dismissSuggestions } = require('./modules/group-discovery');
-    process.stdout.write(JSON.stringify({ ok: true, dismissed: dismissSuggestions(input.ids) }));
+    process.stdout.write(JSON.stringify({ ok: true, dismissed: await dismissSuggestions(input.ids) }));
     return;
   }
   if (action === 'joined_groups') {
@@ -135,7 +135,7 @@ async function main() {
   }
   if (action === 'posted_jobs') {
     const { loadPosted } = require('./modules/auto-poster');
-    data = loadPosted();
+    data = await loadPosted();
     process.stdout.write(JSON.stringify({ ok: true, jobs: data }));
     return;
   }
@@ -158,7 +158,7 @@ async function main() {
   // ── Feature 1+2: İnceleme kuyruğu ──────────────────────────────────────────
   if (action === 'review_queue') {
     const { loadReviewQueue } = require('./modules/auto-poster');
-    const queue = loadReviewQueue().filter(i => i.status === 'pending');
+    const queue = (await loadReviewQueue()).filter(i => i.status === 'pending');
     process.stdout.write(JSON.stringify({ ok: true, queue, total: queue.length }));
     return;
   }
@@ -170,13 +170,13 @@ async function main() {
   }
   if (action === 'reject_review') {
     const { rejectReview } = require('./modules/auto-poster');
-    rejectReview(input.id);
+    await rejectReview(input.id);
     process.stdout.write(JSON.stringify({ ok: true }));
     return;
   }
 
   if (action === 'bulk_reject') {
-    const { loadReviewQueue, saveReviewQueue } = require('./modules/auto-poster');
+    const { mutateReviewQueue } = require('./modules/auto-poster');
     // Boş/eksik ids → HİÇBİR şey reddedilmez (eskiden boş liste TÜM kuyruğu reddediyordu).
     // Tümünü temizlemek için açıkça 'clear_queue' kullanılmalı.
     const ids = Array.isArray(input.ids) ? input.ids.filter(id => typeof id === 'string' && id) : [];
@@ -185,70 +185,75 @@ async function main() {
       return;
     }
     const idSet = new Set(ids);
-    const queue = loadReviewQueue();
     let count = 0;
-    queue.forEach(i => {
-      if (i.status === 'pending' && idSet.has(i.id)) {
-        i.status = 'rejected';
-        i.rejectedAt = new Date().toISOString();
-        count++;
-      }
+    await mutateReviewQueue(queue => {
+      count = 0;
+      queue.forEach(i => {
+        if (i.status === 'pending' && idSet.has(i.id)) {
+          i.status = 'rejected';
+          i.rejectedAt = new Date().toISOString();
+          count++;
+        }
+      });
+      return queue;
     });
-    saveReviewQueue(queue);
     process.stdout.write(JSON.stringify({ ok: true, count }));
     return;
   }
 
   if (action === 'clear_queue') {
-    const { loadReviewQueue, saveReviewQueue } = require('./modules/auto-poster');
-    const queue = loadReviewQueue();
+    const { mutateReviewQueue } = require('./modules/auto-poster');
     // Yalnızca bekleyenler reddedilir — onaylanmış/yayınlanmış kayıtların durumu ezilmez
     let count = 0;
-    queue.forEach(i => {
-      if (i.status !== 'pending') return;
-      i.status = 'rejected';
-      i.rejectedAt = new Date().toISOString();
-      count++;
+    await mutateReviewQueue(queue => {
+      count = 0;
+      queue.forEach(i => {
+        if (i.status !== 'pending') return;
+        i.status = 'rejected';
+        i.rejectedAt = new Date().toISOString();
+        count++;
+      });
+      return queue;
     });
-    saveReviewQueue(queue);
     process.stdout.write(JSON.stringify({ ok: true, count }));
     return;
   }
 
   if (action === 'get_config') {
     const { loadConfig } = require('./modules/auto-poster');
-    process.stdout.write(JSON.stringify({ ok: true, config: loadConfig() }));
+    process.stdout.write(JSON.stringify({ ok: true, config: await loadConfig() }));
     return;
   }
   if (action === 'set_config') {
-    const { loadConfig, saveConfig } = require('./modules/auto-poster');
-    const updated = { ...loadConfig(), ...input };
-    saveConfig(updated);
+    const { updateConfig } = require('./modules/auto-poster');
+    const updated = await updateConfig(input);
     process.stdout.write(JSON.stringify({ ok: true, config: updated }));
     return;
   }
   if (action === 'api_usage') {
     const { loadUsage } = require('./ai-client');
-    process.stdout.write(JSON.stringify({ ok: true, usage: loadUsage() }));
+    process.stdout.write(JSON.stringify({ ok: true, usage: await loadUsage() }));
     return;
   }
   if (action === 'job_stats') {
     // posted-jobs.json'daki ilanlar için başvuru sayısını çek (max 10 en yeni)
-    const { loadPosted, savePosted } = require('./modules/auto-poster');
+    const { loadPosted, mutatePosted } = require('./modules/auto-poster');
     const { fetchIlanApplicationCount } = require('./modules/job-bot');
-    const posted = loadPosted();
+    const posted = await loadPosted();
     const recent = posted.filter(p => p.ilanId).slice(-10).reverse();
     for (const job of recent) {
       try {
         job.applicationCount = await fetchIlanApplicationCount(job.ilanId);
       } catch { job.applicationCount = null; }
     }
-    // Güncellenen sayıları geri yaz
-    for (const r of recent) {
-      const idx = posted.findIndex(p => p.ilanId === r.ilanId);
-      if (idx >= 0) posted[idx].applicationCount = r.applicationCount;
-    }
-    savePosted(posted);
+    // Güncellenen sayıları geri yaz — liste taze okunur (ağ çağrıları sürerken yapılan değişiklikler ezilmez)
+    await mutatePosted(list => {
+      for (const r of recent) {
+        const idx = list.findIndex(p => p.ilanId === r.ilanId);
+        if (idx >= 0) list[idx].applicationCount = r.applicationCount;
+      }
+      return list;
+    });
     process.stdout.write(JSON.stringify({ ok: true, jobs: recent }));
     return;
   }
@@ -256,7 +261,7 @@ async function main() {
   // ── Feature 3: Grup istatistikleri ──────────────────────────────────────────
   if (action === 'group_stats') {
     const { loadGroupStats } = require('./modules/auto-poster');
-    const list = Object.values(loadGroupStats()).sort((a, b) => (b.posted || 0) - (a.posted || 0));
+    const list = Object.values(await loadGroupStats()).sort((a, b) => (b.posted || 0) - (a.posted || 0));
     process.stdout.write(JSON.stringify({ ok: true, stats: list }));
     return;
   }
@@ -299,7 +304,7 @@ const LONG_ACTIONS = new Set([
 (async () => {
   const isLong = LONG_ACTIONS.has(action);
   if (isLong) {
-    try { require('./modules/auto-poster').setPipelineState(action); } catch {}
+    try { await require('./modules/auto-poster').setPipelineState(action); } catch {}
   }
   try {
     await main();
@@ -307,8 +312,14 @@ const LONG_ACTIONS = new Set([
     process.stdout.write(JSON.stringify({ ok: false, error: e.message }));
   } finally {
     if (isLong) {
-      try { require('./modules/auto-poster').clearPipelineState(); } catch {}
+      try { await require('./modules/auto-poster').clearPipelineState(); } catch {}
     }
+    // Bekleyen etiket kayıtlarını bitir, veritabanı bağlantısını kapat (açık havuz süreci canlı tutmasın; dosya modunda zararsız)
+    try {
+      const linkTagsPath = require.resolve('./modules/link-tags');
+      if (require.cache[linkTagsPath]) await require('./modules/link-tags').flush();
+    } catch {}
+    try { await require('./modules/store').close(); } catch {}
     // GramJS bağlantısı açık kalırsa süreç hiç kapanmıyor (execFile timeout'a kadar asılı kalıyordu).
     // tg-client yalnızca yüklendiyse kapat — Telegram'sız action'larda paketi boşuna yükleme.
     try {

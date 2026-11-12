@@ -118,7 +118,7 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
   const scoped = await projectCampaignResponse(_req, params.id);
   if (scoped) return scoped;
   if (isRemoteOnlyCampaignId(params.id)) return remoteOnlyResponse();
-  const local = getCampaign(params.id);
+  const local = await getCampaign(params.id);
   if (!local) return NextResponse.json({ error: 'Kampanya bulunamadı.' }, { status: 404 });
   if (!local.backendId) return NextResponse.json(local);
   try {
@@ -192,7 +192,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ id: str
   const scoped = await projectCampaignResponse(req, params.id);
   if (scoped) return scoped;
   if (isRemoteOnlyCampaignId(params.id)) return remoteOnlyResponse();
-  const current = getCampaign(params.id);
+  const current = await getCampaign(params.id);
   if (!current) return NextResponse.json({ error: 'Kampanya bulunamadı.' }, { status: 404 });
   if (['running', 'completed'].includes(current.status)) {
     return NextResponse.json({ error: 'Çalışan veya tamamlanan kampanya düzenlenemez.' }, { status: 409 });
@@ -252,7 +252,7 @@ export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: s
   const scoped = await projectCampaignResponse(_req, params.id);
   if (scoped) return scoped;
   if (isRemoteOnlyCampaignId(params.id)) return remoteOnlyResponse();
-  const current = getCampaign(params.id);
+  const current = await getCampaign(params.id);
   if (!current) return NextResponse.json({ error: 'Kampanya bulunamadı.' }, { status: 404 });
   if (current.status === 'running') return NextResponse.json({ error: 'Çalışan kampanya silinemez.' }, { status: 409 });
   if (current.backendId && current.backendSync === 'synced') {

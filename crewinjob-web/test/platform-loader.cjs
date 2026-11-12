@@ -9,10 +9,12 @@ function load(file) {
   if (cache.has(full)) return cache.get(full);
   const exported = {};
   const code = ts.transpileModule(fs.readFileSync(full, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
-  vm.runInNewContext(code, { exports: exported, process, Buffer, Date, URL, URLSearchParams, Intl, TextDecoder, TextEncoder, structuredClone, AbortSignal, Response, Headers, FormData, Blob, ReadableStream, setTimeout, clearTimeout, fetch: (...args) => globalThis.fetch(...args), require: name => {
+  vm.runInNewContext(code, { exports: exported, process, Buffer, crypto: globalThis.crypto, Date, URL, URLSearchParams, Intl, TextDecoder, TextEncoder, structuredClone, AbortSignal, Response, Headers, FormData, Blob, ReadableStream, setTimeout, clearTimeout, fetch: (...args) => globalThis.fetch(...args), require: name => {
     if (name === 'server-only') return {};
     if (name.startsWith('.') && name.endsWith('.cjs')) return require(path.resolve(path.dirname(full), name));
     if (name.startsWith('.')) return load(path.resolve(path.dirname(full), `${name}.ts`));
+    // The app's '@/…' alias (tsconfig paths) points at the web root.
+    if (name.startsWith('@/')) return load(path.resolve(__dirname, '..', `${name.slice(2)}.ts`));
     return require(name);
   } });
   cache.set(full, exported);

@@ -4,14 +4,18 @@
 // crewinjob.com, linkle gelen ziyaretçinin ilk temasını çerezde tutar; kayıt olayıyla panele döner ve panelin
 // "Hangi iş müşteri getirdi" raporu etiketi buradaki başlıkla adlandırır (data/link-tags.jsonl, panel okur).
 // Kayıt dosyasına yalnız satır eklenir: ajan ve panel süreçleri aynı anda yazsa da kayıt kaybolmaz.
+// Kayıt store.js üzerinden yazılır (dosya modunda aynı .jsonl dosyası, db modunda panelin tablosu); linkler eşzamanlı
+// üretilir, kayıt arkada sırayla yapılır — kapanmadan önce flush() beklenir.
 const crypto = require('crypto');
-const fs     = require('fs');
-const path   = require('path');
+const store  = require('./store');
 
 const SCOPE  = ['crewin', 'crewinjob'];
 const HOST   = 'crewinjob.com';
 const URL_RE = /https?:\/\/[^\s<>"'`]+/g;
-const tagsFile = () => process.env.CREWIN_LINK_TAGS_FILE || path.join(__dirname, '..', 'data', 'link-tags.jsonl');
+// CREWIN_LINK_TAGS_FILE: dosya modunda başka bir kayıt dosyası (testler)
+const tagsStore = () => process.env.CREWIN_LINK_TAGS_FILE
+  ? store.store('data/link-tags.jsonl', { file: process.env.CREWIN_LINK_TAGS_FILE })
+  : store.stores.linkTags;
 
 // Sabit etiketler: tek tek ilan dışındaki bot ve kanal linkleri.
 const FIXED = {
@@ -53,33 +57,37 @@ function tagText(text, tag, opts) {
 
 // Etiketin başlığını kaydeder. Genel başlık ("İlan #123") sonradan gerçek başlıkla bir kez güncellenebilir;
 // panel bir etiketin son satırını kullanır.
-let known = { file: '', titles: new Map() };
-function loadKnown() {
-  const file = tagsFile();
-  if (known.file === file) return known.titles;
+let known = { key: '', titles: new Map() };
+async function loadKnown() {
+  const def = tagsStore(), key = `${store.mode()}:${def.file}`;
+  if (known.key === key) return known.titles;
   const titles = new Map();
-  try {
-    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
-      try { const item = JSON.parse(line); if (item && item.tag) titles.set(item.tag, { generic: Boolean(item.generic) }); } catch { /* bozuk satır */ }
-    }
-  } catch { /* dosya henüz yok */ }
-  known = { file, titles };
+  for (const item of await store.read(def)) if (item && item.tag) titles.set(item.tag, { generic: Boolean(item.generic) }); // bozuk satır okunurken atlanır
+  known = { key, titles };
   return titles;
 }
+// Kayıtlar sırayla yazılır (aynı etiket iki kez eklenmesin); döner: Promise<boolean> (satır eklendi mi).
+let pending = Promise.resolve();
 function remember(tag, kind, title, generic = false) {
-  try {
-    const titles = loadKnown(), current = titles.get(tag);
-    if (current && (generic || !current.generic)) return false;
-    const line = { tag, kind, title: String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80), createdAt: new Date().toISOString(), ...(generic ? { generic: true } : {}) };
-    fs.mkdirSync(path.dirname(tagsFile()), { recursive: true });
-    fs.appendFileSync(tagsFile(), JSON.stringify(line) + '\n');
-    titles.set(tag, { generic });
-    return true;
-  } catch (e) {
-    console.warn('[link-tags] kayıt yazılamadı:', e.message);
-    return false;
-  }
+  const createdAt = new Date().toISOString();
+  const run = pending.then(async () => {
+    try {
+      const titles = await loadKnown(), current = titles.get(tag);
+      if (current && (generic || !current.generic)) return false;
+      const line = { tag, kind, title: String(title || '').replace(/\s+/g, ' ').trim().slice(0, 80), createdAt, ...(generic ? { generic: true } : {}) };
+      await store.append(tagsStore(), [line]);
+      titles.set(tag, { generic });
+      return true;
+    } catch (e) {
+      console.warn('[link-tags] kayıt yazılamadı:', e.message);
+      return false;
+    }
+  });
+  pending = run;
+  return run;
 }
+// Bekleyen etiket kayıtları bitene kadar bekler (CLI çıkmadan önce, testler).
+function flush() { return pending.then(() => undefined); }
 
 function fixedTag(name) {
   const [kind, id, title] = FIXED[name];
@@ -104,4 +112,4 @@ function jobIdFromUrl(url) {
   return match ? match[1] : null;
 }
 
-module.exports = { crewinTag, tagUrl, tagText, remember, fixedTag, jobLink, jobIdFromUrl };
+module.exports = { crewinTag, tagUrl, tagText, remember, flush, fixedTag, jobLink, jobIdFromUrl };

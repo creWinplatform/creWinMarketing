@@ -1667,6 +1667,19 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_competitor_site_changes_recent ON platform_competitor_site_changes(organization_id,project_id,detected_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(78,datetime('now'));
   `))();
+  // The Crewin workspace's JSON stores (data/*.json and the agent's files) as rows: lib/db/legacy-records.cjs.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=79').get())db.transaction(()=>db.exec(`
+    CREATE TABLE legacy_stores (
+      store TEXT PRIMARY KEY, version INTEGER NOT NULL CHECK(version >= 0), updated_at TEXT NOT NULL
+    );
+    CREATE TABLE legacy_records (
+      store TEXT NOT NULL, record_key TEXT NOT NULL, position REAL NOT NULL, body TEXT NOT NULL, body_hash TEXT NOT NULL CHECK(length(body_hash) = 64),
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(store,record_key)
+    );
+    CREATE INDEX legacy_records_order ON legacy_records(store,position);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(79,datetime('now'));
+  `))();
   return db;
 }
 

@@ -1,19 +1,14 @@
 'use strict';
 // Pipeline koordinatörü: Telegram mesajları → crewinjob.com ilanı
+// Veri dosyaları (posted-jobs, review-queue, group-stats, pipeline-state, agent-config, failed-messages)
+// store.js üzerinden okunur/yazılır: dosya modunda aynı dosyalar, db modunda panelin tabloları.
 const fs   = require('fs');
 const path = require('path');
 const bot  = require('./job-bot');
 const { scrapeAllGroups, markProcessed } = require('./message-scraper');
-const { writeJsonAtomic } = require('./json-file');
+const { stores, read, mutate, write, append } = require('./store');
 
-const DATA_DIR        = path.join(__dirname, '..', 'data');
 const LOG_DIR         = path.join(__dirname, '..', 'logs');
-const POSTED_FILE     = path.join(DATA_DIR, 'posted-jobs.json');
-const REVIEW_FILE     = path.join(DATA_DIR, 'review-queue.json');
-const GROUP_STATS_FILE = path.join(DATA_DIR, 'group-stats.json');
-const STATE_FILE      = path.join(DATA_DIR, 'pipeline-state.json');
-const FAILED_FILE     = path.join(DATA_DIR, 'failed-messages.jsonl');
-const CONFIG_FILE     = path.join(DATA_DIR, 'agent-config.json');
 const DAILY_LIMIT     = 50;
 
 // Telegram'dan toplanan ilanlar Crewinjob Manning (10339) adıyla yayınlandığı için HİÇBİRİ kendiliğinden yayınlanmaz:
@@ -29,13 +24,22 @@ const DEFAULT_CONFIG = {
 function withMandatoryReview(saved) {
   return { ...DEFAULT_CONFIG, ...(saved && typeof saved === 'object' ? saved : {}), reviewAllItems: true };
 }
-function loadConfig() {
+async function loadConfig() {
   let saved = {};
-  try { saved = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8')); } catch { saved = {}; }
+  try { saved = await read(stores.agentConfig); } catch { saved = {}; }
   return withMandatoryReview(saved);
 }
-function saveConfig(cfg) {
-  writeJsonAtomic(CONFIG_FILE, { ...cfg, reviewAllItems: true });
+async function saveConfig(cfg) {
+  await write(stores.agentConfig, { ...cfg, reviewAllItems: true });
+}
+// Kayıtlı ayarı taze okuyup değişiklikleri tek kilit altında uygular; döner: birleşik ayar (set_config yanıtı).
+async function updateConfig(changes) {
+  let updated;
+  await mutate(stores.agentConfig, saved => {
+    updated = { ...withMandatoryReview(saved), ...changes };
+    return { ...updated, reviewAllItems: true };
+  });
+  return updated;
 }
 
 // ── Loglama ───────────────────────────────────────────────────────────────────
@@ -50,32 +54,35 @@ function log(msg) {
   } catch {}
 }
 
-// ── Disk I/O ──────────────────────────────────────────────────────────────────
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+// ── Veri (store.js) ───────────────────────────────────────────────────────────
+async function loadPosted() {
+  return read(stores.postedJobs);
 }
-
-function loadPosted() {
-  try { return JSON.parse(fs.readFileSync(POSTED_FILE, 'utf-8')); } catch { return []; }
+async function savePosted(jobs) {
+  await write(stores.postedJobs, jobs);
 }
-function savePosted(jobs) {
-  writeJsonAtomic(POSTED_FILE, jobs);
+// Yayınlanan ilan listesini kilit altında taze okuyup değiştirir (change(list) → yeni liste veya undefined).
+// Uzun süren işlemler (ağ çağrıları) eldeki eski tam listeyi yazmaz; yalnız kendi değişikliğini burada uygular.
+async function mutatePosted(change) {
+  await mutate(stores.postedJobs, change);
 }
-// Tek ilanı diskten taze okuyarak güncelle (uzun süren işlemlerde artımlı kayıt;
+// Tek ilanı taze okuyarak güncelle (uzun süren işlemlerde artımlı kayıt;
 // eldeki eski tam listeyi yazıp paralel değişiklikleri ezmemek için).
-function updatePostedJob(ilanId, mutate) {
-  const posted = loadPosted();
-  const job = posted.find(p => p.ilanId === ilanId);
-  if (!job) return null;
-  mutate(job);
-  savePosted(posted);
+async function updatePostedJob(ilanId, change) {
+  let job = null;
+  await mutate(stores.postedJobs, posted => {
+    job = posted.find(p => p.ilanId === ilanId) || null;
+    if (!job) return undefined;
+    change(job);
+    return posted;
+  });
   return job;
 }
 
 const REVIEW_RETENTION_DAYS = 30;
 
-function loadReviewQueue() {
-  try { return JSON.parse(fs.readFileSync(REVIEW_FILE, 'utf-8')); } catch { return []; }
+async function loadReviewQueue() {
+  return read(stores.reviewQueue);
 }
 // Kaydederken budama: bekleyen (pending) olmayan ve 30 günden eski kayıtlar silinir
 // (dosya 2.7 MB'a ulaşmıştı). Bekleyenlere asla dokunulmaz.
@@ -87,15 +94,21 @@ function pruneReviewQueue(items) {
     return !Number.isFinite(ts) || ts >= cutoff;
   });
 }
-function saveReviewQueue(items) {
-  writeJsonAtomic(REVIEW_FILE, pruneReviewQueue(items));
+async function saveReviewQueue(items) {
+  await write(stores.reviewQueue, pruneReviewQueue(items));
+}
+// Kuyruğu kilit altında oku-değiştir-yaz (change(queue) → yeni kuyruk veya undefined); yazarken budanır.
+async function mutateReviewQueue(change) {
+  await mutate(stores.reviewQueue, async queue => {
+    const next = await change(queue);
+    return next === undefined ? undefined : pruneReviewQueue(next);
+  });
 }
 
 // Format/API sorunu yaşayan ham mesajları biriktir (sonradan analiz + yeni kural için)
-function logFailedMessage(msg, reason, jobData = null) {
-  ensureDataDir();
+async function logFailedMessage(msg, reason, jobData = null) {
   try {
-    const line = JSON.stringify({
+    await append(stores.failedMessages, [{
       at:         new Date().toISOString(),
       reason,
       sourceChat: msg.chatTitle,
@@ -107,16 +120,15 @@ function logFailedMessage(msg, reason, jobData = null) {
         minPrice: jobData.minPrice, maxPrice: jobData.maxPrice,
         startDate: jobData.startDate, expirationDate: jobData.expirationDate,
       } : null,
-    });
-    fs.appendFileSync(FAILED_FILE, line + '\n', 'utf-8');
+    }]);
   } catch {}
 }
 
-function loadGroupStats() {
-  try { return JSON.parse(fs.readFileSync(GROUP_STATS_FILE, 'utf-8')); } catch { return {}; }
+async function loadGroupStats() {
+  return read(stores.groupStats);
 }
-function saveGroupStats(stats) {
-  writeJsonAtomic(GROUP_STATS_FILE, stats);
+async function saveGroupStats(stats) {
+  await write(stores.groupStats, stats);
 }
 
 function todayPostedCount(posted) {
@@ -125,26 +137,25 @@ function todayPostedCount(posted) {
 }
 
 // ── Pipeline durum dosyası (tab değişse de işlem görünür kalsın) ──────────────
-function setPipelineState(action) {
+async function setPipelineState(action) {
   try {
-    writeJsonAtomic(STATE_FILE, {
+    await write(stores.pipelineState, {
       running: action, startedAt: new Date().toISOString(), finishedAt: null, lastResult: null, pid: process.pid,
-    }, false);
+    });
   } catch {}
 }
-function clearPipelineState(result = null) {
-  let prev = {};
-  try { prev = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')); } catch {}
+async function clearPipelineState(result = null) {
   try {
-    writeJsonAtomic(STATE_FILE, {
+    await mutate(stores.pipelineState, prev => ({
       running: null, startedAt: prev.startedAt || null,
       finishedAt: new Date().toISOString(), lastAction: prev.running || null, lastResult: result,
-    }, false);
+    }));
   } catch {}
 }
-function readPipelineState() {
-  try { return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')); }
-  catch { return { running: null, startedAt: null, finishedAt: null, lastResult: null }; }
+async function readPipelineState() {
+  let state = {};
+  try { state = await read(stores.pipelineState); } catch {}
+  return Object.keys(state).length ? state : { running: null, startedAt: null, finishedAt: null, lastResult: null };
 }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -164,23 +175,23 @@ function scoreJobData(jobData) {
 }
 
 // ── Feature 3: Grup istatistiği güncelle ─────────────────────────────────────
-function updateGroupStat(chatId, chatTitle, field) {
-  const stats = loadGroupStats();
-  if (!stats[chatId]) {
-    stats[chatId] = { chatId, chatTitle, scraped: 0, queued: 0, posted: 0, rejected: 0, qualityRatio: 0 };
-  }
-  stats[chatId].chatTitle = chatTitle;
-  stats[chatId][field]    = (stats[chatId][field] || 0) + 1;
-  // Kalite oranı: posted / scraped
-  const s = stats[chatId];
-  s.qualityRatio = s.scraped > 0 ? +(s.posted / s.scraped).toFixed(3) : 0;
-  saveGroupStats(stats);
+async function updateGroupStat(chatId, chatTitle, field) {
+  await mutate(stores.groupStats, stats => {
+    if (!stats[chatId]) {
+      stats[chatId] = { chatId, chatTitle, scraped: 0, queued: 0, posted: 0, rejected: 0, qualityRatio: 0 };
+    }
+    stats[chatId].chatTitle = chatTitle;
+    stats[chatId][field]    = (stats[chatId][field] || 0) + 1;
+    // Kalite oranı: posted / scraped
+    const s = stats[chatId];
+    s.qualityRatio = s.scraped > 0 ? +(s.posted / s.scraped).toFixed(3) : 0;
+    return stats;
+  });
 }
 
 // ── Feature 2: İnceleme kuyruğu ──────────────────────────────────────────────
-function addToReviewQueue(msg, jobData, score, flags = {}) {
-  const queue = loadReviewQueue();
-  queue.push({
+async function addToReviewQueue(msg, jobData, score, flags = {}) {
+  const item = {
     id:                  Date.now().toString() + Math.random().toString(36).slice(2, 5),
     score,
     needsPositionReview: flags.needsPositionReview || false,
@@ -192,12 +203,12 @@ function addToReviewQueue(msg, jobData, score, flags = {}) {
     jobData,
     queuedAt:            new Date().toISOString(),
     status:              'pending',
-  });
-  saveReviewQueue(queue);
+  };
+  await mutateReviewQueue(queue => [...queue, item]);
 }
 
 async function approveReview(id, positionIdOverride) {
-  const queue = loadReviewQueue();
+  const queue = await loadReviewQueue();
   const item  = queue.find(i => i.id === id && i.status === 'pending');
   if (!item) throw new Error('İtem bulunamadı veya zaten işlendi');
 
@@ -211,12 +222,16 @@ async function approveReview(id, positionIdOverride) {
   const result = await bot.createIlan(jobData);
   if (!result?.id) throw new Error('createIlan başarısız');
 
-  item.status     = 'approved';
-  item.approvedAt = new Date().toISOString();
-  saveReviewQueue(queue);
+  // İlan oluşturulurken kuyruk değişmiş olabilir: kayıt taze kuyrukta işaretlenir
+  await mutateReviewQueue(current => {
+    const fresh = current.find(i => i.id === id);
+    if (!fresh) return undefined;
+    fresh.status     = 'approved';
+    fresh.approvedAt = new Date().toISOString();
+    return current;
+  });
 
-  const posted = loadPosted();
-  posted.push({
+  const entry = {
     ilanId:          result.id,
     ilanUrl:         result.url,
     sourceChat:      item.sourceChat,
@@ -227,21 +242,23 @@ async function approveReview(id, positionIdOverride) {
     approvedFromQueue: true,
     broadcastedAt:   null,
     broadcastedTo:   0,
-  });
-  savePosted(posted);
-  updateGroupStat(item.sourceChatId, item.sourceChat, 'posted');
+  };
+  await mutatePosted(posted => [...posted, entry]);
+  await updateGroupStat(item.sourceChatId, item.sourceChat, 'posted');
   log(`[review] ✅ Onaylandı & yayınlandı: ${result.url}`);
   return result;
 }
 
-function rejectReview(id) {
-  const queue = loadReviewQueue();
-  const item  = queue.find(i => i.id === id);
-  if (!item) throw new Error('İtem bulunamadı');
-  item.status     = 'rejected';
-  item.rejectedAt = new Date().toISOString();
-  saveReviewQueue(queue);
-  updateGroupStat(item.sourceChatId, item.sourceChat, 'rejected');
+async function rejectReview(id) {
+  let item = null;
+  await mutateReviewQueue(queue => {
+    item = queue.find(i => i.id === id) || null;
+    if (!item) throw new Error('İtem bulunamadı');
+    item.status     = 'rejected';
+    item.rejectedAt = new Date().toISOString();
+    return queue;
+  });
+  await updateGroupStat(item.sourceChatId, item.sourceChat, 'rejected');
   log(`[review] ❌ Reddedildi: ${id}`);
 }
 
@@ -267,7 +284,7 @@ function jobSignature(jd) {
 async function runPipeline(options = {}) {
   const { maxJobs = 15, dryRun = false } = options;
 
-  const posted     = loadPosted();
+  const posted     = await loadPosted();
   const todayCount = todayPostedCount(posted);
 
   if (todayCount >= DAILY_LIMIT) {
@@ -285,12 +302,12 @@ async function runPipeline(options = {}) {
     const t = new Date(p.postedAt || 0).getTime();
     if (t >= recentCutoff) { const s = jobSignature(p.jobData); if (s) seenSignatures.add(s); }
   }
-  for (const q of loadReviewQueue()) {
+  for (const q of await loadReviewQueue()) {
     if (q.status === 'pending') { const s = jobSignature(q.jobData); if (s) seenSignatures.add(s); }
   }
 
   // Feature 3: Grup kalite sıralaması — yüksek kaliteli gruplar önce işlenir
-  const groupStats = loadGroupStats();
+  const groupStats = await loadGroupStats();
   const { messages, processed } = await scrapeAllGroups(80, groupStats);
 
   let postedCount = 0, queuedCount = 0, skipped = 0, errors = 0, duplicates = 0;
@@ -333,13 +350,13 @@ function isLikelyJobPost(text) {
 
     try {
       log(`[pipeline] İşleniyor: "${msg.chatTitle}" → ${msg.text.slice(0, 70).replace(/\n/g, ' ')}…`);
-      updateGroupStat(msg.chatId, msg.chatTitle, 'scraped');
+      await updateGroupStat(msg.chatId, msg.chatTitle, 'scraped');
 
       // ── Regex ön filtre — AI çağrısından önce, token tasarrufu ──────────────
       if (!isLikelyJobPost(msg.text)) {
         skipped++;
         processedNow.push(msg);
-        try { require('../ai-client').trackFiltered(); } catch {}
+        try { await require('../ai-client').trackFiltered(); } catch {}
         continue;
       }
 
@@ -383,11 +400,11 @@ function isLikelyJobPost(text) {
         if (!jobData.positionId) {
           const posLabel = jobData.positionName || jobData._positionName || '?';
           log(`[pipeline] ⚠️ Pozisyon eşleşmedi ("${posLabel}") → inceleme kuyruğuna alındı`);
-          addToReviewQueue(msg, jobData, 0, {
+          await addToReviewQueue(msg, jobData, 0, {
             needsPositionReview: true,
             reason: `Pozisyon tanımlanamadı: "${posLabel}"`,
           });
-          updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
+          await updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
           queuedCount++;
           continue;
         }
@@ -403,7 +420,7 @@ function isLikelyJobPost(text) {
 
         // Kalite skoru
         const score = scoreJobData(jobData);
-        const cfg = loadConfig();
+        const cfg = await loadConfig();
         log(`[pipeline] Kalite skoru: ${score}/100 (eşik: otomatik≥${cfg.autoApproveThreshold}, kuyruk≥${cfg.qualityThreshold}${cfg.reviewAllItems ? ', reviewAll=ON' : ''})`);
 
         // Katman 1: Yayın öncesi yerel doğrulama
@@ -424,9 +441,9 @@ function isLikelyJobPost(text) {
         // Doğrulama başarısız → inceleme kuyruğu
         if (!check.valid) {
           log(`[pipeline] ⚠️ Doğrulama başarısız (${check.errors.join(', ')}) — inceleme kuyruğuna alındı`);
-          addToReviewQueue(msg, jobData, score, { reason: 'Doğrulama: ' + check.errors.join(', ') });
-          logFailedMessage(msg, 'validation: ' + check.errors.join(', '), jobData);
-          updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
+          await addToReviewQueue(msg, jobData, score, { reason: 'Doğrulama: ' + check.errors.join(', ') });
+          await logFailedMessage(msg, 'validation: ' + check.errors.join(', '), jobData);
+          await updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
           queuedCount++;
           continue;
         }
@@ -434,8 +451,8 @@ function isLikelyJobPost(text) {
         // Düşük kalite eşiği → inceleme kuyruğu
         if (score < cfg.qualityThreshold) {
           log(`[pipeline] ⚠️ Skor düşük (${score}<${cfg.qualityThreshold}) — inceleme kuyruğuna alındı`);
-          addToReviewQueue(msg, jobData, score);
-          updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
+          await addToReviewQueue(msg, jobData, score);
+          await updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
           queuedCount++;
           continue;
         }
@@ -443,8 +460,8 @@ function isLikelyJobPost(text) {
         // ReviewAll modu veya oto-onay eşiği altında → inceleme kuyruğu
         if (cfg.reviewAllItems || score < cfg.autoApproveThreshold) {
           log(`[pipeline] ℹ️ İnceleme kuyruğuna alındı (${cfg.reviewAllItems ? 'reviewAll' : `skor ${score}<${cfg.autoApproveThreshold}`})`);
-          addToReviewQueue(msg, jobData, score);
-          updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
+          await addToReviewQueue(msg, jobData, score);
+          await updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
           queuedCount++;
           continue;
         }
@@ -456,16 +473,16 @@ function isLikelyJobPost(text) {
         } catch (e) {
           const apiErr = e.message?.slice(0, 200) || 'bilinmeyen';
           log(`[pipeline] ⚠️ API reddetti (${apiErr}) — inceleme kuyruğuna alındı`);
-          addToReviewQueue(msg, jobData, score, { reason: 'API hatası: ' + apiErr });
-          logFailedMessage(msg, 'api: ' + apiErr, jobData);
-          updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
+          await addToReviewQueue(msg, jobData, score, { reason: 'API hatası: ' + apiErr });
+          await logFailedMessage(msg, 'api: ' + apiErr, jobData);
+          await updateGroupStat(msg.chatId, msg.chatTitle, 'queued');
           queuedCount++;
           continue;
         }
 
         if (result?.id) {
           log(`[pipeline] ✅ Yayınlandı (skor:${score}): ${result.url}`);
-          posted.push({
+          const entry = {
             ilanId:          result.id,
             ilanUrl:         result.url,
             sourceChat:      msg.chatTitle,
@@ -476,9 +493,10 @@ function isLikelyJobPost(text) {
             postedAt:        new Date().toISOString(),
             broadcastedAt:   null,
             broadcastedTo:   0,
-          });
-          savePosted(posted);
-          updateGroupStat(msg.chatId, msg.chatTitle, 'posted');
+          };
+          // Taze listeye eklenir: tur boyunca (dakikalarca) başka süreçlerin yaptığı değişiklikler ezilmez
+          await mutatePosted(list => [...list, entry]);
+          await updateGroupStat(msg.chatId, msg.chatTitle, 'posted');
           postedCount++;
 
           // Auto-reply kaynak mesaja
@@ -490,8 +508,8 @@ function isLikelyJobPost(text) {
           }
         } else {
           log(`[pipeline] ⚠️ createIlan ID döndürmedi — inceleme kuyruğuna alındı`);
-          addToReviewQueue(msg, jobData, score, { reason: 'createIlan ID döndürmedi' });
-          logFailedMessage(msg, 'no-id-returned', jobData);
+          await addToReviewQueue(msg, jobData, score, { reason: 'createIlan ID döndürmedi' });
+          await logFailedMessage(msg, 'no-id-returned', jobData);
           queuedCount++;
         }
 
@@ -511,22 +529,23 @@ function isLikelyJobPost(text) {
     }
   }
 
-  markProcessed(processedNow, processed);
+  await markProcessed(processedNow, processed);
   log(`[pipeline] Tamamlandı — Yayınlandı: ${postedCount} | Kuyruğa: ${queuedCount} | Tekrar: ${duplicates} | Atlandı: ${skipped} | Hata: ${errors}`);
   return { posted: postedCount, queued: queuedCount, duplicates, skipped, errors };
 }
 
 module.exports = {
   runPipeline,
-  loadPosted, savePosted, updatePostedJob,
-  loadReviewQueue, saveReviewQueue, pruneReviewQueue,
+  loadPosted, savePosted, updatePostedJob, mutatePosted,
+  loadReviewQueue, saveReviewQueue, mutateReviewQueue, pruneReviewQueue,
+  logFailedMessage,
   addToReviewQueue,
   withMandatoryReview,
   approveReview, rejectReview,
-  loadGroupStats,
+  loadGroupStats, saveGroupStats,
   scoreJobData,
   updateGroupStat,
   setPipelineState, clearPipelineState, readPipelineState,
-  loadConfig, saveConfig,
+  loadConfig, saveConfig, updateConfig,
   log,
 };

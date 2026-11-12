@@ -103,6 +103,31 @@ async function resetDatabase() {
     return 'reserved and completed';
   });
   await step('portfolio', async () => { const { portfolio } = load('portfolio.ts'); const view = await portfolio(db, a.userId, { organizationId: a.organizationId, projectId: a.projectId }); return `${view.projects.length} project(s)`; });
+  // The Crewin workspace's JSON stores as rows (legacy_records): the panel modules with PLATFORM_DATABASE_PROVIDER=mssql.
+  await step('Crewin stores in tables (legacy_records)', async () => {
+    const saved = { CREWIN_LEGACY_STORE: process.env.CREWIN_LEGACY_STORE, CREWIN_WEB_DATA_DIR: process.env.CREWIN_WEB_DATA_DIR };
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'smoke-legacy-'));
+    Object.assign(process.env, { CREWIN_LEGACY_STORE: 'db', CREWIN_WEB_DATA_DIR: dir });
+    const store = load('../legacy-store.ts');
+    store.setLegacyStoreDb(db);
+    try {
+      const seo = load('../seo-work-items.ts'), posts = load('../scheduled-posts.ts'), tokens = load('../social-tokens.ts');
+      const item = await seo.createSeoWorkItem({ url: 'https://example.com/ğüş', title: 'Başlık 😀', recommendation: 'r', evidence: 'e', priority: 'high' });
+      await seo.updateSeoWorkItem(item.id, 'applied', 'Uygulandı');
+      if ((await seo.listSeoWorkItems())[0]?.status !== 'applied') throw new Error('SEO item not updated');
+      await posts.createPost({ platforms: ['linkedin'], content: 'İçerik', scheduledAt: new Date(Date.now() - 1000).toISOString() });
+      const claims = await Promise.all([posts.claimDuePosts(), posts.claimDuePosts(), posts.claimDuePosts()]);
+      if (claims.flat().length !== 1) throw new Error(`a due post was claimed ${claims.flat().length} times`);
+      await tokens.saveOAuthState('smoke-state', 'linkedin');
+      const once = await Promise.all([tokens.consumeOAuthState('smoke-state'), tokens.consumeOAuthState('smoke-state')]);
+      if (once.filter(Boolean).length !== 1) throw new Error('an OAuth state was used twice');
+      if (fs.readdirSync(dir).length) throw new Error('a file was written');
+      return `${(await db.all('SELECT store FROM legacy_stores')).length} stores, one claim, one state use`;
+    } finally {
+      store.setLegacyStoreDb(null);
+      for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    }
+  });
   await db.close();
   const width = Math.max(...steps.map(s => s.name.length));
   for (const s of steps) console.log(`${s.ok ? 'ok  ' : 'FAIL'} ${s.name.padEnd(width)} ${String(s.ms).padStart(5)} ms  ${s.detail ?? ''}`);

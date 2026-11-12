@@ -1,8 +1,6 @@
 'use strict';
-const fs   = require('fs');
-const path = require('path');
 
-const { writeJsonAtomic } = require('./json-file');
+const store = require('./store');
 
 // Config: process.env > .userbot-config.json > .env (dotenvx bypass) — bkz. agent-config.js
 require('./agent-config').loadAgentConfig();
@@ -11,8 +9,6 @@ const BASE     = (process.env.CREWINJOB_API_URL      || 'https://api.crewin.org'
 const USERNAME =  process.env.CREWINJOB_API_USERNAME || '';
 const PASSWORD =  process.env.CREWINJOB_API_PASSWORD || '';
 const GEMINI   =  process.env.GEMINI_API_KEY         || '';
-
-const QUEUE_FILE = path.join(__dirname, '..', 'job-queue.json');
 
 // ── Token cache ───────────────────────────────────────────────────────────────
 let _token = null, _tokenExpiry = 0, _loginPromise = null;
@@ -651,16 +647,12 @@ async function fetchIlanApplicationCount(ilanId) {
 }
 
 // ── Kuyruk yönetimi ───────────────────────────────────────────────────────────
-function readQueue() {
-  try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8')); } catch { return []; }
+// job-queue.json store.js üzerinden (dosya modunda aynı dosya, db modunda panelin tablosu).
+async function readQueue() {
+  return store.read(store.stores.jobQueue);
 }
 
-function writeQueue(items) {
-  writeJsonAtomic(QUEUE_FILE, items);
-}
-
-function addToQueue(jobData, source = 'manual') {
-  const queue = readQueue();
+async function addToQueue(jobData, source = 'manual') {
   const item  = {
     id:        Date.now().toString(),
     source,
@@ -668,34 +660,36 @@ function addToQueue(jobData, source = 'manual') {
     createdAt: new Date().toISOString(),
     data:      jobData,
   };
-  queue.unshift(item);
-  writeQueue(queue);
+  await store.mutate(store.stores.jobQueue, queue => [item, ...queue]);
   return item;
 }
 
-function updateQueueItem(id, updates) {
-  const queue = readQueue();
-  const idx   = queue.findIndex(i => i.id === id);
-  if (idx === -1) throw new Error(`Kuyruk öğesi bulunamadı: ${id}`);
-  queue[idx]  = { ...queue[idx], ...updates };
-  writeQueue(queue);
-  return queue[idx];
+async function updateQueueItem(id, updates) {
+  let updated;
+  await store.mutate(store.stores.jobQueue, queue => {
+    const idx   = queue.findIndex(i => i.id === id);
+    if (idx === -1) throw new Error(`Kuyruk öğesi bulunamadı: ${id}`);
+    queue[idx]  = { ...queue[idx], ...updates };
+    updated = queue[idx];
+    return queue;
+  });
+  return updated;
 }
 
-function removeFromQueue(id) {
-  writeQueue(readQueue().filter(i => i.id !== id));
+async function removeFromQueue(id) {
+  await store.mutate(store.stores.jobQueue, queue => queue.filter(i => i.id !== id));
 }
 
 async function approveAndPost(id) {
-  const item = readQueue().find(i => i.id === id);
+  const item = (await readQueue()).find(i => i.id === id);
   if (!item) throw new Error('Öğe bulunamadı');
-  updateQueueItem(id, { status: 'posting' });
+  await updateQueueItem(id, { status: 'posting' });
   try {
     const result = await createIlan(item.data);
-    updateQueueItem(id, { status: 'posted', postedAt: new Date().toISOString(), apiResult: result });
+    await updateQueueItem(id, { status: 'posted', postedAt: new Date().toISOString(), apiResult: result });
     return result;
   } catch (e) {
-    updateQueueItem(id, { status: 'error', error: e.message });
+    await updateQueueItem(id, { status: 'error', error: e.message }).catch(() => {});
     throw e;
   }
 }

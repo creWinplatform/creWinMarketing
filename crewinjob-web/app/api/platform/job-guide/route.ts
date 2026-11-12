@@ -5,7 +5,7 @@ import { jobGuide } from '@/lib/platform/job-guide';
 import { crewinJobGuide, type CrewinStats } from '@/lib/platform/crewin-job-guide';
 import { getPlatformAccess } from '@/lib/platform/workspace-server';
 import { agentDir, agentModule, cachedAgentRead, cachedAllData } from '@/lib/agent-bridge';
-import { getToken, twitterOAuth1Creds } from '@/lib/social-tokens';
+import { loadTokens, twitterOAuth1Creds } from '@/lib/social-tokens';
 import { coachRoute } from '../coach/shared';
 import { serverSetup } from '@/lib/platform/server-setup';
 import { panelOrigin } from '@/lib/platform/request-origin';
@@ -20,7 +20,7 @@ async function crewinGuide(origin:string){
   return crewinJobGuide({
     webData:path.join(process.cwd(),'data'),agentRoot:agentDir(),now:Date.now(),env:process.env,
     agentEnv:()=>{try{return agentModule<{collectAgentConfig:(env:NodeJS.ProcessEnv)=>Record<string,string>}>('modules/agent-config.js').collectAgentConfig(process.env);}catch{return {};}},
-    socialConnected:()=>(Object.keys(SOCIAL) as (keyof typeof SOCIAL)[]).filter(platform=>{const token=getToken(platform);const refreshable=platform==='twitter'&&Boolean(token?.refreshToken&&process.env.TWITTER_CLIENT_ID);return (platform==='twitter'&&Boolean(twitterOAuth1Creds()))||Boolean(token?.accessToken&&!(token.expiresAt&&token.expiresAt<Date.now()&&!refreshable));}).map(platform=>SOCIAL[platform]),
+    socialConnected:async()=>{const tokens=await loadTokens();return (Object.keys(SOCIAL) as (keyof typeof SOCIAL)[]).filter(platform=>{const token=tokens[platform]||null;const refreshable=platform==='twitter'&&Boolean(token?.refreshToken&&process.env.TWITTER_CLIENT_ID);return (platform==='twitter'&&Boolean(twitterOAuth1Creds()))||Boolean(token?.accessToken&&!(token.expiresAt&&token.expiresAt<Date.now()&&!refreshable));}).map(platform=>SOCIAL[platform]);},
     // Step states from the Crewin backend: the last answer at once, refreshed in the background (a minute fresh).
     stats:()=>cachedAllData() as Promise<CrewinStats>,
     leads:()=>cachedAgentRead('guide:leads',()=>api().marketingProspectGet('GetAll',{page:1,pageSize:100})),

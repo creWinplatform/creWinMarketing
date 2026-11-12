@@ -42,7 +42,7 @@ function normalizeBackend(item: Record<string, unknown>) {
 
 export async function GET(req: NextRequest) {
   const search = (req.nextUrl.searchParams.get('search') || '').toLocaleLowerCase('tr-TR');
-  const localItems = getSavedAudienceStore().list().filter(item =>
+  const localItems = (await getSavedAudienceStore().list()).filter(item =>
     !search || item.name.toLocaleLowerCase('tr-TR').includes(search)
   ).map(item => ({ ...item, storage: 'local' as const }));
   const api = agentModule<MarketingApi>('modules/api.js');
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(normalizeBackend(result), { status: 201 });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Kitle kaydedilemedi.';
-      if (/HTTP\s+(404|405)/i.test(message)) return NextResponse.json(getSavedAudienceStore().create(body), { status: 201 });
+      if (/HTTP\s+(404|405)/i.test(message)) return NextResponse.json(await getSavedAudienceStore().create(body), { status: 201 });
       const status = /HTTP\s+401/i.test(message) ? 401 : /HTTP\s+403/i.test(message) ? 403 : 502;
       return NextResponse.json({ error: status === 403 ? 'Kitle kaydetmek için yetki gerekiyor.' : 'Kitle backend üzerine kaydedilemedi.' }, { status });
     }

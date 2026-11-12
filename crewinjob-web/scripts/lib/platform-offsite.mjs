@@ -81,10 +81,11 @@ export async function copyLatestBackup({ backupRoot, statePath, env = process.en
     const base = `${configuration.prefix}/${backup.checks.databaseId || 'unknown-database'}/${folder}`;
     const manifestFile = join(latest, 'manifest.json'), manifestBytes = await readFile(manifestFile);
     // The manifest goes last, so a folder with a manifest in S3 is complete.
-    const objects = [
-      { name: 'platform.sqlite', file: join(latest, 'platform.sqlite'), sha: backup.manifest.databaseSha256, bytes: backup.manifest.databaseBytes },
-      { name: 'manifest.json', file: manifestFile, sha: sha256(manifestBytes), bytes: manifestBytes.length },
-    ];
+    // A SQLite backup is one database file; a SQL Server backup (format 3) one file per table.
+    const data = backup.manifest.formatVersion === 3
+      ? backup.manifest.tables.map(table => ({ name: table.file, file: join(latest, table.file), sha: table.sha256, bytes: table.bytes }))
+      : [{ name: 'platform.sqlite', file: join(latest, 'platform.sqlite'), sha: backup.manifest.databaseSha256, bytes: backup.manifest.databaseBytes }];
+    const objects = [...data, { name: 'manifest.json', file: manifestFile, sha: sha256(manifestBytes), bytes: manifestBytes.length }];
     for (const object of objects) {
       if ((await stat(object.file)).size !== object.bytes) fail('backup_changed');
       const path = s3Path(`${base}/${object.name}`), checksum = Buffer.from(object.sha, 'hex').toString('base64');

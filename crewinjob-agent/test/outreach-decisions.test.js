@@ -19,12 +19,12 @@ const chats = [
   { id: 104n, title: 'Bulk Carrier Crew', participantsCount: 5000, megagroup: true },
 ];
 
-test('search results become suggestions only; nothing is joined', () => {
-  const found = discovery.recordSuggestions(chats, 'seafarer jobs');
+test('search results become suggestions only; nothing is joined', async () => {
+  const found = await discovery.recordSuggestions(chats, 'seafarer jobs');
   assert.deepEqual(found.map(g => g.id), ['101', '102', '104'], 'groups under 100 members are skipped');
   assert.ok(found.every(g => g.joined === false));
-  assert.equal(discovery.recordSuggestions(chats, 'again').length, 0, 'the same group is suggested once');
-  assert.deepEqual(discovery.listSuggestions().map(g => g.id), ['104', '101', '102'], 'largest first');
+  assert.equal((await discovery.recordSuggestions(chats, 'again')).length, 0, 'the same group is suggested once');
+  assert.deepEqual((await discovery.listSuggestions()).map(g => g.id), ['104', '101', '102'], 'largest first');
 });
 
 test('joining needs an explicit pick of 1-10 groups and skips removed or unknown ones', async () => {
@@ -32,11 +32,11 @@ test('joining needs an explicit pick of 1-10 groups and skips removed or unknown
   const join = async target => { joined.push(target); return true; };
   await assert.rejects(discovery.joinSelectedGroups([], join), /en az bir grup/);
   await assert.rejects(discovery.joinSelectedGroups(Array.from({ length: 11 }, (_, i) => String(200 + i)), join), /en fazla 10/);
-  assert.equal(discovery.dismissSuggestions(['102']), 1);
+  assert.equal(await discovery.dismissSuggestions(['102']), 1);
   const result = await discovery.joinSelectedGroups(['101', '102', '999', 'not-an-id'], join);
   assert.deepEqual(joined, ['@seafarerjobs'], 'only the picked, still-suggested group is joined');
   assert.deepEqual(result, { joined: 1, skipped: 2 });
-  assert.deepEqual(discovery.listSuggestions().map(g => g.id), ['104'], 'joined and removed groups leave the list');
+  assert.deepEqual((await discovery.listSuggestions()).map(g => g.id), ['104'], 'joined and removed groups leave the list');
 });
 
 test('the userbot sends no DMs and its daily search never joins a group', () => {

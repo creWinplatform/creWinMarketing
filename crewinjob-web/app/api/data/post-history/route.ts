@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
 import {
   isRecord,
   marketingBackend,
@@ -9,15 +8,15 @@ import {
   stringValue,
   timestampValue,
 } from '@/lib/marketing-backend';
-import { readJson, withFileLock, writeJsonAtomic } from '@/lib/json-store';
+import { mutateStore, readStore, webStore, withStore } from '@/lib/legacy-store';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
 export const fetchCache = 'force-no-store';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const FILE = path.join(DATA_DIR, 'post-history.json');
-const HIDDEN_FILE = path.join(DATA_DIR, 'post-history-hidden.json');
+// data/post-history.json and post-history-hidden.json, or their legacy_records stores with PLATFORM_DATABASE_PROVIDER=mssql.
+const STORE = () => webStore('post-history.json', 'array');
+const HIDDEN = () => webStore('post-history-hidden.json', 'array');
 
 interface PostMetrics {
   likes?: number;
@@ -44,25 +43,13 @@ interface PostHistoryItem {
   status?: string;
 }
 
-// Tüm read-modify-write işlemleri withFileLock(FILE) altında ve await'ten SONRA yeniden okunarak yapılır:
+// Tüm read-modify-write işlemleri locked() (depo kilidi) altında ve await'ten SONRA yeniden okunarak yapılır:
 // "Tümünü yenile" paralel PATCH atıyor — önceden her istek eski kopyayı yazıp diğerlerini eziyordu.
-function load(): PostHistoryItem[] {
-  const list = readJson<PostHistoryItem[]>(FILE, []);
-  return Array.isArray(list) ? list : [];
-}
-
-function hiddenIds(): Set<string> {
-  const list = readJson<string[]>(HIDDEN_FILE, []);
-  return new Set(Array.isArray(list) ? list : []);
-}
-
-function save(items: PostHistoryItem[]) {
-  writeJsonAtomic(FILE, items.slice(0, 200));
-}
-
-function saveHidden(ids: Set<string>) {
-  writeJsonAtomic(HIDDEN_FILE, Array.from(ids).slice(-1000));
-}
+const load = () => readStore<PostHistoryItem>(STORE());
+const hiddenIds = async () => new Set((await readStore<string>(HIDDEN())).filter(value => typeof value === 'string'));
+// The newest 200 posts are kept.
+const locked = <R,>(work: (store: { load(): PostHistoryItem[]; save(items: PostHistoryItem[]): void }) => R | Promise<R>) =>
+  withStore<PostHistoryItem[], R>(STORE(), store => work({ load: store.load, save: items => store.save(items.slice(0, 200)) }));
 
 function normalizeRemote(raw: Record<string, unknown>, local?: PostHistoryItem): PostHistoryItem {
   const extra = parseObject(raw.extraMetrics);
@@ -99,12 +86,12 @@ async function fetchRemote(): Promise<PostHistoryItem[]> {
 }
 
 export async function GET() {
-  const local = load();
+  const local = await load();
   try {
-    const hidden = hiddenIds();
+    const hidden = await hiddenIds();
     const remote = (await fetchRemote()).filter(item => !hidden.has(item.id) && !hidden.has(`${item.platform}:${item.postId}`));
     const remoteKeys = new Set(remote.flatMap(item => [item.id, `${item.platform}:${item.postId}`]));
-    const merged = await withFileLock(FILE, () => {
+    const merged = await locked(({ load, save }) => {
       const current = load();   // backend beklenirken yazılmış kayıtlar kaybolmasın
       const next = [...remote, ...current.filter(item => !remoteKeys.has(item.id) && !remoteKeys.has(`${item.platform}:${item.postId}`))]
         .sort((a, b) => b.publishedAt - a.publishedAt)
@@ -138,14 +125,14 @@ export async function POST(req: NextRequest) {
     });
     if (isRecord(result)) item = normalizeRemote(result, item);
   } catch { /* paylaşım başarılıysa geçmiş yerelde yine korunur */ }
-  await withFileLock(FILE, () => save([item, ...load().filter(existing => existing.id !== item.id)]));
+  await locked(({ load, save }) => save([item, ...load().filter(existing => existing.id !== item.id)]));
   return NextResponse.json(item);
 }
 
 export async function PATCH(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id');
   const body = await req.json() as Partial<PostHistoryItem>;
-  if (!id || !load().some(item => item.id === id)) return NextResponse.json({ error: 'Bulunamadı' }, { status: 404 });
+  if (!id || !(await load()).some(item => item.id === id)) return NextResponse.json({ error: 'Bulunamadı' }, { status: 404 });
   if (body.metrics) {
     try {
       await marketingBackend().marketingPostHistoryPost('UpdateMetrics', {
@@ -161,7 +148,7 @@ export async function PATCH(req: NextRequest) {
     } catch { /* metrikler yerel cache'te korunur */ }
   }
   // Backend beklenirken dosya değişmiş olabilir → kilit altında güncel kopyaya uygula
-  const updated = await withFileLock(FILE, () => {
+  const updated = await locked(({ load, save }) => {
     const items = load();
     const index = items.findIndex(item => item.id === id);
     if (index === -1) return null;
@@ -175,16 +162,18 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id');
-  await withFileLock(FILE, () => {
+  await locked(async ({ load, save }) => {
     const items = load();
-    const hidden = hiddenIds();
     const targets = id ? items.filter(item => item.id === id) : items;
-    if (id) hidden.add(id);
-    targets.forEach(item => {
-      hidden.add(item.id);
-      hidden.add(`${item.platform}:${item.postId}`);
+    await mutateStore(HIDDEN(), list => {
+      const hidden = new Set(list as string[]);
+      if (id) hidden.add(id);
+      targets.forEach(item => {
+        hidden.add(item.id);
+        hidden.add(`${item.platform}:${item.postId}`);
+      });
+      return Array.from(hidden).slice(-1000);
     });
-    saveHidden(hidden);
     save(id ? items.filter(item => item.id !== id) : []);
   });
   return NextResponse.json({ ok: true });

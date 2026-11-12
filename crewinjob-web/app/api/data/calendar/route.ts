@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import path from 'path';
 import {
   isRecord,
   marketingBackend,
@@ -8,14 +7,13 @@ import {
   stringValue,
   timestampValue,
 } from '@/lib/marketing-backend';
-import { readJson, withFileLock, writeJsonAtomic } from '@/lib/json-store';
+import { readStore, webStore, withStore } from '@/lib/legacy-store';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
 export const fetchCache = 'force-no-store';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const FILE = path.join(DATA_DIR, 'calendar.json');
+const STORE = () => webStore('calendar.json', 'array');
 
 interface CalendarEvent {
   id: string;
@@ -34,15 +32,9 @@ interface CalendarEvent {
   imageUrl?: string;
 }
 
-// Read-modify-write işlemleri withFileLock(FILE) altında, await'ten sonra yeniden okunarak yapılır.
-function load(): CalendarEvent[] {
-  const list = readJson<CalendarEvent[]>(FILE, []);
-  return Array.isArray(list) ? list : [];
-}
-
-function save(events: CalendarEvent[]) {
-  writeJsonAtomic(FILE, events);
-}
+// Read-modify-write işlemleri withStore (kilit) altında, await'ten sonra yeniden okunarak yapılır; içerideki load/save
+// kilit altındaki kopyadır.
+const load = () => readStore<CalendarEvent>(STORE());
 
 function normalize(raw: Record<string, unknown>, local?: CalendarEvent): CalendarEvent {
   const metadata = parseObject(raw.metadata);
@@ -80,13 +72,13 @@ function payload(event: CalendarEvent) {
 }
 
 async function allEvents(): Promise<CalendarEvent[]> {
-  const local = load();
+  const local = await load();
   try {
     const result = await marketingBackend().marketingCalendarGet('GetAll', {
       skipCount: 0,
       maxResultCount: 500,
     });
-    return await withFileLock(FILE, () => {
+    return await withStore<CalendarEvent[], any>(STORE(), ({ load, save }) => {
       const current   = load();   // backend beklenirken yapılan yerel değişiklikler kaybolmasın
       const localById = new Map(current.map(item => [item.id, item]));
       const remote    = records(result).map(item => normalize(item, localById.get(stringValue(item.id))));
@@ -116,7 +108,7 @@ export async function POST(req: NextRequest) {
     const result = await marketingBackend().marketingCalendarPost('CreateOrUpdate', payload(event));
     if (isRecord(result)) event = normalize(result, event);
   } catch { /* takvim girdisi yerel olarak kullanılmaya devam eder */ }
-  await withFileLock(FILE, () => save([...load().filter(item => item.id !== event.id), event]));
+  await withStore<CalendarEvent[], any>(STORE(), ({ load, save }) => save([...load().filter(item => item.id !== event.id), event]));
   return NextResponse.json(await allEvents());
 }
 
@@ -124,7 +116,7 @@ export async function PATCH(req: NextRequest) {
   const params = new URL(req.url).searchParams;
   const id = params.get('id');
   const action = params.get('action');
-  const current = load().find(event => event.id === id);
+  const current = (await load()).find(event => event.id === id);
   if (!current || !id) return NextResponse.json({ error: 'Bulunamadı' }, { status: 404 });
 
   // Backend çağrısı kilit dışında; yerel yazım kilit altında ve güncel listeye uygulanır
@@ -148,7 +140,7 @@ export async function PATCH(req: NextRequest) {
     } catch { /* local mirror */ }
     patch = updated;
   }
-  const events = await withFileLock(FILE, () => {
+  const events = await withStore<CalendarEvent[], any>(STORE(), ({ load, save }) => {
     const list  = load();
     const index = list.findIndex(event => event.id === id);
     if (index === -1) return list;
@@ -164,6 +156,6 @@ export async function DELETE(req: NextRequest) {
   if (id && /^\d+$/.test(id)) {
     try { await marketingBackend().marketingCalendarDelete('Delete', { id }); } catch { /* local silme yine uygulanır */ }
   }
-  if (id) await withFileLock(FILE, () => save(load().filter(event => event.id !== id)));
+  if (id) await withStore<CalendarEvent[], any>(STORE(), ({ load, save }) => save(load().filter(event => event.id !== id)));
   return NextResponse.json(await allEvents());
 }

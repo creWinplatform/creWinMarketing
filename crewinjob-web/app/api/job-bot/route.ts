@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import path from 'path';
-import fs   from 'fs';
 import { execFile } from 'child_process';
 import { agentDir, agentModule } from '@/lib/agent-bridge';
-import { readJson, writeJsonAtomic } from '@/lib/json-store';
+import { agentStore, mutateStore, readStore } from '@/lib/legacy-store';
 import { recordActivity } from '@/lib/activity-log-server';
 
 export const dynamic = 'force-dynamic';
@@ -11,9 +10,10 @@ export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
 const AGENT_DIR  = agentDir();
-const QUEUE_FILE = path.join(AGENT_DIR, 'job-queue.json');
 const CLI_SCRIPT = path.join(AGENT_DIR, 'job-bot-cli.js');
-const STATE_FILE = path.join(AGENT_DIR, 'data', 'pipeline-state.json');
+// The agent's job-queue.json and data/pipeline-state.json, or their legacy_records stores with PLATFORM_DATABASE_PROVIDER=mssql.
+const QUEUE = () => agentStore('job-queue.json', 'array');
+const STATE = () => agentStore('data/pipeline-state.json', 'object', { pretty: false });
 
 // ── Config ────────────────────────────────────────────────────────────────────
 // .userbot-config.json'a YALNIZCA agent'ın ihtiyaç duyduğu anahtarlar yazılır
@@ -53,18 +53,20 @@ function isPidAlive(pid: number): boolean {
 
 // Çocuk süreç timeout/çökme ile öldüyse CLI'nin finally bloğu çalışmaz → durum "running"
 // olarak takılı kalıyordu. Burada "çalışmıyor" olarak işaretle.
-function markPipelineStopped(action: string, reason: string) {
-  const prev = readJson<PipelineState>(STATE_FILE, { running: null });
-  if (prev.running && prev.running !== action) return; // başka bir işlem çalışıyor — dokunma
+async function markPipelineStopped(action: string, reason: string) {
   try {
-    writeJsonAtomic(STATE_FILE, {
-      running: null,
-      startedAt: prev.startedAt || null,
-      finishedAt: new Date().toISOString(),
-      lastAction: prev.running || action,
-      lastResult: { ok: false, error: reason },
-    }, false);
-  } catch { /* durum dosyası yazılamazsa sessiz geç */ }
+    await mutateStore(STATE(), stored => {
+      const prev = { running: null, ...stored } as PipelineState;
+      if (prev.running && prev.running !== action) return undefined; // başka bir işlem çalışıyor — dokunma
+      return {
+        running: null,
+        startedAt: prev.startedAt || null,
+        finishedAt: new Date().toISOString(),
+        lastAction: prev.running || action,
+        lastResult: { ok: false, error: reason },
+      };
+    });
+  } catch { /* durum yazılamazsa sessiz geç */ }
 }
 
 class CliTimeoutError extends Error {}
@@ -93,7 +95,7 @@ function runCli(action: string, input: Record<string, unknown> = {}): Promise<Re
         const result = parseCliJson(stdout || '');
 
         if (execErr && STATEFUL_ACTIONS.has(action)) {
-          markPipelineStopped(action, timedOut ? `zaman aşımı (${timeout / 1000} sn)` : 'süreç beklenmedik şekilde sonlandı');
+          void markPipelineStopped(action, timedOut ? `zaman aşımı (${timeout / 1000} sn)` : 'süreç beklenmedik şekilde sonlandı');
         }
         if (timedOut && !result) {
           reject(new CliTimeoutError(
@@ -138,9 +140,8 @@ function dropShortLivedCli() {
 }
 
 // ── Kuyruk doğrudan oku (hızlı — CLI gerektirmez) ────────────────────────────
-function readQueue(): unknown[] {
-  try { return JSON.parse(fs.readFileSync(QUEUE_FILE, 'utf-8')); }
-  catch { return []; }
+function readQueue(): Promise<unknown[]> {
+  return readStore(QUEUE()).catch(() => []);
 }
 
 // ── GET ────────────────────────────────────────────────────────────────────────
@@ -253,11 +254,11 @@ export async function GET(req: NextRequest) {
   // Durum dosyasını doğrudan oku (CLI başlatma — her 2s çağrılır, hızlı olmalı)
   if (action === 'pipeline_status') {
     try {
-      const state = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) as PipelineState;
+      const state = { running: null, ...await readStore(STATE()) } as PipelineState;
       // Süreç öldüyse (çökme/kill) "running" takılı kalmasın
       if (state.running && typeof state.pid === 'number' && !isPidAlive(state.pid)) {
-        markPipelineStopped(state.running, 'süreç beklenmedik şekilde sonlandı');
-        return NextResponse.json({ ok: true, ...readJson<PipelineState>(STATE_FILE, { running: null }) });
+        await markPipelineStopped(state.running, 'süreç beklenmedik şekilde sonlandı');
+        return NextResponse.json({ ok: true, ...await readStore(STATE()) });
       }
       return NextResponse.json({ ok: true, ...state });
     } catch {
@@ -302,7 +303,7 @@ export async function GET(req: NextRequest) {
   }
 
   // Default: kuyruk + stats
-  const queue = readQueue() as Array<{ status: string }>;
+  const queue = await readQueue() as Array<{ status: string }>;
   const stats = {
     total:   queue.length,
     pending: queue.filter(i => i.status === 'pending').length,

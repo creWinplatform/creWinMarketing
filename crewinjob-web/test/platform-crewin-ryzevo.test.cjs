@@ -76,7 +76,7 @@ test('the coach reads Crewin’s own content and accounts, and adds no starter d
     assert.equal(report.publications.total,1,'the monthly report counts the posts Crewin published with its own tools');assert.equal(report.publications.top[0].sessions,null,'no site figures are made up');
     assert.deepEqual(plain(await draftsByPlatform(f.db,['crewin','crewinjob'],Date.now()-30*86400000)),{instagram:1},'ad drafts are not channel posts; old drafts fall outside the window');
     assert.equal(await draftTotal(f.db,['crewin','crewinjob']),2);assert.equal(await draftTotal(f.db,[f.a.organizationId,f.a.projectId]),0,'standard projects keep reading their tables');
-    assert.ok(await crewinConnectedChannels({}).has('facebook'));assert.ok(!await crewinConnectedChannels({}).has('linkedin'));assert.ok(await crewinConnectedChannels({SMTP_HOST:'h',SMTP_USER:'u',SMTP_PASSWORD:'qa',SMTP_FROM_EMAIL:'qa@example.test'}).has('email'));
+    assert.ok((await crewinConnectedChannels({})).has('facebook'));assert.ok(!(await crewinConnectedChannels({})).has('linkedin'));assert.ok((await crewinConnectedChannels({SMTP_HOST:'h',SMTP_USER:'u',SMTP_PASSWORD:'qa',SMTP_FROM_EMAIL:'qa@example.test'})).has('email'));
     const {GrowthCoach}=load('coach.ts'),coach=new GrowthCoach(f.db,CREWIN);
     const drafted=await coach.diagnose({answers:f.answers,language:'tr',mode:'template',expectedRevision:(await coach.read()).revision});
     const approved=await coach.approve({brief:drafted.draft,expectedRevision:drafted.revision});

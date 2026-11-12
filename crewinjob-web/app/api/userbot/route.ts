@@ -4,6 +4,7 @@ import fs   from 'fs';
 import path from 'path';
 import { agentDir, agentModule } from '@/lib/agent-bridge';
 import { writeTextAtomic } from '@/lib/json-store';
+import { agentStore, readStore } from '@/lib/legacy-store';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -12,7 +13,6 @@ export const fetchCache = 'force-no-store';
 const AGENT_DIR   = agentDir();
 const ENV_FILE    = path.join(AGENT_DIR, '.env');
 const LOG_FILE    = path.join(AGENT_DIR, 'userbot.log');
-const GROUPS_FILE = path.join(AGENT_DIR, '.userbot-groups.json');
 const MAX_LOGS    = 200;
 
 // ── Singleton process ─────────────────────────────────────────────────────────
@@ -92,8 +92,9 @@ function parseStats(logs: string[]) {
   return { joined, dms, jobs };
 }
 
+// The agent's .userbot-groups.json, or legacy_records 'agent:userbot-groups' with PLATFORM_DATABASE_PROVIDER=mssql.
 function readGroups() {
-  try { return JSON.parse(fs.readFileSync(GROUPS_FILE, 'utf-8')); } catch { return []; }
+  return readStore(agentStore('.userbot-groups.json', 'array')).catch(() => []);
 }
 
 // ── GET: durum + loglar + config ──────────────────────────────────────────────
@@ -107,7 +108,7 @@ export async function GET() {
     botUsername: env.TG_BOT_USERNAME || '',
     logs,
     stats:       parseStats(logs),
-    groups:      readGroups(),
+    groups:      await readGroups(),
   });
 }
 

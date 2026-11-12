@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     const tag = crewinTag(campaign ? 'campaign' : 'email', campaign || subject);
     const cta = tagCrewinLinks(rawCtaTarget, tag, 'email', 'email'), tagHtml = tagCrewinLinks(body.html, tag, 'email', 'email', true), tagText = tagCrewinLinks(body.text || '', tag, 'email', 'email');
     const ctaTarget = cta.text, html = tagHtml.text, text = body.text ? tagText.text : body.text;
-    const remember = () => { if (cta.tagged + tagHtml.tagged + tagText.tagged) { try { registerCrewinTag(tag, campaign ? 'campaign' : 'email', subject); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); } } };
+    const remember = () => { if (cta.tagged + tagHtml.tagged + tagText.tagged) { void registerCrewinTag(tag, campaign ? 'campaign' : 'email', subject).catch(err => console.warn('[link-tags] kayıt yazılamadı:', err)); } };
 
     const send = agentModule('modules/messaging-send.js');
     const api  = agentModule('modules/api.js');
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: '"to" zorunludur.' }, { status: 400 });
       }
       const ref: RecipientRef = { email: to };
-      if (legacySuppressed([to]).size) {
+      if ((await legacySuppressed([to])).size) {
         return NextResponse.json({ error: 'Bu adres abonelikten çıktı; pazarlama e-postası gönderilmez.' }, { status: 409 });
       }
       const gate = await crewinEmailGate(platformDatabase(), credentialEncryptionKey(), [{ email: to, business: body.business === true }]);
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
 
       const all = recipients.map(normalizeRecipient);
       // Addresses that unsubscribed through the panel's own link are skipped, whatever the list says.
-      const suppressed = legacySuppressed(all.map(r => r.email));
+      const suppressed = await legacySuppressed(all.map(r => r.email));
       const unsuppressed = all.filter(r => !suppressed.has(r.email.trim().toLowerCase()));
       // İYS: zorunlu modda onaysız alıcı atlanır; ölçüm modunda herkese gider ve "zorunlu olsaydı" sayısı döner.
       const gate = await crewinEmailGate(platformDatabase(), credentialEncryptionKey(), unsuppressed.map(r => ({ email: r.email, nationality: r.nationality, business: body.business === true })));

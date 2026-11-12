@@ -21,9 +21,9 @@ export async function GET() {
 
   const platforms = ['twitter', 'linkedin', 'facebook', 'instagram', 'tiktok'] as const;
 
-  const status = Object.fromEntries(
-    platforms.map((platform) => {
-      const token     = getToken(platform);           // dosya + env fallback
+  const status = Object.fromEntries(await Promise.all(
+    platforms.map(async (platform) => {
+      const token     = (await getToken(platform));           // dosya + env fallback
       // Twitter OAuth 1.0a (env) kendi başına bağlantıdır — getToken onu OAuth2 token'ı saymaz
       const oauth1    = platform === 'twitter' && !!twitterOAuth1Creds();
       const connected = oauth1 || !!(token?.accessToken);
@@ -41,7 +41,7 @@ export async function GET() {
         mode:       platform === 'tiktok' ? (scriptOnly ? 'script' : 'api') : (connected ? 'api' : 'none'),
       }];
     })
-  );
+  ));
 
   return NextResponse.json(status);
 }

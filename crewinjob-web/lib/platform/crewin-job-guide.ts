@@ -1,13 +1,14 @@
 import type { Db } from '../db/client';
 import 'server-only';
 import path from 'path';
-import { fileSummary, resetFileSummaries } from './file-summary';
+import { resetFileSummaries } from './file-summary';
+import { agentStore, storeSummary, webStore, type Shape, type StoreDef } from '../legacy-store';
 import type { LocalizedText } from './catalog';
 import type { JobGuideItem, JobGuideView, JobId, JobStep } from './job-guide-types';
 import type Database from 'better-sqlite3';
 
-// "What would you like to do?" for the Crewin workspace. Its legacy tabs keep their records in JSON files (web data/,
-// agent data/) and in the Crewin backend, not in the platform tables, so the steps are read from there. A step is done
+// "What would you like to do?" for the Crewin workspace. Its legacy tabs keep their records in JSON stores (web data/,
+// agent data/ — files, or legacy_records with PLATFORM_DATABASE_PROVIDER=mssql) and in the Crewin backend, not in the platform tables, so the steps are read from there. A step is done
 // only when a record shows it; weekly work (posting, reporting) counts from the last 7 days, so it comes back each week.
 // Each step links to the exact sub-tab (?view=, ?section=) and names the button to press.
 
@@ -17,7 +18,7 @@ export type CrewinGuideDeps = {
   webData: string; agentRoot: string; now: number; env: Record<string, string | undefined>;
   // Agent .env merged with the process env (TG_SESSION lives there).
   agentEnv: () => Record<string, string>;
-  socialConnected: () => string[];
+  socialConnected: () => string[] | Promise<string[]>;
   // Crewin backend reads; each may fail or time out on its own without hiding the other jobs.
   stats: () => Promise<CrewinStats>;
   leads: () => Promise<unknown>;
@@ -35,7 +36,7 @@ export type CrewinStats = { seafarers?: { newThisWeek?: number; fillRateBuckets?
 // Backend answers, shared by concurrent requests (file summaries live in ./file-summary).
 const g = globalThis as typeof globalThis & { __crewinGuideRemote?: Map<string, { at: number; ok: boolean; value: unknown; pending?: Promise<unknown> }> };
 const remote = g.__crewinGuideRemote ?? (g.__crewinGuideRemote = new Map());
-const summary = <T,>(file: string, empty: T, reduce: (data: unknown) => T) => fileSummary(file, empty, reduce, 'job-guide');
+const summary = <T,>(def: StoreDef, empty: T, reduce: (data: unknown) => T) => storeSummary(def, empty, reduce, 'job-guide');
 // Backend reads: one call per minute at most (15 s after a failure), shared by concurrent requests, bounded by a timeout.
 async function cached(name: string, now: number, read: () => Promise<unknown>, timeoutMs = 8000): Promise<{ ok: boolean; value: unknown }> {
   const hit = remote.get(name);
@@ -86,25 +87,26 @@ function contentKinds(data: unknown): ContentKinds {
 }
 
 export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideView> {
-  const { now, env } = deps, web = (name: string) => path.join(deps.webData, name), agent = (...name: string[]) => path.join(deps.agentRoot, ...name);
+  const { now, env } = deps, web = (name: string, shape: Shape = 'array') => webStore(name, shape, { file: path.join(deps.webData, name) }),
+    agent = (name: string, shape: Shape = 'array') => agentStore(name, shape, { file: path.join(deps.agentRoot, name) });
   const [stats, leads, orders, campaigns, posts] = await Promise.all([
     cached('stats', now, deps.stats), cached('leads', now, deps.leads), cached('orders', now, deps.pendingOrders), cached('campaigns', now, deps.campaigns), cached('posts', now, deps.posts),
   ]);
-  const content = summary(web('content-history.json'), contentKinds(null), contentKinds);
-  const activity = summary(web('activity-log.json'), [] as { type: string; ts: number }[], data => list(data).map(item => ({ type: String(item.type || ''), ts: time(item.ts) })));
+  const content = await summary(web('content-history.json'), contentKinds(null), contentKinds);
+  const activity = await summary(web('activity-log.json'), [] as { type: string; ts: number }[], data => list(data).map(item => ({ type: String(item.type || ''), ts: time(item.ts) })));
   const lastActivity = (...types: string[]) => activity.reduce((max, item) => types.includes(item.type) && item.ts > max ? item.ts : max, 0);
-  const review = summary(agent('data', 'review-queue.json'), [] as number[], data => list(data).filter(item => (item.status || 'pending') === 'pending').map(item => time(item.queuedAt)));
-  const posted = summary(agent('data', 'posted-jobs.json'), { posted: [] as number[], broadcast: 0 }, data => {
+  const review = await summary(agent('data/review-queue.json'), [] as number[], data => list(data).filter(item => (item.status || 'pending') === 'pending').map(item => time(item.queuedAt)));
+  const posted = await summary(agent('data/posted-jobs.json'), { posted: [] as number[], broadcast: 0 }, data => {
     const rows = list(data); return { posted: rows.map(item => time(item.postedAt)).filter(Boolean), broadcast: rows.reduce((max, item) => Math.max(max, time(item.broadcastedAt)), 0) };
   });
-  const queue = summary(agent('job-queue.json'), { pending: 0, posted: [] as number[] }, data => {
+  const queue = await summary(agent('job-queue.json'), { pending: 0, posted: [] as number[] }, data => {
     const rows = list(data); return { pending: rows.filter(item => item.status === 'pending').length, posted: rows.filter(item => item.status === 'posted').map(item => time(item.postedAt)) };
   });
-  const scheduledFailed = summary(web('scheduled-posts.json'), 0, data => list(data).filter(item => item.status === 'failed' || item.status === 'partial').length);
-  const seoItems = summary(web('seo-work-items.json'), { proposed: 0, approved: 0, applied: 0, any: 0 }, data => {
+  const scheduledFailed = await summary(web('scheduled-posts.json'), 0, data => list(data).filter(item => item.status === 'failed' || item.status === 'partial').length);
+  const seoItems = await summary(web('seo-work-items.json'), { proposed: 0, approved: 0, applied: 0, any: 0 }, data => {
     const rows = list(data); return { proposed: rows.filter(item => item.status === 'proposed').length, approved: rows.filter(item => item.status === 'approved').length, applied: rows.filter(item => item.status === 'applied').length, any: rows.length };
   });
-  const localPosts = summary(web('post-history.json'), 0, data => list(data).reduce((max, item) => Math.max(max, time(item.publishedAt)), 0));
+  const localPosts = await summary(web('post-history.json'), 0, data => list(data).reduce((max, item) => Math.max(max, time(item.publishedAt)), 0));
 
   const jobs: Omit<JobGuideItem, 'done' | 'total' | 'nextStepId' | 'complete' | 'relevance'>[] = [];
   const unavailable: LocalizedText[] = [];
@@ -153,7 +155,7 @@ export async function crewinJobGuide(deps: CrewinGuideDeps): Promise<JobGuideVie
 
   // 3. Social posts: account → post → published this week; registrations are what they bring.
   {
-    const connected = deps.socialConnected(), backendPosts = posts.ok ? list(posts.value).reduce((max, item) => Math.max(max, time(item.publishedAt ?? item.creationTime)), 0) : 0;
+    const connected = await deps.socialConnected(), backendPosts = posts.ok ? list(posts.value).reduce((max, item) => Math.max(max, time(item.publishedAt ?? item.creationTime)), 0) : 0;
     const lastPublished = Math.max(localPosts, backendPosts), signups = stats.ok ? Number((stats.value as CrewinStats).seafarers?.newThisWeek ?? NaN) : NaN;
     jobs.push({ id: 'crewin_social', title: l('Sosyal medyada paylaş, kayıt getir', 'Post on social media to bring sign-ups'), outcome: l('Kayıt çağrılı bir gönderinin Instagram, Facebook, LinkedIn, X veya TikTok’ta yayınlanması; yeni gemi adamı kayıtları buradan gelir.', 'A post with a sign-up call published on Instagram, Facebook, LinkedIn, X or TikTok; new seafarer sign-ups come from here.'),
       keywords: ['sosyal', 'social', 'paylaş', 'paylaşım', 'post', 'gönderi', 'instagram', 'facebook', 'linkedin', 'x', 'twitter', 'tiktok', 'kayıt', 'signup', 'gemi adamı', 'denizci', 'seafarer', 'yeni kullanıcı', 'zamanla', 'schedule'],

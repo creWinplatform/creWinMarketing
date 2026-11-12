@@ -28,7 +28,7 @@ export async function GET(
 
       const codeVerifier  = crypto.randomBytes(32).toString('base64url');
       const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
-      saveOAuthState(state, 'twitter', codeVerifier, user);
+      await saveOAuthState(state, 'twitter', codeVerifier, user);
 
       const url = new URL('https://twitter.com/i/oauth2/authorize');
       url.searchParams.set('response_type', 'code');
@@ -44,7 +44,7 @@ export async function GET(
     case 'linkedin': {
       const clientId = process.env.LINKEDIN_CLIENT_ID;
       if (!clientId) return NextResponse.json({ error: '.env.local içinde LINKEDIN_CLIENT_ID eksik' }, { status: 400 });
-      saveOAuthState(state, 'linkedin', undefined, user);
+      await saveOAuthState(state, 'linkedin', undefined, user);
 
       const url = new URL('https://www.linkedin.com/oauth/v2/authorization');
       url.searchParams.set('response_type', 'code');
@@ -59,7 +59,7 @@ export async function GET(
     case 'instagram': {
       const appId = process.env.FACEBOOK_APP_ID;
       if (!appId) return NextResponse.json({ error: '.env.local içinde FACEBOOK_APP_ID eksik' }, { status: 400 });
-      saveOAuthState(state, platform, undefined, user);
+      await saveOAuthState(state, platform, undefined, user);
 
       const url = new URL(`https://www.facebook.com/${graphVersion()}/dialog/oauth`);
       url.searchParams.set('client_id', appId);

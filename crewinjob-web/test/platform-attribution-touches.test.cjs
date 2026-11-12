@@ -143,7 +143,7 @@ test('migration 77 seeds the arrival log from first touches and is repeatable',a
  for(let i=0;i<2;i++){
   db=openPlatformDatabase(file);
   try{
-   assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,78);
+   assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,79);
    const first=db.prepare('SELECT touched_at FROM platform_attribution_touches').get().touched_at;
    assert.deepEqual(plain(db.prepare('SELECT campaign,source,touched_at FROM platform_attribution_touch_log').all()),[{campaign:'rz_0123456789',source:'email',touched_at:first}]);
    assert.equal(db.pragma('integrity_check',{simple:true}),'ok');

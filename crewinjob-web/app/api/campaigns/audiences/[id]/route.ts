@@ -9,7 +9,7 @@ export const fetchCache = 'force-no-store';
 export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   if (params.id.startsWith('aud_')) {
-    if (!getSavedAudienceStore().remove(params.id)) return NextResponse.json({ error: 'Kayıtlı kitle bulunamadı.' }, { status: 404 });
+    if (!(await getSavedAudienceStore().remove(params.id))) return NextResponse.json({ error: 'Kayıtlı kitle bulunamadı.' }, { status: 404 });
     return NextResponse.json({ ok: true });
   }
   const api = agentModule<{ marketingCampaignPost: (name: string, body: Record<string, unknown>) => Promise<unknown> }>('modules/api.js');

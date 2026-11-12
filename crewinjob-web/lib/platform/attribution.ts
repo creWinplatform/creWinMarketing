@@ -174,7 +174,7 @@ export class ProjectAttribution {
     // App links created before they carried the campaign's tag credit installs to the campaign id itself.
     const appLinked = new Set((await this.db.prepare('SELECT DISTINCT campaign_id FROM platform_mobile_links WHERE organization_id=? AND project_id=?').all(...args(this.scope)) as { campaign_id: string }[]).map(row => row.campaign_id));
     return new Map<string, { kind: AttributionItemKind; id: string; title: string }>([
-      ...((await this.project())?.productPack === 'crewin' ? crewinTaggedItems() : []),
+      ...((await this.project())?.productPack === 'crewin' ? await crewinTaggedItems() : []),
       ...PROFILE_PLATFORMS.map(platform => [profileTag(this.scope, platform), { kind: 'profile' as const, id: `profile:${platform}`, title: PROFILE_NAMES[platform] }] as const),
       ...content.map(item => [linkTag(this.scope, 'content', item.id), { kind: 'content' as const, id: item.id, title: item.title || '' }] as const),
       ...campaigns.map(item => [linkTag(this.scope, 'campaign', item.id), { kind: 'campaign' as const, id: item.id, title: item.title || '' }] as const),

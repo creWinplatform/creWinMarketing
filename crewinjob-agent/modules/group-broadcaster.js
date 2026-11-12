@@ -3,49 +3,57 @@
 const { getClient }       = require('./tg-client');
 const { getJoinedGroups } = require('./group-discovery');
 const { loadPosted, updatePostedJob, log } = require('./auto-poster');
-const { writeJsonAtomic } = require('./json-file');
+const { stores, read, mutate } = require('./store');
 const linkTags = require('./link-tags');
-const fs   = require('fs');
-const path = require('path');
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // ── Yazma izni olmayan grupları takip et ──────────────────────────────────────
-const READONLY_FILE = path.join(__dirname, '..', 'data', 'readonly-groups.json');
-
-function loadReadonly() {
-  try { return new Set(JSON.parse(fs.readFileSync(READONLY_FILE, 'utf-8'))); }
+// data/readonly-groups.json — store.js üzerinden
+async function loadReadonly() {
+  try { return new Set(await read(stores.readonlyGroups)); }
   catch { return new Set(); }
 }
-function markReadonly(groupId) {
-  const set = loadReadonly();
-  set.add(String(groupId));
-  try { writeJsonAtomic(READONLY_FILE, [...set], false); } catch {}
+async function markReadonly(groupId) {
+  try {
+    await mutate(stores.readonlyGroups, list => {
+      const set = new Set(list);
+      set.add(String(groupId));
+      return [...set];
+    });
+  } catch {}
 }
 
 // ── Grup başına günlük paylaşım sınırı (ban / göze çarpma koruması) ────────────
-const BROADCAST_LOG_FILE = path.join(__dirname, '..', 'data', 'broadcast-log.json');
+// data/broadcast-log.json — store.js üzerinden
 const MAX_PER_GROUP_PER_DAY = 3; // Bir gruba günde en fazla kaç ilan
 
 function today() { return new Date().toISOString().slice(0, 10); }
 
-function loadBroadcastLog() {
-  try { return JSON.parse(fs.readFileSync(BROADCAST_LOG_FILE, 'utf-8')); }
+async function loadBroadcastLog() {
+  try { return await read(stores.broadcastLog); }
   catch { return {}; }
 }
-function saveBroadcastLog(logObj) {
-  // Sadece bugünü tut — eski günleri buda
-  const pruned = { [today()]: logObj[today()] || {} };
-  try { writeJsonAtomic(BROADCAST_LOG_FILE, pruned); } catch {}
-}
-function broadcastCountToday(groupId, logObj = loadBroadcastLog()) {
+function broadcastCountToday(groupId, logObj) {
   return logObj[today()]?.[String(groupId)] || 0;
 }
-function recordBroadcast(groupId, logObj) {
+// Gönderimi kaydeder: sayaç kayıtlı günlükte (taze okunarak) artırılır, eldeki logObj de kayıtla eşitlenir
+// (başka bir süreç aynı gün paylaşım yaptıysa grup sınırı onu da sayar). Sadece bugün tutulur — eski günler budanır.
+async function recordBroadcast(groupId, logObj) {
   const t = today();
-  if (!logObj[t]) logObj[t] = {};
   const gid = String(groupId);
-  logObj[t][gid] = (logObj[t][gid] || 0) + 1;
+  try {
+    let day = null;
+    await mutate(stores.broadcastLog, saved => {
+      day = { ...(saved[t] || {}) };
+      day[gid] = (day[gid] || 0) + 1;
+      return { [t]: day };
+    });
+    logObj[t] = { ...day };
+  } catch {
+    if (!logObj[t]) logObj[t] = {};
+    logObj[t][gid] = (logObj[t][gid] || 0) + 1;
+  }
 }
 
 // ── Mesaj varyasyonları (anti-fingerprint: aynı şablonun tespitini engeller) ──
@@ -122,8 +130,7 @@ async function sendJobToGroup(client, g, job, bcLog) {
   const peer = g.username ? g.username : parseInt(g.id);
   try {
     await client.sendMessage(peer, { message: formatJobMessage(job), parseMode: 'md' });
-    recordBroadcast(g.id, bcLog);
-    saveBroadcastLog(bcLog);
+    await recordBroadcast(g.id, bcLog);
     log(`[broadcast] ✅ "${g.title}" → ${job.ilanUrl} (bugün ${broadcastCountToday(g.id, bcLog)}/${MAX_PER_GROUP_PER_DAY})`);
     return 'sent';
   } catch (e) {
@@ -140,7 +147,7 @@ async function sendJobToGroup(client, g, job, bcLog) {
       e.message?.includes('USER_BANNED')
     ) {
       log(`[broadcast] 🚫 "${g.title}": yazma izni yok — bir daha denenmeyecek`);
-      markReadonly(g.id);
+      await markReadonly(g.id);
       return 'readonly';
     }
     if (e.message?.includes('PEER_ID_INVALID')) {
@@ -158,7 +165,7 @@ async function sendJobToGroup(client, g, job, bcLog) {
 const MAX_JOB_AGE_DAYS = 7; // Bu kadar günden eski ilanlar broadcast havuzuna alınmaz
 
 async function broadcastNewJobs(maxJobs = 60, maxGroups = 30) {
-  const posted  = loadPosted();
+  const posted  = await loadPosted();
   const ageCutoff = Date.now() - MAX_JOB_AGE_DAYS * 24 * 60 * 60 * 1000;
   const pool    = posted
     .filter(p => {
@@ -179,7 +186,7 @@ async function broadcastNewJobs(maxJobs = 60, maxGroups = 30) {
   }
 
   // Yazılabilir grupları hazırla (salt-okunur kanalları çıkar, üyeye göre sırala)
-  const readonly  = loadReadonly();
+  const readonly  = await loadReadonly();
   const allGroups = await getJoinedGroups();
   const groups    = allGroups
     .filter(g => g.id && g.members >= 100 && !readonly.has(String(g.id)))
@@ -192,7 +199,7 @@ async function broadcastNewJobs(maxJobs = 60, maxGroups = 30) {
   }
 
   const client = await getClient();
-  const bcLog  = loadBroadcastLog();
+  const bcLog  = await loadBroadcastLog();
 
   log(`[broadcast] ${pool.length} ilan, ${groups.length} gruba DAĞITILARAK paylaşılacak (grup başı max ${MAX_PER_GROUP_PER_DAY}/gün).`);
 
@@ -228,7 +235,7 @@ async function broadcastNewJobs(maxJobs = 60, maxGroups = 30) {
         // Artımlı kayıt: her gönderimden hemen sonra diske yaz (mesaj başı 45-60 sn sürüyor;
         // süreç timeout/çökme ile kesilirse aynı ilan tekrar gönderilmesin).
         try {
-          updatePostedJob(job.ilanId, (p) => {
+          await updatePostedJob(job.ilanId, (p) => {
             p.broadcastedTo = (p.broadcastedTo || 0) + 1;
             if (!p.broadcastedAt) p.broadcastedAt = new Date().toISOString();
           });

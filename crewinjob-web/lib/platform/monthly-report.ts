@@ -49,7 +49,7 @@ export class MonthlyReports {
     // Accepted live posts of the month, their public link and what providers and GA4 reported for them.
     // The Crewin workspace publishes with its own tools: its posts come from its post history, without engagement or site figures.
     const crewin = project.productPack === 'crewin';
-    const posts = crewin ? crewinPostsIn(from, to).map(post => ({ job_id: '', kind: 'content', id: '', published: new Date(post.at).toISOString(), url: post.url, tag: null, platform: post.platform, counts_json: null, engagement_state: null, title: post.title || null })) : await this.db.prepare(`SELECT p.job_id,p.source_kind AS kind,p.source_id AS id,COALESCE(p.submitted_at,p.scheduled_at) AS published,p.provider_url AS url,p.link_tag AS tag,COALESCE(a.platform,'social') AS platform,e.counts_json,e.state AS engagement_state,
+    const posts = crewin ? (await crewinPostsIn(from, to)).map(post => ({ job_id: '', kind: 'content', id: '', published: new Date(post.at).toISOString(), url: post.url, tag: null, platform: post.platform, counts_json: null, engagement_state: null, title: post.title || null })) : await this.db.prepare(`SELECT p.job_id,p.source_kind AS kind,p.source_id AS id,COALESCE(p.submitted_at,p.scheduled_at) AS published,p.provider_url AS url,p.link_tag AS tag,COALESCE(a.platform,'social') AS platform,e.counts_json,e.state AS engagement_state,
       CASE p.source_kind WHEN 'content' THEN (SELECT COALESCE(json_extract(h.payload,'$.headline'),substr(json_extract(h.payload,'$.content'),1,80)) FROM platform_content_history h WHERE h.id=p.source_id AND h.organization_id=p.organization_id AND h.project_id=p.project_id)
         ELSE (SELECT json_extract(c.payload,'$.name') FROM platform_campaigns c WHERE c.id=p.source_id AND c.organization_id=p.organization_id AND c.project_id=p.project_id) END AS title
       FROM platform_social_publications p JOIN platform_jobs j ON j.id=p.job_id AND j.organization_id=p.organization_id AND j.project_id=p.project_id LEFT JOIN platform_social_accounts a ON a.connection_id=j.connection_id
@@ -84,7 +84,7 @@ export class MonthlyReports {
       const list = entries.filter(item => item.goal_id === goal.id && item.stage_index === index && item.source === source);
       return { goal: goal.label, stage, source, first: list[0].value, firstAt: list[0].observed_at, last: list.at(-1)!.value, lastAt: list.at(-1)!.observed_at, entries: list.length };
     })));
-    const drafts = crewin ? crewinDraftsIn(from, to) : await count("SELECT COUNT(*) n FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.timestamp')>=? AND json_extract(payload,'$.timestamp')<? AND json_extract(payload,'$.starter') IS NULL", Date.parse(from), Date.parse(to));
+    const drafts = crewin ? await crewinDraftsIn(from, to) : await count("SELECT COUNT(*) n FROM platform_content_history WHERE organization_id=? AND project_id=? AND json_extract(payload,'$.timestamp')>=? AND json_extract(payload,'$.timestamp')<? AND json_extract(payload,'$.starter') IS NULL", Date.parse(from), Date.parse(to));
     return {
       version: 1, month, from, to, timezone: zone, language: project.language === 'en' ? 'en' : 'tr', project: { name: project.name, website: project.website },
       publications: { total: items.length, byChannel: [...channels].map(([channel, value]) => ({ channel, count: value })).sort((a, b) => b.count - a.count || a.channel.localeCompare(b.channel)), top },

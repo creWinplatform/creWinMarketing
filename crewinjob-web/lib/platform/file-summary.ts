@@ -12,7 +12,11 @@ export function fileSummary<T>(file: string, empty: T, reduce: (data: unknown) =
   let value = empty; try { const raw = fs.readFileSync(file, 'utf8'); value = raw.trim() ? reduce(JSON.parse(raw)) : empty; } catch { value = empty; }
   files.set(slot, { key, value }); return value;
 }
-export function resetFileSummaries() { files.clear(); }
+export function resetFileSummaries() {
+  files.clear();
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  (require('../legacy-store') as { resetStoreSummaries(): void }).resetStoreSummaries();
+}
 // The web app's data/ folder (CREWIN_WEB_DATA_DIR overrides it, e.g. in tests and the isolated preview).
 export const crewinDataDir = () => process.env.CREWIN_WEB_DATA_DIR || path.join(process.cwd(), 'data');
 export const records = (value: unknown): Record<string, unknown>[] => Array.isArray(value) ? value.filter(item => item && typeof item === 'object') as Record<string, unknown>[] : [];

@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   for (const campaign of due) {
     try {
       // [id]/launch ile aynı yol: e-posta + backend şablonu → backend dispatch, aksi halde yerel executor
-      const result = canUseBackendDispatch(campaign)
+      const result = (await canUseBackendDispatch(campaign))
         ? await createCampaignDispatch(campaign.id)
         : await executeCampaign(campaign.id);
       results.push({ id: campaign.id, status: result.status });

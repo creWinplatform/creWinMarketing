@@ -31,8 +31,8 @@ The connection string goes in `crewinjob-web/appsettings.json`, which git ignore
 |---|---|---|
 | 0 | Connection check; the SQL Server schema generated from the SQLite schema; a local test server | No |
 | 1 | An async data layer with one interface for SQLite and SQL Server; modules move one by one, tests pass at each step | No |
-| 2 | `data/*.json` and the agent files move into tables | No |
-| 3 | Backup, recovery drill and the encrypted-column check work against RDS (snapshots plus an export) | No |
+| 2 | `data/*.json` and the agent files move into tables (done 12 November) | No |
+| 3 | Backup, recovery drill and the encrypted-column check work against RDS (snapshots plus an export; done 12 November) | No |
 | 4 | Copy: a trial on a copy, row counts and encrypted fields checked, then the real copy and the switch, with approval | Yes |
 
 ## Phase 0 (done)
@@ -142,10 +142,168 @@ and 377 transactions call the database synchronously today.
 
 ### Next
 
-- **Phase 2:** move `data/*.json` and the agent files into tables.
-- **Phase 3:** backup, drill and recovery checks for SQL Server.
 - **Phase 4:** the data copy (trial, then real, with approval) and the switch (`PLATFORM_DATABASE_PROVIDER=mssql`).
 - **Speed:** hot paths that run dozens of statements are batched. The panel is fastest in the same AWS region as RDS.
+
+## Phase 2: the Crewin JSON stores in tables (12 November)
+
+The Crewin workspace kept its data in JSON files: the panel's `data/*.json` and the agent's `job-queue.json`,
+`.userbot-groups.json` and `data/*.json(l)`. With `PLATFORM_DATABASE_PROVIDER=mssql` they are now rows in the platform
+database. Without it (SQLite) the files are used exactly as before, so nothing changes until the switch.
+
+### Inventory
+
+| Owner | File | Shape | Read and written by |
+|---|---|---|---|
+| Panel | `content-history.json` (~22 MB, base64 images) | array | `app/api/data/content-history`, coach, job guide |
+| Panel | `post-history.json`, `post-history-hidden.json` | array | `app/api/data/post-history`, coach, job guide |
+| Panel | `activity-log.json` (+ `activity-log-cleared-at.txt`) | array | `lib/activity-log-server.ts`, `app/api/data/activity-log` |
+| Panel | `calendar.json` | array | `app/api/data/calendar`, `app/api/scheduler/run` |
+| Panel | `campaigns.json`, `campaign-audiences.json` | array | `lib/campaigns.ts`, `lib/saved-audiences.ts` |
+| Panel | `scheduled-posts.json` | array | `lib/scheduled-posts*.ts`, `app/api/schedule/*` |
+| Panel | `seo-work-items.json` | array | `lib/seo-work-items.ts` |
+| Panel | `social-tokens.json`, `oauth-state.json` | object | `lib/social-tokens.ts` |
+| Panel | `email-suppressions.json`, `whatsapp-consents.json`, `crewin-iys-email*.json` | object | `lib/legacy-*.ts`, `lib/crewin-iys-email.ts` |
+| Panel | `crewin-link-tags.json` | array | `lib/platform/crewin-links.ts` |
+| Agent | `job-queue.json`, `.userbot-groups.json` | array | `modules/job-bot.js`, `userbot.js`; panel routes `job-bot`, `userbot` |
+| Agent | `data/posted-jobs.json`, `data/review-queue.json` (~6 MB) | array | `modules/auto-poster.js` and its callers; job guide |
+| Agent | `data/group-stats.json`, `pipeline-state.json`, `agent-config.json`, `api-usage.json`, `broadcast-log.json` | object | auto-poster, `ai-client.js`, group broadcaster |
+| Agent | `data/discovered-groups.json`, `processed-messages.json`, `readonly-groups.json` | array | group discovery, message scraper, broadcaster |
+| Agent | `data/failed-messages.jsonl`, `data/link-tags.jsonl` | log | auto-poster, `modules/link-tags.js`; `crewin-links.ts` |
+
+Configuration and process state stay files: `.env`, `.userbot-config.json`, `google-credentials.json`, logs,
+`data/scheduler.pid`, `output/`, `data/platform-credentials.key`.
+
+**Before:** every read-modify-write ran under `withFileLock` (`lib/json-store.ts`). That lock is in-process only, so the
+agent's processes and a second panel instance did not see it, and the agent had no lock at all.
+
+### Tables (migration 79)
+
+```
+legacy_stores  (store PK, version, updated_at)                                   one row per store
+legacy_records (store, record_key, position, body, body_hash, updated_at)        one row per array item / object key
+```
+
+- **One store per file.** It is named `web:<file>` or `agent:<file>`, for example `web:content-history` and
+  `agent:posted-jobs`.
+  - An array keeps its order through `position`.
+  - The row key is the item's `id`, or the field the store names (`ilanId` for posted jobs). Without one, the key is
+    a hash of the item.
+  - An object has one row per property.
+  - Both owners describe their stores in one list: `WEB_STORES` and `AGENT_STORES` in `lib/db/legacy-records.cjs`.
+- **Only changed rows are written.** A write compares the new data with the stored body hashes. Editing one content
+  history item sends that item, not 22 MB.
+  - Items added at the front or back, removed, or edited keep the other rows' positions.
+  - A reorder renumbers the rows.
+- **Locking across processes.** `mutate()` first bumps the store's `legacy_stores.version` in the same transaction as
+  its writes. The row lock is held until the commit, so the panel, a second panel and the agent's processes write one
+  after another.
+  - The version also tells readers whether their cached copy is current, so a repeated read costs one small query.
+  - Tested with concurrent writers on SQLite and SQL Server; no update is lost.
+- **Portable SQL only.** The statements run unchanged on SQLite and, after `?` → `@pN`, on SQL Server. The agent
+  therefore uses a small adapter (`mssqlRecordsDb`) and does not need the panel's translator.
+
+### Code
+
+- **Panel: `lib/legacy-store.ts`.** It offers `readStore`, `mutateStore`, `withStore` (the old `load()`/`save()`
+  shape under the lock), `writeStore`, `appendStore` and `storeSummary` (a summary cached per store version).
+  - Every module and route in the inventory uses it. Their functions became async and their callers await them.
+    `tsc`, `scripts/promise-audit.cjs` and the tests check this.
+  - Four read-modify-write pairs that were separate calls are now one locked change:
+    - claiming due posts;
+    - a scheduled post renumbered by the backend (`replacePost`);
+    - consuming an OAuth state;
+    - the pipeline "stopped" mark.
+- **Agent: `crewinjob-agent/modules/store.js`.** It offers the same calls and `stores.*` definitions.
+  - The code that used to load a list, wait on the network, then save the whole list now re-reads it under the lock
+    and applies only its own change. This covers the pipeline run, review approval, expiry, application tracking,
+    group joins, processed messages and the broadcast log.
+  - In db mode the agent loads `legacy-records.cjs`, the `mssql` driver and `appsettings.json` from
+    `../crewinjob-web` (`CREWIN_WEB_DIR` overrides the path). The agent therefore needs the panel folder next to it,
+    as it already does today.
+  - It reads `PLATFORM_DATABASE_PROVIDER` from its environment. Processes the panel starts inherit it. An agent
+    started on its own needs it in its `.env`.
+- **Mode.** `CREWIN_LEGACY_STORE=db|file` overrides the mode chosen by the provider. Tests use it to run the table
+  mode on SQLite.
+
+### Copy (local test server only)
+
+`npm run db:copy-legacy` (`scripts/legacy-copy.cjs`) copies every file of the inventory into the tables, then reads
+each store back and compares it with its file.
+
+- It only reads the files.
+- It creates the two tables if they are missing.
+- It refuses a store that already has rows (unless `--replace`) and any server that is not local.
+- The copy into RDS is phase 4.
+
+```
+PLATFORM_APPSETTINGS_PATH=appsettings.Test.json node scripts/legacy-copy.cjs --web-data <panel>/data --agent-dir <agent>
+```
+
+**Done on 12 November:** the real files were copied into the local Docker server (`RyzevoTest`). 21 stores were
+copied and are identical when read back, including the 22 MB content history, 3,404 review-queue items and 680
+posted jobs. The 10 files that do not exist were skipped.
+
+### Checks
+
+- `test/legacy-store.test.cjs`:
+  - write plans and positions;
+  - file mode (byte-identical files, compact where it was, jsonl);
+  - table mode on SQLite, on SQL Server (local only) and through the agent's adapter;
+  - concurrent writers;
+  - the panel modules in db mode, with no files written.
+- `crewinjob-agent/test/store.test.js`: file mode, db mode, and that the agent's store options equal `AGENT_STORES`.
+- `npm run db:smoke` has a step for the Crewin stores: a due post is claimed once out of three concurrent claims, and
+  an OAuth state is used once.
+- The SQL translator now passes a multi-row `INSERT … VALUES (…), (…)` through when it has no conflict clause.
+
+## Phase 3: backup and recovery on SQL Server (12 November)
+
+RDS keeps its automated snapshots on the AWS side. These scripts keep a copy the application itself can verify, move
+off-host and drill without AWS. They work the same way as the SQLite backup, verify and drill scripts and use the same
+commands. With `PLATFORM_DATABASE_PROVIDER=mssql` they use SQL Server:
+
+| Command | With `PLATFORM_DATABASE_PROVIDER=mssql` |
+|---|---|
+| `npm run backup:platform` | Exports every table of the database `ConnectionStrings.Platform` names, then verifies the copy (details below). It only reads the database. |
+| `npm run verify:backup -- <folder>` | Verifies a SQL Server backup offline; no server is needed (details below). Recognises both formats. |
+| `npm run restore:drill -- <folder\|--latest>` | Copies the backup, verifies the copy offline and removes the copies after `--latest` (details below). |
+| `npm run offsite:platform` | Uploads the table files and the manifest; the key file stays local, as before. |
+
+- **Export (`backup:platform`).**
+  - One consistent read: SNAPSHOT isolation when the database allows it, SERIALIZABLE otherwise.
+  - Each table goes into `tables/<table>.ndjson`: a header line with the column names and types, then one JSON array
+    per row.
+  - The manifest (format 3) records each file's sha256 and size, each table's row count and value hash, the schema
+    version and the database id, plus an HMAC with the encryption key.
+  - The key file is copied as in the SQLite backup. `PLATFORM_ENCRYPTION_KEY` stays outside the backup.
+- **Offline verification (`verify:backup`).**
+  1. It checks the files against the manifest and the HMAC.
+  2. It rebuilds the rows into a temporary SQLite platform database of the same schema version.
+  3. It runs the SQLite backup's checks on it: integrity, foreign keys, project scope, and every encrypted field must
+     open with the key.
+  4. It compares every table's value hash.
+- **Drill (`restore:drill`).**
+  - **`--server`** also loads the backup into a new database `RyzevoDrill_<time>`, re-validates every constraint
+    `WITH CHECK`, compares every table and drops the database again (`--keep` keeps it).
+  - The drill server comes only from `PLATFORM_DRILL_MSSQL_CONNECTION` or from `PLATFORM_DRILL_APPSETTINGS_PATH`.
+  - The live `appsettings.json` is never used, so a drill cannot create a database on RDS by accident. A drill on
+    RDS needs those settings to be set on purpose.
+- **Shared code.**
+  - `scripts/lib/mssql-backup.mjs` does the export, verification and drill restore.
+  - `scripts/lib/mssql-rows.cjs` holds the value hash and typed parameters, now also used by `mssql-copy.cjs`.
+  - The `MAX_RECOVERY_SCHEMA` constant is now 79.
+- **Tested (`test/platform-mssql-recovery.test.cjs`, local server only).**
+  - Fixture: two projects with encrypted connections and a Crewin store, copied with `mssql-copy` into a new database.
+  - Backup: 154 tables. The encrypted fields are authenticated, and no plain secret appears in any file.
+  - A changed table file, a changed row count and a wrong key file each fail with a code.
+  - Drill: offline, refused without a drill server, then into `RyzevoDrill_…`. Constraints are trusted, values
+    match, and the database is dropped.
+- **Run by hand on 12 November.** A copy of the real `platform.sqlite` was migrated to schema 79 in a temporary
+  folder and copied into the local `RyzevoLocalCopy` database (154 tables, 102 rows, verified). Backup, verification
+  and both drills passed.
+- **Not yet.** `monitor:platform` still checks the SQLite file (database size, worker state). It is to be pointed at
+  SQL Server at the switch.
 
 ## Phase 4: the platform data copy (8 November)
 
@@ -161,7 +319,7 @@ and 377 transactions call the database synchronously today.
     existing copy with the source again.
 - **Done:** the platform data (schema 78, 152 tables, 101 rows) was copied into `Ryzevo` and verified. The
   repository's `workspace()` returns the same result on both databases.
-- **Not yet:** the Crewin `data/*.json` files (phase 2). The panel still runs on SQLite, so writes made after the
+- **Not yet:** the Crewin JSON stores (phase 2 added their tables and `db:copy-legacy`). The panel still runs on SQLite, so writes made after the
   copy are not in `Ryzevo`. The copy has to be redone, or the difference moved, at the switch.
 
 ## The test database: `Ryzevo_Trial`

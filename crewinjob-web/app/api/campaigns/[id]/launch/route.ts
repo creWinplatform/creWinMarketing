@@ -15,7 +15,7 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ id: str
   if (isRemoteOnlyCampaignId(params.id)) {
     return NextResponse.json({ error: 'Bu kampanya yalnızca backend\'de kayıtlı; başlatma/düzenleme backend yönetiminden yapılmalı. / This campaign exists only in the backend; manage it there.', code: 'remote_only' }, { status: 409 });
   }
-  const current = getCampaign(params.id);
+  const current = await getCampaign(params.id);
   if (!current) return NextResponse.json({ error: 'Kampanya bulunamadı.' }, { status: 404 });
 
   // Atomik claim: çakışan cron (run-due) veya çift tıklama aynı kampanyayı ikinci kez gönderemez
@@ -24,7 +24,7 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ id: str
     return NextResponse.json({ error: current.status === 'running' ? 'Kampanya zaten çalışıyor.' : 'Kampanya bu durumda başlatılamaz.', code: 'not_launchable' }, { status: 409 });
   }
   try {
-    const campaign = canUseBackendDispatch(claim.campaign)
+    const campaign = (await canUseBackendDispatch(claim.campaign))
       ? await createCampaignDispatch(params.id)
       : await executeCampaign(params.id);
     return NextResponse.json(campaign);

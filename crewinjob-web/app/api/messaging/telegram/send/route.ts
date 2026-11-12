@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
     const tagText = (value: string) => { const result = tagCrewinLinks(value, tag, 'telegram', 'social'); tagged += result.tagged; return result.text; };
     if (parseMode === 'HTML') body.text = tagText(body.text);
     const buttons = body.buttons?.map(row => row.map(button => button.url ? { ...button, url: tagText(button.url) } : button));
-    const remember = <T,>(result: T) => { if (tagged) { try { registerCrewinTag(tag, 'share', body.text); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); } } return result; };
+    const remember = <T,>(result: T) => { if (tagged) { void registerCrewinTag(tag, 'share', body.text).catch(err => console.warn('[link-tags] kayıt yazılamadı:', err)); } return result; };
 
     const send = agentModule('modules/messaging-send.js');
     // parse_mode=HTML: kullanıcı/kampanya metni düz metindir — <, >, & kaçışlanır (Telegram aksi halde

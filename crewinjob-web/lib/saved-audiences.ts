@@ -1,9 +1,8 @@
-import fs from 'fs';
-import path from 'path';
 import type { CampaignAudience, FillBucket } from '@/lib/campaigns';
+import { mutateStore, readStore, webStore } from '@/lib/legacy-store';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const FILE = path.join(DATA_DIR, 'campaign-audiences.json');
+// data/campaign-audiences.json, or legacy_records 'web:campaign-audiences' with PLATFORM_DATABASE_PROVIDER=mssql.
+const STORE = () => webStore('campaign-audiences.json', 'array');
 const FILL_BUCKETS: FillBucket[] = ['zero', 'low', 'mid', 'high'];
 
 export type SavedAudienceFilters = Pick<CampaignAudience, 'fillBuckets' | 'countries' | 'nationalities' | 'positions' | 'activity' | 'reachableChannels'>;
@@ -51,21 +50,8 @@ function normalizeFilters(value: SavedAudienceFilters): SavedAudienceFilters {
   };
 }
 
-function writeSavedAudiences(items: SavedAudience[]) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const temp = `${FILE}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  fs.writeFileSync(temp, JSON.stringify(items, null, 2));
-  fs.renameSync(temp, FILE);
-}
-
-export function loadSavedAudiences(): SavedAudience[] {
-  try {
-    if (!fs.existsSync(FILE)) return [];
-    const value = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-    return Array.isArray(value) ? value as SavedAudience[] : [];
-  } catch {
-    return [];
-  }
+export function loadSavedAudiences(): Promise<SavedAudience[]> {
+  return readStore<SavedAudience>(STORE());
 }
 
 export function validateSavedAudience(input: SaveAudienceInput): string | null {
@@ -75,7 +61,7 @@ export function validateSavedAudience(input: SaveAudienceInput): string | null {
   return null;
 }
 
-export function createSavedAudience(input: SaveAudienceInput): SavedAudience {
+export async function createSavedAudience(input: SaveAudienceInput): Promise<SavedAudience> {
   const now = new Date().toISOString();
   const item: SavedAudience = {
     id: `aud_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
@@ -87,22 +73,25 @@ export function createSavedAudience(input: SaveAudienceInput): SavedAudience {
     createdAt: now,
     updatedAt: now,
   };
-  writeSavedAudiences([item, ...loadSavedAudiences()]);
+  await mutateStore(STORE(), items => [item, ...items]);
   return item;
 }
 
-export function deleteSavedAudience(id: string): boolean {
-  const items = loadSavedAudiences();
-  const next = items.filter(item => item.id !== id);
-  if (next.length === items.length) return false;
-  writeSavedAudiences(next);
-  return true;
+export async function deleteSavedAudience(id: string): Promise<boolean> {
+  let removed = false;
+  await mutateStore(STORE(), items => {
+    const next = items.filter(item => (item as SavedAudience).id !== id);
+    if (next.length === items.length) return undefined;
+    removed = true;
+    return next;
+  });
+  return removed;
 }
 
 export interface SavedAudienceStore {
-  list(): SavedAudience[];
-  create(input: SaveAudienceInput): SavedAudience;
-  remove(id: string): boolean;
+  list(): Promise<SavedAudience[]>;
+  create(input: SaveAudienceInput): Promise<SavedAudience>;
+  remove(id: string): Promise<boolean>;
 }
 
 const localSavedAudienceStore: SavedAudienceStore = {

@@ -22,13 +22,23 @@ const discover = args.includes('--discover');
 const scrapeOnly = args.includes('--scrape');
 const broadcastOnly = args.includes('--broadcast');
 
+// Çıkmadan önce bekleyen kayıtları bitir ve veritabanı bağlantısını kapat (dosya modunda zararsız).
+async function exit(code) {
+  try {
+    const linkTagsPath = require.resolve('./modules/link-tags');
+    if (require.cache[linkTagsPath]) await require('./modules/link-tags').flush();
+  } catch {}
+  try { await require('./modules/store').close(); } catch {}
+  process.exit(code);
+}
+
 async function main() {
   if (discover) {
     const { discoverGroups } = require('./modules/group-discovery');
     console.log('🔍 Grup keşfi başlıyor (yalnız öneri)...');
     const found = await discoverGroups();
     console.log(`✅ ${found.length} yeni grup öneri listesine eklendi. Katılmak için Pipeline → Gruplar ekranından seçin.`);
-    process.exit(0);
+    await exit(0);
   }
 
   if (scrapeOnly) {
@@ -36,7 +46,7 @@ async function main() {
     console.log('📋 Pipeline tek sefer çalışıyor...');
     const result = await runPipeline({ maxJobs: 20, dryRun });
     console.log('Sonuç:', result);
-    process.exit(0);
+    await exit(0);
   }
 
   if (broadcastOnly) {
@@ -44,7 +54,7 @@ async function main() {
     console.log('📢 Broadcast başlıyor...');
     const sent = await broadcastNewJobs(10);
     console.log(`✅ ${sent} mesaj gönderildi.`);
-    process.exit(0);
+    await exit(0);
   }
 
   if (once) {
@@ -53,7 +63,7 @@ async function main() {
     await fullCycle({ maxJobs: 20, maxBroadcast: 5 });
     const { disconnect } = require('./modules/tg-client');
     await disconnect();
-    process.exit(0);
+    await exit(0);
   }
 
   // Default: daemon modu
@@ -61,7 +71,7 @@ async function main() {
   await startScheduler({ maxJobs: 15, maxBroadcast: 5 });
 }
 
-main().catch(e => {
+main().catch(async e => {
   console.error('[pipeline] Fatal:', e.message);
-  process.exit(1);
+  await exit(1);
 });

@@ -172,7 +172,7 @@ async function postLinkedIn(content: string, imageData?: string): Promise<PostRe
   const staticToken  = process.env.LINKEDIN_ACCESS_TOKEN;
   const staticUserId = process.env.LINKEDIN_USER_ID;
 
-  const oauthToken = getToken('linkedin');
+  const oauthToken = (await getToken('linkedin'));
   const accessToken = staticToken || oauthToken?.accessToken;
   const userId      = staticUserId || oauthToken?.userId;
 
@@ -294,7 +294,7 @@ async function postFacebook(content: string, imageData?: string): Promise<PostRe
   const staticToken  = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
   const staticPageId = process.env.FACEBOOK_PAGE_ID;
 
-  const oauthToken = getToken('facebook');
+  const oauthToken = (await getToken('facebook'));
   const accessToken = staticToken || oauthToken?.accessToken;
   const pageId      = staticPageId || oauthToken?.pageId;
 
@@ -365,7 +365,7 @@ async function postInstagram(content: string, imageData?: string): Promise<PostR
   const staticToken    = process.env.INSTAGRAM_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
   const staticIgUserId = process.env.INSTAGRAM_IG_USER_ID;
 
-  const oauthToken = getToken('instagram');
+  const oauthToken = (await getToken('instagram'));
   const accessToken = staticToken || oauthToken?.accessToken;
   const igUserId    = staticIgUserId || oauthToken?.igUserId;
 
@@ -464,7 +464,7 @@ async function postInstagram(content: string, imageData?: string): Promise<PostR
 
 // ── TikTok ───────────────────────────────────────────────────────────────────
 async function postTikTok(content: string): Promise<PostResult> {
-  const accessToken = process.env.TIKTOK_ACCESS_TOKEN || getToken('tiktok')?.accessToken;
+  const accessToken = process.env.TIKTOK_ACCESS_TOKEN || (await getToken('tiktok'))?.accessToken;
 
   if (!accessToken) {
     return {
@@ -561,7 +561,7 @@ export async function POST(req: NextRequest) {
   );
 
   if (tagged && results.some(result => result.success)) {
-    try { registerCrewinTag(tag, campaign ? 'campaign' : 'share', content); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
+    try { await registerCrewinTag(tag, campaign ? 'campaign' : 'share', content); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
   }
   return NextResponse.json({ results });
 }

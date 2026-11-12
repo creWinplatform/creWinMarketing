@@ -42,14 +42,14 @@ test('İYS applies to recipients whose nationality is TR or unknown, never to co
 
 test('measure mode: everyone gets the email; the result says who İYS would stop and unknown recipients are queued encrypted',async()=>{
  const f=await setup(),p=paths();try{
-  assert.equal(e.crewinEmailMode(p.mode).mode,'measure','measure is the default');
+  assert.equal((await e.crewinEmailMode(p.mode)).mode,'measure','measure is the default');
   let gate=await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN,PH,FIRM],p);
   assert.equal(gate.block,null);assert.equal(gate.allowed.size,4);assert.deepEqual(plain(gate.counts),{total:2,reasons:{iys_scope_missing:2},queued:0});
   await f.panel.declare({scope:'tr'});
   gate=await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN,PH,FIRM],p);
   assert.equal(gate.allowed.size,4);assert.deepEqual(plain(gate.counts),{total:2,reasons:{iys_not_connected:2},queued:2});
   const raw=fs.readFileSync(p.pending,'utf8');assert.doesNotMatch(raw,/ayse|mehmet|example\.com/i,'queued addresses are encrypted');
-  assert.equal(e.crewinPendingCount(p.pending),2);
+  assert.equal((await e.crewinPendingCount(p.pending)),2);
   assert.equal((await e.crewinEmailGate(f.db,KEY,[TR],p)).counts.queued,0,'an address is queued once');
   await f.panel.declare({scope:'none'});assert.deepEqual(plain((await e.crewinEmailGate(f.db,KEY,[TR,UNKNOWN],p)).counts),{total:0,reasons:{},queued:0},'"no": no İYS check');
  }finally{f.db.close();}
@@ -79,24 +79,24 @@ test('the worker asks İYS about up to 50 queued addresses once Crewin is connec
   assert.deepEqual(plain(await e.crewinIysEmailBackfill(f.db,KEY,f.fake.transport,p.pending)),{checked:0},'not connected: nothing is asked');
   await f.connect();onay(f.fake,'seafarer0@example.com');
   assert.deepEqual(plain(await e.crewinIysEmailBackfill(f.db,KEY,f.fake.transport,p.pending)),{checked:50});
-  assert.equal(e.crewinPendingCount(p.pending),10);assert.equal(f.fake.state.requests.filter(item=>item.path.endsWith('/consents/status')).length,50);
+  assert.equal((await e.crewinPendingCount(p.pending)),10);assert.equal(f.fake.state.requests.filter(item=>item.path.endsWith('/consents/status')).length,50);
   await e.setCrewinEmailMode('enforce','legacy-admin',p.mode);
   const gate=await e.crewinEmailGate(f.db,KEY,[{email:'seafarer0@example.com'},{email:'seafarer1@example.com'}],p);
   assert.deepEqual([...gate.allowed],['seafarer0@example.com'],'the consent İYS reported now lets the email go');
-  assert.deepEqual(plain(await e.crewinIysEmailBackfill(f.db,KEY,f.fake.transport,p.pending)),{checked:11},'the 10 left and seafarer1, queued again by the send after İYS had no record');assert.equal(e.crewinPendingCount(p.pending),0);
+  assert.deepEqual(plain(await e.crewinIysEmailBackfill(f.db,KEY,f.fake.transport,p.pending)),{checked:11},'the 10 left and seafarer1, queued again by the send after İYS had no record');assert.equal((await e.crewinPendingCount(p.pending)),0);
  }finally{f.db.close();}
 });
 
 test('the backend Dispatch stays open for company audiences and in measure mode; enforce mode sends individuals through the panel',async()=>{
  const p=paths();
- for(const type of ['seafarers',undefined,'maritime_businesses','company_prospects'])assert.equal(e.crewinDispatchAllowed(type,p.mode),true,'measure: '+type);
+ for(const type of ['seafarers',undefined,'maritime_businesses','company_prospects'])assert.equal((await e.crewinDispatchAllowed(type,p.mode)),true,'measure: '+type);
  await e.setCrewinEmailMode('enforce','legacy-admin',p.mode);
- assert.equal(e.crewinDispatchAllowed('seafarers',p.mode),false);assert.equal(e.crewinDispatchAllowed(undefined,p.mode),false);
- assert.equal(e.crewinDispatchAllowed('maritime_businesses',p.mode),true);assert.equal(e.crewinDispatchAllowed('company_prospects',p.mode),true);
+ assert.equal((await e.crewinDispatchAllowed('seafarers',p.mode)),false);assert.equal((await e.crewinDispatchAllowed(undefined,p.mode)),false);
+ assert.equal((await e.crewinDispatchAllowed('maritime_businesses',p.mode)),true);assert.equal((await e.crewinDispatchAllowed('company_prospects',p.mode)),true);
  const dispatch=fs.readFileSync(path.join(__dirname,'..','lib/campaign-dispatch.ts'),'utf8');
- assert.match(dispatch,/canUseBackendDispatch[\s\S]*return crewinDispatchAllowed\(campaign\.audience\.audienceType\)/,'launch and run-due fall back to the gated send');
+ assert.match(dispatch,/canUseBackendDispatch[\s\S]*return await crewinDispatchAllowed\(campaign\.audience\.audienceType\)/,'launch and run-due fall back to the gated send');
  assert.match(dispatch,/createCampaignDispatch[\s\S]*crewinDispatchAllowed[\s\S]*iys_enforce/,'a direct dispatch is refused with a reason');
- assert.match(dispatch,/action === 'retry' && !crewinDispatchAllowed/,'a retry is a new send');
+ assert.match(dispatch,/action === 'retry' && !\(await crewinDispatchAllowed/,'a retry is a new send');
 });
 
 test('every legacy email path goes through the gate; company campaigns use the merchant exemption',()=>{

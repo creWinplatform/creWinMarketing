@@ -35,7 +35,7 @@ async function debugToken(token: string): Promise<Record<string, unknown>> {
 
 /** Mevcut Page token'ının son kullanma tarihini ve debug bilgisini döner */
 export async function GET() {
-  const token = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || getToken('facebook')?.accessToken;
+  const token = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || (await getToken('facebook'))?.accessToken;
   if (!token) {
     return NextResponse.json({ ok: false, error: 'FACEBOOK_PAGE_ACCESS_TOKEN tanımlı değil' });
   }
@@ -113,7 +113,7 @@ export async function POST(req: NextRequest) {
   const neverExp = expAt === 0;
 
   // Token sunucuda saklanır (tarayıcıya gitmez). FACEBOOK_PAGE_ACCESS_TOKEN env'i tanımlıysa o öncelikli kalır.
-  setToken('facebook', {
+  await setToken('facebook', {
     accessToken: pageToken,
     pageId:      pageId || undefined,
     pageName:    pageName || undefined,
