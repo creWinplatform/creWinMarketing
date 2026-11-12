@@ -156,10 +156,15 @@ async function rebuildSqlite(folder, manifest, file) {
   try {
     handle.defaultSafeIntegers(true);
     const current = Number(handle.prepare('SELECT MAX(version) v FROM platform_migrations').get().v);
-    if (current !== manifest.schemaVersion) fail('schema_mismatch');
+    if (manifest.schemaVersion > current) fail('schema_mismatch');
     const tables = handle.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => row.name);
-    if (tables.length !== manifest.tables.length || tables.some(name => !manifest.tables.some(t => t.name === name))) fail('schema_mismatch');
+    if (manifest.tables.some(t => !tables.includes(t.name))) fail('schema_mismatch');
+    // A backup taken before an additive upgrade (the database at 78 while this code is at 79, as before db:upgrade):
+    // the tables added since are dropped from the rebuild. A table that changed its columns still fails below.
+    const added = tables.filter(name => !manifest.tables.some(t => t.name === name));
+    if (added.length && manifest.schemaVersion === current) fail('schema_mismatch');
     handle.pragma('foreign_keys = OFF');
+    for (const name of added) handle.exec(`DROP TABLE "${name}"`);
     const hashes = {};
     for (const entry of manifest.tables) {
       const sqliteColumns = handle.prepare(`PRAGMA table_info("${entry.name}")`).all().map(c => c.name);
