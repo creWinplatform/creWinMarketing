@@ -103,6 +103,52 @@ async function resetDatabase() {
     return 'reserved and completed';
   });
   await step('portfolio', async () => { const { portfolio } = load('portfolio.ts'); const view = await portfolio(db, a.userId, { organizationId: a.organizationId, projectId: a.projectId }); return `${view.projects.length} project(s)`; });
+  // Switch off (the default, as on live ryzevo.com today): the platform runs on SQL Server, the Crewin stores stay files.
+  await step('Crewin stores, switch off: files', async () => {
+    const saved = { PLATFORM_LEGACY_STORE: process.env.PLATFORM_LEGACY_STORE, CREWIN_WEB_DATA_DIR: process.env.CREWIN_WEB_DATA_DIR, PLATFORM_DATABASE_PROVIDER: process.env.PLATFORM_DATABASE_PROVIDER };
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'smoke-legacy-off-'));
+    fs.writeFileSync(path.join(dir, 'seo-work-items.json'), JSON.stringify([{ id: 'seo-file', url: 'https://example.com', title: 'Dosyadan', status: 'proposed', updatedAt: '2026-11-12' }]));
+    delete process.env.PLATFORM_LEGACY_STORE;
+    Object.assign(process.env, { CREWIN_WEB_DATA_DIR: dir, PLATFORM_DATABASE_PROVIDER: 'mssql' });
+    const store = load('../legacy-store.ts');
+    store.setLegacyStoreDb(db);
+    try {
+      const seo = load('../seo-work-items.ts');
+      if ((await seo.listSeoWorkItems())[0]?.title !== 'Dosyadan') throw new Error('the file was not read');
+      await seo.updateSeoWorkItem('seo-file', 'approved');
+      if (JSON.parse(fs.readFileSync(path.join(dir, 'seo-work-items.json'), 'utf8'))[0].status !== 'approved') throw new Error('the file was not written');
+      if ((await db.all("SELECT store FROM legacy_stores WHERE store = 'web:seo-work-items'")).length) throw new Error('a table row was written');
+      return 'read and written in the file, no table row';
+    } finally {
+      store.setLegacyStoreDb(null);
+      for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    }
+  });
+  // Switch on (PLATFORM_LEGACY_STORE=mssql, phase 4): the Crewin JSON stores as rows (legacy_records).
+  await step('Crewin stores, switch on: tables', async () => {
+    const saved = { PLATFORM_LEGACY_STORE: process.env.PLATFORM_LEGACY_STORE, CREWIN_WEB_DATA_DIR: process.env.CREWIN_WEB_DATA_DIR };
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'smoke-legacy-'));
+    Object.assign(process.env, { PLATFORM_LEGACY_STORE: 'mssql', CREWIN_WEB_DATA_DIR: dir });
+    const store = load('../legacy-store.ts');
+    store.setLegacyStoreDb(db);
+    try {
+      const seo = load('../seo-work-items.ts'), posts = load('../scheduled-posts.ts'), tokens = load('../social-tokens.ts');
+      const item = await seo.createSeoWorkItem({ url: 'https://example.com/ğüş', title: 'Başlık 😀', recommendation: 'r', evidence: 'e', priority: 'high' });
+      await seo.updateSeoWorkItem(item.id, 'applied', 'Uygulandı');
+      if ((await seo.listSeoWorkItems())[0]?.status !== 'applied') throw new Error('SEO item not updated');
+      await posts.createPost({ platforms: ['linkedin'], content: 'İçerik', scheduledAt: new Date(Date.now() - 1000).toISOString() });
+      const claims = await Promise.all([posts.claimDuePosts(), posts.claimDuePosts(), posts.claimDuePosts()]);
+      if (claims.flat().length !== 1) throw new Error(`a due post was claimed ${claims.flat().length} times`);
+      await tokens.saveOAuthState('smoke-state', 'linkedin');
+      const once = await Promise.all([tokens.consumeOAuthState('smoke-state'), tokens.consumeOAuthState('smoke-state')]);
+      if (once.filter(Boolean).length !== 1) throw new Error('an OAuth state was used twice');
+      if (fs.readdirSync(dir).length) throw new Error('a file was written');
+      return `${(await db.all('SELECT store FROM legacy_stores')).length} stores, one claim, one state use`;
+    } finally {
+      store.setLegacyStoreDb(null);
+      for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    }
+  });
   await db.close();
   const width = Math.max(...steps.map(s => s.name.length));
   for (const s of steps) console.log(`${s.ok ? 'ok  ' : 'FAIL'} ${s.name.padEnd(width)} ${String(s.ms).padStart(5)} ms  ${s.detail ?? ''}`);

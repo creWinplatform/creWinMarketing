@@ -1,8 +1,7 @@
 import 'server-only';
 import sharp from 'sharp';
 import { marketingBackend, isRecord, parseObject, parseStringArray, records, stringValue } from '@/lib/marketing-backend';
-import { createPost, deletePost, loadPosts, updatePost, upsertPost, SCHEDULED_POSTS_LOCK, type ScheduledPost } from '@/lib/scheduled-posts';
-import { withFileLock } from '@/lib/json-store';
+import { createPost, deletePost, loadPosts, replacePost, updatePost, type ScheduledPost } from '@/lib/scheduled-posts';
 import { internalFetch } from '@/lib/internal-fetch';
 import { extractPostId } from '@/lib/post-history';
 
@@ -46,7 +45,7 @@ function payload(post: ScheduledPost) {
 }
 
 export async function listScheduledPosts(): Promise<ScheduledPost[]> {
-  const local = loadPosts();
+  const local = await loadPosts();
   try {
     const result = await marketingBackend().marketingCalendarGet('GetScheduledPosts', {
       skipCount: 0,
@@ -65,7 +64,7 @@ export async function listScheduledPosts(): Promise<ScheduledPost[]> {
 }
 
 export async function createScheduledPost(input: Omit<ScheduledPost, 'id' | 'createdAt' | 'status'>): Promise<ScheduledPost> {
-  let local = createPost({ ...input, backendSync: 'local_only' });
+  let local = await createPost({ ...input, backendSync: 'local_only' });
   try {
     if (input.imageData) {
       const asset = await marketingBackend().marketingAssetPost('Upload', {
@@ -79,21 +78,20 @@ export async function createScheduledPost(input: Omit<ScheduledPost, 'id' | 'cre
       });
       if (isRecord(asset)) {
         const url = stringValue(asset.url ?? asset.fileUrl ?? asset.publicUrl);
-        if (url) local = updatePost(local.id, { mediaUrls: [url] }) || local;
+        if (url) local = (await updatePost(local.id, { mediaUrls: [url] })) || local;
       }
     }
     const result = await marketingBackend().marketingCalendarPost('CreateOrUpdateScheduledPost', payload(local));
     if (isRecord(result)) {
       const synced = normalize(result, local);
-      deletePost(local.id);
-      return upsertPost(synced);
+      return replacePost(local.id, synced);
     }
   } catch { /* local queue remains publishable */ }
   return local;
 }
 
 export async function updateScheduledPost(id: string, patch: Partial<ScheduledPost>): Promise<ScheduledPost | null> {
-  const current = loadPosts().find(post => post.id === id);
+  const current = (await loadPosts()).find(post => post.id === id);
   if (!current) return null;
   const updated = { ...current, ...patch, id };
   if (patch.status === 'cancelled' && /^\d+$/.test(id)) {
@@ -102,7 +100,7 @@ export async function updateScheduledPost(id: string, patch: Partial<ScheduledPo
     try { await marketingBackend().marketingCalendarPost('CreateOrUpdateScheduledPost', payload(updated)); } catch { /* local state retained */ }
   }
   // Await sırasında post yayına alınmış olabilir → bayat kopyayı değil yalnızca patch'i, güncel kayda uygula
-  return withFileLock(SCHEDULED_POSTS_LOCK, () => updatePost(id, { ...patch, id }));
+  return updatePost(id, { ...patch, id });
 }
 
 // ── Sunucu taraflı yayın yardımcıları (schedule/publish + scheduler/run) ──────
@@ -179,7 +177,7 @@ export async function recordPublishedPosts(
 }
 
 export async function removeScheduledPost(id: string): Promise<boolean> {
-  const current = loadPosts().find(post => post.id === id);
+  const current = (await loadPosts()).find(post => post.id === id);
   if (current?.backendSync === 'synced' || /^\d+$/.test(id)) {
     try { await marketingBackend().marketingCalendarPost('CancelScheduledPost', { id }); } catch { /* local removal still applies */ }
   }

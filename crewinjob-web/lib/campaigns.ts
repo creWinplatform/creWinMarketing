@@ -1,12 +1,10 @@
-import path from 'path';
 import type { AdPlatform } from '@/lib/ads-types';
-import { readJson, withFileLock, writeJsonAtomic } from '@/lib/json-store';
+import { mutateStore, readStore, webStore } from '@/lib/legacy-store';
 import { crewinSource, crewinTag, isCrewinSite } from '@/lib/platform/crewin-links';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const FILE = path.join(DATA_DIR, 'campaigns.json');
-// Tüm read-modify-write işlemleri bu kilit altında (eşzamanlı cron / "şimdi başlat" / UI yazmaları)
-const LOCK_KEY = 'campaigns';
+// data/campaigns.json, or legacy_records 'web:campaigns' with PLATFORM_LEGACY_STORE=mssql.
+// Tüm read-modify-write işlemleri depo kilidi altında (eşzamanlı cron / "şimdi başlat" / UI yazmaları)
+const STORE = () => webStore('campaigns.json', 'array', { lock: 'campaigns' });
 const ACTIVE_WINDOW_DAYS = 30;
 
 export type CampaignStatus = 'draft' | 'ready' | 'scheduled' | 'running' | 'partial' | 'completed' | 'failed' | 'cancelled';
@@ -163,19 +161,20 @@ export type CreateCampaignInput = Pick<UnifiedCampaign, 'name' | 'objective' | '
   utm?: Partial<UnifiedCampaign['utm']>;
 };
 
-export function loadCampaigns(): UnifiedCampaign[] {
-  const value = readJson<unknown>(FILE, []);
-  return Array.isArray(value) ? value as UnifiedCampaign[] : [];
+export async function loadCampaigns(): Promise<UnifiedCampaign[]> {
+  return readStore<UnifiedCampaign>(STORE());
 }
 
-// Kilit altında oku → değiştir → atomik yaz. fn `items` dönerse dosya yazılır.
-// Not: withFileLock yeniden girişli değildir; fn içinden başka mutate çağrısı yapılmamalı.
-function mutateCampaigns<T>(fn: (items: UnifiedCampaign[]) => { items?: UnifiedCampaign[]; result: T }): Promise<T> {
-  return withFileLock(LOCK_KEY, () => {
-    const { items, result } = fn(loadCampaigns());
-    if (items) writeJsonAtomic(FILE, items);
-    return result;
+// Kilit altında oku → değiştir → yaz. fn `items` dönerse depo yazılır.
+// Not: kilit yeniden girişli değildir; fn içinden başka mutate çağrısı yapılmamalı.
+async function mutateCampaigns<T>(fn: (items: UnifiedCampaign[]) => { items?: UnifiedCampaign[]; result: T }): Promise<T> {
+  let out!: T;
+  await mutateStore(STORE(), list => {
+    const { items, result } = fn(list as UnifiedCampaign[]);
+    out = result;
+    return items;
   });
+  return out;
 }
 
 export function isRemoteOnlyCampaignId(id: string): boolean {
@@ -272,8 +271,8 @@ export async function createCampaign(input: CreateCampaignInput): Promise<Unifie
   return mutateCampaigns(items => ({ items: [campaign, ...items], result: campaign }));
 }
 
-export function getCampaign(id: string): UnifiedCampaign | null {
-  return loadCampaigns().find(item => item.id === id) || null;
+export async function getCampaign(id: string): Promise<UnifiedCampaign | null> {
+  return (await loadCampaigns()).find(item => item.id === id) || null;
 }
 
 // items dizisini yerinde günceller (kilit içinde çağrılır); bulunamazsa null.
@@ -326,8 +325,8 @@ function isDue(item: UnifiedCampaign, now: Date): boolean {
   return item.status === 'scheduled' && Boolean(item.launchAt) && new Date(item.launchAt!).getTime() <= now.getTime();
 }
 
-export function getDueCampaigns(now = new Date()): UnifiedCampaign[] {
-  return loadCampaigns().filter(item => isDue(item, now));
+export async function getDueCampaigns(now = new Date()): Promise<UnifiedCampaign[]> {
+  return (await loadCampaigns()).filter(item => isDue(item, now));
 }
 
 /**

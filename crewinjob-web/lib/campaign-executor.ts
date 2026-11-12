@@ -222,7 +222,7 @@ async function runDelivery(campaign: UnifiedCampaign, delivery: CampaignDelivery
 
 /** Kampanyanın teslimatlarını sırayla çalıştırır. Çağıran taraf önce claimCampaign/claimDueCampaigns ile claim etmelidir. */
 export async function executeCampaign(id: string): Promise<UnifiedCampaign> {
-  let campaign = getCampaign(id);
+  let campaign = await getCampaign(id);
   if (!campaign) throw new Error('Kampanya bulunamadı');
   if (campaign.status === 'cancelled') throw new Error('İptal edilmiş kampanya çalıştırılamaz');
 
@@ -239,7 +239,7 @@ export async function executeCampaign(id: string): Promise<UnifiedCampaign> {
         error: error instanceof Error ? error.message : 'Bilinmeyen hata',
       });
     }
-    campaign = getCampaign(id)!;
+    campaign = (await getCampaign(id))!;
   }
 
   const succeeded = campaign.deliveries.filter(item => item.status === 'succeeded').length;

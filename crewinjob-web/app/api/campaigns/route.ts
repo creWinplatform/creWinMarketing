@@ -161,7 +161,7 @@ export async function GET(req: NextRequest) {
   const search = (req.nextUrl.searchParams.get('search') || '').toLocaleLowerCase('tr-TR');
 
   // Yerel JSON base64 görsel gibi backend DTO'sunda tutulmayan alanlar için enrichment/fallback kaynağıdır.
-  const localItems = loadCampaigns();
+  const localItems = await loadCampaigns();
   const byBackendId  = new Map(localItems.filter(i => i.backendId).map(i => [i.backendId!, i]));
   const byLocalId    = new Map(localItems.map(i => [i.id, i]));
 

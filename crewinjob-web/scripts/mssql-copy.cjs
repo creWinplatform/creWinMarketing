@@ -16,6 +16,7 @@ const crypto = require('node:crypto');
 const Database = require('better-sqlite3');
 const sql = require('mssql');
 const { connectionString, describe } = require('../lib/db/settings.cjs');
+const { q, bind, tableHash, targetColumns } = require('./lib/mssql-rows.cjs');
 
 const args = process.argv.slice(2);
 const option = name => { const at = args.indexOf(name); return at >= 0 ? args[at + 1] : undefined; };
@@ -25,7 +26,6 @@ const sourcePath = path.resolve(ROOT, option('--source') || 'data/platform.sqlit
 const schemaText = fs.readFileSync(path.join(ROOT, 'lib/db/mssql-schema.sql'), 'utf8').replace(/\r\n/g, '\n');
 const schemaVersion = Number((schemaText.match(/schema version (\d+)/) || [])[1]);
 
-const q = name => `[${String(name).replace(/]/g, ']]')}]`;
 const log = (...parts) => console.log(...parts);
 
 function targetConnection() {
@@ -63,40 +63,6 @@ function sourceTables(db) {
   return db.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => row.name);
 }
 function sourceColumns(db, table) { return db.prepare(`PRAGMA table_info("${table.replace(/"/g, '""')}")`).all().map(c => c.name); }
-
-async function targetColumns(request, table) {
-  const result = await request.input('t', sql.NVarChar(256), table).query(
-    "SELECT c.name, TYPE_NAME(c.user_type_id) type, c.is_identity FROM sys.columns c WHERE c.object_id=OBJECT_ID(@t) ORDER BY c.column_id");
-  return result.recordset;
-}
-
-// Value as SQL Server parameter, by the target column type.
-function bind(request, name, type, value) {
-  if (value === null || value === undefined) {
-    request.input(name, type === 'varbinary' ? sql.VarBinary(sql.MAX) : type === 'bigint' ? sql.BigInt : type === 'float' ? sql.Float : sql.NVarChar(sql.MAX), null);
-  } else if (type === 'bigint') {
-    request.input(name, sql.BigInt, typeof value === 'bigint' ? value.toString() : value);
-  } else if (type === 'float') {
-    request.input(name, sql.Float, Number(value));
-  } else if (type === 'varbinary') {
-    request.input(name, sql.VarBinary(sql.MAX), Buffer.isBuffer(value) ? value : Buffer.from(String(value)));
-  } else {
-    request.input(name, sql.NVarChar(sql.MAX), Buffer.isBuffer(value) ? value.toString() : String(value));
-  }
-}
-
-// One canonical text per value, the same for both databases.
-function canonical(value, type) {
-  if (value === null || value === undefined) return 'N';
-  if (Buffer.isBuffer(value)) return 'B' + value.toString('hex');
-  if (type === 'float') return 'F' + String(Number(value));
-  if (type === 'bigint') return 'I' + String(value);
-  return 'S' + String(value);
-}
-function tableHash(rows, columns, types) {
-  const lines = rows.map(row => JSON.stringify(columns.map(c => canonical(row[c], types[c])))).sort();
-  return crypto.createHash('sha256').update(lines.join('\n')).digest('hex');
-}
 
 async function copy(pool, source) {
   const tables = sourceTables(source.db);

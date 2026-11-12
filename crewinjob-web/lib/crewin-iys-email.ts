@@ -14,7 +14,7 @@ import { decryptCredentials, encryptCredentials } from './platform/credential-en
 import { emailAddress } from './platform/email-safety';
 import { fetchTransport, type IysTransport } from './platform/iys-client';
 import { IYS_LIMITS, type IysGateReason, iysEnabled } from './platform/iys-types';
-import { readJson, withFileLock, writeJsonAtomic } from './json-store';
+import { mutateStore, readStore, webStore, withStore } from './legacy-store';
 
 export const CREWIN_IYS_EMAIL_FILE = path.join(process.cwd(), 'data', 'crewin-iys-email.json');
 export const CREWIN_IYS_PENDING_FILE = path.join(process.cwd(), 'data', 'crewin-iys-email-pending.json');
@@ -35,27 +35,29 @@ export type CrewinEmailGateResult = {
   counts: { total: number; reasons: Partial<Record<IysGateReason, number>>; queued: number };
 };
 const files = { mode: CREWIN_IYS_EMAIL_FILE, pending: CREWIN_IYS_PENDING_FILE };
+// The files, or legacy_records 'web:crewin-iys-email' / 'web:crewin-iys-email-pending' with PLATFORM_LEGACY_STORE=mssql.
+const store = (file: string) => webStore(path.basename(file), 'object', { file });
 const pendingId = (key: string) => `crewin-iys-pending:${key}`;
 const normal = (email: string) => emailAddress(email.trim().toLowerCase());
 
-export function crewinEmailMode(file = files.mode): CrewinEmailModeView {
-  const row = readJson<Partial<CrewinEmailModeView>>(file, {});
+export async function crewinEmailMode(file = files.mode): Promise<CrewinEmailModeView> {
+  const row = await readStore(store(file)) as Partial<CrewinEmailModeView>;
   return { mode: row.mode === 'enforce' ? 'enforce' : 'measure', by: row.by || null, at: row.at || null };
 }
 export async function setCrewinEmailMode(mode: unknown, actor: string, file = files.mode): Promise<CrewinEmailModeView> {
   if (mode !== 'measure' && mode !== 'enforce') throw new Error('mode');
   const row: CrewinEmailModeView = { mode, by: actor, at: new Date().toISOString() };
-  await withFileLock(file, () => writeJsonAtomic(file, row));
+  await mutateStore(store(file), () => ({ ...row }));
   return row;
 }
-export const crewinPendingCount = (file = files.pending) => Object.keys(readJson<Pending>(file, {})).length;
+export const crewinPendingCount = async (file = files.pending) => Object.keys(await readStore(store(file))).length;
 
 // Company and prospect audiences: the merchant (tacir) exemption.
 export const BUSINESS_AUDIENCES: readonly string[] = ['maritime_businesses', 'company_prospects'];
 /** The backend's own Dispatch does not pass this gate. In enforce mode a campaign to individuals goes through the
  *  panel's gated send instead, until the backend applies the same rule (docs/CREWIN-BACKEND-IYS.md item 6). */
-export const crewinDispatchAllowed = (audienceType: string | null | undefined, file = files.mode) =>
-  !iysEnabled() || crewinEmailMode(file).mode !== 'enforce' || BUSINESS_AUDIENCES.includes(audienceType || '');
+export const crewinDispatchAllowed = async (audienceType: string | null | undefined, file = files.mode) =>
+  !iysEnabled() || (await crewinEmailMode(file)).mode !== 'enforce' || BUSINESS_AUDIENCES.includes(audienceType || '');
 
 /** İYS applies to individuals whose nationality is Turkish or unknown; companies use the merchant exemption. */
 export const iysAppliesToEmail = (recipient: EmailRecipientRef) =>
@@ -63,7 +65,7 @@ export const iysAppliesToEmail = (recipient: EmailRecipientRef) =>
 
 /** The İYS side of one legacy email send. Pure for "no" declarations; queues unknown recipients for the worker. */
 export async function crewinEmailGate(db: Db, key: string, recipients: EmailRecipientRef[], paths = files): Promise<CrewinEmailGateResult> {
-  const mode = crewinEmailMode(paths.mode).mode, scope = await iysScope(db, LEGACY_SCOPE);
+  const mode = (await crewinEmailMode(paths.mode)).mode, scope = await iysScope(db, LEGACY_SCOPE);
   const allowed = new Set<string>(), skipped: CrewinEmailGateResult['skipped'] = [], counts: CrewinEmailGateResult['counts'] = { total: 0, reasons: {}, queued: 0 };
   const queue: { id: string; email: string }[] = [];
   if (!scope && mode === 'enforce') return { mode, block: await iysSendBlock(db, LEGACY_SCOPE), allowed, skipped, counts };
@@ -78,15 +80,15 @@ export async function crewinEmailGate(db: Db, key: string, recipients: EmailReci
     }
     allowed.add(raw);
   }
-  if (queue.length) counts.queued = await withFileLock(paths.pending, () => {
-    const list = readJson<Pending>(paths.pending, {}), now = new Date().toISOString();
+  if (queue.length) counts.queued = await withStore<Pending, number>(store(paths.pending), ({ load, save }) => {
+    const list = load(), now = new Date().toISOString();
     let added = 0, size = Object.keys(list).length;
     for (const item of queue) {
       if (list[item.id] || size >= PENDING_LIMIT) continue;
       list[item.id] = { e: encryptCredentials({ email: item.email }, key, LEGACY_SCOPE.organizationId, LEGACY_SCOPE.projectId, pendingId(item.id)), at: now };
       added++; size++;
     }
-    if (added) writeJsonAtomic(paths.pending, list);
+    if (added) save(list);
     return added;
   });
   return { mode, block: null, allowed, skipped, counts };
@@ -95,13 +97,13 @@ export async function crewinEmailGate(db: Db, key: string, recipients: EmailReci
 /** Worker: asks İYS about up to 50 queued addresses, oldest first, once Crewin declared Turkey and is connected. */
 export async function crewinIysEmailBackfill(db: Db, key: string, transport: IysTransport = fetchTransport, file = files.pending) {
   if (await iysScope(db, LEGACY_SCOPE) !== 'tr' || await iysSendBlock(db, LEGACY_SCOPE)) return { checked: 0 };
-  const batch = Object.entries(readJson<Pending>(file, {})).sort((a, b) => a[1].at.localeCompare(b[1].at)).slice(0, IYS_LIMITS.queryBatch);
+  const batch = Object.entries(await readStore(store(file)) as Pending).sort((a, b) => a[1].at.localeCompare(b[1].at)).slice(0, IYS_LIMITS.queryBatch);
   if (!batch.length) return { checked: 0 };
   const emails = batch.flatMap(([id, item]) => {
     try { return [decryptCredentials<{ email: string }>(item.e, key, LEGACY_SCOPE.organizationId, LEGACY_SCOPE.projectId, pendingId(id)).email]; } catch { return []; }
   });
   // Removed only after İYS answered; a failed run keeps them for the next tick.
   const result = emails.length ? await new ProjectIys(db, { subject: 'legacy-admin', ...LEGACY_SCOPE }, key, transport).query(emails.map(value => ({ channel: 'EPOSTA' as const, value }))) : { checked: 0 };
-  await withFileLock(file, () => { const list = readJson<Pending>(file, {}); for (const [id] of batch) delete list[id]; writeJsonAtomic(file, list); });
+  await withStore<Pending>(store(file), ({ load, save }) => { const list = load(); for (const [id] of batch) delete list[id]; save(list); });
   return { checked: result.checked };
 }

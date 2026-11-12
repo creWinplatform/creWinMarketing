@@ -9,8 +9,10 @@
 // Reverts schema 61: the agency package marker on live orders and periods, and agency links.
 // Reverts schema 67: İYS settings, recipient statuses, the upload queue and WhatsApp suppressions.
 // Reverts schema 76: ad creative figures (and the later additions of that round).
+// Reverts schema 79: the Crewin JSON stores as rows (legacy_records, legacy_stores).
+exports.removeLegacyRecordsSchema=db=>db.exec("DROP TABLE legacy_records; DROP TABLE legacy_stores; DELETE FROM platform_migrations WHERE version=79;");
 // Reverts schema 78: the Monday pack and competitor website reads.
-exports.removeWeeklyPackSchema=db=>db.exec("DROP TABLE platform_competitor_site_changes; DROP TABLE platform_competitor_sites; DROP TABLE platform_coach_weekly_pack; DELETE FROM platform_migrations WHERE version=78;");
+exports.removeWeeklyPackSchema=db=>{exports.removeLegacyRecordsSchema(db);db.exec("DROP TABLE platform_competitor_site_changes; DROP TABLE platform_competitor_sites; DROP TABLE platform_coach_weekly_pack; DELETE FROM platform_migrations WHERE version=78;");};
 // Reverts schema 77: the attribution touch log and the İYS merchant exemption.
 exports.removeTouchLogSchema=db=>{exports.removeWeeklyPackSchema(db);db.exec("DROP TABLE platform_iys_merchants; ALTER TABLE platform_iys_outbox DROP COLUMN recipient_type; ALTER TABLE platform_iys_settings DROP COLUMN merchant_at; ALTER TABLE platform_iys_settings DROP COLUMN merchant_by; ALTER TABLE platform_iys_settings DROP COLUMN merchant_exemption; DROP TABLE platform_attribution_touch_log; DELETE FROM platform_migrations WHERE version=77;")};
 exports.removeCreativeStatsSchema=db=>{exports.removeTouchLogSchema(db);db.exec("ALTER TABLE platform_alert_subscriptions DROP COLUMN weekly_week; ALTER TABLE platform_alert_subscriptions DROP COLUMN weekly; DROP TABLE platform_mobile_review_topics; DROP TABLE platform_mobile_competitor_snapshots; DROP TABLE platform_ad_creative_stats; ALTER TABLE platform_ad_creatives DROP COLUMN stats_checked_at; DELETE FROM platform_migrations WHERE version=76;")};

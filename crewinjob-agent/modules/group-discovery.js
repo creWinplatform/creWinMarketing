@@ -1,15 +1,16 @@
 'use strict';
 // Denizcilik Telegram gruplarını keşfeder ve öneri listesine yazar. Katılma yalnız bir kişinin seçtiği gruplara,
 // düğmeyle olur (joinSelectedGroups); keşif ve zamanlayıcı kendiliğinden hiçbir gruba katılmaz.
-const fs   = require('fs');
 const path = require('path');
 const { Api } = require('telegram');
 const { getClient } = require('./tg-client');
-const { writeJsonAtomic } = require('./json-file');
+const store = require('./store');
 
 // Testler geçici bir klasör verir; gerçek data/ klasörüne dokunmaz.
 const DATA_DIR   = process.env.CREWINJOB_AGENT_DATA_DIR || path.join(__dirname, '..', 'data');
 const GROUPS_FILE = path.join(DATA_DIR, 'discovered-groups.json');
+// store.js: dosya modunda bu dosya, db modunda panelin tablosu (agent:discovered-groups)
+const GROUPS_STORE = store.store('data/discovered-groups.json', { file: GROUPS_FILE });
 
 const SEARCH_QUERIES = [
   'seafarer jobs',
@@ -33,52 +34,46 @@ const SEARCH_QUERIES = [
 const sleep = (min, max = min) =>
   new Promise(r => setTimeout(r, min + Math.random() * (max - min)));
 
-// ── Disk I/O ──────────────────────────────────────────────────────────────────
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-function loadGroups() {
-  try { return JSON.parse(fs.readFileSync(GROUPS_FILE, 'utf-8')); } catch { return []; }
-}
-
-function saveGroups(groups) {
-  writeJsonAtomic(GROUPS_FILE, groups);
+// ── Veri ──────────────────────────────────────────────────────────────────────
+async function loadGroups() {
+  return store.read(GROUPS_STORE);
 }
 
 // ── Öneri kaydı ───────────────────────────────────────────────────────────────
 // Arama sonuçlarını öneri olarak yazar (joined:false). Katılım yapmaz. Userbot'un günlük araması da bunu kullanır.
-function recordSuggestions(chats, query) {
-  const existing = loadGroups();
-  const seenIds  = new Set(existing.map(g => g.id));
-  const found    = [];
-  for (const chat of chats || []) {
-    const id = chat.id?.toString();
-    if (!id || seenIds.has(id)) continue;
+async function recordSuggestions(chats, query) {
+  let found = [];
+  await store.mutate(GROUPS_STORE, existing => {
+    const seenIds  = new Set(existing.map(g => g.id));
+    found          = [];
+    for (const chat of chats || []) {
+      const id = chat.id?.toString();
+      if (!id || seenIds.has(id)) continue;
 
-    const isGroup   = chat.megagroup || chat.gigagroup || chat.className === 'Chat';
-    const isChannel = chat.className === 'Channel' && !chat.megagroup;
-    if (!isGroup && !isChannel) continue;
+      const isGroup   = chat.megagroup || chat.gigagroup || chat.className === 'Chat';
+      const isChannel = chat.className === 'Channel' && !chat.megagroup;
+      if (!isGroup && !isChannel) continue;
 
-    const members = chat.participantsCount || 0;
-    if (members < 100) continue; // çok küçük grupları atla
+      const members = chat.participantsCount || 0;
+      if (members < 100) continue; // çok küçük grupları atla
 
-    const item = {
-      id,
-      title:       chat.title || '',
-      username:    chat.username ? `@${chat.username}` : null,
-      members,
-      type:        isGroup ? 'group' : 'channel',
-      joined:      false,
-      discoveredAt: new Date().toISOString(),
-      query,
-    };
-    seenIds.add(id);
-    existing.push(item);
-    found.push(item);
-    console.log(`[discovery] Öneri: "${item.title}" (${members} üye) — query: "${query}"`);
-  }
-  if (found.length) saveGroups(existing);
+      const item = {
+        id,
+        title:       chat.title || '',
+        username:    chat.username ? `@${chat.username}` : null,
+        members,
+        type:        isGroup ? 'group' : 'channel',
+        joined:      false,
+        discoveredAt: new Date().toISOString(),
+        query,
+      };
+      seenIds.add(id);
+      existing.push(item);
+      found.push(item);
+      console.log(`[discovery] Öneri: "${item.title}" (${members} üye) — query: "${query}"`);
+    }
+    return found.length ? existing : undefined;
+  });
   return found;
 }
 
@@ -89,7 +84,7 @@ async function discoverGroups(keywords = SEARCH_QUERIES) {
   for (const query of keywords) {
     try {
       const res = await client.invoke(new Api.contacts.Search({ q: query, limit: 20 }));
-      found.push(...recordSuggestions(res.chats || [], query));
+      found.push(...(await recordSuggestions(res.chats || [], query)));
     } catch (e) {
       console.warn(`[discovery] Arama hatası "${query}": ${e.message}`);
     }
@@ -99,16 +94,18 @@ async function discoverGroups(keywords = SEARCH_QUERIES) {
 }
 
 // ── Öneri listesi ─────────────────────────────────────────────────────────────
-function listSuggestions() {
-  return loadGroups().filter(g => !g.joined && !g.dismissed).sort((a, b) => (b.members || 0) - (a.members || 0));
+async function listSuggestions() {
+  return (await loadGroups()).filter(g => !g.joined && !g.dismissed).sort((a, b) => (b.members || 0) - (a.members || 0));
 }
 
-function dismissSuggestions(ids) {
+async function dismissSuggestions(ids) {
   const wanted = new Set(validIds(ids));
-  const groups = loadGroups();
   let dismissed = 0;
-  for (const g of groups) if (wanted.has(g.id) && !g.joined && !g.dismissed) { g.dismissed = true; g.dismissedAt = new Date().toISOString(); dismissed++; }
-  if (dismissed) saveGroups(groups);
+  await store.mutate(GROUPS_STORE, groups => {
+    dismissed = 0;
+    for (const g of groups) if (wanted.has(g.id) && !g.joined && !g.dismissed) { g.dismissed = true; g.dismissedAt = new Date().toISOString(); dismissed++; }
+    return dismissed ? groups : undefined;
+  });
   return dismissed;
 }
 
@@ -141,7 +138,7 @@ async function joinSelectedGroups(ids, join = joinGroup) {
   const wanted = validIds(ids);
   if (!wanted.length) throw new Error('Katılmak için en az bir grup seçin.');
   if (wanted.length > MAX_JOIN_PER_REQUEST) throw new Error(`Bir seferde en fazla ${MAX_JOIN_PER_REQUEST} gruba katılın.`);
-  const groups = loadGroups();
+  const groups = await loadGroups();
   const toJoin = groups.filter(g => wanted.includes(g.id) && !g.joined && !g.dismissed);
   let joined   = 0;
 
@@ -154,11 +151,18 @@ async function joinSelectedGroups(ids, join = joinGroup) {
         g.joinedAt = new Date().toISOString();
         joined++;
         console.log(`[discovery] ✅ Katıldı: "${g.title}" (${g.members} üye)`);
+        // Her katılımdan sonra kaydet — liste taze okunur, yalnız bu grup işaretlenir (paralel değişiklikler ezilmez)
+        await store.mutate(GROUPS_STORE, current => {
+          const saved = current.find(item => item.id === g.id);
+          if (!saved) return undefined;
+          saved.joined   = true;
+          saved.joinedAt = g.joinedAt;
+          return current;
+        });
       }
     } catch (e) {
       console.warn(`[discovery] ⚠️ "${g.title}": ${e.message}`);
     }
-    saveGroups(groups); // Her katılımdan sonra kaydet
     if (g !== toJoin[toJoin.length - 1]) await sleep(12000, 20000); // Ban önlemi: 12-20s bekle
   }
 
@@ -189,7 +193,7 @@ async function getJoinedGroups() {
   } catch (e) {
     console.error('[discovery] Dialog listesi alınamadı:', e.message);
     // Fallback: disk'teki keşfedilen grupları kullan
-    return loadGroups().filter(g => g.joined);
+    return (await loadGroups()).filter(g => g.joined);
   }
 
   return groups.sort((a, b) => b.members - a.members);

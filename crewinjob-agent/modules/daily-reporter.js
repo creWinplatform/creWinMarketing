@@ -33,9 +33,7 @@ async function sendDailySummary() {
   }
 
   const today   = new Date().toISOString().slice(0, 10);
-  const posted  = loadPosted();
-  const queue   = loadReviewQueue();
-  const gStats  = loadGroupStats();
+  const [posted, queue, gStats] = await Promise.all([loadPosted(), loadReviewQueue(), loadGroupStats()]);
 
   const todayPosted      = posted.filter(p => p.postedAt?.startsWith(today));
   const todayBroadcasted = todayPosted.filter(p => p.broadcastedAt);

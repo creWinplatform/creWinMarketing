@@ -1,12 +1,10 @@
 // ─── Gemini AI Client — Anthropic arayüzüyle uyumlu wrapper ──────────────────
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const fs   = require('fs');
-const path = require('path');
+const store = require('./modules/store');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-const DATA_DIR   = path.join(__dirname, 'data');
-const USAGE_FILE = path.join(DATA_DIR, 'api-usage.json');
+// Kullanım sayaçları: data/api-usage.json (store.js — dosya modunda aynı dosya, db modunda panelin tablosu)
 
 // ── Model bazlı fiyatlandırma (USD / 1M token, yaklaşık liste fiyatı) ─────────
 // Google fiyatları değişirse burayı güncelleyin. Düşünme (thinking) tokenları çıktı
@@ -42,66 +40,58 @@ function _emptyDay() {
   return { inputTokens: 0, outputTokens: 0, calls: 0, filtered: 0, costUsd: 0, byModel: {} };
 }
 
-// Atomik yazım: önce geçici dosya, sonra rename — web süreci ve CLI aynı anda yazsa da
-// okuyucu yarım JSON görmez.
-function _writeUsage(data) {
-  const tmp = `${USAGE_FILE}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
-  fs.renameSync(tmp, USAGE_FILE);
-}
-
-function trackUsage(modelName, promptTokens, outputTokens) {
+// Sayaçlar store.mutate ile güncellenir: atomik yazım + kilit — web süreci ve CLI aynı anda yazsa da
+// okuyucu yarım JSON görmez, sayaç kaybolmaz. Hata yutulur (kullanım kaydı yapay zekâ çağrısını bozmamalı).
+async function trackUsage(modelName, promptTokens, outputTokens) {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    let data = {};
-    try { data = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf-8')); } catch {}
-    const d = _today();
-    if (!data[d]) data[d] = _emptyDay();
-    const day = data[d];
-    if (!day.byModel) day.byModel = {};
+    await store.mutate(store.stores.apiUsage, data => {
+      const d = _today();
+      if (!data[d]) data[d] = _emptyDay();
+      const day = data[d];
+      if (!day.byModel) day.byModel = {};
 
-    const inTok  = promptTokens || 0;
-    const outTok = outputTokens || 0;
-    const { tier, rates, unpriced } = priceFor(modelName);
-    const callCost = (inTok * rates.input + outTok * rates.output) / 1_000_000;
+      const inTok  = promptTokens || 0;
+      const outTok = outputTokens || 0;
+      const { tier, rates, unpriced } = priceFor(modelName);
+      const callCost = (inTok * rates.input + outTok * rates.output) / 1_000_000;
 
-    day.inputTokens  += inTok;
-    day.outputTokens += outTok;
-    day.calls        += 1;
-    day.costUsd       = +((day.costUsd || 0) + callCost).toFixed(6);
+      day.inputTokens  += inTok;
+      day.outputTokens += outTok;
+      day.calls        += 1;
+      day.costUsd       = +((day.costUsd || 0) + callCost).toFixed(6);
 
-    const m = day.byModel[modelName] || (day.byModel[modelName] = { tier, inputTokens: 0, outputTokens: 0, calls: 0, costUsd: 0 });
-    m.inputTokens  += inTok;
-    m.outputTokens += outTok;
-    m.calls        += 1;
-    m.costUsd       = +((m.costUsd || 0) + callCost).toFixed(6);
-    if (unpriced) {
-      // Fiyatı bilinmeyen model: flash fiyatıyla tahmin edildi — rapor ekranında işaretlenir
-      m.unpriced = true;
-      day.unpricedModels = Array.from(new Set([...(day.unpricedModels || []), modelName]));
-    }
+      const m = day.byModel[modelName] || (day.byModel[modelName] = { tier, inputTokens: 0, outputTokens: 0, calls: 0, costUsd: 0 });
+      m.inputTokens  += inTok;
+      m.outputTokens += outTok;
+      m.calls        += 1;
+      m.costUsd       = +((m.costUsd || 0) + callCost).toFixed(6);
+      if (unpriced) {
+        // Fiyatı bilinmeyen model: flash fiyatıyla tahmin edildi — rapor ekranında işaretlenir
+        m.unpriced = true;
+        day.unpricedModels = Array.from(new Set([...(day.unpricedModels || []), modelName]));
+      }
 
-    // Son 30 günü tut
-    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    Object.keys(data).forEach(k => { if (k < cutoff) delete data[k]; });
-    _writeUsage(data);
+      // Son 30 günü tut
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      Object.keys(data).forEach(k => { if (k < cutoff) delete data[k]; });
+      return data;
+    });
   } catch {}
 }
 
-function trackFiltered() {
+async function trackFiltered() {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    let data = {};
-    try { data = JSON.parse(fs.readFileSync(USAGE_FILE, 'utf-8')); } catch {}
-    const d = _today();
-    if (!data[d]) data[d] = _emptyDay();
-    data[d].filtered = (data[d].filtered || 0) + 1;
-    _writeUsage(data);
+    await store.mutate(store.stores.apiUsage, data => {
+      const d = _today();
+      if (!data[d]) data[d] = _emptyDay();
+      data[d].filtered = (data[d].filtered || 0) + 1;
+      return data;
+    });
   } catch {}
 }
 
-function loadUsage() {
-  try { return JSON.parse(fs.readFileSync(USAGE_FILE, 'utf-8')); } catch { return {}; }
+async function loadUsage() {
+  try { return await store.read(store.stores.apiUsage); } catch { return {}; }
 }
 
 // Yedek model sırası — hata durumunda sırayla denenir
@@ -265,7 +255,7 @@ async function generateWithRetry(prompt, preferredModel, options = {}) {
         const result = await withTimeout(model.generateContent(prompt), REQUEST_TIMEOUT_MS);
         const usage = result.response.usageMetadata;
         if (usage) {
-          trackUsage(modelName, usage.promptTokenCount, (usage.candidatesTokenCount || 0) + (usage.thoughtsTokenCount || 0));
+          await trackUsage(modelName, usage.promptTokenCount, (usage.candidatesTokenCount || 0) + (usage.thoughtsTokenCount || 0));
         }
         return result.response.text();
       } catch (err) {

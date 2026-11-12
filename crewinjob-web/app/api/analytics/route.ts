@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
       ]);
 
     // Crewin'in kendi araçlarının rz_ etiketleri: tabloda etiket yerine paylaşımın, kampanyanın veya e-postanın adı görünür.
-    const tagged = crewinTaggedItems(), campaignLabels: Record<string, string> = {};
+    const tagged = await crewinTaggedItems(), campaignLabels: Record<string, string> = {};
     for (const row of ((campaigns as { rows?: { dimensionValues?: { value?: string }[] }[] } | null)?.rows || [])) {
       const name = row.dimensionValues?.[0]?.value || '', item = LINK_TAG.test(name) ? tagged.get(name) : undefined;
       if (item?.title) campaignLabels[name] = item.title;

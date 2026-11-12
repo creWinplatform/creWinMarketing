@@ -20,9 +20,9 @@ test('the link carries no address, only a one-way key, a signature and an expiry
 
 test('unsubscribing suppresses exactly that address; forged, altered or expired links are refused',async()=>{
   const url=m.legacyUnsubscribeUrl('ayse.kaya@example.com','https://panel.example.com'),good=token(url);
-  assert.equal(m.legacySuppressed(['ayse.kaya@example.com'],file).size,0);
+  assert.equal((await m.legacySuppressed(['ayse.kaya@example.com'],file)).size,0);
   await m.processLegacyUnsubscribe(good,file);await m.processLegacyUnsubscribe(good,file);
-  assert.deepEqual([...m.legacySuppressed(['Ayse.Kaya@example.com','mehmet@example.com'],file)],['ayse.kaya@example.com']);
+  assert.deepEqual([...(await m.legacySuppressed(['Ayse.Kaya@example.com','mehmet@example.com'],file))],['ayse.kaya@example.com']);
   assert.equal(Object.keys(JSON.parse(fs.readFileSync(file,'utf8'))).length,1,'repeating is harmless');
   assert.doesNotMatch(fs.readFileSync(file,'utf8'),/ayse|example/i,'the suppression file holds no address');
   const [, key, expires, sig]=/^cwl1_(.{43})\.(\d+)\.(.{22})$/.exec(good);
@@ -32,7 +32,7 @@ test('unsubscribing suppresses exactly that address; forged, altered or expired 
   const old=Math.floor(Date.now()/86400000)-1,crypto=require('node:crypto');
   const expiredSig=crypto.createHmac('sha256',process.env.AUTH_SECRET).update(`legacy-unsubscribe-v1:${key}.${old}`).digest('base64url').slice(0,22);
   await assert.rejects(m.processLegacyUnsubscribe(`cwl1_${key}.${old}.${expiredSig}`,file),'an expired link is refused');
-  assert.equal(m.legacySuppressed(['mehmet@example.com'],file).size,0,'no other address was suppressed');
+  assert.equal((await m.legacySuppressed(['mehmet@example.com'],file)).size,0,'no other address was suppressed');
 });
 
 test('without a signing secret no link is issued',()=>{

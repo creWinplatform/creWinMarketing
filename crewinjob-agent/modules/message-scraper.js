@@ -1,15 +1,12 @@
 'use strict';
 // Katılınan gruplardan iş ilanı mesajlarını çeker, deduplication uygular
-const fs     = require('fs');
-const path   = require('path');
 const crypto = require('crypto');
-const { writeJsonAtomic } = require('./json-file');
+const store  = require('./store');
 const { Api } = require('telegram');
 const { getClient }      = require('./tg-client');
 const { getJoinedGroups } = require('./group-discovery');
 
-const DATA_DIR       = path.join(__dirname, '..', 'data');
-const PROCESSED_FILE = path.join(DATA_DIR, 'processed-messages.json');
+// data/processed-messages.json — store.js üzerinden
 const MAX_STORED     = 10000;
 
 // ── İş ilanı anahtar kelimeleri ──────────────────────────────────────────────
@@ -33,21 +30,9 @@ const JOB_KEYWORDS = [
 // ── Yardımcılar ───────────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-
-function loadProcessed() {
-  try { return new Set(JSON.parse(fs.readFileSync(PROCESSED_FILE, 'utf-8'))); }
+async function loadProcessed() {
+  try { return new Set(await store.read(store.stores.processedMessages)); }
   catch { return new Set(); }
-}
-
-function saveProcessed(set) {
-  ensureDataDir();
-  let arr = [...set];
-  // Maksimum kayıt sayısını koru (eski kayıtları sil)
-  if (arr.length > MAX_STORED) arr = arr.slice(arr.length - MAX_STORED);
-  writeJsonAtomic(PROCESSED_FILE, arr, false);
 }
 
 function msgHash(chatId, messageId) {
@@ -114,7 +99,7 @@ async function scrapeRecentMessages(chatId, limit = 80) {
 
 // ── Tüm katılınan grupları tara ───────────────────────────────────────────────
 async function scrapeAllGroups(limitPerGroup = 80, groupStats = {}) {
-  const processed = loadProcessed();
+  const processed = await loadProcessed();
   let groups      = await getJoinedGroups();
 
   // Feature 3: Kalite sıralaması — yüksek qualityRatio olan gruplar önce işlenir
@@ -165,12 +150,22 @@ async function scrapeAllGroups(limitPerGroup = 80, groupStats = {}) {
 }
 
 // ── İşlenenleri kaydet ────────────────────────────────────────────────────────
-function markProcessed(messages, processed) {
+// Kayıtlı liste taze okunur ve bu turun özetleri eklenir (tarama dakikalar sürer; paralel turların kayıtları ezilmez).
+async function markProcessed(messages, processed) {
+  const hashes = [];
   for (const msg of messages) {
-    if (msg._mhash) processed.add(msg._mhash);
-    if (msg._chash) processed.add(msg._chash);
+    if (msg._mhash) hashes.push(msg._mhash);
+    if (msg._chash) hashes.push(msg._chash);
   }
-  saveProcessed(processed);
+  for (const h of hashes) processed.add(h);
+  await store.mutate(store.stores.processedMessages, saved => {
+    const set = new Set(saved);
+    for (const h of hashes) set.add(h);
+    let arr = [...set];
+    // Maksimum kayıt sayısını koru (eski kayıtları sil)
+    if (arr.length > MAX_STORED) arr = arr.slice(arr.length - MAX_STORED);
+    return arr;
+  });
 }
 
 module.exports = { scrapeAllGroups, scrapeRecentMessages, markProcessed, isJobPost };

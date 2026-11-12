@@ -37,7 +37,7 @@ async function getTwitterStats(postId: string): Promise<Stats> {
 
 // ── Facebook metrikleri ──────────────────────────────────────────────────────
 async function getFacebookStats(postId: string): Promise<Stats> {
-  const oauth       = getToken('facebook');
+  const oauth       = (await getToken('facebook'));
   const accessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN || oauth?.accessToken;
   if (!accessToken) return { error: 'Facebook token eksik' };
 
@@ -62,7 +62,7 @@ async function getFacebookStats(postId: string): Promise<Stats> {
 
 // ── LinkedIn metrikleri ──────────────────────────────────────────────────────
 async function getLinkedInStats(postUrn: string): Promise<Stats> {
-  const accessToken = process.env.LINKEDIN_ACCESS_TOKEN || getToken('linkedin')?.accessToken;
+  const accessToken = process.env.LINKEDIN_ACCESS_TOKEN || (await getToken('linkedin'))?.accessToken;
   if (!accessToken) return { error: 'LinkedIn token eksik' };
 
   const url = `https://api.linkedin.com/v2/socialActions/${encodeURIComponent(postUrn)}`;
@@ -85,7 +85,7 @@ async function getLinkedInStats(postUrn: string): Promise<Stats> {
  * Hesabın son gönderileri taranarak kısa kod medya ID'sine çevrilir.
  */
 async function resolveInstagramMediaId(shortcode: string, accessToken: string): Promise<string | null> {
-  const igUserId = process.env.INSTAGRAM_IG_USER_ID || getToken('instagram')?.igUserId;
+  const igUserId = process.env.INSTAGRAM_IG_USER_ID || (await getToken('instagram'))?.igUserId;
   if (!igUserId) return null;
   const res  = await graphFetch(`${encodeURIComponent(igUserId)}/media?fields=id,shortcode&limit=100`, accessToken);
   const data = await res.json().catch(() => ({})) as { data?: { id: string; shortcode?: string }[] };
@@ -93,7 +93,7 @@ async function resolveInstagramMediaId(shortcode: string, accessToken: string): 
 }
 
 async function getInstagramStats(postId: string): Promise<Stats> {
-  const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || getToken('instagram')?.accessToken;
+  const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN || process.env.FACEBOOK_PAGE_ACCESS_TOKEN || (await getToken('instagram'))?.accessToken;
   if (!accessToken) return { error: 'Instagram token eksik' };
 
   let mediaId = postId;

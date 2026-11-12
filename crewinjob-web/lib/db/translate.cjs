@@ -421,8 +421,11 @@ function insertParts(tokens, sql) {
   const sourceTokens = tokens.slice(k, conflictAt < 0 ? tokens.length : conflictAt);
   if (isWord(tokens[k], 'values')) {
     const vOpen = next(tokens, k), vClose = close(tokens, vOpen);
-    if (next(tokens, vClose) < (conflictAt < 0 ? tokens.length : conflictAt) && tokens[next(tokens, vClose)]?.type === ',') throw new UnsupportedSql('a multi-row VALUES with a conflict clause', sql);
-    values = splitArgs(tokens, vOpen + 1, vClose).map(v => text(trimTokens(v)));
+    // Several rows pass through unchanged (SQL Server takes up to 1,000); with a conflict clause or OR IGNORE/REPLACE
+    // they would need row-by-row handling.
+    const multi = next(tokens, vClose) < (conflictAt < 0 ? tokens.length : conflictAt) && tokens[next(tokens, vClose)]?.type === ',';
+    if (multi && (conflictAt >= 0 || mode)) throw new UnsupportedSql('a multi-row VALUES with a conflict clause', sql);
+    if (!multi) values = splitArgs(tokens, vOpen + 1, vClose).map(v => text(trimTokens(v)));
   }
   source = text(trimTokens(sourceTokens));
   let conflict = null;

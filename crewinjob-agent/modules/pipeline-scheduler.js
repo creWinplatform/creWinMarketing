@@ -62,8 +62,8 @@ async function fullCycle(options = {}) {
     log(`[scheduler] Pipeline bitti: ${JSON.stringify(result)}`);
 
     // İnceleme kuyruğu çok büyüdüyse uyar
-    const pendingCount = loadReviewQueue().filter(i => i.status === 'pending').length;
-    const alertSize = loadConfig().alertQueueSize || 20;
+    const pendingCount = (await loadReviewQueue()).filter(i => i.status === 'pending').length;
+    const alertSize = (await loadConfig()).alertQueueSize || 20;
     if (pendingCount >= alertSize) {
       await sendAdminAlert(`⚠️ <b>crewinjob Review Queue</b>\n${pendingCount} ilan inceleme bekliyor.\ndashboard'u kontrol et.`);
     }

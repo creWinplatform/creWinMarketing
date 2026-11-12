@@ -45,16 +45,16 @@ test('Crewin tags are the Ryzevo tag of the Crewin scope; only crewinjob.com lin
 
 test('the tag registry keeps the first title, prunes old entries, and campaign names win',()=>withData(async dir=>{
   const share=crewinTag('share','s-1'),email=crewinTag('email','Profilinizi tamamlayın'),campaign=crewinTag('campaign','camp-1');
-  assert.equal(registerCrewinTag(share,'share','Yeni ilanlar https://www.crewinjob.com/jobs?utm_campaign=x   bu hafta'),true);
-  assert.equal(registerCrewinTag(share,'share','başka başlık'),false,'the first registration wins');
-  registerCrewinTag(email,'email','Profilinizi tamamlayın');registerCrewinTag(campaign,'campaign','Konu satırı');
-  assert.equal(registerCrewinTag('not-a-tag','share','x'),false);
-  const old=crewinTag('share','old');registerCrewinTag(old,'share','Eski',Date.now()-401*DAY);
-  registerCrewinTag(crewinTag('share','s-2'),'share','Bugün');
+  assert.equal((await registerCrewinTag(share,'share','Yeni ilanlar https://www.crewinjob.com/jobs?utm_campaign=x   bu hafta')),true);
+  assert.equal((await registerCrewinTag(share,'share','başka başlık')),false,'the first registration wins');
+  (await registerCrewinTag(email,'email','Profilinizi tamamlayın'));(await registerCrewinTag(campaign,'campaign','Konu satırı'));
+  assert.equal((await registerCrewinTag('not-a-tag','share','x')),false);
+  const old=crewinTag('share','old');(await registerCrewinTag(old,'share','Eski',Date.now()-401*DAY));
+  (await registerCrewinTag(crewinTag('share','s-2'),'share','Bugün'));
   const stored=JSON.parse(fs.readFileSync(path.join(dir,'crewin-link-tags.json'),'utf8'));
   assert.ok(!stored.some(entry=>entry.tag===old),'entries older than 400 days drop on the next write');
   fs.writeFileSync(path.join(dir,'campaigns.json'),JSON.stringify([{id:'camp-1',name:'Kış ilanları'}]));resetFileSummaries();
-  const items=crewinTaggedItems();
+  const items=(await crewinTaggedItems());
   assert.deepEqual(plain(await items.get(share)),{kind:'content',id:share,title:'Yeni ilanlar bu hafta'},'links are stripped from the title');
   assert.equal((await items.get(email)).kind,'campaign');assert.equal((await items.get(campaign)).title,'Kış ilanları','a campaign’s own name wins');
 }));
@@ -76,7 +76,7 @@ test('Crewin receives signed events, maps its goal stages and sees which share b
     await measure.save({goalId:'seafarer_activation',stageIndex:0,connectionId:saved.id,metric:'unique_entities',eventName:'seafarer.registered',enabled:false,expectedVersion:0});
     await measure.save({goalId:'seafarer_activation',stageIndex:1,connectionId:saved.id,metric:'unique_entities',eventName:'seafarer.profile_completed',enabled:false,expectedVersion:0});
 
-    const share=newCrewinShareTag();registerCrewinTag(share,'share','Kış ilanları yayında');
+    const share=newCrewinShareTag();(await registerCrewinTag(share,'share','Kış ilanları yayında'));
     const send=async events=>{
       const bytes=Buffer.from(JSON.stringify({sourceVersion:1,events})),timestamp=String(Math.floor(Date.now()/1000));
       const signature='v1='+createHmac('sha256',Buffer.from(SECRET,'hex')).update(`${timestamp}.${saved.id}.`).update(bytes).digest('hex');
@@ -118,8 +118,9 @@ test('the agent computes the same tags, and its appended registry names job post
     assert.equal(new URL(url).searchParams.get('utm_campaign'),crewinTag('job','48213'));
     agent.jobLink('https://crewinjob.com/jobs/detail/48213?utm_source=telegram&utm_medium=channel','48213','Chief Officer · Bulk Carrier','channel');
     agent.jobLink('https://crewinjob.com/jobs/detail/48213','48213','Başka başlık','group');
+    await agent.flush(); // the agent writes its tag lines in the background, in order
     fs.appendFileSync(file,'{broken\n');
-    const items=crewinTaggedItems();
+    const items=await crewinTaggedItems();
     assert.deepEqual(plain(await items.get(crewinTag('job','48213'))),{kind:'content',id:crewinTag('job','48213'),title:'İlan: Chief Officer · Bulk Carrier'},'a generic title is replaced once by the real one');
     assert.equal((await items.get(crewinTag('profile','tiktok'))).title,'TikTok profil linki');
   }finally{

@@ -1,13 +1,13 @@
 'use strict';
 // İlan sona erme yönetimi: dolmak üzere olanları otomatik uzatır
-const { loadPosted, savePosted, log } = require('./auto-poster');
+const { loadPosted, mutatePosted, log } = require('./auto-poster');
 const bot = require('./job-bot');
 
 const EXTEND_DAYS   = 30; // Uzatma süresi
 const WARN_DAYS     = 7;  // Kaç gün kala uyar/uzat
 
 async function manageExpirations() {
-  const posted = loadPosted();
+  const posted = await loadPosted();
   const today  = new Date();
   const soon   = new Date(today.getTime() + WARN_DAYS * 86400000);
 
@@ -27,6 +27,7 @@ async function manageExpirations() {
   log(`[expiry] Süresi yaklaşan: ${expiring.length} | Süresi dolmuş: ${expired.length}`);
 
   let extended = 0;
+  const extendedJobs = [];
   let skipped = 0;
   let disabledReason = null;
   for (const job of expiring) {
@@ -35,6 +36,7 @@ async function manageExpirations() {
         .toISOString().slice(0, 10);
       await bot.updateIlanExpiry(job.ilanId, newExp);
       job.jobData.expirationDate = newExp;
+      extendedJobs.push(job);
       log(`[expiry] ✅ İlan #${job.ilanId} uzatıldı → ${newExp}`);
       extended++;
     } catch (e) {
@@ -54,7 +56,16 @@ async function manageExpirations() {
     }
   }
 
-  if (extended > 0) savePosted(posted);
+  // Liste taze okunur, yalnız uzatılan ilanların tarihi yazılır (uzatma çağrıları sürerken yapılan değişiklikler ezilmez)
+  if (extended > 0) {
+    await mutatePosted(list => {
+      for (const job of extendedJobs) {
+        const saved = list.find(p => p.ilanId === job.ilanId);
+        if (saved && saved.jobData) saved.jobData.expirationDate = job.jobData.expirationDate;
+      }
+      return list;
+    });
+  }
 
   return {
     expiring: expiring.length,

@@ -62,7 +62,7 @@ export async function PATCH(
   if (error) return NextResponse.json({ error }, { status: 400 });
   if (!Object.keys(patch).length) return NextResponse.json({ error: 'Güncellenecek alan yok' }, { status: 400 });
 
-  const current = loadPosts().find(post => post.id === id);
+  const current = (await loadPosts()).find(post => post.id === id);
   if (!current) return NextResponse.json({ error: 'Post not found' }, { status: 404 });
   if (current.status === 'publishing') {
     return NextResponse.json({ error: 'Post şu anda yayınlanıyor — birazdan tekrar deneyin' }, { status: 409 });

@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
     // email/send ile aynı kural: backend'in opak unsubscribe linki olmayan alıcıya marketing e-postası gitmez
     // (önceden '#' ile ölü link gidiyordu).
     // Addresses that unsubscribed through the panel's own link are skipped too.
-    const suppressed = legacySuppressed(recipients.map(r => r.email));
+    const suppressed = await legacySuppressed(recipients.map(r => r.email));
     recipients = recipients.filter(r => !suppressed.has(String(r.email).trim().toLowerCase()));
     // İYS (lib/crewin-iys-email.ts): zorunlu modda onaysız alıcı atlanır; ölçüm modunda "zorunlu olsaydı" sayısı döner.
     const gate = await crewinEmailGate(platformDatabase(), credentialEncryptionKey(), recipients.map(r => ({ email: String(r.email), nationality: r.nationality })));
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     // Tüm e-postaları gönder — konu her item'da; ikinci argüman yalnızca yedek
     const result = await send.broadcastPersonalizedEmail(items, 'Size Uygun İlanlar');
     if (tagged) {
-      try { registerCrewinTag(tag, 'email', campaign === 'job-match' ? 'İş eşleştirme e-postası' : `İş eşleştirme e-postası (${campaign})`); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
+      try { await registerCrewinTag(tag, 'email', campaign === 'job-match' ? 'İş eşleştirme e-postası' : `İş eşleştirme e-postası (${campaign})`); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
     }
 
     // email_sent event — best-effort, yalnızca başarıyla gidenler; en fazla EVENT_CONCURRENCY eşzamanlı çağrı

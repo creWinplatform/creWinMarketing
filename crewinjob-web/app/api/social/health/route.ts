@@ -43,7 +43,7 @@ async function checkTwitter(): Promise<HealthResult> {
 }
 
 async function checkLinkedIn(): Promise<HealthResult> {
-  const token = process.env.LINKEDIN_ACCESS_TOKEN || getToken('linkedin')?.accessToken;
+  const token = process.env.LINKEDIN_ACCESS_TOKEN || (await getToken('linkedin'))?.accessToken;
   if (!token) return { platform: 'linkedin', ok: false, detail: 'Token eksik' };
 
   // /v2/me r_liteprofile gerektirir — token sadece w_member_social içeriyorsa 403 döner.

@@ -10,7 +10,7 @@
 import 'server-only';
 import path from 'path';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { readJson, withFileLock, writeJsonAtomic } from './json-store';
+import { readStore as readLegacyStore, webStore, withStore } from './legacy-store';
 import { WHATSAPP_STOP_WORDS } from './platform/whatsapp-types';
 import { IYS_SOURCES, type IysGateReason, type IysSource } from './platform/iys-types';
 import type { CrewinIys, CrewinIysReport } from './crewin-iys';
@@ -58,8 +58,10 @@ const keyOf = (phone: string, value: string) => createHmac('sha256', value).upda
 // Consent dates are Turkish calendar days (YYYY-MM-DD), as Crewin's team and most recipients are in Turkey.
 const turkishDay = (at: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(at);
 const hint = (text: string) => `${text.slice(0, 3)}•••${text.slice(-2)}`;
-const readStore = (file: string): Store => {
-  const data = readJson<Store>(file, {});
+// The file, or legacy_records 'web:whatsapp-consents' (one row per number key) with PLATFORM_LEGACY_STORE=mssql.
+const consentStore = (file: string) => webStore(path.basename(file), 'object', { file });
+const readStore = async (file: string): Promise<Store> => {
+  const data = await readLegacyStore(consentStore(file)) as Store;
   return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
 };
 const stateOf = (entry: Entry | undefined): ConsentState => entry?.optedOutAt ? 'opted_out' : entry?.consentAt ? 'consented' : 'none';
@@ -86,8 +88,8 @@ function phoneList(raw: unknown): string[] {
 }
 
 /** Splits numbers into those that may get a message (normalised, once each) and those skipped with the reason. */
-export function legacyWhatsAppGate(numbers: unknown[], file = LEGACY_WHATSAPP_FILE): { allowed: string[]; skipped: Skipped[] } {
-  const value = secret(), list = value ? readStore(file) : {}, seen = new Set<string>();
+export async function legacyWhatsAppGate(numbers: unknown[], file = LEGACY_WHATSAPP_FILE): Promise<{ allowed: string[]; skipped: Skipped[] }> {
+  const value = secret(), list: Store = value ? await readStore(file) : {}, seen = new Set<string>();
   const allowed: string[] = [], skipped: Skipped[] = [];
   for (const raw of numbers) {
     const phone = normalizeWhatsAppNumber(raw);
@@ -127,8 +129,8 @@ export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evid
   const source = typeof raw.source === 'string' && (IYS_SOURCES as readonly string[]).includes(raw.source) ? raw.source as IysSource : null;
   if (iys && await iys.scope() === 'tr' && !source && phones.some(isTurkishNumber)) throw new LegacyWhatsAppError('Türk numaraları İYS’ye bildirilir: izin nasıl alındı, seçin.');
   const fresh: string[] = [];
-  const result = await withFileLock(file, () => {
-    const list = readStore(file), now = new Date().toISOString();
+  const result = await withStore<Store, { added: number; renewed: number; existing: number }>(consentStore(file), ({ load, save }) => {
+    const list = load(), now = new Date().toISOString();
     const blocked = phones.filter(phone => { const out = list[keyOf(phone, value)]?.optedOutAt; return out && consentAt <= turkishDay(new Date(out)); });
     if (blocked.length) throw new LegacyWhatsAppError(`${blocked.length} numara daha önce WhatsApp mesajlarından çıktı; yeniden eklemek için çıkıştan sonraki bir tarihte alınmış izin gerekir.`, 409);
     let added = 0, renewed = 0, existing = 0, size = Object.keys(list).length;
@@ -140,7 +142,7 @@ export async function recordLegacyWhatsAppConsent(raw: { numbers?: unknown; evid
       list[key] = { hint: hint(phone), consentAt, evidence, consentBy: actor, recordedAt: now };
       fresh.push(phone);
     }
-    if (added || renewed) writeJsonAtomic(file, list);
+    if (added || renewed) save(list);
     return { added, renewed, existing };
   });
   // Only new consents go to İYS; one already on record was reported (or queried) when it was recorded.
@@ -155,8 +157,8 @@ export async function recordLegacyWhatsAppOptOut(numbers: unknown, source: OptOu
   const phones = source === 'team' ? phoneList(numbers) : [...new Set((Array.isArray(numbers) ? numbers : []).map(normalizeWhatsAppNumber).filter((phone): phone is string => Boolean(phone)))];
   if (!phones.length) return { optedOut: 0, already: 0 };
   const value = requireSecret(), fresh: string[] = [];
-  const result = await withFileLock(file, () => {
-    const list = readStore(file), now = new Date().toISOString();
+  const result = await withStore<Store, { optedOut: number; already: number }>(consentStore(file), ({ load, save }) => {
+    const list = load(), now = new Date().toISOString();
     let optedOut = 0, already = 0;
     for (const phone of phones) {
       const key = keyOf(phone, value), entry = list[key];
@@ -164,7 +166,7 @@ export async function recordLegacyWhatsAppOptOut(numbers: unknown, source: OptOu
       list[key] = { ...(entry || { hint: hint(phone) }), optedOutAt: now, optOutSource: source };
       optedOut++; fresh.push(phone);
     }
-    if (optedOut) writeJsonAtomic(file, list);
+    if (optedOut) save(list);
     return { optedOut, already };
   });
   const today = new Date().toISOString();
@@ -172,8 +174,8 @@ export async function recordLegacyWhatsAppOptOut(numbers: unknown, source: OptOu
 }
 
 /** What the record says about each of up to 50 numbers. */
-export function legacyWhatsAppStatus(numbers: unknown, file = LEGACY_WHATSAPP_FILE): ConsentView[] {
-  const value = requireSecret(), list = readStore(file);
+export async function legacyWhatsAppStatus(numbers: unknown, file = LEGACY_WHATSAPP_FILE): Promise<ConsentView[]> {
+  const value = requireSecret(), list = await readStore(file);
   return numberList(numbers, LEGACY_WHATSAPP_LIMITS.check).map(raw => {
     const phone = normalizeWhatsAppNumber(raw);
     if (!phone) return { hint: hint(raw), state: 'invalid' as const };
@@ -185,8 +187,8 @@ export function legacyWhatsAppStatus(numbers: unknown, file = LEGACY_WHATSAPP_FI
 /** STOP replies are recorded on their own only when Meta's webhook is set up for the Crewin number. */
 export const legacyWhatsAppHookReady = () => Boolean(hookSecret() && verifyToken() && process.env.WHATSAPP_PHONE_NUMBER_ID);
 
-export function legacyWhatsAppSummary(file = LEGACY_WHATSAPP_FILE) {
-  const entries = Object.values(readStore(file));
+export async function legacyWhatsAppSummary(file = LEGACY_WHATSAPP_FILE) {
+  const entries = Object.values(await readStore(file));
   const at = (entry: Entry) => [entry.recordedAt || '', entry.optedOutAt || ''].sort().at(-1) || '';
   return {
     consented: entries.filter(entry => stateOf(entry) === 'consented').length,
@@ -286,7 +288,7 @@ export async function sendLegacyWhatsApp(raw: unknown, sender: LegacyWhatsAppSen
   const body = object(raw) || {};
   const { mode, to, numbers, text, templateName, langCode, components } = body;
   const gate = async (list: unknown[]) => {
-    const { allowed, skipped } = legacyWhatsAppGate(list, file);
+    const { allowed, skipped } = await legacyWhatsAppGate(list, file);
     if (!iys) return { allowed, skipped };
     const pass: string[] = [];
     for (const phone of allowed) { const reason = await iys.gate(phone); if (reason) skipped.push({ hint: hint(phone), reason: 'iys', iys: reason }); else pass.push(phone); }

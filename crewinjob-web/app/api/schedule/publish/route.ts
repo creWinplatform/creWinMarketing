@@ -13,10 +13,9 @@
  * Kısmi başarı → 'partial' (yalnızca başarısız platformlar sonraki çalıştırmada yeniden denenir).
  */
 import { NextRequest, NextResponse }                from 'next/server';
-import { claimDuePosts, getDuePosts, updatePost, SCHEDULED_POSTS_LOCK, ScheduledPost } from '@/lib/scheduled-posts';
+import { claimDuePosts, getDuePosts, updatePost, ScheduledPost } from '@/lib/scheduled-posts';
 import { publishToSocial, recordPublishedPosts }   from '@/lib/scheduled-posts-backend';
 import { getSessionFromRequest, hasValidCronSecret } from '@/lib/auth';
-import { withFileLock }                            from '@/lib/json-store';
 
 export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
@@ -41,7 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Sahiplenme: kilit altında 'publishing' işaretle — ikinci çağrı aynı postları göremez
-  const duePosts = await withFileLock(SCHEDULED_POSTS_LOCK, () => claimDuePosts());
+  const duePosts = await claimDuePosts();
 
   if (duePosts.length === 0) {
     return NextResponse.json({
@@ -81,11 +80,11 @@ export async function POST(req: NextRequest) {
       const status: ScheduledPost['status'] =
         okCount === post.platforms.length ? 'published' : okCount > 0 ? 'partial' : 'failed';
 
-      await withFileLock(SCHEDULED_POSTS_LOCK, () => updatePost(post.id, {
+      await updatePost(post.id, {
         status,
         publishedAt: okCount > 0 ? new Date().toISOString() : post.publishedAt,
         results:     merged,
-      }));
+      });
 
       // Başarılı yeni paylaşımlar paylaşım geçmişine (SharePanel ile aynı kayıt mantığı)
       await recordPublishedPosts(latest, {
@@ -101,10 +100,10 @@ export async function POST(req: NextRequest) {
       const message = err instanceof Error ? err.message : 'Bilinmeyen hata';
       // Hiçbir platform denenemedi: önceki başarılar varsa partial (yeniden denenir), yoksa failed
       const status: ScheduledPost['status'] = alreadyDone.size > 0 ? 'partial' : 'failed';
-      await withFileLock(SCHEDULED_POSTS_LOCK, () => updatePost(post.id, {
+      await updatePost(post.id, {
         status,
         results: [...previous.filter(r => r.success), { platform: 'system', success: false, error: message }],
-      }));
+      });
       results.push({ postId: post.id, platforms: post.platforms, success: false, status, error: message });
     }
   }
@@ -123,7 +122,7 @@ export async function GET(req: NextRequest) {
   if (!(await authorized(req))) {
     return NextResponse.json({ error: 'Yetkisiz' }, { status: 401 });
   }
-  const duePosts = getDuePosts();
+  const duePosts = await getDuePosts();
   return NextResponse.json({
     duePosts:   duePosts.length,
     nextAt:     duePosts[0]?.scheduledAt || null,

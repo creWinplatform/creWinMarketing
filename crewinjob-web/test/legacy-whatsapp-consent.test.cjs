@@ -19,7 +19,7 @@ const [A,B,C,D,E,F,G,H]=[11,22,33,44,55,66,77,88].map(n=>`+9055500000${n}`);
 const plain=value=>JSON.parse(JSON.stringify(value));
 const consent=async(file,numbers,consentAt=today,evidence='Kayıt formu F-1 (fixture)')=>plain(await m.recordLegacyWhatsAppConsent({numbers,evidence,consentAt},'fixture-admin',file));
 const optOut=async(file,numbers,source='team')=>plain(await m.recordLegacyWhatsAppOptOut(numbers,source,file));
-const states=(file,numbers)=>plain(m.legacyWhatsAppStatus(numbers,file).map(item=>item.optOutSource?`${item.state}:${item.optOutSource}`:item.state));
+const states=async(file,numbers)=>plain((await m.legacyWhatsAppStatus(numbers,file)).map(item=>item.optOutSource?`${item.state}:${item.optOutSource}`:item.state));
 function fakeSender(codes={}){
   const calls=[],one=to=>codes[to]?{success:false,error:'fixture refusal',code:codes[to]}:{success:true,messageId:`wamid.fixture.${calls.length}`};
   return {calls,sender:{
@@ -48,7 +48,7 @@ test('numbers are normalised to E.164 and the record keeps only a one-way key an
   const raw=fs.readFileSync(file,'utf8');
   assert.doesNotMatch(raw,/5550000011|905550/,'no full number in the file');
   assert.match(raw,/\+90•••11/);assert.match(raw,/fixture-admin/,'who recorded it is kept');
-  assert.deepEqual(states(file,[A,B,'abc']),['consented','none','invalid']);
+  assert.deepEqual((await states(file,[A,B,'abc'])),['consented','none','invalid']);
   assert.deepEqual(await consent(file,[A]),{added:0,renewed:0,existing:1},'recording it again changes nothing');
 });
 
@@ -66,7 +66,7 @@ test('a consent needs evidence and a real date that is not in the future; one ba
 test('the gate lets through only consented numbers, once each; opted-out, unknown and invalid ones are skipped',async()=>{
   const file=fresh();
   await consent(file,[A,B]);await optOut(file,[B]);
-  const {allowed,skipped}=m.legacyWhatsAppGate([A,' +90 555 000 00 11',B,C,'x12345'],file);
+  const {allowed,skipped}=(await m.legacyWhatsAppGate([A,' +90 555 000 00 11',B,C,'x12345'],file));
   assert.deepEqual(plain(allowed),[A]);
   assert.deepEqual(plain(skipped.map(item=>item.reason)),['opted_out','no_consent','invalid']);
   assert.ok(skipped.every(item=>!/5550000022|5550000033/.test(item.hint)),'skipped numbers are reported masked');
@@ -107,12 +107,12 @@ test('an opt-out wins until a consent obtained after the opt-out day is recorded
   const first=JSON.parse(fs.readFileSync(file,'utf8'));
   assert.deepEqual(await optOut(file,[A],'reply'),{optedOut:0,already:1});
   assert.deepEqual(JSON.parse(fs.readFileSync(file,'utf8')),first,'the first opt-out time and source are kept');
-  assert.deepEqual(states(file,[A]),['opted_out:team']);
+  assert.deepEqual((await states(file,[A])),['opted_out:team']);
   for(const date of [day(-11),today])await assert.rejects(consent(file,[A],date),err=>err.status===409&&/çıkıştan sonraki/.test(err.message),date);
   const [key]=Object.keys(first);first[key].optedOutAt=new Date(Date.now()-3*86400000).toISOString();fs.writeFileSync(file,JSON.stringify(first));
   assert.deepEqual(await consent(file,[A],day(-1),'Yeni form F-2 (fixture)'),{added:0,renewed:1,existing:0});
-  assert.deepEqual(plain(m.legacyWhatsAppGate([A],file).allowed),[A]);
-  const summary=plain(m.legacyWhatsAppSummary(file));
+  assert.deepEqual(plain((await m.legacyWhatsAppGate([A],file)).allowed),[A]);
+  const summary=plain((await m.legacyWhatsAppSummary(file)));
   assert.equal(summary.consented,1);assert.equal(summary.optedOut,0);assert.equal(summary.recent[0].evidence,'Yeni form F-2 (fixture)');
   await assert.rejects(optOut(file,['053']),/ülke koduyla/,'the panel refuses a bad number');
 });
@@ -123,9 +123,9 @@ test('Meta refusing a message with 131050 records the number as opted out',async
   const {sender}=fakeSender({[B]:131050,[C]:131047});
   const out=await m.sendLegacyWhatsApp({mode:'broadcast',numbers:[A,B,C],text:'Merhaba'},sender,file);
   assert.equal(out.body.sent,1);assert.equal(out.body.failed,2);assert.equal(out.body.optedOutByMeta,1);
-  assert.deepEqual(states(file,[A,B,C]),['consented','opted_out:meta','consented'],'131047 (24-hour window) is not an opt-out');
+  assert.deepEqual((await states(file,[A,B,C])),['consented','opted_out:meta','consented'],'131047 (24-hour window) is not an opt-out');
   const single=await m.sendLegacyWhatsApp({mode:'single',to:A,text:'x'},fakeSender({[A]:131050}).sender,file);
-  assert.equal(single.body.optedOutByMeta,1);assert.deepEqual(states(file,[A]),['opted_out:meta']);
+  assert.equal(single.body.optedOutByMeta,1);assert.deepEqual((await states(file,[A])),['opted_out:meta']);
 });
 
 test('the webhook stays closed until it is set up and accepts only Meta-signed events',async()=>{
@@ -134,10 +134,10 @@ test('the webhook stays closed until it is set up and accepts only Meta-signed e
   clearHook();
   assert.equal(m.verifyLegacyWhatsAppHook(query('subscribe',VERIFY)),null);
   await assert.rejects(receive(body,sign(body),file),err=>err.status===503);
-  assert.equal(m.legacyWhatsAppSummary(file).hook,false);
+  assert.equal((await m.legacyWhatsAppSummary(file)).hook,false);
   setHook();
   try{
-    assert.equal(m.legacyWhatsAppSummary(file).hook,true);
+    assert.equal((await m.legacyWhatsAppSummary(file)).hook,true);
     assert.equal(m.verifyLegacyWhatsAppHook(query('subscribe',VERIFY)),'1158201444');
     for(const bad of [query('subscribe','wrong_token_0123456789'),query('unsubscribe',VERIFY),query('subscribe',VERIFY,'<script>')])assert.equal(m.verifyLegacyWhatsAppHook(bad),null);
     for(const signature of [null,'sha256=00',sign(Buffer.from('other'))])await assert.rejects(receive(body,signature,file),err=>err.status===401);
@@ -170,7 +170,7 @@ test('STOP replies, the stop-marketing choice and 131050 statuses opt numbers ou
     assert.deepEqual(await receive(body,sign(body),file),{optOuts:5});
     assert.deepEqual(await receive(body,sign(body),file),{optOuts:0},'a repeated event changes nothing');
   }finally{clearHook();}
-  assert.deepEqual(states(file,[A,B,C,D,E,F,G,H]),['opted_out:reply','opted_out:reply','opted_out:reply','consented','consented','opted_out:reply','opted_out:meta','consented']);
+  assert.deepEqual((await states(file,[A,B,C,D,E,F,G,H])),['opted_out:reply','opted_out:reply','opted_out:reply','consented','consented','opted_out:reply','opted_out:meta','consented']);
   const raw=fs.readFileSync(file,'utf8');
   assert.doesNotMatch(raw,/Merhaba|ilan|Fixture Kişi|wamid|90555000/,'no message text, sender or message id is stored');
   await assert.rejects(consent(file,[F]),err=>err.status===409,'an opt-out from someone without a consent still blocks a same-day consent');

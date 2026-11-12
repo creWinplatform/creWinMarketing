@@ -112,9 +112,9 @@ test('guides distinguish operator OAuth setup, customer access and mobile SDK wo
 });
 test('schema30 is additive and preferences survive reopening and offline recovery',run(async f=>{
   const fs=require('node:fs'),path=require('node:path'),folder=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'compass-migration-')),file=path.join(folder,'snapshot.sqlite');
-  require('./schema-fixture.cjs').removeCompassSchema(f.db);await f.db.backup(file);let db=load('database.ts').openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,78);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_campaigns').get().n,1);
+  require('./schema-fixture.cjs').removeCompassSchema(f.db);await f.db.backup(file);let db=load('database.ts').openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,79);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_campaigns').get().n,1);
   await new GrowthCompass(db,f.scope,f.KEY).save(f.defaults);db.close();db=load('database.ts').openPlatformDatabase(file);assert.equal((await new GrowthCompass(db,f.scope,f.KEY).read()).preferences.revision,1);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
-  const {inspectSnapshot}=await import('../scripts/lib/platform-recovery.mjs');assert.equal(inspectSnapshot(file,f.KEY,78).integrity,'ok');fs.rmSync(folder,{recursive:true,force:true});
+  const {inspectSnapshot}=await import('../scripts/lib/platform-recovery.mjs');assert.equal(inspectSnapshot(file,f.KEY,79).integrity,'ok');fs.rmSync(folder,{recursive:true,force:true});
 }));
 
 test('the next step is one the member can do now; steps waiting for the operator are listed apart',run(async f=>{

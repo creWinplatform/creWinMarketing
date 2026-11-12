@@ -23,7 +23,7 @@ export async function GET(
   if (error) return redirect(`?social_error=${encodeURIComponent(error)}`);
   if (!code || !state) return redirect('?social_error=Eksik+parametre');
 
-  const stateData = consumeOAuthState(state);
+  const stateData = await consumeOAuthState(state);
   if (!stateData) return redirect('?social_error=Geçersiz+veya+süresi+dolmuş+state');
 
   // State yalnızca başlatıldığı platformun callback'inde geçerli (FB diyaloğu IG için de kullanılır)
@@ -57,7 +57,7 @@ export async function GET(
         });
         const me = await meRes.json();
 
-        setToken('twitter', {
+        await setToken('twitter', {
           accessToken:  tokenData.access_token,
           refreshToken: tokenData.refresh_token,
           expiresAt:    tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : undefined,
@@ -100,7 +100,7 @@ export async function GET(
           }
         } catch { /* profil alınamazsa boş bırak */ }
 
-        setToken('linkedin', {
+        await setToken('linkedin', {
           accessToken:  tokenData.access_token,
           refreshToken: tokenData.refresh_token,
           expiresAt:    tokenData.expires_in ? Date.now() + tokenData.expires_in * 1000 : undefined,
@@ -147,7 +147,7 @@ export async function GET(
         const pagesData = await pagesRes.json();
         const page      = pagesData.data?.[0];
 
-        setToken('facebook', {
+        await setToken('facebook', {
           accessToken:  page?.access_token || userToken,
           pageId:       page?.id,
           pageName:     page?.name,
@@ -159,7 +159,7 @@ export async function GET(
           const igRes  = await graphFetch(`${encodeURIComponent(page.id)}?fields=instagram_business_account`, page.access_token || userToken);
           const igData = await igRes.json();
           if (igData.instagram_business_account?.id) {
-            setToken('instagram', {
+            await setToken('instagram', {
               accessToken: page.access_token || userToken,
               igUserId:    igData.instagram_business_account.id,
               displayName: page.name + ' (Instagram)',

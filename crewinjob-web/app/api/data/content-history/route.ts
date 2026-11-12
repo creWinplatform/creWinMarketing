@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
 import {
   isRecord,
   marketingBackend,
@@ -10,7 +8,7 @@ import {
   stringValue,
   timestampValue,
 } from '@/lib/marketing-backend';
-import { readJson, withFileLock, writeJsonAtomic } from '@/lib/json-store';
+import { readStore, storeVersion, webStore, withStore } from '@/lib/legacy-store';
 import { projectHistoryResponse } from '@/lib/platform/marketing-routes';
 import { EDIT_CONFLICT } from '@/lib/platform/marketing-store';
 
@@ -21,8 +19,9 @@ export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
 export const fetchCache = 'force-no-store';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const FILE = path.join(DATA_DIR, 'content-history.json');
+// data/content-history.json, or legacy_records 'web:content-history' with PLATFORM_LEGACY_STORE=mssql.
+// Compact JSON: the file is read far more often than a person opens it.
+const STORE = () => webStore('content-history.json', 'array', { pretty: false });
 
 interface HistoryItem {
   id: string;
@@ -41,7 +40,7 @@ interface HistoryItem {
   metadata?: Record<string, unknown>;
 }
 
-// Dosya büyük (görseller base64) → her read-modify-write withFileLock(FILE) altında, await'ten sonra
+// Dosya büyük (görseller base64) → her read-modify-write update() (depo kilidi) altında, await'ten sonra
 // yeniden okunarak yapılır; GET yalnızca birleşik veri gerçekten değiştiyse yazar.
 // ?lite=1: the list without image data (the file holds base64 images, ~20 MB), for views that show only text and
 // figures; hasImage says an image exists.
@@ -53,34 +52,32 @@ function lite(request: NextRequest, items: HistoryItem[]) {
   });
 }
 // The file is ~20 MB (base64 images). Parsing it blocks the server for a noticeable time, and a page sends several of
-// these requests at once, so the parsed list is kept until the file changes (mtime + size), and concurrent GETs share
+// these requests at once, so the parsed list is kept until the store changes (file mtime + size, or the table's store
+// version), and concurrent GETs share
 // one backend merge that stays fresh for a few seconds. Writes update or drop both caches.
 type Parsed = { key: string; items: HistoryItem[] };
 type Merge = { at: number; promise: Promise<HistoryItem[]> };
 const cache = globalThis as typeof globalThis & { __crewinContentHistory?: Parsed | null; __crewinContentHistoryMerge?: Merge | null };
 const MERGE_FRESH_MS = 10_000;
-function statKey(): string | null {
-  try { const stat = fs.statSync(FILE); return `${stat.mtimeMs}:${stat.size}`; } catch { return null; }
-}
-function load(): HistoryItem[] {
-  const key = statKey();
+async function load(): Promise<HistoryItem[]> {
+  const key = await storeVersion(STORE());
   if (!key) return [];
   const hit = cache.__crewinContentHistory;
   if (hit?.key === key) return hit.items;
-  // bozuk yerel yedek backend verisini engellememeli → readJson hata yerine [] döner
-  const list = readJson<HistoryItem[]>(FILE, []);
-  const items = Array.isArray(list) ? list : [];
+  // bozuk yerel yedek backend verisini engellememeli → okunamayan depo hata yerine [] döner
+  const items = await readStore<HistoryItem>(STORE());
   cache.__crewinContentHistory = { key, items };
   return items;
 }
 
-function save(items: HistoryItem[]) {
-  const next = items.slice(0, 100);
-  // Compact JSON: the file is read far more often than a person opens it.
-  writeJsonAtomic(FILE, next, false);
-  const key = statKey();
-  cache.__crewinContentHistory = key ? { key, items: next } : null;
-  cache.__crewinContentHistoryMerge = null;
+// Read-modify-write under the store's lock: `work` gets the current list and may save a new one (the newest 100 are kept).
+async function update<R>(work: (current: HistoryItem[], save: (items: HistoryItem[]) => void) => R): Promise<R> {
+  let saved = false;
+  try {
+    return await withStore<HistoryItem[], R>(STORE(), ({ load: current, save }) => work(current(), items => { saved = true; save(items.slice(0, 100)); }));
+  } finally {
+    if (saved) { cache.__crewinContentHistory = null; cache.__crewinContentHistoryMerge = null; }
+  }
 }
 
 /** Büyük alanlar (imageData vb.) çoğunlukla aynı referans — önce === ile ucuz karşılaştırma. */
@@ -157,7 +154,8 @@ function backendPayload(item: HistoryItem) {
   };
 }
 
-async function fetchRemote(local: HistoryItem[] = load()): Promise<HistoryItem[]> {
+async function fetchRemote(given?: HistoryItem[]): Promise<HistoryItem[]> {
+  const local = given ?? await load();
   const result = await marketingBackend().marketingContentHistoryGet('GetAll', {
     skipCount: 0,
     maxResultCount: 200,
@@ -199,9 +197,8 @@ async function mergeWithBackend(): Promise<HistoryItem[]> {
     skipCount: 0,
     maxResultCount: 200,
   });
-  return withFileLock(FILE, () => {
-    // Backend beklenirken yazılmış yerel değişiklikler kaybolmasın → yeniden oku
-    const current  = load();
+  return update((current, save) => {
+    // Backend beklenirken yazılmış yerel değişiklikler kaybolmasın → kilit altında yeniden okunmuş liste
     const byId     = new Map(current.map(item => [item.id, item]));
     const remote   = records(result).map(item => normalizeRemote(item, byId.get(stringValue(item.id))));
     const ids      = new Set(remote.map(item => item.id));
@@ -231,7 +228,7 @@ export async function GET(req: NextRequest) {
   try {
     return NextResponse.json(lite(req, await mergedHistory()));
   } catch {
-    return NextResponse.json(lite(req, load()));
+    return NextResponse.json(lite(req, await load()));
   }
 }
 
@@ -249,7 +246,7 @@ export async function POST(req: NextRequest) {
   } catch {
     item.metadata = { ...(item.metadata || {}), backendSync: 'pending' };
   }
-  await withFileLock(FILE, () => save([item, ...load().filter(existing => existing.id !== item.id)]));
+  await update((list, save) => save([item, ...list.filter(existing => existing.id !== item.id)]));
   return NextResponse.json(item);
 }
 
@@ -259,7 +256,7 @@ export async function PATCH(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id');
   const body = await req.json() as Partial<HistoryItem>;
   // Yerel id (hist_…) backend senkronunda sayısal id'ye dönmüş olabilir → localId ile de ara
-  let current = load().find(item => item.id === id || item.metadata?.localId === id);
+  let current = (await load()).find(item => item.id === id || item.metadata?.localId === id);
   if (!current && id) {
     try {
       const result = await marketingBackend().marketingContentHistoryGet('Get', { id });
@@ -291,9 +288,9 @@ export async function PATCH(req: NextRequest) {
     // İstemci eski id ile düzenlemeye devam edebilir (OutputPanel) → eşleşme için sakla
     updated.metadata = { ...(updated.metadata || {}), localId: stringValue(current.metadata?.localId, originalId) };
   }
-  await withFileLock(FILE, () => {
+  await update((list, save) => {
     // Backend beklenirken başka kayıtlar güncellenmiş olabilir → güncel listeye uygula
-    save([updated, ...load().filter(item => item.id !== originalId && item.id !== updated.id)]);
+    save([updated, ...list.filter(item => item.id !== originalId && item.id !== updated.id)]);
   });
   return NextResponse.json(updated);
 }
@@ -302,7 +299,7 @@ export async function DELETE(req: NextRequest) {
   const scoped = await projectHistoryResponse(req);
   if (scoped) return scoped;
   const id = new URL(req.url).searchParams.get('id');
-  const local = load();
+  const local = await load();
   const ids = id ? [id] : Array.from(new Set([
     ...local.map(item => item.id),
     ...(await fetchRemote(local).catch(() => [])).map(item => item.id),
@@ -310,6 +307,6 @@ export async function DELETE(req: NextRequest) {
   await Promise.allSettled(ids.filter(value => /^\d+$/.test(value)).map(value =>
     marketingBackend().marketingContentHistoryDelete('Delete', { id: value })
   ));
-  await withFileLock(FILE, () => save(id ? load().filter(item => item.id !== id) : []));
+  await update((list, save) => save(id ? list.filter(item => item.id !== id) : []));
   return NextResponse.json({ ok: true });
 }

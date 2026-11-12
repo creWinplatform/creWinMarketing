@@ -52,8 +52,8 @@ function api() {
   return agentModule<MarketingApi>('modules/api.js');
 }
 
-function requireCampaign(id: string): UnifiedCampaign {
-  const campaign = getCampaign(id);
+async function requireCampaign(id: string): Promise<UnifiedCampaign> {
+  const campaign = await getCampaign(id);
   if (!campaign) throw new Error('Kampanya bulunamadı');
   return campaign;
 }
@@ -76,9 +76,9 @@ function requireActiveDispatchId(campaign: UnifiedCampaign): number {
 
 // Backend Dispatch İYS kapısından geçmez: zorunlu İYS modunda bireysel kitlelerin kampanyaları panelin kapılı
 // gönderimine (lib/campaign-executor.ts → /api/messaging/email/send) düşer; şirket ve prospect kitleleri tacir muafiyetinde.
-export function canUseBackendDispatch(campaign: UnifiedCampaign): boolean {
+export async function canUseBackendDispatch(campaign: UnifiedCampaign): Promise<boolean> {
   const isProspectCampaign = campaign.audience.audienceType === 'company_prospects';
-  return crewinDispatchAllowed(campaign.audience.audienceType)
+  return await crewinDispatchAllowed(campaign.audience.audienceType)
     && campaign.deliveries.length === 1
     && campaign.deliveries[0]?.channel === 'email'
     && Boolean(campaign.backendChannels?.email?.templateId || campaign.content.templateId)
@@ -111,9 +111,9 @@ function audienceRange(buckets: FillBucket[]) {
 }
 
 export async function createCampaignDispatch(id: string): Promise<UnifiedCampaign> {
-  const campaign = requireCampaign(id);
-  if (!crewinDispatchAllowed(campaign.audience.audienceType)) throw new CampaignDispatchError('iys_enforce', 'Zorunlu İYS modunda bireysel kitlelere backend gönderimi kapalı; kampanyayı başlatın, panel İYS kontrolüyle gönderir.');
-  if (!canUseBackendDispatch(campaign)) throw new Error('Background dispatch için yalnız e-posta kanalı ve backend şablonu gereklidir.');
+  const campaign = await requireCampaign(id);
+  if (!(await crewinDispatchAllowed(campaign.audience.audienceType))) throw new CampaignDispatchError('iys_enforce', 'Zorunlu İYS modunda bireysel kitlelere backend gönderimi kapalı; kampanyayı başlatın, panel İYS kontrolüyle gönderir.');
+  if (!(await canUseBackendDispatch(campaign))) throw new Error('Background dispatch için yalnız e-posta kanalı ve backend şablonu gereklidir.');
   const isProspectCampaign = campaign.audience.audienceType === 'company_prospects';
   const templateId = campaign.backendChannels?.email?.templateId || campaign.content.templateId;
   const integrationId = campaign.maxRecipients ? PILOT_INTEGRATION_ID : campaign.id;
@@ -179,7 +179,7 @@ export async function createCampaignDispatch(id: string): Promise<UnifiedCampaig
 }
 
 export async function refreshCampaignDispatch(id: string): Promise<UnifiedCampaign> {
-  const campaign = requireCampaign(id);
+  const campaign = await requireCampaign(id);
   const isProspectCampaign = campaign.audience.audienceType === 'company_prospects';
   const dispatchId = isProspectCampaign ? campaign.dispatch?.dispatchId : campaign.activeDispatchId;
   if (!dispatchId) throw new Error('Dispatch bulunamadı');
@@ -201,7 +201,7 @@ export async function refreshCampaignDispatch(id: string): Promise<UnifiedCampai
 }
 
 export async function mutateCampaignDispatch(id: string, action: 'cancel' | 'retry'): Promise<UnifiedCampaign> {
-  const campaign = requireCampaign(id);
+  const campaign = await requireCampaign(id);
   // Prospect dispatch'leri MarketingProspect servisinde yaşar (kimlik dispatch.dispatchId);
   // seafarer dispatch'leri MarketingCampaign'de (kimlik activeDispatchId).
   const isProspectCampaign = campaign.audience.audienceType === 'company_prospects';
@@ -210,7 +210,7 @@ export async function mutateCampaignDispatch(id: string, action: 'cancel' | 'ret
     : (campaign.activeDispatchId ?? campaign.dispatch?.dispatchId);
   if (!dispatchId) throw new Error('Dispatch bulunamadı');
   // Durdurmak her zaman serbest; yeniden denemek yeni gönderimdir ve zorunlu İYS modunda bireysel kitlelere kapalıdır.
-  if (action === 'retry' && !crewinDispatchAllowed(campaign.audience.audienceType)) throw new CampaignDispatchError('iys_enforce', 'Zorunlu İYS modunda bireysel kitlelere backend gönderimi kapalı; kampanyayı başlatın, panel İYS kontrolüyle gönderir.');
+  if (action === 'retry' && !(await crewinDispatchAllowed(campaign.audience.audienceType))) throw new CampaignDispatchError('iys_enforce', 'Zorunlu İYS modunda bireysel kitlelere backend gönderimi kapalı; kampanyayı başlatın, panel İYS kontrolüyle gönderir.');
   const post = (name: string, body: Record<string, unknown>) => isProspectCampaign
     ? api().marketingProspectPost(name, body)
     : api().marketingCampaignPost(name, body);

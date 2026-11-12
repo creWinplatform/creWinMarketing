@@ -1,7 +1,4 @@
 'use strict';
-const fs   = require('fs');
-const path = require('path');
-
 // Config önceliği diğer modüllerle AYNI: process.env kazanır; .userbot-config.json (web'in
 // yazdığı ham değerler) ve .env yalnızca tanımsız anahtarları doldurur. .env kendi
 // ayrıştırıcımızla okunur — dotenvx v17 base64 değerlerdeki + ve = karakterlerini bozuyordu.
@@ -14,6 +11,7 @@ const { Api }            = require('telegram');
 const cron               = require('node-cron');
 const poster             = require('./modules/telegram-poster');
 const { recordSuggestions } = require('./modules/group-discovery');
+const store              = require('./modules/store');
 
 // ── Ortam değişkenleri ────────────────────────────────────────────────────────
 const API_ID       = parseInt(process.env.TG_API_ID      || '0');
@@ -56,7 +54,7 @@ function isJobPost(text = '') {
 }
 
 // ── Mevcut diyalogları tara ve kaydet ────────────────────────────────────────
-const GROUPS_FILE = path.join(__dirname, '.userbot-groups.json');
+// .userbot-groups.json — store.js üzerinden (db modunda panelin tablosu)
 
 async function scanExistingDialogs(client) {
   console.log('[userbot] 📂 Mevcut grup ve kanallar taranıyor...');
@@ -83,8 +81,8 @@ async function scanExistingDialogs(client) {
       groups.push(item);
     }
 
-    // UI için dosyaya yaz
-    fs.writeFileSync(GROUPS_FILE, JSON.stringify(groups, null, 2), 'utf-8');
+    // UI için kaydet
+    await store.write(store.stores.userbotGroups, groups);
     console.log(`[userbot] 📂 ${groups.length} grup/kanal bulundu ve izlemeye alındı.`);
   } catch (e) {
     console.error('[userbot] Dialog tarama hatası:', e.message);
@@ -122,7 +120,7 @@ async function searchGroupSuggestions(client) {
   for (const query of SEARCH_QUERIES) {
     try {
       const res = await client.invoke(new Api.contacts.Search({ q: query, limit: 20 }));
-      added += recordSuggestions(res.chats || [], query).length;
+      added += (await recordSuggestions(res.chats || [], query)).length;
     } catch (e) {
       console.error(`[userbot] Arama hatası "${query}": ${e.message}`);
     }

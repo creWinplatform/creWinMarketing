@@ -1,9 +1,9 @@
-import path from 'path';
-import { readJson, writeJsonAtomic } from '@/lib/json-store';
+import { mutateStore, readStore, webStore } from '@/lib/legacy-store';
 
-const DATA_DIR   = path.join(process.cwd(), 'data');
-const TOKEN_FILE = path.join(DATA_DIR, 'social-tokens.json');
-const STATE_FILE = path.join(DATA_DIR, 'oauth-state.json');
+// data/social-tokens.json and oauth-state.json, or legacy_records 'web:social-tokens' / 'web:oauth-state' (one row per
+// platform / state) with PLATFORM_LEGACY_STORE=mssql.
+const TOKENS = () => webStore('social-tokens.json', 'object');
+const STATES = () => webStore('oauth-state.json', 'object');
 
 export interface PlatformToken {
   accessToken:   string;
@@ -26,25 +26,22 @@ export interface AllTokens {
   tiktok?:    PlatformToken;
 }
 
-export function loadTokens(): AllTokens {
-  return readJson<AllTokens>(TOKEN_FILE, {});
+export async function loadTokens(): Promise<AllTokens> {
+  return readStore(TOKENS()) as Promise<AllTokens>;
 }
 
-// Not: load → değiştir → kaydet zinciri senkron (arada await yok) — tek süreçte yarış oluşmaz.
-// Yazım atomik (tmp + rename): yarım yazılmış token dosyası kalmaz.
-export function saveTokens(tokens: AllTokens) {
-  writeJsonAtomic(TOKEN_FILE, tokens);
+// Read-modify-write depo kilidi altında; yazım atomik (dosya: tmp + rename, tablo: tek transaction).
+export async function saveTokens(tokens: AllTokens) {
+  await mutateStore(TOKENS(), () => ({ ...tokens }) as Record<string, unknown>);
 }
 
-export function setToken(platform: keyof AllTokens, data: PlatformToken) {
-  const t = loadTokens();
-  t[platform] = data;
-  saveTokens(t);
+export async function setToken(platform: keyof AllTokens, data: PlatformToken) {
+  await mutateStore(TOKENS(), tokens => ({ ...tokens, [platform]: data }));
 }
 
-export function getToken(platform: keyof AllTokens): PlatformToken | null {
-  // Önce dosyadan bak
-  const stored = loadTokens()[platform];
+export async function getToken(platform: keyof AllTokens): Promise<PlatformToken | null> {
+  // Önce depodan bak
+  const stored = (await loadTokens())[platform];
   if (stored) return stored;
 
   // Dosyada yoksa env var'lardan yükle (statik token desteği)
@@ -131,7 +128,7 @@ export function twitterTokenRequest(params: Record<string, string>): RequestInit
  * Twitter her yenilemede yeni refresh_token verir → dosyaya yazılır.
  */
 export async function getFreshTwitterOAuth2Token(force = false): Promise<PlatformToken | null> {
-  const token = getToken('twitter');
+  const token = await getToken('twitter');
   if (!token?.accessToken) return null;
   const expired = token.expiresAt ? token.expiresAt - 60_000 <= Date.now() : false;
   if (!force && !expired) return token;
@@ -153,7 +150,7 @@ export async function getFreshTwitterOAuth2Token(force = false): Promise<Platfor
       refreshToken: data.refresh_token || token.refreshToken,
       expiresAt:    data.expires_in ? Date.now() + data.expires_in * 1000 : undefined,
     };
-    setToken('twitter', next);
+    await setToken('twitter', next);
     return next;
   } catch (e) {
     console.warn('[twitter] OAuth2 token yenileme hatası:', e);
@@ -172,32 +169,30 @@ interface OAuthState {
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 
-function loadStates(): Record<string, OAuthState> {
-  return readJson<Record<string, OAuthState>>(STATE_FILE, {});
+export async function saveOAuthState(state: string, platform: string, codeVerifier?: string, user?: string) {
+  await mutateStore(STATES(), list => {
+    const s = list as Record<string, OAuthState>;
+    // Temizle — 10 dakikadan eski state'leri sil
+    const now = Date.now();
+    for (const [k, v] of Object.entries(s)) {
+      if (now - v.createdAt > STATE_TTL_MS) delete s[k];
+    }
+    s[state] = { platform, codeVerifier, user, createdAt: now };
+    return s;
+  });
 }
 
-function saveStates(s: Record<string, OAuthState>) {
-  writeJsonAtomic(STATE_FILE, s);
-}
-
-export function saveOAuthState(state: string, platform: string, codeVerifier?: string, user?: string) {
-  const s = loadStates();
-  // Temizle — 10 dakikadan eski state'leri sil
-  const now = Date.now();
-  for (const [k, v] of Object.entries(s)) {
-    if (now - v.createdAt > STATE_TTL_MS) delete s[k];
-  }
-  s[state] = { platform, codeVerifier, user, createdAt: now };
-  saveStates(s);
-}
-
-/** Tek kullanımlık: bulunursa silinir. Süresi geçmişse null. */
-export function consumeOAuthState(state: string): OAuthState | null {
-  const s = loadStates();
-  const data = s[state];
+/** Tek kullanımlık: bulunursa silinir (kilit altında — iki istek aynı state'i kullanamaz). Süresi geçmişse null. */
+export async function consumeOAuthState(state: string): Promise<OAuthState | null> {
+  let data: OAuthState | undefined;
+  await mutateStore(STATES(), list => {
+    const s = list as Record<string, OAuthState>;
+    data = s[state];
+    if (!data) return undefined;
+    delete s[state];
+    return s;
+  });
   if (!data) return null;
-  delete s[state];
-  saveStates(s);
   if (Date.now() - data.createdAt > STATE_TTL_MS) return null;
   return data;
 }

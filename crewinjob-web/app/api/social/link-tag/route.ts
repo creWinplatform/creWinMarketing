@@ -22,6 +22,6 @@ export async function POST(req: NextRequest) {
   if (!body || typeof body.tag !== 'string' || !LINK_TAG.test(body.tag) || typeof body.title !== 'string' || !body.title.trim() || body.title.length > 20000) {
     return NextResponse.json({ error: 'Geçersiz etiket.' }, { status: 400 });
   }
-  try { registerCrewinTag(body.tag, 'share', body.title); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
+  try { await registerCrewinTag(body.tag, 'share', body.title); } catch (err) { console.warn('[link-tags] kayıt yazılamadı:', err); }
   return NextResponse.json({ ok: true });
 }
