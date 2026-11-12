@@ -92,7 +92,7 @@ function parseStats(logs: string[]) {
   return { joined, dms, jobs };
 }
 
-// The agent's .userbot-groups.json, or legacy_records 'agent:userbot-groups' with PLATFORM_DATABASE_PROVIDER=mssql.
+// The agent's .userbot-groups.json, or legacy_records 'agent:userbot-groups' with PLATFORM_LEGACY_STORE=mssql.
 function readGroups() {
   return readStore(agentStore('.userbot-groups.json', 'array')).catch(() => []);
 }

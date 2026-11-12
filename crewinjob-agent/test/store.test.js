@@ -14,10 +14,10 @@ test.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 function withMode(value, work) {
   return async () => {
-    const prev = process.env.CREWIN_LEGACY_STORE;
-    process.env.CREWIN_LEGACY_STORE = value;
+    const prev = process.env.PLATFORM_LEGACY_STORE;
+    process.env.PLATFORM_LEGACY_STORE = value;
     try { await work(); } finally {
-      if (prev === undefined) delete process.env.CREWIN_LEGACY_STORE; else process.env.CREWIN_LEGACY_STORE = prev;
+      if (prev === undefined) delete process.env.PLATFORM_LEGACY_STORE; else process.env.PLATFORM_LEGACY_STORE = prev;
     }
   };
 }
@@ -88,7 +88,7 @@ function sqliteDb() {
   };
 }
 
-test('db mode: the same calls read and write legacy_records rows', withMode('db', async () => {
+test('db mode: the same calls read and write legacy_records rows', withMode('mssql', async () => {
   const db = sqliteDb();
   setStoreDb(db);
   try {
@@ -127,4 +127,11 @@ test('the agent store options match the panel (AGENT_STORES in legacy-records.cj
   assert.deepEqual(SHARED, AGENT_STORES);
   for (const file of Object.keys(SHARED)) assert.equal(storeModule.storeName(file), storeName('agent', file));
   for (const def of Object.values(storeModule.stores)) assert.ok(SHARED[path.relative(path.join(__dirname, '..'), def.file).replace(/\\/g, '/')] || process.env.CREWIN_LINK_TAGS_FILE, def.file);
+});
+
+test('the tables are used only with PLATFORM_LEGACY_STORE=mssql, not because the platform runs on SQL Server', () => {
+  const { mode } = require('../modules/store');
+  assert.equal(mode({}), 'file');
+  assert.equal(mode({ PLATFORM_DATABASE_PROVIDER: 'mssql' }), 'file');
+  assert.equal(mode({ PLATFORM_DATABASE_PROVIDER: 'mssql', PLATFORM_LEGACY_STORE: 'mssql' }), 'db');
 });

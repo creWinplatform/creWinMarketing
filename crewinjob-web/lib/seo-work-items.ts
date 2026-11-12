@@ -1,4 +1,4 @@
-// SEO iş kartları — data/seo-work-items.json ya da (mssql) legacy_records 'web:seo-work-items'. Tek kaynak: hem
+// SEO iş kartları — data/seo-work-items.json ya da (PLATFORM_LEGACY_STORE=mssql) legacy_records 'web:seo-work-items'. Tek kaynak: hem
 // /api/data/seo-work-items hem site-crawl bunu kullanır. Read-modify-write işlemleri mutateStore ile kilit altında yapılır.
 import { mutateStore, readStore, webStore } from '@/lib/legacy-store';
 import { marketingBackend } from '@/lib/marketing-backend';

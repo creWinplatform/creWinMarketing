@@ -103,11 +103,32 @@ async function resetDatabase() {
     return 'reserved and completed';
   });
   await step('portfolio', async () => { const { portfolio } = load('portfolio.ts'); const view = await portfolio(db, a.userId, { organizationId: a.organizationId, projectId: a.projectId }); return `${view.projects.length} project(s)`; });
-  // The Crewin workspace's JSON stores as rows (legacy_records): the panel modules with PLATFORM_DATABASE_PROVIDER=mssql.
-  await step('Crewin stores in tables (legacy_records)', async () => {
-    const saved = { CREWIN_LEGACY_STORE: process.env.CREWIN_LEGACY_STORE, CREWIN_WEB_DATA_DIR: process.env.CREWIN_WEB_DATA_DIR };
+  // Switch off (the default, as on live ryzevo.com today): the platform runs on SQL Server, the Crewin stores stay files.
+  await step('Crewin stores, switch off: files', async () => {
+    const saved = { PLATFORM_LEGACY_STORE: process.env.PLATFORM_LEGACY_STORE, CREWIN_WEB_DATA_DIR: process.env.CREWIN_WEB_DATA_DIR, PLATFORM_DATABASE_PROVIDER: process.env.PLATFORM_DATABASE_PROVIDER };
+    const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'smoke-legacy-off-'));
+    fs.writeFileSync(path.join(dir, 'seo-work-items.json'), JSON.stringify([{ id: 'seo-file', url: 'https://example.com', title: 'Dosyadan', status: 'proposed', updatedAt: '2026-11-12' }]));
+    delete process.env.PLATFORM_LEGACY_STORE;
+    Object.assign(process.env, { CREWIN_WEB_DATA_DIR: dir, PLATFORM_DATABASE_PROVIDER: 'mssql' });
+    const store = load('../legacy-store.ts');
+    store.setLegacyStoreDb(db);
+    try {
+      const seo = load('../seo-work-items.ts');
+      if ((await seo.listSeoWorkItems())[0]?.title !== 'Dosyadan') throw new Error('the file was not read');
+      await seo.updateSeoWorkItem('seo-file', 'approved');
+      if (JSON.parse(fs.readFileSync(path.join(dir, 'seo-work-items.json'), 'utf8'))[0].status !== 'approved') throw new Error('the file was not written');
+      if ((await db.all("SELECT store FROM legacy_stores WHERE store = 'web:seo-work-items'")).length) throw new Error('a table row was written');
+      return 'read and written in the file, no table row';
+    } finally {
+      store.setLegacyStoreDb(null);
+      for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    }
+  });
+  // Switch on (PLATFORM_LEGACY_STORE=mssql, phase 4): the Crewin JSON stores as rows (legacy_records).
+  await step('Crewin stores, switch on: tables', async () => {
+    const saved = { PLATFORM_LEGACY_STORE: process.env.PLATFORM_LEGACY_STORE, CREWIN_WEB_DATA_DIR: process.env.CREWIN_WEB_DATA_DIR };
     const dir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'smoke-legacy-'));
-    Object.assign(process.env, { CREWIN_LEGACY_STORE: 'db', CREWIN_WEB_DATA_DIR: dir });
+    Object.assign(process.env, { PLATFORM_LEGACY_STORE: 'mssql', CREWIN_WEB_DATA_DIR: dir });
     const store = load('../legacy-store.ts');
     store.setLegacyStoreDb(db);
     try {

@@ -117,15 +117,29 @@ async function apply(db, store, changes, stamp) {
 
 const isDuplicate = error => /UNIQUE constraint|PRIMARY KEY|duplicate key|2627|2601/i.test(String(error && (error.message || error.number)));
 
+// The store's row exists before any transaction takes its lock (version 0 = never written), so concurrent first writers
+// queue on one existing row instead of racing to insert it (which SQL Server can resolve with a deadlock).
+async function ensureStore(db, store) {
+  if (await db.get('SELECT 1 AS x FROM legacy_stores WHERE store = ?', store)) return;
+  try { await db.run('INSERT INTO legacy_stores(store, version, updated_at) VALUES(?, 0, ?)', store, now()); }
+  catch (error) { if (!isDuplicate(error)) throw error; }
+}
 // Takes the store's lock for the current transaction and returns the new version.
 async function bump(db, store, stamp) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    if ((await db.run('UPDATE legacy_stores SET version = version + 1, updated_at = ? WHERE store = ?', stamp, store)).changes)
-      return Number((await db.get('SELECT version FROM legacy_stores WHERE store = ?', store)).version);
-    try { await db.run('INSERT INTO legacy_stores(store, version, updated_at) VALUES(?, 1, ?)', store, stamp); return 1; }
-    catch (error) { if (!isDuplicate(error)) throw error; }
+  if (!(await db.run('UPDATE legacy_stores SET version = version + 1, updated_at = ? WHERE store = ?', stamp, store)).changes)
+    throw new Error(`legacy_stores: store ${store} is missing.`);
+  return Number((await db.get('SELECT version FROM legacy_stores WHERE store = ?', store)).version);
+}
+// SQL Server ends one side of a deadlock (error 1205) and says to run it again; so do we, a few times.
+const isDeadlock = error => Boolean(error) && (error.number === 1205 || error.originalError?.info?.number === 1205 || /deadlock/i.test(String(error.message)));
+async function retrying(work) {
+  for (let attempt = 1; ; attempt++) {
+    try { return await work(); }
+    catch (error) {
+      if (!isDeadlock(error) || attempt >= 5) throw error;
+      await new Promise(resolve => setTimeout(resolve, 20 * attempt + Math.floor(Math.random() * 30)));
+    }
   }
-  throw new Error(`legacy_stores: could not lock store ${store}.`);
 }
 
 class Rollback extends Error {}
@@ -159,7 +173,7 @@ function recordStore(db) {
 
   return {
     /** The store's whole array or object (a fresh copy the caller may change). An unknown store reads as empty. */
-    async read(store, shape = 'array') { return materialize(await current(await open(), store), shape); },
+    async read(store, shape = 'array') { const handle = await open(); return materialize(await retrying(() => current(handle, store)), shape); },
     /** A number that changes with every write; 0 for a store never written. */
     async version(store) { return versionOf(await open(), store); },
     /** Whether the store has ever been written (copied or used). */
@@ -172,7 +186,8 @@ function recordStore(db) {
       const handle = await open();
       let saved = null, result;
       try {
-        await handle.transaction(async () => {
+        await ensureStore(handle, store);
+        await retrying(() => handle.transaction(async () => {
           const stamp = now(), version = await bump(handle, store, stamp);
           let entry = cache.get(store);
           if (!entry || entry.version !== version - 1) entry = await load(handle, store, version - 1);
@@ -184,7 +199,7 @@ function recordStore(db) {
           await apply(handle, store, changes, stamp);
           saved = { version, rows: changes.rows };
           result = changes;
-        });
+        }));
       } catch (error) {
         if (!(error instanceof Rollback)) { cache.delete(store); throw error; }
         return { written: false };
@@ -199,14 +214,16 @@ function recordStore(db) {
       if (!items.length) return;
       const handle = await open();
       let saved = null;
-      await handle.transaction(async () => {
+      await ensureStore(handle, store);
+      await retrying(() => handle.transaction(async () => {
+        saved = null;
         const stamp = now(), version = await bump(handle, store, stamp);
         const start = Number((await handle.get('SELECT MAX(position) AS p FROM legacy_records WHERE store = ?', store))?.p ?? -1) + 1;
         const rows = items.map((value, i) => { const body = bodyOf(value); return { key: `a:${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}-${i}`, body, hash: hashOf(body), position: start + i }; });
         await apply(handle, store, { deletes: [], updates: [], moves: [], inserts: rows }, stamp);
         const before = cache.get(store);
         if (before && before.version === version - 1) { const next = new Map(before.rows); for (const row of rows) next.set(row.key, { position: row.position, body: row.body, hash: row.hash }); saved = { version, rows: next }; }
-      });
+      }));
       if (saved) cache.set(store, saved); else cache.delete(store);
     },
     /** Forgets cached rows (tests). */
@@ -288,10 +305,13 @@ const storeName = (owner, file) => `${owner}:${file.replace(/^data\//, '').repla
 /** The shared options of a known store ({} for one not listed). */
 const storeOptions = (owner, file) => ({ ...((owner === 'web' ? WEB_STORES : AGENT_STORES)[file] || {}) });
 
-/** 'db' when the stores live in the database (PLATFORM_DATABASE_PROVIDER=mssql, or CREWIN_LEGACY_STORE=db), else 'file'. */
+/**
+ * 'db' only when PLATFORM_LEGACY_STORE=mssql; otherwise 'file', whatever PLATFORM_DATABASE_PROVIDER says. Live ryzevo.com
+ * already runs the platform on SQL Server while the Crewin stores are still files; the switch is turned on in phase 4,
+ * after db:copy-legacy has filled the tables. The rows go to the platform database (SQL Server in production).
+ */
 function legacyStoreMode(env = process.env) {
-  if (env.CREWIN_LEGACY_STORE === 'db' || env.CREWIN_LEGACY_STORE === 'file') return env.CREWIN_LEGACY_STORE;
-  return env.PLATFORM_DATABASE_PROVIDER === 'mssql' ? 'db' : 'file';
+  return env.PLATFORM_LEGACY_STORE === 'mssql' ? 'db' : 'file';
 }
 
 module.exports = { recordStore, mssqlRecordsDb, plan, positions, legacyStoreMode, storeName, storeOptions, WEB_STORES, AGENT_STORES, hashOf };

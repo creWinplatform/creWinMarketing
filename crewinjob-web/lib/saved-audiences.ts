@@ -1,7 +1,7 @@
 import type { CampaignAudience, FillBucket } from '@/lib/campaigns';
 import { mutateStore, readStore, webStore } from '@/lib/legacy-store';
 
-// data/campaign-audiences.json, or legacy_records 'web:campaign-audiences' with PLATFORM_DATABASE_PROVIDER=mssql.
+// data/campaign-audiences.json, or legacy_records 'web:campaign-audiences' with PLATFORM_LEGACY_STORE=mssql.
 const STORE = () => webStore('campaign-audiences.json', 'array');
 const FILL_BUCKETS: FillBucket[] = ['zero', 'low', 'mid', 'high'];
 

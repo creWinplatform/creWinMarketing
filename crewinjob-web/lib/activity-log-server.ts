@@ -6,7 +6,7 @@ import { writeTextAtomic } from '@/lib/json-store';
 import { legacyStoreMode, mutateStore, readStore, webDataDir, webStore, withStore } from '@/lib/legacy-store';
 
 // Server side of the activity log (data/activity-log.json, or legacy_records 'web:activity-log' with
-// PLATFORM_DATABASE_PROVIDER=mssql; mirrored to the backend when it is reachable). The newest 200 entries are kept.
+// PLATFORM_LEGACY_STORE=mssql; mirrored to the backend when it is reachable). The newest 200 entries are kept.
 export const activityStore = () => webStore('activity-log.json', 'array');
 export interface ActivityEntry { id: string; type: string; label: string; detail?: string; ts: number }
 

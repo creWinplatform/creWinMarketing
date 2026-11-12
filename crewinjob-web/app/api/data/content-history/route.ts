@@ -19,7 +19,7 @@ export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
 export const fetchCache = 'force-no-store';
 
-// data/content-history.json, or legacy_records 'web:content-history' with PLATFORM_DATABASE_PROVIDER=mssql.
+// data/content-history.json, or legacy_records 'web:content-history' with PLATFORM_LEGACY_STORE=mssql.
 // Compact JSON: the file is read far more often than a person opens it.
 const STORE = () => webStore('content-history.json', 'array', { pretty: false });
 

@@ -2,7 +2,8 @@
 // The agent's JSON data (job-queue.json, .userbot-groups.json, data/*.json, data/*.jsonl) behind one async interface:
 // - file mode (default): the files, exactly as before (json-file.js atomic writes); writes to one file are queued in
 //   this process.
-// - db mode (PLATFORM_DATABASE_PROVIDER=mssql, or CREWIN_LEGACY_STORE=db): rows in the platform database's
+// - db mode (PLATFORM_LEGACY_STORE=mssql — off by default, also when PLATFORM_DATABASE_PROVIDER=mssql): rows in the
+//   platform database's
 //   legacy_records / legacy_stores tables, shared with the panel and locked per store across processes. The code that
 //   does this lives in the panel (crewinjob-web/lib/db/legacy-records.cjs), and so does the SQL Server driver; the
 //   connection string is the panel's (PLATFORM_MSSQL_CONNECTION, PLATFORM_APPSETTINGS_PATH, or
@@ -24,8 +25,7 @@ function records() {
 }
 
 function mode(env = process.env) {
-  if (env.CREWIN_LEGACY_STORE === 'db' || env.CREWIN_LEGACY_STORE === 'file') return env.CREWIN_LEGACY_STORE;
-  return env.PLATFORM_DATABASE_PROVIDER === 'mssql' ? 'db' : 'file';
+  return env.PLATFORM_LEGACY_STORE === 'mssql' ? 'db' : 'file';
 }
 
 // ---------- store definitions ----------
@@ -104,7 +104,7 @@ function db() {
     if (!process.env.PLATFORM_MSSQL_CONNECTION && !process.env.PLATFORM_APPSETTINGS_PATH) process.env.PLATFORM_APPSETTINGS_PATH = path.join(webDir(), 'appsettings.json');
     const { connectionString } = require(path.join(webDir(), 'lib', 'db', 'settings.cjs'));
     const value = connectionString();
-    if (!value) throw new Error('PLATFORM_DATABASE_PROVIDER=mssql needs ConnectionStrings.Platform in crewinjob-web/appsettings.json.');
+    if (!value) throw new Error('PLATFORM_LEGACY_STORE=mssql needs ConnectionStrings.Platform in crewinjob-web/appsettings.json.');
     opened = records().mssqlRecordsDb(value);
   }
   return opened;

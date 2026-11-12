@@ -58,7 +58,7 @@ const keyOf = (phone: string, value: string) => createHmac('sha256', value).upda
 // Consent dates are Turkish calendar days (YYYY-MM-DD), as Crewin's team and most recipients are in Turkey.
 const turkishDay = (at: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul' }).format(at);
 const hint = (text: string) => `${text.slice(0, 3)}•••${text.slice(-2)}`;
-// The file, or legacy_records 'web:whatsapp-consents' (one row per number key) with PLATFORM_DATABASE_PROVIDER=mssql.
+// The file, or legacy_records 'web:whatsapp-consents' (one row per number key) with PLATFORM_LEGACY_STORE=mssql.
 const consentStore = (file: string) => webStore(path.basename(file), 'object', { file });
 const readStore = async (file: string): Promise<Store> => {
   const data = await readLegacyStore(consentStore(file)) as Store;

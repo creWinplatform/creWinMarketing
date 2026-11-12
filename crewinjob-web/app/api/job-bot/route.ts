@@ -11,7 +11,7 @@ export const fetchCache = 'force-no-store';
 
 const AGENT_DIR  = agentDir();
 const CLI_SCRIPT = path.join(AGENT_DIR, 'job-bot-cli.js');
-// The agent's job-queue.json and data/pipeline-state.json, or their legacy_records stores with PLATFORM_DATABASE_PROVIDER=mssql.
+// The agent's job-queue.json and data/pipeline-state.json, or their legacy_records stores with PLATFORM_LEGACY_STORE=mssql.
 const QUEUE = () => agentStore('job-queue.json', 'array');
 const STATE = () => agentStore('data/pipeline-state.json', 'object', { pretty: false });
 

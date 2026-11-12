@@ -8,7 +8,7 @@ import type { JobGuideItem, JobGuideView, JobId, JobStep } from './job-guide-typ
 import type Database from 'better-sqlite3';
 
 // "What would you like to do?" for the Crewin workspace. Its legacy tabs keep their records in JSON stores (web data/,
-// agent data/ — files, or legacy_records with PLATFORM_DATABASE_PROVIDER=mssql) and in the Crewin backend, not in the platform tables, so the steps are read from there. A step is done
+// agent data/ — files, or legacy_records with PLATFORM_LEGACY_STORE=mssql) and in the Crewin backend, not in the platform tables, so the steps are read from there. A step is done
 // only when a record shows it; weekly work (posting, reporting) counts from the last 7 days, so it comes back each week.
 // Each step links to the exact sub-tab (?view=, ?section=) and names the button to press.
 

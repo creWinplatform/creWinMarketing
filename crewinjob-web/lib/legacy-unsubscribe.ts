@@ -9,7 +9,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readStore, webStore, withStore } from './legacy-store';
 
 export const LEGACY_SUPPRESSIONS_FILE = path.join(process.cwd(), 'data', 'email-suppressions.json');
-// The file, or legacy_records 'web:email-suppressions' (one row per address key) with PLATFORM_DATABASE_PROVIDER=mssql.
+// The file, or legacy_records 'web:email-suppressions' (one row per address key) with PLATFORM_LEGACY_STORE=mssql.
 const suppressionStore = (file: string) => webStore(path.basename(file), 'object', { file });
 const PREFIX = 'cwl1_';
 const VALID_DAYS = 365;

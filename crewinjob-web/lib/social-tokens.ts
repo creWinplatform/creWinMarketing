@@ -1,7 +1,7 @@
 import { mutateStore, readStore, webStore } from '@/lib/legacy-store';
 
 // data/social-tokens.json and oauth-state.json, or legacy_records 'web:social-tokens' / 'web:oauth-state' (one row per
-// platform / state) with PLATFORM_DATABASE_PROVIDER=mssql.
+// platform / state) with PLATFORM_LEGACY_STORE=mssql.
 const TOKENS = () => webStore('social-tokens.json', 'object');
 const STATES = () => webStore('oauth-state.json', 'object');
 

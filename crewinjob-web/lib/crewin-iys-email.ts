@@ -35,7 +35,7 @@ export type CrewinEmailGateResult = {
   counts: { total: number; reasons: Partial<Record<IysGateReason, number>>; queued: number };
 };
 const files = { mode: CREWIN_IYS_EMAIL_FILE, pending: CREWIN_IYS_PENDING_FILE };
-// The files, or legacy_records 'web:crewin-iys-email' / 'web:crewin-iys-email-pending' with PLATFORM_DATABASE_PROVIDER=mssql.
+// The files, or legacy_records 'web:crewin-iys-email' / 'web:crewin-iys-email-pending' with PLATFORM_LEGACY_STORE=mssql.
 const store = (file: string) => webStore(path.basename(file), 'object', { file });
 const pendingId = (key: string) => `crewin-iys-pending:${key}`;
 const normal = (email: string) => emailAddress(email.trim().toLowerCase());

@@ -143,13 +143,25 @@ and 377 transactions call the database synchronously today.
 ### Next
 
 - **Phase 4:** the data copy (trial, then real, with approval) and the switch (`PLATFORM_DATABASE_PROVIDER=mssql`).
+  The Crewin stores have a switch of their own (`PLATFORM_LEGACY_STORE=mssql`, below), turned on after their copy.
 - **Speed:** hot paths that run dozens of statements are batched. The panel is fastest in the same AWS region as RDS.
 
 ## Phase 2: the Crewin JSON stores in tables (12 November)
 
 The Crewin workspace kept its data in JSON files: the panel's `data/*.json` and the agent's `job-queue.json`,
-`.userbot-groups.json` and `data/*.json(l)`. With `PLATFORM_DATABASE_PROVIDER=mssql` they are now rows in the platform
-database. Without it (SQLite) the files are used exactly as before, so nothing changes until the switch.
+`.userbot-groups.json` and `data/*.json(l)`. They can now be rows in the platform database.
+
+**The switch: `PLATFORM_LEGACY_STORE=mssql`. Default: off.**
+- **Off (the default):** the panel and the agent use the files exactly as before. This holds even with
+  `PLATFORM_DATABASE_PROVIDER=mssql`, which live ryzevo.com already runs with. Migration 79 creates the two tables
+  there, and they stay empty.
+- **On:** the stores are read from and written to the tables.
+- **When to turn it on (phase 4):** after `db:copy-legacy` has filled the tables on RDS. Set it in `.env.local` for
+  the panel and in the agent's `.env` for an agent started on its own, with both stopped, so no file write lands
+  between the copy and the switch.
+- **Turning it off again** goes back to the files. Writes made while it was on stay only in the tables.
+- `test/legacy-store.test.cjs` and a `db:smoke` step check that with the switch off, a SQL Server platform still reads
+  and writes the files and writes no table row.
 
 ### Inventory
 
@@ -221,10 +233,16 @@ legacy_records (store, record_key, position, body, body_hash, updated_at)       
   - In db mode the agent loads `legacy-records.cjs`, the `mssql` driver and `appsettings.json` from
     `../crewinjob-web` (`CREWIN_WEB_DIR` overrides the path). The agent therefore needs the panel folder next to it,
     as it already does today.
-  - It reads `PLATFORM_DATABASE_PROVIDER` from its environment. Processes the panel starts inherit it. An agent
-    started on its own needs it in its `.env`.
-- **Mode.** `CREWIN_LEGACY_STORE=db|file` overrides the mode chosen by the provider. Tests use it to run the table
-  mode on SQLite.
+  - It reads `PLATFORM_LEGACY_STORE` from its environment. Processes the panel starts inherit it. An agent started on
+    its own needs it in its `.env`.
+- **Mode.** Only `PLATFORM_LEGACY_STORE=mssql` selects the tables. They live in the platform database (SQL Server in
+  production). Tests point them at SQLite or the local server.
+- **Locking details.**
+  - A store's `legacy_stores` row is created (version 0) before any transaction locks it. Concurrent first writers
+    therefore queue on one row instead of racing to insert it.
+  - A transaction that SQL Server ends as a deadlock victim (error 1205) is retried up to five times.
+  - Stress test on the local server: 60 concurrent writers from 6 store objects, 5 rounds, through both the panel's
+    client and the agent's adapter. No update was lost.
 
 ### Copy (local test server only)
 
@@ -253,15 +271,19 @@ posted jobs. The 10 files that do not exist were skipped.
   - concurrent writers;
   - the panel modules in db mode, with no files written.
 - `crewinjob-agent/test/store.test.js`: file mode, db mode, and that the agent's store options equal `AGENT_STORES`.
-- `npm run db:smoke` has a step for the Crewin stores: a due post is claimed once out of three concurrent claims, and
-  an OAuth state is used once.
+- `npm run db:smoke` has two steps for the Crewin stores:
+  - **switch off:** the file is read and written, and no table row appears;
+  - **switch on:** a due post is claimed once out of three concurrent claims, and an OAuth state is used once.
 - The SQL translator now passes a multi-row `INSERT … VALUES (…), (…)` through when it has no conflict clause.
 
 ## Phase 3: backup and recovery on SQL Server (12 November)
 
 RDS keeps its automated snapshots on the AWS side. These scripts keep a copy the application itself can verify, move
 off-host and drill without AWS. They work the same way as the SQLite backup, verify and drill scripts and use the same
-commands. With `PLATFORM_DATABASE_PROVIDER=mssql` they use SQL Server:
+commands. With `PLATFORM_DATABASE_PROVIDER=mssql` they use SQL Server, whatever `PLATFORM_LEGACY_STORE` says:
+- **Every table is exported,** including `legacy_records` / `legacy_stores`. With the switch off they are empty, and the
+  Crewin JSON files stay in `data/` and the agent folder, outside this backup, as before.
+- **After phase 4,** the Crewin stores are inside the database backup.
 
 | Command | With `PLATFORM_DATABASE_PROVIDER=mssql` |
 |---|---|

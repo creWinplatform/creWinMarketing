@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 // Next 14 route içindeki fetch'leri (agent modülleri dahil) veri önbelleğine alabilir → bayat login token'ı; kapat.
 export const fetchCache = 'force-no-store';
 
-// data/post-history.json and post-history-hidden.json, or their legacy_records stores with PLATFORM_DATABASE_PROVIDER=mssql.
+// data/post-history.json and post-history-hidden.json, or their legacy_records stores with PLATFORM_LEGACY_STORE=mssql.
 const STORE = () => webStore('post-history.json', 'array');
 const HIDDEN = () => webStore('post-history-hidden.json', 'array');
 

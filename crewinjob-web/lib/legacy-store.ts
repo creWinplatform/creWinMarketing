@@ -1,7 +1,7 @@
 // The Crewin workspace's JSON stores (data/*.json and the agent files the panel reads), behind one async interface:
 // - file mode (the default, and with the SQLite platform database): the files, exactly as before — writeJsonAtomic
 //   and withFileLock (one Node process);
-// - db mode (PLATFORM_DATABASE_PROVIDER=mssql, or CREWIN_LEGACY_STORE=db): rows in legacy_records/legacy_stores of
+// - db mode (PLATFORM_LEGACY_STORE=mssql; off by default, also when PLATFORM_DATABASE_PROVIDER=mssql): rows in legacy_records/legacy_stores of
 //   the platform database (lib/db/legacy-records.cjs), locked per store across processes.
 // mutate() is the only read-modify-write; its callback runs under the lock and should not wait on the network.
 import fs from 'fs';

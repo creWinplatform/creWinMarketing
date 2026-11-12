@@ -5,7 +5,7 @@ import { crewinDataDir, records, timeOf } from './file-summary';
 import { readStore, storeSummary, webStore } from '../legacy-store';
 // What the growth coach counts as the team's activity. Standard projects keep their drafts in the platform tables. The
 // Crewin workspace keeps its content library and published posts in its own stores (data/content-history.json and
-// data/post-history.json — or their legacy_records stores with PLATFORM_DATABASE_PROVIDER=mssql — mirrored to the Crewin
+// data/post-history.json — or their legacy_records stores with PLATFORM_LEGACY_STORE=mssql — mirrored to the Crewin
 // backend), so the coach reads those instead of the empty platform tables.
 const crewinStore = (file: string, shape: 'array' | 'object' = 'array') => webStore(file, shape, { file: path.join(crewinDataDir(), file) });
 type Scope = readonly [organizationId: string, projectId: string];

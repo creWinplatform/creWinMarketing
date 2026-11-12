@@ -47,15 +47,37 @@ test('the panel and the agent describe the shared stores the same way', () => {
   assert.equal(records.storeName('web', 'content-history.json'), 'web:content-history');
   assert.equal(records.storeName('agent', '.userbot-groups.json'), 'agent:userbot-groups');
   assert.equal(records.storeName('agent', 'data/failed-messages.jsonl'), 'agent:failed-messages');
+  // The tables are used only when PLATFORM_LEGACY_STORE=mssql: live ryzevo.com already runs on SQL Server while the
+  // Crewin stores are files, and the switch is turned on in phase 4 after the copy.
   assert.equal(records.legacyStoreMode({}), 'file');
-  assert.equal(records.legacyStoreMode({ PLATFORM_DATABASE_PROVIDER: 'mssql' }), 'db');
-  assert.equal(records.legacyStoreMode({ PLATFORM_DATABASE_PROVIDER: 'mssql', CREWIN_LEGACY_STORE: 'file' }), 'file');
+  assert.equal(records.legacyStoreMode({ PLATFORM_DATABASE_PROVIDER: 'mssql' }), 'file');
+  assert.equal(records.legacyStoreMode({ PLATFORM_DATABASE_PROVIDER: 'mssql', PLATFORM_LEGACY_STORE: 'file' }), 'file');
+  assert.equal(records.legacyStoreMode({ PLATFORM_DATABASE_PROVIDER: 'mssql', PLATFORM_LEGACY_STORE: 'mssql' }), 'db');
+});
+
+test('switch off: with the platform on SQL Server the panel modules still read and write the files, not the tables', async () => {
+  const dir = temp(), db = sqlite();
+  fs.writeFileSync(path.join(dir, 'seo-work-items.json'), JSON.stringify([{ id: 'seo-1', url: 'https://example.com', title: 'From the file', status: 'proposed', updatedAt: '2026-11-01' }]));
+  fs.writeFileSync(path.join(dir, 'calendar.json'), JSON.stringify([{ id: 'cal_1', date: '2026-11-12' }]));
+  await withEnv({ CREWIN_WEB_DATA_DIR: dir, PLATFORM_DATABASE_PROVIDER: 'mssql', PLATFORM_LEGACY_STORE: '' }, async () => {
+    const store = load('../legacy-store.ts');
+    store.setLegacyStoreDb(db); // were the switch ignored, the empty tables would be read
+    try {
+      assert.equal(store.legacyStoreMode(), 'file');
+      const seo = load('../seo-work-items.ts');
+      assert.deepEqual(plain((await seo.listSeoWorkItems()).map(item => item.title)), ['From the file']);
+      assert.deepEqual(plain(await store.readStore(store.webStore('calendar.json', 'array'))), [{ id: 'cal_1', date: '2026-11-12' }]);
+      await seo.updateSeoWorkItem('seo-1', 'approved');
+      assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'seo-work-items.json'), 'utf8'))[0].status, 'approved', 'the write went to the file');
+      assert.equal((await db.all('SELECT store FROM legacy_stores')).length, 0, 'the tables stay empty');
+    } finally { store.setLegacyStoreDb(null); await db.close(); }
+  });
 });
 
 // ---------- file mode: the files exactly as before ----------
 test('file mode keeps the JSON files: atomic writes, compact where asked, jsonl appends, a summary per change', async () => {
   const dir = temp();
-  await withEnv({ CREWIN_WEB_DATA_DIR: dir, CREWIN_LEGACY_STORE: 'file' }, async () => {
+  await withEnv({ CREWIN_WEB_DATA_DIR: dir, PLATFORM_LEGACY_STORE: 'file' }, async () => {
     const store = load('../legacy-store.ts');
     const list = store.webStore('seo-work-items.json', 'array'), tokens = store.webStore('social-tokens.json', 'object'), history = store.webStore('content-history.json', 'array');
     assert.deepEqual(plain(await store.readStore(list)), []);
@@ -175,7 +197,7 @@ if (connection) dbSuite('mssql', async () => {
 // ---------- the panel modules in db mode ----------
 test('db mode: the panel modules read and write the tables, not the files', async () => {
   const dir = temp(), db = sqlite();
-  await withEnv({ CREWIN_WEB_DATA_DIR: dir, CREWIN_LEGACY_STORE: 'db', AUTH_SECRET: 'legacy-store-fixture-secret' }, async () => {
+  await withEnv({ CREWIN_WEB_DATA_DIR: dir, PLATFORM_LEGACY_STORE: 'mssql', AUTH_SECRET: 'legacy-store-fixture-secret' }, async () => {
     const store = load('../legacy-store.ts');
     store.setLegacyStoreDb(db);
     try {

@@ -9,6 +9,8 @@
 //     --verify-only       compare the tables with the files again, write nothing
 //
 // It refuses any server that is not local: the copy into RDS is phase 4 and needs the owner's approval and a backup.
+// The panel and the agent keep using the files until PLATFORM_LEGACY_STORE=mssql is set, which is the step after this
+// copy (set it with the panel and the agent stopped, so no file write lands between the copy and the switch).
 const fs = require('node:fs');
 const path = require('node:path');
 const { connectionString, describe } = require('../lib/db/settings.cjs');
@@ -83,6 +85,7 @@ async function ensureTables(db) {
     }
     console.log(`Target: ${target.server} / ${target.database}${created ? ` (created ${created} table/index object(s))` : ''}`);
     console.table(report);
+    console.log(`Stores in use: ${records.legacyStoreMode() === 'db' ? 'tables (PLATFORM_LEGACY_STORE=mssql)' : 'files — the tables are used once PLATFORM_LEGACY_STORE=mssql is set'}.`);
   } finally {
     await db.close();
   }

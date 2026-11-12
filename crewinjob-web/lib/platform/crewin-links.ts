@@ -14,7 +14,7 @@ export { crewinSource, isCrewinSite, tagCrewinLinks, tagCrewinShare };
 // tag standard projects' posts carry, so the "Which work brought customers" report can name the post, campaign or email
 // a sign-up came from. Campaign tags follow from data/campaigns.json; every other tag is registered with a title in
 // data/crewin-link-tags.json when a tool sends it. The agent's Telegram posts register theirs in its own
-// data/link-tags.jsonl (crewinjob-agent/modules/link-tags.js computes the same tags). With PLATFORM_DATABASE_PROVIDER=mssql
+// data/link-tags.jsonl (crewinjob-agent/modules/link-tags.js computes the same tags). With PLATFORM_LEGACY_STORE=mssql
 // both are legacy_records stores ('web:crewin-link-tags', 'agent:link-tags').
 export type CrewinTagKind = 'campaign' | 'share' | 'email';
 type Entry = { tag: string; kind: string; title: string; createdAt: string };

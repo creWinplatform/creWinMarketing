@@ -1,6 +1,6 @@
 /**
  * Sunucu taraflı zamanlanmış post yöneticisi.
- * data/scheduled-posts.json dosyasında (mssql ile legacy_records 'web:scheduled-posts') saklar.
+ * data/scheduled-posts.json dosyasında (PLATFORM_LEGACY_STORE=mssql ile legacy_records 'web:scheduled-posts') saklar.
  *
  * Her post: { id, platforms[], content, imageData?, imageMime?, scheduledAt (ISO), status }
  *

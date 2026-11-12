@@ -2,7 +2,7 @@ import type { AdPlatform } from '@/lib/ads-types';
 import { mutateStore, readStore, webStore } from '@/lib/legacy-store';
 import { crewinSource, crewinTag, isCrewinSite } from '@/lib/platform/crewin-links';
 
-// data/campaigns.json, or legacy_records 'web:campaigns' with PLATFORM_DATABASE_PROVIDER=mssql.
+// data/campaigns.json, or legacy_records 'web:campaigns' with PLATFORM_LEGACY_STORE=mssql.
 // Tüm read-modify-write işlemleri depo kilidi altında (eşzamanlı cron / "şimdi başlat" / UI yazmaları)
 const STORE = () => webStore('campaigns.json', 'array', { lock: 'campaigns' });
 const ACTIVE_WINDOW_DAYS = 30;
