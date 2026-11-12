@@ -305,6 +305,10 @@ commands. With `PLATFORM_DATABASE_PROVIDER=mssql` they use SQL Server, whatever 
   3. It runs the SQLite backup's checks on it: integrity, foreign keys, project scope, and every encrypted field must
      open with the key.
   4. It compares every table's value hash.
+  - A backup from an older schema also verifies when the versions since then only added tables, as 78 → 79 did. This
+    covers the backup taken right before `db:upgrade`; the added tables are dropped from the rebuild.
+  - A changed column still fails with `schema_mismatch`.
+  - `restore:drill --server` needs the backup and the code at the same version.
 - **Drill (`restore:drill`).**
   - **`--server`** also loads the backup into a new database `RyzevoDrill_<time>`, re-validates every constraint
     `WITH CHECK`, compares every table and drops the database again (`--keep` keeps it).

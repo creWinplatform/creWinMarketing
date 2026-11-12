@@ -122,6 +122,13 @@ test('phase 4 tools: db:upgrade adds the missing tables in one step; the live gu
   // The fixture database plays RDS at schema 78: without the Crewin store tables.
   const pool = await new sql.ConnectionPool(f.target).connect();
   try { await pool.request().batch('DROP TABLE legacy_records; DROP TABLE legacy_stores; DELETE FROM platform_migrations WHERE version = 79;'); } finally { await pool.close(); }
+  // The backup taken before db:upgrade (database at 78, code at 79) still verifies offline.
+  const before = f.backup();
+  assert.equal(before.result.status, 0, before.result.stderr);
+  assert.match(before.result.stdout, /schema 78, 152 tables/);
+  const verified78 = f.run('scripts/platform-verify-backup.mjs', [before.folder]);
+  assert.equal(verified78.status, 0, verified78.stderr);
+  assert.equal(JSON.parse(verified78.stdout).schemaVersion, 78);
   const plan = f.run('scripts/mssql-upgrade.cjs');
   assert.equal(plan.status, 0, plan.stderr);
   assert.match(plan.stdout, /Schema: database 78, code 79[\s\S]*\+ table legacy_records[\s\S]*\+ table legacy_stores[\s\S]*record schema version\(s\) 79[\s\S]*Plan only/);
