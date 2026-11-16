@@ -52,8 +52,15 @@ export function fit(text: string, box: { w: number; h: number }, opts: { max: nu
   if (!text.trim() || box.w <= 0 || box.h <= 0) return { size: opts.min, lines: [] as string[], height: 0 };
   for (let size = Math.max(opts.max, opts.min); size >= opts.min; size = size > opts.min && size * 0.94 < opts.min ? opts.min : size * 0.94) {
     const font = fontOf(opts.weight, size, opts.family), lines = wrap(text, box.w, font, measure);
-    if (lines.length <= maxLines && lines.length * size * ratio <= box.h + 0.5) return { size, lines, height: lines.length * size * ratio };
+    // A word broken in the middle ("Hakkı / mızda") is a last resort: first try smaller sizes that keep every word whole.
+    const broken = text.split(/\s+/).some(word => word && measure(word, font) > box.w);
+    if (!broken && lines.length <= maxLines && lines.length * size * ratio <= box.h + 0.5) return { size, lines, height: lines.length * size * ratio };
     if (size === opts.min) break;
+  }
+  // Even the smallest size cannot keep every word whole: take the largest size that fits with broken words.
+  for (let size = Math.max(opts.max, opts.min); size > opts.min; size *= 0.94) {
+    const font = fontOf(opts.weight, size, opts.family), lines = wrap(text, box.w, font, measure);
+    if (lines.length <= maxLines && lines.length * size * ratio <= box.h + 0.5 && text.split(/\s+/).some(word => word && measure(word, fontOf(opts.weight, opts.min, opts.family)) > box.w)) return { size, lines, height: lines.length * size * ratio };
   }
   const size = opts.min, font = fontOf(opts.weight, size, opts.family), all = wrap(text, box.w, font, measure);
   const room = Math.max(1, Math.min(maxLines, Math.floor((box.h + 0.5) / (size * ratio)))), lines = all.slice(0, room);

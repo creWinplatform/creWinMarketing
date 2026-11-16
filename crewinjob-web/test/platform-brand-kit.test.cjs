@@ -95,6 +95,8 @@ test('layout: shapes, wrapping, fitting with an ellipsis and readable colours',(
   // On every theme the headline colour reads on its background (WCAG large text 3:1).
   for(const theme of ['primary','light','dark','accent']){const ops=layoutDesign({...EMPTY_CONTENT,headline:'Merhaba'},{template:'announce',w:1080,h:1080,kit:DEFAULT_BRAND_KIT,hasLogo:false,hasPhoto:false,theme});
     const bg=ops[0].color,text=ops.find(op=>op.kind==='text');assert.ok(contrast(bg,text.color)>=3,`${theme}: ${text.color} on ${bg}`);}
+  // Whole words first: a highlight title is shrunk rather than split mid-word ("Hakkı / mızda").
+  for(const label of ["Hakkımızda","Kampanyalar","Ürünler"]){const text=layoutDesign({...EMPTY_CONTENT,headline:label},{template:"highlight",w:1080,h:1920,kit:DEFAULT_BRAND_KIT,hasLogo:false,hasPhoto:false,theme:"light"}).find(op=>op.kind==="text");assert.deepEqual(plain(text.lines),[label],label);}
   assert.equal(sizeName('Google duyarlı 1:1','en'),'Google responsive 1:1');assert.equal(sizeName('Meta 1:1','en'),'Meta 1:1');
 });
 test('carousel: cover, one slide per point and a closing slide, never more than the channel allows',()=>{
