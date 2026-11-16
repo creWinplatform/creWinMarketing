@@ -1721,6 +1721,70 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_ad_auto_pause_log_recent ON platform_ad_auto_pause_log(organization_id,project_id,created_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(80,datetime('now'));
   `))();
+  // Web mentions: Google News searches for the brand and the team's own RSS/Atom feeds (Google Alerts), read by the
+  // worker; complaints and escalations raise a team alert. Plus the licensed music library the operator fills with
+  // scripts/music-library.cjs, the Google search ads content (keywords and responsive search ads) of ad plans, and
+  // the expert requests: listed partner agencies, the briefs clients send them and the files they deliver.
+  // Only new tables (db:upgrade).
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=81').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_web_watch (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+      queries_json TEXT NOT NULL, feeds_json TEXT NOT NULL, language TEXT NOT NULL CHECK(language IN ('tr','en')),
+      checked_at TEXT, last_error TEXT, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_web_mentions (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, url_hash TEXT NOT NULL CHECK(length(url_hash) = 64),
+      source TEXT NOT NULL, title TEXT NOT NULL, url TEXT NOT NULL, snippet TEXT NOT NULL, published_at TEXT,
+      level TEXT NOT NULL CHECK(level IN ('urgent','complaint','none')), state TEXT NOT NULL CHECK(state IN ('new','seen')),
+      first_seen_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,url_hash),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_web_mentions_recent ON platform_web_mentions(organization_id,project_id,first_seen_at);
+    CREATE TABLE platform_music_tracks (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL, mood TEXT NOT NULL, duration_ms INTEGER,
+      mime TEXT NOT NULL CHECK(mime IN ('audio/mpeg','audio/mp4','audio/wav')), bytes INTEGER NOT NULL CHECK(bytes > 0 AND bytes <= 15728640),
+      sha256 TEXT NOT NULL CHECK(length(sha256) = 64), data BLOB NOT NULL, license TEXT NOT NULL, source TEXT NOT NULL,
+      active INTEGER NOT NULL CHECK(active IN (0,1)), created_at TEXT NOT NULL
+    );
+    CREATE TABLE platform_ad_search_content (
+      plan_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, content_json TEXT NOT NULL, digest TEXT NOT NULL CHECK(length(digest) = 64),
+      state TEXT NOT NULL CHECK(state IN ('draft','approved','validated','sent')), approved_by TEXT, approved_at TEXT, validated_digest TEXT, validated_at TEXT,
+      sent_at TEXT, provider_ad_group TEXT, last_error TEXT, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_partner_profiles (
+      project_id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, display_name TEXT NOT NULL, summary TEXT NOT NULL,
+      services_json TEXT NOT NULL, languages_json TEXT NOT NULL, website TEXT NOT NULL, contact TEXT NOT NULL,
+      listed INTEGER NOT NULL CHECK(listed IN (0,1)), updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_expert_requests (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, partner_organization_id TEXT NOT NULL, partner_project_id TEXT NOT NULL,
+      service TEXT NOT NULL, brief_json TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('sent','accepted','declined','delivered','revision','approved','cancelled')),
+      revisions INTEGER NOT NULL CHECK(revisions >= 0), notes_json TEXT NOT NULL, requested_by TEXT NOT NULL, requested_at TEXT NOT NULL,
+      decided_by TEXT, decided_at TEXT, delivered_at TEXT, reviewed_by TEXT, reviewed_at TEXT, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id),
+      FOREIGN KEY(partner_project_id,partner_organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_expert_requests_client ON platform_expert_requests(organization_id,project_id,state);
+    CREATE INDEX platform_expert_requests_partner ON platform_expert_requests(partner_organization_id,partner_project_id,state);
+    CREATE TABLE platform_expert_files (
+      id TEXT PRIMARY KEY, request_id TEXT NOT NULL REFERENCES platform_expert_requests(id), name TEXT NOT NULL,
+      mime TEXT NOT NULL CHECK(mime IN ('image/png','image/jpeg','image/webp','application/pdf')), bytes INTEGER NOT NULL CHECK(bytes > 0 AND bytes <= 6291456),
+      sha256 TEXT NOT NULL CHECK(length(sha256) = 64), parts INTEGER NOT NULL CHECK(parts >= 1), status TEXT NOT NULL CHECK(status IN ('uploading','ready')),
+      round INTEGER NOT NULL CHECK(round >= 1), submitted_at TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE INDEX platform_expert_files_request ON platform_expert_files(request_id,round);
+    CREATE TABLE platform_expert_file_parts (
+      file_id TEXT NOT NULL REFERENCES platform_expert_files(id), part INTEGER NOT NULL, data BLOB NOT NULL,
+      PRIMARY KEY(file_id,part)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(81,datetime('now'));
+  `))();
   return db;
 }
 

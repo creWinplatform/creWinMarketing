@@ -9,8 +9,10 @@
 // Reverts schema 61: the agency package marker on live orders and periods, and agency links.
 // Reverts schema 67: İYS settings, recipient statuses, the upload queue and WhatsApp suppressions.
 // Reverts schema 76: ad creative figures (and the later additions of that round).
+// Reverts schema 81: web mentions, the licensed music library and Google search ad content.
+exports.removeWebMentionsSchema=db=>db.exec("DROP TABLE platform_expert_file_parts; DROP TABLE platform_expert_files; DROP TABLE platform_expert_requests; DROP TABLE platform_partner_profiles; DROP TABLE platform_ad_search_content; DROP TABLE platform_music_tracks; DROP TABLE platform_web_mentions; DROP TABLE platform_web_watch; DELETE FROM platform_migrations WHERE version=81;");
 // Reverts schema 80: the design studio's brand kit and hosted short videos, and the opt-in automatic ad pause.
-exports.removeBrandKitSchema=db=>db.exec("DROP TABLE platform_ad_auto_pause_log; DROP TABLE platform_ad_auto_pause; DROP TABLE platform_media_video_parts; DROP TABLE platform_media_videos; DROP TABLE platform_brand_kits; DELETE FROM platform_migrations WHERE version=80;");
+exports.removeBrandKitSchema=db=>{exports.removeWebMentionsSchema(db);db.exec("DROP TABLE platform_ad_auto_pause_log; DROP TABLE platform_ad_auto_pause; DROP TABLE platform_media_video_parts; DROP TABLE platform_media_videos; DROP TABLE platform_brand_kits; DELETE FROM platform_migrations WHERE version=80;");};
 // Reverts schema 79: the Crewin JSON stores as rows (legacy_records, legacy_stores).
 exports.removeLegacyRecordsSchema=db=>{exports.removeBrandKitSchema(db);db.exec("DROP TABLE legacy_records; DROP TABLE legacy_stores; DELETE FROM platform_migrations WHERE version=79;");};
 // Reverts schema 78: the Monday pack and competitor website reads.

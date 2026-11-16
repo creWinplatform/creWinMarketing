@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { lazyTab } from '@/components/lazy-tab';
-import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck, Rocket, Shapes } from 'lucide-react';
+import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck, Rocket, Shapes, Handshake } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { localeTag } from '@/lib/i18n/shared';
 import TeamAdministration from './TeamAdministration';
@@ -20,6 +20,7 @@ const ProjectBilling=lazyTab(() => import('./ProjectBilling'));
 const LiveBilling=lazyTab(() => import('./LiveBilling'));
 const ProjectAccountInvites=lazyTab(() => import('./ProjectAccountInvites'));
 const AgencyLinksPanel=lazyTab(() => import('./AgencyLinksPanel'));
+const ExpertRequests=lazyTab(() => import('./ExpertRequests'));
 const OperatorConsole=lazyTab(() => import('./OperatorConsole'));
 export default function ProjectSettings({
   workspace,
@@ -61,6 +62,7 @@ export default function ProjectSettings({
       setSection('connections');
     else if (dataOpen && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
+    else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='experts')setSection('experts');
     else if(brandOpen&&requested==='brand')setSection('brand');
     else if(brandOpen&&requested==='brandkit')setSection('brandkit');
     else if(goLiveOpen&&requested==='golive')setSection('golive');
@@ -135,6 +137,10 @@ export default function ProjectSettings({
           },
           {
             id:'plan',Icon:Gauge,label:tr?'Plan & kullanım':'Plan & usage',
+            visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
+          },
+          {
+            id:'experts',Icon:Handshake,label:tr?'Uzman iste':'Ask an expert',
             visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
           },
           {
@@ -280,8 +286,9 @@ export default function ProjectSettings({
       {section === 'data' && dataOpen && <ProductDataSources key={project.id} lang={lang} webhookOnly={crewin} />}
       {section==='golive'&&goLiveOpen&&<div className="mt-6"><GoLivePanel key={'golive-'+project.id} lang={lang}/></div>}
       {section==='iys'&&iysOpen&&<div className="mt-6"><IysPanel key={'iys-'+project.id} lang={lang} crewin={crewin}/></div>}
-      {section==='brandkit'&&brandOpen&&<div className="mt-6"><BrandKitPanel key={'brandkit-'+project.id} lang={lang} projectName={project.name}/></div>}
+      {section==='brandkit'&&brandOpen&&<div className="mt-6"><BrandKitPanel key={'brandkit-'+project.id} lang={lang} projectName={project.name} projectId={project.id}/></div>}
       {section==='brand'&&brandOpen&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
+      {section==='experts'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<div className="mt-6"><ExpertRequests key={'experts-'+project.id} lang={lang}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<AgencyLinksPanel key={'agency-links-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<LiveBilling key={'live-billing-'+project.id} lang={lang}/>}

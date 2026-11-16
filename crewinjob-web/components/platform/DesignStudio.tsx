@@ -1,15 +1,18 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Film, ImagePlus, Layers, Loader2, Palette, Pause, Play, Plus, X } from 'lucide-react';
+import { Download, Film, Handshake, Layers, Loader2, Palette, Pause, Play, Plus, X } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { AD_SIZES, VIDEO_SIZES, postSizes, sizeName, type BrandKitInput, type DesignSize } from '@/lib/platform/brand-kit-types';
 import { EMPTY_CONTENT, carouselSlides, type DesignContent, type DesignOptions, type DesignTemplate, type DesignTheme } from '@/lib/platform/design-layout';
 import { zipStore } from '@/lib/platform/zip-store';
 import { useDialog } from '@/components/a11y/useDialog';
-import { drawDesign, exportDesign, loadImage, saveFile, slug, toBase64, type DesignAssets } from './design/render';
+import { drawDesign, exportDesign, saveFile, slug, toBase64, type DesignAssets } from './design/render';
 import { useBrandKit } from './design/useBrandKit';
-import { StudioError, drawFrame, encodeVideo, uploadVideo, videoDuration, videoSupported } from './design/video';
+import PictureSource from './design/PictureSource';
+import { StudioError, drawFrame, videoDuration, videoSupported } from './design/video';
+import VideoClips from './design/VideoClips';
+import { FONT_STACKS } from '@/lib/platform/brand-kit-types';
 
 type Mode = 'post' | 'ads' | 'video';
 export type StudioImage = { data: string; mime: string };
@@ -28,6 +31,8 @@ const THEMES: { id: DesignTheme; tr: string; en: string; color: (kit: BrandKitIn
   { id: 'accent', tr: 'Vurgu', en: 'Accent', color: kit => kit.colors.accent },
 ];
 const MAX_DRAFT_BYTES = 5 * 1024 * 1024;
+// The AI image aspect closest to the canvas (the studio crops the photo to the canvas anyway).
+const aspectOf = (size: { w: number; h: number }) => { const r = size.w / size.h, options: [string, number][] = [["1:1", 1], ["4:5", 0.8], ["3:4", 0.75], ["9:16", 0.5625], ["16:9", 1.778]]; return options.reduce((best, item) => Math.abs(item[1] - r) < Math.abs(best[1] - r) ? item : best)[0]; };
 
 // The design studio: a template, the brand kit and the person's text become images. Post mode makes one image (or a
 // carousel) for a draft; ad mode makes the same design in every ad size, downloaded as one ZIP; video mode turns the
@@ -94,12 +99,7 @@ export default function DesignStudio({ lang, mode, channel = 'instagram', initia
         : <input maxLength={max} value={content[key]} onChange={event => setContent(old => ({ ...old, [key]: event.target.value }))} />}
     </label>
   );
-  const pickPhoto = async (file: File | undefined) => {
-    if (!file) return;
-    if (!file.type.startsWith('image/') || file.size > 12 * 1024 * 1024) { setError(tr ? 'En fazla 12 MB bir görsel seçin.' : 'Choose an image of at most 12 MB.'); return; }
-    const url = URL.createObjectURL(file);
-    try { setPhoto(await loadImage(url)); setTemplate('photo'); setError(''); } catch { setError(tr ? 'Görsel okunamadı.' : 'Image could not be read.'); } finally { setTimeout(() => URL.revokeObjectURL(url), 1000); }
-  };
+  const [photoCredit, setPhotoCredit] = useState('');
   const run = async (key: string, work: () => Promise<void>) => {
     if (busy) return; setBusy(key); setError(''); setNotice('');
     try { await work(); }
@@ -124,18 +124,6 @@ export default function DesignStudio({ lang, mode, channel = 'instagram', initia
     if (images.length === 1) saveFile(images[0], `${name}-${size.w}x${size.h}.${ext}`, type);
     else saveFile(zipStore(images.map((data, index) => ({ name: `${name}-${index + 1}.${ext}`, data }))), `${name}-carousel.zip`, 'application/zip');
   });
-  // Video: every scene at full size, then the frames, the encoder and (for a draft) the upload.
-  const buildVideo = async () => {
-    const images = slides.map((item, index) => { const c = document.createElement('canvas'), o = options(size, item.template, index); if (o) drawDesign(c, item.content, o, assets, 1); return c; });
-    return await encodeVideo({ images, w: size.w, h: size.h, sceneMs }, (done, total) => setProgress(tr ? `Video hazırlanıyor: %${Math.round((done / total) * 100)}` : `Making the video: ${Math.round((done / total) * 100)}%`));
-  };
-  const useVideo = () => run('video', async () => {
-    const { bytes, durationMs } = await buildVideo();
-    setProgress(tr ? 'Yükleniyor…' : 'Uploading…');
-    const result = await uploadVideo(bytes, { width: size.w, height: size.h, durationMs }, (sent, total) => setProgress(tr ? `Yükleniyor: %${Math.round((sent / total) * 100)}` : `Uploading: ${Math.round((sent / total) * 100)}%`));
-    setProgress(''); onUseVideo?.({ url: result.url });
-  });
-  const downloadVideo = () => run('mp4', async () => { const { bytes } = await buildVideo(); setProgress(''); saveFile(bytes, `${name}-${size.w}x${size.h}.mp4`, 'video/mp4'); });
   const downloadAds = (only?: DesignSize) => run(only ? `ad-${only.id}` : 'zip', async () => {
     const files: { name: string; data: Uint8Array }[] = [], type = photo ? 'image/jpeg' : 'image/png', ext = photo ? 'jpg' : 'png';
     for (const s of only ? [only] : sizes) { const o = options(s, template); if (o) files.push({ name: `${slug(s.group)}/${name}-${s.w}x${s.h}.${ext}`, data: await exportDesign(fullContent, o, assets, type, 0.88) }); }
@@ -149,6 +137,7 @@ export default function DesignStudio({ lang, mode, channel = 'instagram', initia
     <div className={`design-studio design-studio-${mode}`}>
       <div className="design-controls">
         {!kit.revision && <p className="studio-note design-kit-hint"><Palette size={14} /> {tr ? 'Logo ve renkleriniz için Proje ayarları → Marka kiti bölümünü doldurun; o zamana kadar varsayılan renkler kullanılır.' : 'Fill in Project settings → Brand kit for your logo and colours; until then the default colours are used.'}</p>}
+        <p className="studio-note design-kit-hint"><Handshake size={14} /> {tr ? 'Profesyonel çekim, kurgu veya reklam yönetimi mi gerekiyor? ' : 'Need a professional shoot, editing or ad management? '}<a href="/?tab=project&settings=experts" className="design-inline-link">{tr ? 'Uzman iste' : 'Ask an expert'}</a></p>
         <fieldset className="design-fieldset"><legend>{tr ? 'Şablon' : 'Template'}</legend>
           <div className="design-chips">{templates.map(item => <button key={item.id} type="button" className="design-chip" aria-pressed={template === item.id && !scenes} disabled={scenes} onClick={() => setTemplate(item.id)}>{tr ? item.tr : item.en}</button>)}</div>
           {canCarousel && <label className="design-toggle"><input type="checkbox" checked={carousel} onChange={event => { setCarousel(event.target.checked); setSlide(0); }} /><Layers size={14} />{mode === 'video' ? (tr ? 'Maddeleri ayrı sahnelere böl (kapak + maddeler + kapanış, en çok 8 sahne)' : 'One scene per point (cover + points + closing, up to 8 scenes)') : tr ? `Carousel (kapak + maddeler + kapanış, en çok ${maxImages} görsel)` : `Carousel (cover + points + closing, up to ${maxImages} images)`}</label>}
@@ -169,9 +158,9 @@ export default function DesignStudio({ lang, mode, channel = 'instagram', initia
           {(show(['announce', 'photo', 'event']) || mode === 'ads' || carousel) && field('cta', tr ? 'Buton metni' : 'Button text', 28, false, tr ? 'Ör. Hemen inceleyin' : 'E.g. Take a look')}
         </div>
         {(template === 'photo' || photo) && <div className="design-photo">
-          <label className="studio-secondary design-file"><ImagePlus size={15} />{photo ? (tr ? 'Fotoğrafı değiştir' : 'Change photo') : (tr ? 'Fotoğraf seç' : 'Choose a photo')}<input type="file" accept="image/*" onChange={event => { void pickPhoto(event.target.files?.[0]); event.target.value = ''; }} /></label>
-          {photo && <button type="button" className="studio-secondary" onClick={() => setPhoto(null)}><X size={15} />{tr ? 'Fotoğrafı kaldır' : 'Remove photo'}</button>}
-          <small className="studio-note">{tr ? 'Kendi çektiğiniz veya kullanım hakkına sahip olduğunuz bir fotoğraf kullanın.' : 'Use a photo you took or have the rights to use.'}</small>
+          <PictureSource lang={lang} aspect={aspectOf(size)} onPick={(image, credit) => { setPhoto(image); setPhotoCredit(credit); setTemplate('photo'); setError(''); }} onError={setError} />
+          {photo && <p className="studio-note design-photo-credit">{tr ? 'Görsel' : 'Image'}: {photoCredit}<button type="button" className="studio-secondary" onClick={() => { setPhoto(null); setPhotoCredit(''); }}><X size={15} />{tr ? 'Fotoğrafı kaldır' : 'Remove photo'}</button></p>}
+          <small className="studio-note">{tr ? 'Kendi fotoğrafınızda kullanım hakkının sizde olduğundan emin olun.' : 'Make sure you have the rights to use your own photo.'}</small>
         </div>}
       </div>
       <div className="design-preview">
@@ -179,15 +168,12 @@ export default function DesignStudio({ lang, mode, channel = 'instagram', initia
           <canvas ref={preview} className="design-canvas" role="img" aria-label={`${tr ? 'Video önizlemesi' : 'Video preview'} ${size.w}×${size.h}`} />
           <div className="design-actions">
             <button type="button" className="studio-secondary" aria-pressed={playing} onClick={() => setPlaying(value => !value)}>{playing ? <Pause size={15} /> : <Play size={15} />}{playing ? (tr ? 'Duraklat' : 'Pause') : (tr ? 'Oynat' : 'Play')}</button>
-            <span className="studio-note">{tr ? `${slides.length} sahne · ${Math.round(videoDuration({ images: slides, sceneMs }) / 1000)} saniye · sessiz` : `${slides.length} scene(s) · ${Math.round(videoDuration({ images: slides, sceneMs }) / 1000)} seconds · no sound`}</span>
+            <span className="studio-note">{tr ? `${slides.length} sahne · ${Math.round(videoDuration({ images: slides, sceneMs }) / 1000)} saniye (tasarımlar)` : `${slides.length} scene(s) · ${Math.round(videoDuration({ images: slides, sceneMs }) / 1000)} seconds (designs)`}</span>
           </div>
           {!videoSupported() && <p className="studio-note">{tr ? 'Bu tarayıcı video oluşturmayı desteklemiyor. Chrome, Edge veya güncel Safari kullanın.' : 'This browser cannot create videos. Use Chrome, Edge or a recent Safari.'}</p>}
-          <div className="design-actions">
-            {onUseVideo && <button type="button" className="studio-primary" disabled={Boolean(busy) || !videoSupported() || !fullContent.headline.trim() && !fullContent.stat.trim()} onClick={useVideo}>{busy === 'video' ? <Loader2 size={15} className="animate-spin" /> : <Film size={15} />}{tr ? 'Videoyu oluştur ve taslağa ekle' : 'Create the video and add it to the draft'}</button>}
-            <button type="button" className="studio-secondary" disabled={Boolean(busy) || !videoSupported()} onClick={downloadVideo}>{busy === 'mp4' ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}{tr ? 'MP4 indir' : 'Download MP4'}</button>
-          </div>
-          {progress && <p className="studio-note" role="status" aria-live="polite">{progress}</p>}
-          <p className="studio-note">{tr ? 'Müzik eklenmez; Instagram ve TikTok uygulamasında paylaşmadan önce lisanslı müzik ekleyebilirsiniz. Taslağa eklenen videoyu Ryzevo barındırır ve ağlara imzalı bir bağlantıyla verir.' : 'No music is added; you can add licensed music in the Instagram or TikTok app before sharing. Ryzevo hosts a video added to a draft and gives the networks a signed link.'}</p>
+          <VideoClips lang={lang} size={size} designCount={slides.length} sceneMs={sceneMs} overlay={{ font: FONT_STACKS[kit.font], logo }} onUseVideo={onUseVideo} onError={setError}
+            designs={() => slides.map((item, index) => { const canvas = document.createElement('canvas'), o = options(size, item.template, index); if (o) drawDesign(canvas, item.content, o, assets, 1); return canvas; })} />
+          <p className="studio-note">{tr ? 'Taslağa eklenen videoyu Ryzevo barındırır ve ağlara imzalı bir bağlantıyla verir.' : 'Ryzevo hosts a video added to a draft and gives the networks a signed link.'}</p>
         </> : mode === 'post' ? <>
           <canvas ref={preview} className="design-canvas" role="img" aria-label={`${tr ? 'Önizleme' : 'Preview'} ${size.w}×${size.h}`} />
           {slides.length > 1 && <div className="design-slides" role="tablist" aria-label={tr ? 'Slaytlar' : 'Slides'}>{slides.map((_, index) => <button key={index} type="button" role="tab" aria-selected={index === Math.min(slide, slides.length - 1)} onClick={() => setSlide(index)}>{index + 1}</button>)}</div>}

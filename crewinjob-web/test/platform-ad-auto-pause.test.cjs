@@ -48,7 +48,8 @@ test('a failed pause is logged and not retried for six hours; the rule switches 
   assert.equal(await runAdAutoPause(f.db,f.KEY,f.later(16),f.make(true)),0);
   assert.equal(f.state(),'active');assert.equal((await adAutoPause(f.db,f.scope)).recent[0].outcome,'failed');
   await runAdAutoPause(f.db,f.KEY,f.later(40),f.make(true));assert.equal(f.calls.length,1,'no retry within six hours');
-  await runAdAutoPause(f.db,f.KEY,f.later(7*60),f.make());assert.equal(f.state(),'paused','retried after six hours');
+  // Spend well above any day's limit, so the run 7 hours later still warns even if it falls on the next UTC day.
+  f.spend(80000);await runAdAutoPause(f.db,f.KEY,f.later(7*60),f.make());assert.equal(f.state(),'paused','retried after six hours');
   // A second project member turns it on, then is demoted: the rule switches itself off and pauses nothing.
   f.db.prepare("UPDATE platform_ad_plans SET state='active' WHERE id='plan-1'").run();
   const admin={...f.scope,subject:(await f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'auto-admin',password:'fixture-password-123',role:'admin'})).userId};

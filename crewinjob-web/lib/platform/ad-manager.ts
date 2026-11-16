@@ -13,7 +13,8 @@ import type { StoredCredentials } from './credential-envelope';
 
 type AdCredentials={accessToken:string;refreshToken:string;adAccountId:string;currency:string;name:string;status:number|string|null;timezone:string|null;checkedAt:string;googleOAuth?:boolean;expiresAt?:number;apple?:AppleSearchCredentials};
 const PROVIDER_NAME:Record<AdProvider,string>={meta:'Meta',google:'Google Ads',linkedin:'LinkedIn',tiktok:'TikTok',apple_search:'Apple Search Ads'};
-type Plan={app_json:string|null;id:string;provider:AdProvider;connection_id:string;name:string;objective:typeof AD_OBJECTIVES[number];special_category:typeof AD_SPECIAL_CATEGORIES[number];daily_budget_minor:number;currency:string;start_date:string;end_date:string;countries_json:string;link_url:string;state:AdPlanState;digest:string;approved_by:string|null;approved_digest:string|null;approved_at:string|null;provider_campaign_id:string|null;provider_adset_id:string|null;last_error:string|null;spend_minor:number|null;spend_checked_at:string|null;impressions:number|null;clicks:number|null;revision:number;updated_at:string};
+export type AdPlanRow={app_json:string|null;id:string;provider:AdProvider;connection_id:string;name:string;objective:typeof AD_OBJECTIVES[number];special_category:typeof AD_SPECIAL_CATEGORIES[number];daily_budget_minor:number;currency:string;start_date:string;end_date:string;countries_json:string;link_url:string;state:AdPlanState;digest:string;approved_by:string|null;approved_digest:string|null;approved_at:string|null;provider_campaign_id:string|null;provider_adset_id:string|null;last_error:string|null;spend_minor:number|null;spend_checked_at:string|null;impressions:number|null;clicks:number|null;revision:number;updated_at:string};
+type Plan=AdPlanRow;
 // One Graph API call. The token travels only in the Authorization header; the host is fixed.
 export type AdGraph=(method:'GET'|'POST',path:string,token:string,params?:Record<string,string>)=>Promise<Record<string,unknown>>;
 const version=()=>{const value=process.env.PLATFORM_META_ADS_GRAPH_VERSION||'v25.0';return /^v\d{1,3}\.\d$/.test(value)?value:'v25.0';};
@@ -30,7 +31,7 @@ export const adMinorUnit=(currency:string)=>ZERO_DECIMAL.has(currency)?1:100;
 const DATE=/^\d{4}-\d{2}-\d{2}$/,COUNTRY=/^[A-Z]{2}$/;
 const days=(from:string,to:string)=>Math.round((Date.parse(`${to}T00:00:00Z`)-Date.parse(`${from}T00:00:00Z`))/86400000)+1;
 // The promoted app is part of the approved content; plans without one keep their original digest.
-const digestOf=(plan:Pick<Plan,'name'|'objective'|'special_category'|'daily_budget_minor'|'currency'|'start_date'|'end_date'|'countries_json'|'link_url'|'connection_id'>&{app_json?:string|null})=>createHash('sha256').update(JSON.stringify([plan.connection_id,plan.name,plan.objective,plan.special_category,plan.daily_budget_minor,plan.currency,plan.start_date,plan.end_date,plan.countries_json,plan.link_url,...(plan.app_json?[plan.app_json]:[])])).digest('hex');
+export const digestOf=(plan:Pick<Plan,'name'|'objective'|'special_category'|'daily_budget_minor'|'currency'|'start_date'|'end_date'|'countries_json'|'link_url'|'connection_id'>&{app_json?:string|null})=>createHash('sha256').update(JSON.stringify([plan.connection_id,plan.name,plan.objective,plan.special_category,plan.daily_budget_minor,plan.currency,plan.start_date,plan.end_date,plan.countries_json,plan.link_url,...(plan.app_json?[plan.app_json]:[])])).digest('hex');
 export const adsLaunchEnabled=()=>process.env.PLATFORM_ADS_ENABLED==='1';
 
 // Ad management. A project connects its own Meta ad account and sets a daily and monthly cap. Plans are written by
@@ -41,19 +42,19 @@ export class ProjectAds{
   repo:PlatformRepository;
   constructor(public db:Db,public scope:MarketingScope,public key:string,public graph:AdGraph=metaAdsGraph,public provider:AdProvider='meta',public http:AdHttp=adHttp,public refreshGoogle:typeof refreshGoogleCredentials=refreshGoogleCredentials){this.repo=new PlatformRepository(db);}
   args(){return [this.scope.organizationId,this.scope.projectId] as const;}
-  private async can(permission:'read'|'content.write'|'campaign.approve'|'connections.manage'){return await this.repo.can(this.scope.subject,...this.args(),permission);}
+  protected async can(permission:'read'|'content.write'|'campaign.approve'|'connections.manage'){return await this.repo.can(this.scope.subject,...this.args(),permission);}
   private async manager(){return await this.can('connections.manage')&&await this.can('campaign.approve');}
   async authorize(need:'read'|'content.write'|'campaign.approve'|'manage'='read'){
     if(!await this.can('read')||(await this.repo.workspace(this.scope.subject,...this.args()))?.project.productPack!=='standard')throw new MarketingStoreError('Reklam yönetimi için standart proje erişimi gerekli.',403);
     if(need==='manage'?!await this.manager():need!=='read'&&!await this.can(need))throw new MarketingStoreError(need==='manage'?'Reklam hesabı ve bütçe tavanı için bağlantı yönetimi ve onay yetkisi gerekli.':need==='campaign.approve'?'Reklam planlarını yalnız onay yetkisi olan ekip üyeleri onaylayabilir.':'Bu işlem için içerik yazma yetkisi gerekir.',403);
   }
-  private async audit(operation:string){await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
+  protected async audit(operation:string){await this.db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(this.scope.subject,...this.args(),operation,new Date().toISOString());}
   private async connection(id?:string){return await this.db.prepare(`SELECT id,integration_id,account_name,encrypted_credentials FROM platform_connections WHERE organization_id=? AND project_id=? AND provider=? AND active=1${id?' AND id=?':''} ORDER BY updated_at DESC LIMIT 1`).get(...this.args(),AD_CONNECTION[this.provider],...(id?[id]:[])) as {id:string;integration_id:string;account_name:string;encrypted_credentials:string}|undefined;}
   // With an id, only that (still active) account: a plan is always started, paused and read on its own account.
-  private async credentials(id?:string){const connection=await this.connection(id);if(!connection)throw new MarketingStoreError(id?'Planın reklam hesabı artık bağlı değil. Kampanyayı sağlayıcının kendi ekranından kontrol edin.':'Önce reklam hesabını bağlayın.',409);const credentials=decryptCredentials<AdCredentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);
+  protected async credentials(id?:string){const connection=await this.connection(id);if(!connection)throw new MarketingStoreError(id?'Planın reklam hesabı artık bağlı değil. Kampanyayı sağlayıcının kendi ekranından kontrol edin.':'Önce reklam hesabını bağlayın.',409);const credentials=decryptCredentials<AdCredentials>(connection.encrypted_credentials,this.key,...this.args(),connection.id);
     if(this.provider==='google'&&!credentials.currency)throw new MarketingStoreError('Önce Google Ads hesabını doğrulayın.',409);return {connection,credentials};}
   // Google tokens expire within an hour; a refreshed token is stored encrypted again before use.
-  private async token(connection:{id:string},credentials:AdCredentials){
+  protected async token(connection:{id:string},credentials:AdCredentials){
     // Apple: a one-hour token from the stored API user, for each request; it is never stored.
     if(this.provider==='apple_search'){if(!credentials.apple)throw new MarketingStoreError('Apple Search Ads API bilgileri eksik. Hesabı yeniden bağlayın.',409);try{return await appleSearchToken(this.http,credentials.apple);}catch{throw new MarketingStoreError('Apple Search Ads erişimi alınamadı. API kullanıcısını ve anahtarı kontrol edin.',409);}}
     if(this.provider!=='google')return credentials.accessToken;
@@ -62,11 +63,11 @@ export class ProjectAds{
       await this.db.prepare('UPDATE platform_connections SET encrypted_credentials=?,updated_at=? WHERE id=?').run(encryptCredentials(next,this.key,...this.args(),connection.id),new Date().toISOString(),connection.id);}
     return fresh.accessToken;
   }
-  private client(credentials:AdCredentials,token:string){return this.provider==='google'?new GoogleAdsClient(this.http,credentials.adAccountId,token):this.provider==='tiktok'?new TikTokAdsClient(this.http,credentials.adAccountId,token):this.provider==='apple_search'?new AppleSearchAdsClient(this.http,credentials.adAccountId,token):new LinkedInAdsClient(this.http,credentials.adAccountId,token);}
+  protected client(credentials:AdCredentials,token:string){return this.provider==='google'?new GoogleAdsClient(this.http,credentials.adAccountId,token):this.provider==='tiktok'?new TikTokAdsClient(this.http,credentials.adAccountId,token):this.provider==='apple_search'?new AppleSearchAdsClient(this.http,credentials.adAccountId,token):new LinkedInAdsClient(this.http,credentials.adAccountId,token);}
   // Each provider's words for running and paused.
   private statusWord(running:boolean){return this.provider==='google'?(running?'ENABLED':'PAUSED'):this.provider==='tiktok'?(running?'ENABLE':'DISABLE'):this.provider==='apple_search'?(running?'ENABLED':'PAUSED'):(running?'ACTIVE':'PAUSED');}
-  private providerPlan(row:Plan):ProviderPlan{return {id:row.id,name:row.name,objective:row.objective,daily_budget_minor:row.daily_budget_minor,currency:row.currency,start_date:row.start_date,end_date:row.end_date,countries_json:row.countries_json,link_url:row.link_url,provider_campaign_id:row.provider_campaign_id,provider_adset_id:row.provider_adset_id,app_json:row.app_json};}
-  private async policy(){return await this.db.prepare('SELECT * FROM platform_ad_policies WHERE organization_id=? AND project_id=? AND provider=?').get(...this.args(),this.provider) as {connection_id:string;currency:string;daily_cap_minor:number;monthly_cap_minor:number;revision:number;updated_at:string}|undefined;}
+  protected providerPlan(row:Plan):ProviderPlan{return {id:row.id,name:row.name,objective:row.objective,daily_budget_minor:row.daily_budget_minor,currency:row.currency,start_date:row.start_date,end_date:row.end_date,countries_json:row.countries_json,link_url:row.link_url,provider_campaign_id:row.provider_campaign_id,provider_adset_id:row.provider_adset_id,app_json:row.app_json};}
+  protected async policy(){return await this.db.prepare('SELECT * FROM platform_ad_policies WHERE organization_id=? AND project_id=? AND provider=?').get(...this.args(),this.provider) as {connection_id:string;currency:string;daily_cap_minor:number;monthly_cap_minor:number;revision:number;updated_at:string}|undefined;}
   // Connects the project's own ad account: the token is checked against the account and stored encrypted.
   async connect(raw:Record<string,unknown>){
     await this.authorize('manage');
@@ -197,8 +198,8 @@ export class ProjectAds{
     const {connection,credentials}=await this.credentials(row.connection_id);
     return {plan:{id:row.id,name:row.name,objective:row.objective,link_url:row.link_url,provider_adset_id:row.provider_adset_id,provider_campaign_id:row.provider_campaign_id,app:planApp(row),approved:await this.approvedNow(row),currency:row.currency,daily_budget_minor:row.daily_budget_minor,start_date:row.start_date,end_date:row.end_date,countries:JSON.parse(row.countries_json) as string[]},adAccountId:credentials.adAccountId,token:this.provider==='meta'?credentials.accessToken:await this.token(connection,credentials)};
   }
-  private async row(id:unknown){const row=typeof id==='string'?await this.db.prepare('SELECT * FROM platform_ad_plans WHERE id=? AND organization_id=? AND project_id=? AND provider=?').get(id,...this.args(),this.provider) as Plan|undefined:undefined;if(!row)throw new MarketingStoreError('Reklam planı bulunamadı.',404);return row;}
-  private async approvedNow(row:Plan){return row.approved_digest===row.digest&&Boolean(row.approved_by&&await this.repo.can(row.approved_by,...this.args(),'campaign.approve'));}
+  protected async row(id:unknown){const row=typeof id==='string'?await this.db.prepare('SELECT * FROM platform_ad_plans WHERE id=? AND organization_id=? AND project_id=? AND provider=?').get(id,...this.args(),this.provider) as Plan|undefined:undefined;if(!row)throw new MarketingStoreError('Reklam planı bulunamadı.',404);return row;}
+  protected async approvedNow(row:Plan){return row.approved_digest===row.digest&&Boolean(row.approved_by&&await this.repo.can(row.approved_by,...this.args(),'campaign.approve'));}
   async approve(raw:Record<string,unknown>){
     await this.authorize('campaign.approve');
     return await this.db.transaction(async ()=>{const row=await this.row(raw.id);if(raw.expectedRevision!==row.revision)throw new MarketingStoreError('Reklam planı başka bir sekmede değişti. Yenileyip tekrar deneyin.',409);

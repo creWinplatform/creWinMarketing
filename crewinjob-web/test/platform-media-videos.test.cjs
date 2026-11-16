@@ -32,6 +32,21 @@ test('mp4 writer: ftyp, moov before mdat, one H.264 track with the right size, d
   assert.throws(()=>readMp4(Buffer.concat([file,Buffer.from([1,2,3])])),/Trailing|Broken/);
 });
 
+test('mp4 writer: an AAC track goes in as the second trak, after the video in mdat, and the file still checks out',()=>{
+  const asc=new Uint8Array([0x11,0x90]),audio={sampleRate:48000,channels:2,asc,samples:Array.from({length:94},(_,i)=>new Uint8Array(300+i).fill(i))};
+  const video=Array.from({length:60},(_,i)=>sample(4000,i===0,i));
+  const file=Buffer.from(writeMp4({width:1080,height:1920,fps:30,avcC,samples:video,audio})),info=readMp4(file);
+  assert.equal(info.count,60,'the video track is still first');assert.equal(info.offset,info.mdatStart);
+  const videoBytes=video.reduce((s,x)=>s+x.data.length,0),audioBytes=audio.samples.reduce((s,x)=>s+x.length,0);
+  assert.equal(info.mdatEnd-info.mdatStart,videoBytes+audioBytes,'mdat holds both');
+  assert.equal(file.indexOf(Buffer.from('trak')),file.indexOf(Buffer.from('trak'))+0);assert.equal((file.toString('latin1').match(/trak/g)||[]).length,2);
+  assert.ok(file.includes(Buffer.from('soun'))&&file.includes(Buffer.from('mp4a'))&&file.includes(Buffer.from('esds')),'an AAC sound track');
+  const esds=file.indexOf(Buffer.from('esds'));assert.ok(file.subarray(esds,esds+80).includes(Buffer.from(asc)),'the AudioSpecificConfig is in the esds');
+  // The second stco points right after the video samples.
+  const stco=file.lastIndexOf(Buffer.from('stco'));assert.equal(file.readUInt32BE(stco+12),info.mdatStart+videoBytes);
+  assert.throws(()=>writeMp4({width:10,height:10,fps:30,avcC,samples:[sample(4,true,1)],audio:{...audio,samples:[]}}),/Invalid audio/);
+});
+
 test('videos: parts, a checked finish and a signed public read; nothing else is public',coachRun(async f=>{
   const file=mp4(),{started,finished}=await upload(f,file);
   assert.ok(started.parts>1,'a larger file goes in several parts');assert.equal(started.partBytes,VIDEO_PART_BYTES);

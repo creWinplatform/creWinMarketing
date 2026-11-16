@@ -16,6 +16,8 @@ import { searchDropped } from './seo-operations-types';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
 import { ryzevoFeature } from './ryzevo-features';
 import { inboxSignal } from './inbox-signals';
+import { recentNegativeMentions } from './web-mentions';
+import { expertAttention } from './experts';
 import { iysAttention } from './iys';
 import { adWarnings } from './ad-alerts';
 import { fatiguedCreatives } from './ad-creative-stats';
@@ -111,6 +113,16 @@ export async function teamAlerts(db: Db, scope: Scope, now = Date.now()): Promis
     if (iys?.items.length) alerts.push({ kind: 'iys_deadline', severity: iys.items.some(item => item.state === 'failed' || Date.parse(item.due_at) <= now) ? 'urgent' : 'warning', count: iys.items.length, at: iys.items[0].due_at, href: '/?tab=project&settings=iys', keys: iys.items.map(item => `iys:${item.id}:${item.state}`) });
     if (iys?.stale) alerts.push({ kind: 'iys_sync', severity: 'warning', count: 1, at: iys.pulledAt, href: '/?tab=project&settings=iys', keys: [`iys-sync:${iys.pulledAt || 'never'}`] });
   }
+  // The open web: complaints or escalations about the brand found in the last 3 days and not yet looked at.
+  if (ryzevoFeature(project.productPack, 'brand') || project.productPack === 'standard') {
+    let found: Awaited<ReturnType<typeof recentNegativeMentions>> = []; try { found = await recentNegativeMentions(db, scope, now); } catch { found = []; }
+    if (found.length) alerts.push({ kind: 'web_negative', severity: found.some(item => item.level === 'urgent') ? 'urgent' : 'warning', count: found.length, at: found[0].first_seen_at, href: '/?tab=campaigns&campaignView=mentions', keys: found.map(item => `web:${item.id}`) });
+  }
+  // Expert requests waiting for this project: deliveries to review (approvers), new or returned work (a partner's team).
+  if (project?.productPack === 'standard') {
+    let waiting: Awaited<ReturnType<typeof expertAttention>> = []; try { waiting = await expertAttention(db, scope, await can('content.write'), await can('campaign.approve')); } catch { waiting = []; }
+    if (waiting.length) alerts.push({ kind: 'expert_request', severity: 'warning', count: waiting.length, at: waiting[0].updated_at, href: '/?tab=project&settings=experts', keys: waiting.map(item => `expert:${item.id}:${item.state}:${item.updated_at}`) });
+  }
   // Competitor websites that changed in the last week (title, headings, new pages, pricing).
   if (await can('content.write')) {
     let changes: Awaited<ReturnType<typeof recentCompetitorSiteChanges>> = []; try { changes = await recentCompetitorSiteChanges(db, scope, now); } catch { changes = []; }
@@ -156,6 +168,8 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
       case 'competitor_change': return tr ? `Rakip uygulamalarda ${n(alert.count)} değişiklik var (sürüm, ad veya puan).` : `Competitor apps show ${n(alert.count)} change(s) (version, name or rating).`;
       case 'ad_fatigue': return tr ? `${n(alert.count)} reklam görselinin tıklanma oranı son günlerde belirgin düştü. Yeni bir görsel eklemeyi değerlendirin.` : `The click-through rate of ${n(alert.count)} ad image(s) fell clearly in recent days. Consider adding a new image.`;
       case 'ad_cpi': return tr ? `${n(alert.count)} yayındaki reklam planında son 7 günün yükleme başına maliyeti sınırın üstünde. Duraklatmayı değerlendirin.` : `${n(alert.count)} running ad plan(s) cost more per install than the cap over the last 7 days. Consider pausing.`;
+      case 'web_negative': return tr ? `İnternette markanız hakkında ${n(alert.count)} olumsuz haber veya yazı bulundu (son 3 gün). Kontrol edin.` : `${n(alert.count)} negative news item(s) or post(s) about your brand were found on the web (last 3 days). Take a look.`;
+      case 'expert_request': return tr ? `Uzman taleplerinde sizi bekleyen ${n(alert.count)} iş var (yeni talep, düzeltme veya onay bekleyen teslim).` : `${n(alert.count)} expert request item(s) are waiting for you (a new request, a change request or a delivery to review).`;
       case 'competitor_site': return tr ? `Rakip sitelerinde ${n(alert.count)} değişiklik var (başlık, yeni sayfa veya fiyat).` : `Competitor websites show ${n(alert.count)} change(s) (title, new pages or pricing).`;
       case 'weekly_pack': return tr ? `Koç bu haftanın ${n(alert.count)} taslağını hazırladı. Okuyup düzenleyin ve onaylayın; hiçbiri kendiliğinden yayınlanmaz.` : `The coach prepared ${n(alert.count)} draft(s) for this week. Read, edit and approve them; none is published on its own.`;
       case 'worker_stale': return tr ? `Zamanlanmış işler ${alert.at ? `${time(alert.at)} tarihinden beri` : 'bir süredir'} çalışmıyor. Planlı yayınlar, İYS bildirimleri ve eşitlemeler bekliyor; sunucu yöneticisine haber verin.` : `Scheduled jobs have not run ${alert.at ? `since ${time(alert.at)}` : 'for a while'}. Scheduled posts, IYS uploads and syncs are waiting; tell the server operator.`;

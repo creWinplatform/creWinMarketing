@@ -38,6 +38,28 @@ export class GoogleAdsClient{
     if(result.status!==200)throw new Error(`google_${result.status}`);return result.payload;
   }
   async search(query:string){const payload=await this.call('googleAds:search',{query});return (Array.isArray(payload.results)?payload.results:[]) as Record<string,Record<string,unknown>>[];}
+  // Several operations in one atomic request (temporary ids like customers/1/adGroups/-1 link them). validateOnly:
+  // Google checks everything and creates nothing. Errors come back as Google's own messages (no tokens in them).
+  async mutate(mutateOperations:object[],validateOnly:boolean){
+    if(!googleAdsConfigured())throw fail('Google Ads geliştirici anahtarı bu sunucuda yapılandırılmamış.',503);
+    const result=await this.http({method:'POST',url:`https://googleads.googleapis.com/${googleVersion()}/customers/${this.customerId}/googleAds:mutate`,headers:this.headers(),body:JSON.stringify({mutateOperations,validateOnly,partialFailure:false})});
+    if(result.status!==200){const errors=((result.payload?.error as Record<string,unknown>|undefined)?.details as {errors?:{message?:string}[]}[]|undefined)?.flatMap(item=>item.errors||[]).map(item=>String(item.message||'')).filter(Boolean).slice(0,5)||[];
+      throw Object.assign(new Error(`google_${result.status}`),{googleErrors:errors});}
+    return result.payload;
+  }
+  // Keyword ideas (Keyword Planner): needs a developer token with Basic access.
+  async keywordIdeas(seeds:string[],url:string,geoTargetConstants:string[],language:'tr'|'en'){
+    if(!googleAdsConfigured())throw fail('Google Ads geliştirici anahtarı bu sunucuda yapılandırılmamış.',503);
+    const body={keywordPlanNetwork:'GOOGLE_SEARCH',language:language==='en'?'languageConstants/1000':'languageConstants/1037',geoTargetConstants,pageSize:50,...(seeds.length&&url?{keywordAndUrlSeed:{keywords:seeds,url}}:seeds.length?{keywordSeed:{keywords:seeds}}:{urlSeed:{url}})};
+    const result=await this.http({method:'POST',url:`https://googleads.googleapis.com/${googleVersion()}/customers/${this.customerId}:generateKeywordIdeas`,headers:this.headers(),body:JSON.stringify(body)});
+    if(result.status!==200)throw new Error(`google_${result.status}`);
+    return (Array.isArray(result.payload.results)?result.payload.results:[] as Record<string,unknown>[]).map(item=>{const metrics=(item as Record<string,unknown>).keywordIdeaMetrics as Record<string,unknown>|undefined;
+      return {text:String((item as Record<string,unknown>).text||'').slice(0,80),searches:Number(metrics?.avgMonthlySearches)||0,competition:typeof metrics?.competition==='string'?metrics.competition:'UNSPECIFIED'};}).filter(item=>item.text);
+  }
+  async geoTargets(countries:string[]){
+    const rows=await this.search(`SELECT geo_target_constant.resource_name, geo_target_constant.country_code FROM geo_target_constant WHERE geo_target_constant.country_code IN (${countries.map(code=>`'${code.replace(/[^A-Z]/g,'')}'`).join(',')}) AND geo_target_constant.target_type = 'Country'`);
+    return rows.map(row=>String(row.geoTargetConstant?.resourceName||'')).filter(name=>/^geoTargetConstants\/\d+$/.test(name));
+  }
   async account():Promise<ProviderAccount>{
     const row=(await this.search('SELECT customer.descriptive_name, customer.currency_code, customer.time_zone, customer.status FROM customer LIMIT 1'))[0]?.customer;
     if(!row||typeof row.currencyCode!=='string'||!/^[A-Z]{3}$/.test(row.currencyCode))throw new Error('no customer');

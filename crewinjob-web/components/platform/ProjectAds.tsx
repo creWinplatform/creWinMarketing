@@ -8,6 +8,8 @@ import { AD_OBJECTIVES, AD_SPECIAL_CATEGORIES, type AdPlanView, type AdsSnapshot
 import Msg from '@/components/Msg';
 import AdCreatives from './AdCreatives';
 import AdAutoPausePanel from './AdAutoPausePanel';
+import AdSearchContent from './AdSearchContent';
+import AdBudgetAdvice from './AdBudgetAdvice';
 import { onTabKeys } from './tab-keys';
 
 type Form={id?:string;revision?:number;name:string;objective:string;specialCategory:string;daily:string;startDate:string;endDate:string;countries:string;linkUrl:string;appStore:string;appId:string;storeUrl:string;metaApplicationId:string;targetCost:string};
@@ -137,6 +139,8 @@ export default function ProjectAds({lang}:{lang:Locale}){
       {item.lastError&&<p className="studio-error" role="alert"><Msg text={item.lastError}/></p>}
       {item.spendCheckedAt&&<p className="coach-muted"><BadgeDollarSign size={13}/> {item.spendMinor===null?(tr?`${P.name} harcama verisi döndürmedi.`:`${P.name} returned no spend data.`):(tr?`${P.of} bildirdiği harcama: ${money(item.spendMinor)}`:`Spend reported by ${P.name}: ${money(item.spendMinor)}`)} · {new Date(item.spendCheckedAt).toLocaleString(locale)}</p>}
       {(provider==='meta'||provider==='tiktok')&&item.providerCampaignId&&<AdCreatives key={`${provider}:${item.id}`} planId={item.id} provider={provider} tr={tr}/>}
+      {provider==='google'&&item.objective==='OUTCOME_TRAFFIC'&&item.providerCampaignId&&<AdSearchContent key={`search:${item.id}`} planId={item.id} tr={tr} canWrite={data.canWrite} canApprove={data.canApprove} canManage={data.canManage}/>}
+      {(provider==='meta'||provider==='google')&&item.state==='active'&&item.spendCheckedAt&&<AdBudgetAdvice key={`budget:${item.id}`} planId={item.id} provider={provider} tr={tr} canApply={data.canManage&&data.canApprove} money={money} onApplied={load}/>}
     </li>)}</ul>:data.policy&&!form?<div className="studio-empty"><p>{tr?'Henüz reklam planı yok.':'No ad plans yet.'}</p></div>:null}
     {!data.launchEnabled&&<p className="coach-muted">{tr?`Reklam yayınını başlatma bu sunucuda kapalı (PLATFORM_ADS_ENABLED). Planlar onaylanıp ${P.on} duraklatılmış olarak hazırlanabilir.`:`Starting ads is off on this server (PLATFORM_ADS_ENABLED). Plans can still be approved and prepared on ${P.name} as paused.`}</p>}
     <p className="compass-safety"><ShieldCheck size={15}/>{tr?`Ryzevo bütçeyi kendi başına artırmaz veya harcamayı başlatmaz. Harcama ve sonuçlar yalnız ${P.of} bildirdiği şekilde gösterilir; getiri vaadi yoktur.`:`Ryzevo never raises a budget or starts spending on its own. Spend and results are shown only as ${P.name} reports them; no return is promised.`}</p>

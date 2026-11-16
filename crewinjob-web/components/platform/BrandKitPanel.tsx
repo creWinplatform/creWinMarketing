@@ -8,6 +8,7 @@ import { EMPTY_CONTENT, type DesignOptions, type DesignTemplate } from '@/lib/pl
 import { zipStore } from '@/lib/platform/zip-store';
 import { canvasBytes, drawDesign, exportDesign, fontsReady, loadImage, saveFile, slug, toBase64 } from './design/render';
 import { useBrandKit } from './design/useBrandKit';
+import ProfileHandoff from './design/ProfileHandoff';
 
 type Item = { key: string; size: DesignSize; template: DesignTemplate; label?: string };
 // YouTube shows only the centre 1546×423 of the 2560×1440 banner on every device; Facebook crops the cover's sides on phones.
@@ -20,7 +21,7 @@ const SAFE: Record<string, DesignOptions['safe']> = {
 
 // Project settings → Brand kit: logo, colours, font, handle and tagline used by every design, plus profile pictures,
 // page covers and Instagram highlight covers made from them.
-export default function BrandKitPanel({ lang, projectName }: { lang: Locale; projectName: string }) {
+export default function BrandKitPanel({ lang, projectName, projectId }: { lang: Locale; projectName: string; projectId: string }) {
   const tr = lang === 'tr', { kit, logo, error: loadError, setKit } = useBrandKit();
   const [form, setForm] = useState<BrandKitInput | null>(null), [newLogo, setNewLogo] = useState<BrandLogo | null | undefined>(undefined), [logoImage, setLogoImage] = useState<HTMLImageElement | null>(null);
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [notice, setNotice] = useState(''), [labels, setLabels] = useState(tr ? 'Hakkımızda, Ürünler, Yorumlar, Kampanyalar' : 'About, Products, Reviews, Offers');
@@ -132,6 +133,8 @@ export default function BrandKitPanel({ lang, projectName }: { lang: Locale; pro
         <span className="design-thumb-frame"><canvas ref={node => { if (node) thumbs.current.set(item.key, node); else thumbs.current.delete(item.key); }} aria-hidden="true" /></span>
         <span className="design-thumb-label"><b>{item.label || sizeName(item.size.label, lang)}</b>{item.size.w}×{item.size.h}</span>
       </button>)}</div>
+      {allValid && <ProfileHandoff lang={lang} projectId={projectId} items={items.map(item => ({ key: item.key, label: item.label || sizeName(item.size.label, lang), file: `${item.template === 'highlight' ? `one-cikan-${slug(item.label || '')}` : item.size.id}.png` }))}
+        render={async key => { const item = items.find(entry => entry.key === key), o = item && optionsFor(item); if (!item || !o) throw new Error('item'); const bytes = await exportDesign(contentFor(item), o, { logo: logoImage, photo: null }, 'image/png'); return { bytes, url: `data:image/png;base64,${toBase64(bytes)}` }; }} />}
     </section>
   );
 }

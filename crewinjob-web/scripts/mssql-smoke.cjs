@@ -115,6 +115,36 @@ async function resetDatabase() {
     await videos.remove(started.id);
     return `${started.parts} parts, ${file.length} bytes back intact`;
   });
+  await step('web mentions: settings upsert and a read', async () => {
+    const { saveWebWatch, readDueWebMentions, webMentions } = load('web-mentions.ts');
+    await saveWebWatch(db, scope, { enabled: true, queries: ['Smoke'], feeds: [], language: 'tr' });
+    await saveWebWatch(db, scope, { enabled: true, queries: ['Smoke Marka'], feeds: [], language: 'tr' });
+    const rss = '<rss><channel><item><title>Smoke Marka iade bekleyenler</title><link>https://news.example.com/x</link></item></channel></rss>';
+    const added = await readDueWebMentions(db, Date.now(), async () => rss), again = await readDueWebMentions(db, Date.now() + 4 * 3600000, async () => rss);
+    const list = await webMentions(db, scope);
+    if (added !== 1 || again !== 0 || list.length !== 1 || list[0].level !== 'complaint') throw new Error('web mentions mismatch');
+    return '1 mention, labelled complaint, not stored twice';
+  });
+  await step('expert request: brief, delivery in parts, review', async () => {
+    const { createHash, randomBytes } = require('node:crypto'), { Experts, partnerDirectory } = load('experts.ts'), { EXPERT_PART_BYTES } = load('experts-types.ts');
+    const at = Date.now(), iso = value => new Date(value).toISOString(), order = 'RZLIVE' + randomBytes(16).toString('hex');
+    // A running agency package for the second tenant, written directly (no payment provider is involved).
+    await db.prepare("INSERT INTO platform_billing_live_orders(id,organization_id,project_id,actor_id,idempotency_key,request_digest,merchant_revision,catalog_version,plan_id,cadence,amount_minor,state,terms_url,created_at,expires_at,updated_at,package) VALUES(?,?,?,?,?,'d','m','v','growth','monthly',29900,'paid','https://ryzevo.example/terms',?,?,?,'agency')").run(order, b.organizationId, b.projectId, b.userId, order, iso(at - 86400000), iso(at - 86400000), iso(at - 86400000));
+    await db.prepare("INSERT INTO platform_project_subscriptions(order_id,organization_id,project_id,plan_id,cadence,starts_at,ends_at,grace_ends_at,created_at,package) VALUES(?,?,?,'growth','monthly',?,?,?,?,'agency')").run(order, b.organizationId, b.projectId, iso(at - 86400000), iso(at + 29 * 86400000), iso(at + 36 * 86400000), iso(at - 86400000));
+    const partner = new Experts(db, { subject: b.userId, organizationId: b.organizationId, projectId: b.projectId }), client = new Experts(db, scope);
+    await partner.saveProfile({ displayName: 'Smoke Studio', summary: 'Smoke test partner for product photos and banners.', services: ['photo', 'design'], languages: ['tr'], website: 'https://smoke-studio.example', contact: 'smoke@studio.example', listed: true });
+    if ((await partnerDirectory(db, scope, 'photo')).length !== 1) throw new Error('partner not listed');
+    const sent = await client.create({ partnerId: b.projectId, service: 'photo', title: 'Smoke shoot', details: 'Product photos on a white background, smoke test.', deliverables: '3 JPEG files', dueDate: iso(at + 10 * 86400000).slice(0, 10), budgetNote: '', brand: 'Smoke brand', contact: 'smoke@client.example', shareAcknowledged: true });
+    const id = sent.client.requests[0].id;
+    await partner.decide({ id, decision: 'accept' });
+    const file = randomBytes(EXPERT_PART_BYTES + 5000); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(file);
+    const started = await partner.startFile({ id, name: 'smoke.png', mime: 'image/png', bytes: file.length, sha256: createHash('sha256').update(file).digest('hex') });
+    for (let part = 0; part < started.parts; part++) await partner.filePart(started.fileId, part, file.subarray(part * started.partBytes, (part + 1) * started.partBytes));
+    await partner.finishFile({ id, fileId: started.fileId }); await partner.deliver({ id, note: 'Smoke delivery' });
+    const back = await client.file(id, started.fileId), reviewed = await client.review({ id, decision: 'approve' });
+    if (Buffer.compare(back.data, file) !== 0 || reviewed.client.requests[0].state !== 'approved') throw new Error('expert request mismatch');
+    return `${started.parts} parts, ${file.length} bytes back intact, approved`;
+  });
   await step('growth coach read', async () => { const { GrowthCoach } = load('coach.ts'); const coach = await new GrowthCoach(db, scope).read(); return `revision ${coach.revision}`; });
   await step('job guide', async () => { const { jobGuide } = load('job-guide.ts'); const view = await jobGuide(db, scope); return `${view.jobs.length} jobs`; });
   await step('team alerts', async () => { const { teamAlerts } = load('team-alerts.ts'); return `${(await teamAlerts(db, scope)).length} alerts`; });

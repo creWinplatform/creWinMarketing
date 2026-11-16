@@ -46,6 +46,17 @@ if(process.argv.includes('--ads')){const {encryptCredentials}=load('credential-e
   db.prepare("INSERT INTO platform_ad_policies(organization_id,project_id,connection_id,currency,daily_cap_minor,monthly_cap_minor,revision,updated_by,updated_at) VALUES(?,?,?,'TRY',50000,600000,1,?,?)").run(organizationId,projectId,id,fixture.userId,now);
   for(const [plan,state,name] of [['qa-plan-draft','draft','Bahar trafiği · taslak'],['qa-plan-created','created','Ürün tanıtımı · Meta’da duraklatılmış']])db.prepare("INSERT INTO platform_ad_plans(id,organization_id,project_id,connection_id,name,objective,special_category,daily_budget_minor,currency,start_date,end_date,countries_json,link_url,state,digest,approved_by,approved_digest,approved_at,provider_campaign_id,provider_adset_id,created_by,created_at,updated_at) VALUES(?,?,?,?,?,'OUTCOME_TRAFFIC','NONE',25000,'TRY',?,?,'[\"TR\"]','https://example.com/bahar',?,?,?,?,?,?,?,?,?,?)").run(plan,organizationId,projectId,id,name,day(1),day(10),state,'qa-digest',state==='created'?fixture.userId:null,state==='created'?'qa-digest':null,state==='created'?now:null,state==='created'?'1200000000001':null,state==='created'?'1200000000002':null,fixture.userId,now,now);
   console.log('Ads QA: fake ad account, caps and two plans; no Meta call is made.');}
+if(process.argv.includes('--ads-optimize')){
+  // Ad optimizer QA (with --ads): a running Meta plan with spend figures (budget suggestion) and a paused Google Search
+  // plan (keywords and ad text). Fake accounts; sending and budget changes stay off, and no provider is called.
+  if(!process.argv.includes('--ads'))throw new Error('Ad optimizer QA requires --ads.');
+  const {encryptCredentials}=load('credential-envelope.ts'),now=new Date().toISOString(),day=offset=>new Date(Date.now()+offset*86400000).toISOString().slice(0,10),{organizationId,projectId}=fixture,google='qa-google-ads';
+  db.prepare("INSERT INTO platform_connections(id,organization_id,project_id,provider,integration_id,account_name,encrypted_credentials,active,updated_at) VALUES(?,?,?,'google_ads','1234567890','QA Google Ads · gerçek değil',?,1,?)").run(google,organizationId,projectId,encryptCredentials({accessToken:'qa-only-not-real',refreshToken:'qa-only-not-real',googleOAuth:true,expiresAt:Date.now()+3600000,adAccountId:'1234567890',currency:'TRY',name:'QA Google Ads · gerçek değil',status:'ENABLED',timezone:'Europe/Istanbul',checkedAt:now},encryptionKey,organizationId,projectId,google),now);
+  db.prepare("INSERT INTO platform_ad_policies(organization_id,project_id,connection_id,currency,daily_cap_minor,monthly_cap_minor,revision,updated_by,updated_at,provider) VALUES(?,?,?,'TRY',50000,600000,1,?,?,'google')").run(organizationId,projectId,google,fixture.userId,now);
+  const insert=db.prepare("INSERT INTO platform_ad_plans(id,organization_id,project_id,connection_id,name,objective,special_category,daily_budget_minor,currency,start_date,end_date,countries_json,link_url,state,digest,approved_by,approved_digest,approved_at,provider_campaign_id,provider_adset_id,created_by,created_at,updated_at,provider,spend_minor,impressions,clicks,spend_checked_at) VALUES(?,?,?,?,?,'OUTCOME_TRAFFIC','NONE',25000,'TRY',?,?,'[\"TR\"]',?,?,'qa-digest',?,'qa-digest',?,?,?,?,?,?,?,?,?,?,?)");
+  insert.run('qa-plan-active',organizationId,projectId,'qa-meta-ads','Kış kampanyası · yayında',day(-6),day(20),'https://example.com/kis','active',fixture.userId,now,'1200000000011','1200000000012',fixture.userId,now,now,'meta',165000,20000,260,now);
+  insert.run('qa-plan-google',organizationId,projectId,google,'Arama · ön muhasebe',day(1),day(20),'https://example.com/on-muhasebe','created',fixture.userId,now,'customers/1234567890/campaigns/888','customers/1234567890/campaignBudgets/777',fixture.userId,now,now,'google',null,null,null,null);
+  console.log('Ad optimizer QA: a running Meta plan with spend and a paused Google Search plan; nothing is sent.');}
 if(process.argv.includes('--budget')){
   // Budget planner QA: fake Meta totals on the --ads plan plus stub GA4 and Search Console readings. No provider call is made.
   if(!process.argv.includes('--ads'))throw new Error('Budget QA requires --ads.');
@@ -166,6 +177,28 @@ if(process.argv.includes('--agency')){
   // Client projects from --portfolio become self-service trials, so they can join the package with their owner's consent.
   for(const row of db.prepare("SELECT m.user_id,m.organization_id,m.project_id FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE u.username LIKE 'qa-client-%' AND m.role='owner'").all())db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(row.user_id,new Date().toISOString(),new Date(Date.now()+14*86400000).toISOString(),row.organization_id,row.project_id);
   console.log('Agency QA: the fixture project has a running agency package (stub period, no PayTR call).');}
+if(process.argv.includes('--experts')){
+  // Expert requests QA (with --portfolio --agency): the fixture project is a listed partner with one new request from
+  // Deniz Mobilya; a second disposable agency ("Mavi Stüdyo") is listed too and has delivered a file to the fixture.
+  if(!process.argv.includes('--agency')||!process.argv.includes('--portfolio'))throw new Error('Experts QA requires --portfolio --agency.');
+  const {Experts}=load('experts.ts'),{createHash,randomBytes:rb}=require('node:crypto'),iso=value=>new Date(value).toISOString(),due=iso(Date.now()+12*86400000).slice(0,10);
+  const scopeOf=w=>({subject:w.userId,organizationId:w.organizationId,projectId:w.projectId}),owner=username=>db.prepare("SELECT m.user_id AS userId,m.organization_id AS organizationId,m.project_id AS projectId FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE u.username=? AND m.role='owner'").get(username);
+  const studio=await repo.provision('legacy-admin',{organizationName:'Mavi Stüdyo',projectName:'Mavi Stüdyo',website:'https://mavi-studyo.example',username:'qa-partner',password:'design-fixture-only-123'});
+  const id='RZLIVE'+rb(16).toString('hex'),start=iso(Date.now()-86400000);
+  db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(studio.userId,iso(Date.now()),iso(Date.now()+14*86400000),studio.organizationId,studio.projectId);
+  db.prepare("INSERT INTO platform_billing_live_orders(id,organization_id,project_id,actor_id,idempotency_key,request_digest,merchant_revision,catalog_version,plan_id,cadence,amount_minor,state,terms_url,created_at,expires_at,updated_at,paid_at,package) VALUES(?,?,?,?,?,'qa','qa','qa','growth','monthly',29900,'paid','https://ryzevo.example/terms',?,?,?,?,'agency')").run(id,studio.organizationId,studio.projectId,studio.userId,id,start,start,start,start);
+  db.prepare("INSERT INTO platform_project_subscriptions(order_id,organization_id,project_id,plan_id,cadence,starts_at,ends_at,grace_ends_at,created_at,package) VALUES(?,?,?,'growth','monthly',?,?,?,?,'agency')").run(id,studio.organizationId,studio.projectId,start,iso(Date.now()+29*86400000),iso(Date.now()+36*86400000),start);
+  const home=new Experts(db,scopeOf(fixture)),mavi=new Experts(db,scopeOf(studio));
+  await home.saveProfile({displayName:'Ryzevo QA Ajans',summary:'Sosyal medya yönetimi ve banner setleri hazırlayan QA ajansı (gerçek değil).',services:['design','social'],languages:['tr'],website:'https://ajans.example',contact:'ajans@ryzevo.example',listed:true});
+  await mavi.saveProfile({displayName:'Mavi Stüdyo',summary:'Ürün fotoğrafı, kısa video ve kurgu yapan küçük bir stüdyo (QA kaydı, gerçek değil).',services:['photo','video','design'],languages:['tr','en'],website:'https://mavi-studyo.example',contact:'merhaba@mavi-studyo.example',listed:true});
+  const deniz=owner('qa-client-a');
+  if(deniz)await new Experts(db,scopeOf(deniz)).create({partnerId:fixture.projectId,service:'social',title:'Kasım kampanyası için 12 gönderi',details:'Yeni koltuk serisi için Instagram ve Facebook gönderileri; marka renklerine uygun, sade bir dil.',deliverables:'12 adet 1080×1350 görsel ve metinleri',dueDate:due,budgetNote:'Aylık paket konuşulabilir',brand:'Marka: Deniz Mobilya (https://deniz-mobilya.example)',contact:'Deniz Mobilya · iletisim@deniz-mobilya.example',shareAcknowledged:true});
+  const sent=await home.create({partnerId:studio.projectId,service:'photo',title:'Yeni ürün için beyaz fon çekim',details:'Ön muhasebe kutusu için beyaz fonda üç açıdan ürün fotoğrafı istiyoruz.',deliverables:'3 adet 2000 px JPEG',dueDate:due,budgetNote:'',brand:'Marka: Örnek Proje (https://example.com)\nMarka dili: Açık, pratik, güvenilir.',contact:'Örnek Proje · qa@example.com',shareAcknowledged:true});
+  const request=sent.client.requests[0].id,png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==','base64');
+  await mavi.decide({id:request,decision:'accept'});
+  const file=await mavi.startFile({id:request,name:'urun-on.png',mime:'image/png',bytes:png.length,sha256:createHash('sha256').update(png).digest('hex')});await mavi.filePart(file.fileId,0,png);await mavi.finishFile({id:request,fileId:file.fileId});
+  await mavi.deliver({id:request,note:'İlk tur: ön açı. Diğer açılar yarın.'});
+  console.log('Experts QA: two listed partners, one new request for the fixture agency, one delivery waiting for review. Nothing leaves this machine.');}
 if(process.argv.includes('--push')){
   // Phone-notification QA: a throwaway VAPID pair made for this run, so the button shows. The worker is not run here,
   // so nothing is posted to a push service.
@@ -436,4 +469,4 @@ process.on('SIGTERM',async ()=>{await selectionPortal?.close();server.kill();});
 // Geçici fixture veritabanı her çalıştırmada yeniden üretilir; sunucu kapanınca klasörü de kaldır.
 server.on('exit',async code=>{await selectionPortal?.close();try{require('node:fs').rmSync(directory,{recursive:true,force:true});}catch{}process.exitCode=code || 0;});
 }
-void start().catch(()=>{try{db.close();}catch{}console.error('Visual QA fixture could not start.');process.exitCode=1;});
+void start().catch(error=>{try{db.close();}catch{}console.error('Visual QA fixture could not start.',process.env.QA_DEBUG?error:'');process.exitCode=1;});
