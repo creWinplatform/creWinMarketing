@@ -93,6 +93,28 @@ async function resetDatabase() {
     if (!value.voiceDraft) throw new Error('no draft');
     return `source ${value.voiceSource}`;
   });
+  // Design studio: the brand kit (logo text column) and a video uploaded in parts (VARBINARY) and read back signed.
+  await step('brand kit save and read', async () => {
+    const { BrandKits } = load('brand-kit.ts');
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const kits = new BrandKits(db, scope), saved = await kits.save({ colors: { primary: '#123456', accent: '#ffcc00', dark: '#111111', light: '#fafafa' }, font: 'manrope', handle: '@smoke', tagline: 'Smoke', logo: { data: png, mime: 'image/png' }, expectedRevision: 0 });
+    let refused = false;
+    try { await kits.save({ colors: saved.colors, font: 'serif', handle: '', tagline: '', expectedRevision: 0 }); } catch (error) { refused = error.status === 409; }
+    const read = await kits.read();
+    if (read.revision !== 1 || read.logo?.data !== png || !refused) throw new Error('brand kit mismatch');
+    return 'revision 1, logo kept, stale save refused';
+  });
+  await step('video upload in parts and signed read', async () => {
+    const { createHash } = require('node:crypto'), { writeMp4 } = load('mp4-writer.ts'), { MediaVideos, publicVideo } = load('media-videos.ts'), key = '12'.repeat(32);
+    const avcC = new Uint8Array([1, 0x64, 0, 0x28, 0xff, 0xe1, 0, 4, 0x67, 0x64, 0, 0x28, 1, 0, 2, 0x68, 0xee]);
+    const file = Buffer.from(writeMp4({ width: 1080, height: 1920, fps: 30, avcC, samples: Array.from({ length: 60 }, (_, i) => ({ data: new Uint8Array(12000).fill(i), key: i === 0 })) }));
+    const videos = new MediaVideos(db, scope, key), started = await videos.start({ bytes: file.length, sha256: createHash('sha256').update(file).digest('hex'), width: 1080, height: 1920, durationMs: 2000 });
+    for (let part = 0; part < started.parts; part++) await videos.part(started.id, part, file.subarray(part * started.partBytes, (part + 1) * started.partBytes));
+    const { url } = await videos.finish(started.id, 'https://ryzevo.example'), read = await publicVideo(db, key, started.id, new URL(url).searchParams.get('signature'));
+    if (!read || Buffer.compare(read.file, file) !== 0) throw new Error('video bytes differ');
+    await videos.remove(started.id);
+    return `${started.parts} parts, ${file.length} bytes back intact`;
+  });
   await step('growth coach read', async () => { const { GrowthCoach } = load('coach.ts'); const coach = await new GrowthCoach(db, scope).read(); return `revision ${coach.revision}`; });
   await step('job guide', async () => { const { jobGuide } = load('job-guide.ts'); const view = await jobGuide(db, scope); return `${view.jobs.length} jobs`; });
   await step('team alerts', async () => { const { teamAlerts } = load('team-alerts.ts'); return `${(await teamAlerts(db, scope)).length} alerts`; });

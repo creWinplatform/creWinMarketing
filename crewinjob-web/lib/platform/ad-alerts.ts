@@ -7,7 +7,8 @@ import { adMinorUnit } from './ad-manager';
 import type { AdProvider } from './ad-providers';
 
 // Spend warnings for running ad plans, from what the providers last reported and the daily spend pulled into the mobile
-// report. They are shown to the team with a pause suggestion; Ryzevo never pauses or changes a plan by itself.
+// report. They are shown to the team with a pause suggestion; Ryzevo pauses a plan only when the team switched on the
+// automatic pause (ad-auto-pause.ts), and never starts or changes one.
 export type AdWarning={kind:'overspend'|'cpi';planId:string;provider:AdProvider;name:string;currency:string;day:string;
   // overspend: reported spend against the budget allowed so far; cpi: cost per install over the last 7 closed days.
   spendMinor:number;limitMinor:number;installs?:number;cpiMinor?:number|null};

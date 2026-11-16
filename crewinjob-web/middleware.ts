@@ -47,6 +47,8 @@ export async function middleware(req: NextRequest) {
   if (pathname === '/api/messaging/whatsapp/hook') return NextResponse.next();
   // Exact provider-only image route verifies its short-lived per-job HMAC itself.
   if (/^\/api\/platform\/publication-media\/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(pathname)) return NextResponse.next();
+  // Design studio videos: only the signed read (GET/HEAD) is public; the route checks the HMAC itself. Uploads keep the session.
+  if (/^\/api\/platform\/media\/videos\/vid_[a-f0-9]{32}$/.test(pathname) && (req.method === 'GET' || req.method === 'HEAD') && req.nextUrl.searchParams.has('signature')) return NextResponse.next();
   if (pathname === '/api/platform/x/callback') return NextResponse.next();
   // Exact PayTR notification route validates its provider HMAC and bound test order.
   if (pathname === '/api/platform/billing/paytr/notify') return NextResponse.next();

@@ -6,6 +6,7 @@ import { projectRequest } from '@/lib/platform/client';
 import { localeTag } from '@/lib/i18n/shared';
 import type { InboxItemView, InboxSnapshot } from '@/lib/platform/social-inbox-types';
 import { onTabKeys } from './tab-keys';
+import { inboxSignal } from '@/lib/platform/inbox-signals';
 import Msg from '@/components/Msg';
 
 type State=InboxItemView['state'];
@@ -28,7 +29,9 @@ export default function ProjectSocialInbox({lang}:{lang:Locale}){
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));}finally{setBusy('');}};
   if(!data)return error?<p className="studio-error" role="alert"><Msg text={error}/></p>:<div className="studio-skeleton" role="status">{tr?'Gelen kutusu yükleniyor…':'Loading the inbox…'}</div>;
   const when=(value:string)=>new Date(value).toLocaleString(locale,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
-  const shown=data.items.filter(item=>item.state===filter);
+  // Escalations first, then complaints (inbox-signals.ts); the rest keep their order.
+  const rank=(text:string)=>{const level=inboxSignal(text).level;return level==='urgent'?0:level==='complaint'?1:2;};
+  const shown=data.items.filter(item=>item.state===filter).map((item,index)=>({item,index,rank:rank(item.text)})).sort((a,b)=>a.rank-b.rank||a.index-b.index).map(entry=>entry.item);
   return <section className="ads-center messaging-center" aria-labelledby="inbox-title">
     <div className="studio-section-title"><h2 id="inbox-title">{tr?'Yorumlar ve mesajlar':'Comments and messages'}</h2>{data.me.read&&<span className="studio-badge">{tr?`Bugün ${data.syncsLeft} yenileme hakkı`:`${data.syncsLeft} refreshes left today`}</span>}</div>
     <p className="studio-note">{tr?'Yayınladığınız gönderilerin altındaki yorumlar, Facebook sayfası ve Instagram mesajları ve WhatsApp numaranıza yazılan mesajlar. Metindeki e-posta, telefon ve kullanıcı adları gizlenir; yazar adı ve kimliği açık saklanmaz. Her yanıtı ekip yazar ve onaylar; mesajlara yalnız son 24 saat içinde yanıt verilebilir.':'Comments under your published posts, Facebook Page and Instagram messages, and messages to your WhatsApp number. Emails, phone numbers and handles are masked; author names and ids are not stored in clear. The team writes and approves every reply; messages can only be answered within 24 hours.'}</p>
@@ -47,6 +50,7 @@ export default function ProjectSocialInbox({lang}:{lang:Locale}){
     {data.me.read&&<div className="ads-account"><div className="publication-view-tabs" role="tablist" aria-label={tr?'Kayıt durumu':'Item state'} onKeyDown={onTabKeys}>{(Object.keys(STATES) as State[]).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}</div>
       {shown.length?<ul className="ads-list">{shown.map(item=>{const value=drafts[item.id]??item.reply,locked=['sending','sent','uncertain'].includes(String(item.replyState)),sendOn=item.platform==='whatsapp'?data.whatsappSendEnabled:data.sendEnabled;return <li key={item.id} className="studio-draft-row">
         <p className="coach-muted">{PLATFORM[item.platform]} · {item.accountName} · {item.kind==='comment'?(tr?'yorum':'comment'):(tr?'mesaj':'message')} · {when(item.receivedAt)}{item.postUrl&&<> · <a href={item.postUrl} target="_blank" rel="noreferrer">{tr?'Gönderiyi aç':'Open post'}</a></>}{item.replyState&&<> · <span className="coach-state">{tr?'yanıt':'reply'}: {REPLY[item.replyState][idx]}</span></>}</p>
+        {(()=>{const signal=inboxSignal(item.text);return signal.level!=='none'&&<p className={`inbox-signal inbox-signal-${signal.level}`}>{signal.level==='urgent'?(tr?'Acil: hukuki veya dolandırıcılık ifadesi':'Urgent: legal or fraud wording'):(tr?'Şikâyet':'Complaint')}<span className="inbox-signal-words">“{signal.matches.join('”, “')}”</span></p>;})()}
         <p className="messaging-text">{item.text}</p>
         {!item.windowOpen&&!locked&&<p className="coach-muted">{tr?'Mesajlaşma penceresi kapandı (24 saat geçti); bu mesaja buradan yanıt gönderilemez.':'The messaging window has closed (24 hours passed); this message cannot be answered from here.'}</p>}
         {!item.windowOpen&&!locked&&data.me.suggest&&item.state==='new'&&<button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={()=>void post(item.id,{action:'decide',id:item.id,expectedRevision:item.revision,state:'dismissed'})}><EyeOff size={14}/>{tr?'Gizle':'Hide'}</button>}

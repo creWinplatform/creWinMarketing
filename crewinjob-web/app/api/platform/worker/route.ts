@@ -8,6 +8,7 @@ import { pruneProductEvents } from '@/lib/platform/product-webhooks';
 import { refreshDueCompetitors,refreshDueKeywordRanks } from '@/lib/platform/mobile-aso';
 import { syncDueReviews } from '@/lib/platform/mobile-reviews';
 import { refreshDueAdSpend } from '@/lib/platform/ad-spend-refresh';
+import { runAdAutoPause } from '@/lib/platform/ad-auto-pause';
 import { refreshDueCreativeStats } from '@/lib/platform/ad-creatives';
 import { deliverNextWeeklySummary } from '@/lib/platform/weekly-summary';
 import { pruneAttribution } from '@/lib/platform/attribution';
@@ -138,7 +139,9 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const storeReviews=Date.now()-startedAt<20000?await syncDueReviews(db,credentialEncryptionKey()).catch(()=>0):0;
   // Ad spend: one running plan per tick is read from its provider every 6 hours, for the spend warnings.
   const adSpend=Date.now()-startedAt<20000?await refreshDueAdSpend(db,credentialEncryptionKey()).catch(()=>0):0;
+  // Opt-in: plans past the team's spend threshold are paused, as the person who switched the rule on (ad-auto-pause.ts).
+  const adAutoPaused=Date.now()-startedAt<20000?await runAdAutoPause(db,credentialEncryptionKey()).catch(()=>0):0;
   // Ad image and video figures: one plan per tick, once a day, for the comparison and the fatigue warning.
   const creativeStats=Date.now()-startedAt<20000?await refreshDueCreativeStats(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, creativeStats, weeklySummary, weeklyPack, competitorSites };
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, adAutoPaused, creativeStats, weeklySummary, weeklyPack, competitorSites };
 }

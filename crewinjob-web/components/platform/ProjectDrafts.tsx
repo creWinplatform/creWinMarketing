@@ -19,6 +19,8 @@ import {
   ClipboardCheck,
   ArrowUp,
   ArrowDown,
+  Shapes,
+  Film,
 } from 'lucide-react';
 import type { GoalDefinition, Locale } from '@/lib/platform/catalog';
 import type { UnifiedCampaign } from '@/lib/campaigns';
@@ -30,6 +32,8 @@ import ContentRepurpose from './ContentRepurpose';
 import Msg from '@/components/Msg';
 import { COACH_PREFILL_KEY, COACH_REF } from '@/lib/platform/coach-types';
 const CampaignReviewPanel=lazyTab(() => import('./CampaignReviewPanel'));
+// The design studio loads only when someone opens it from the image editor.
+const DesignStudioDialog=lazyTab(() => import('./DesignStudio').then(module => ({ default: module.DesignStudioDialog })));
 const channels = [
   'email',
   'linkedin',
@@ -101,6 +105,7 @@ export default function ProjectDrafts({
   const [extraImages,setExtraImages]=useState<{data:string;mime:string}[]>([]),[imageBusy,setImageBusy]=useState(false);
   const draftImages=image?[image,...extraImages]:[];
   const replaceImages=(images:{data:string;mime:string}[])=>{setImage(images[0]||null);setExtraImages(images.slice(1));setImageChanged(true);};
+  const [studioOpen,setStudioOpen]=useState(false),[videoStudio,setVideoStudio]=useState<''|'draft'|'campaign'>('');
   const editor = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (!showEditor) return;
@@ -523,15 +528,29 @@ export default function ProjectDrafts({
               setImageBusy(true);
               try{const images=[];for(const file of files){const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=()=>reject(new Error());reader.readAsDataURL(file);});images.push({data,mime:file.type});}replaceImages(images);setError('');}catch{setError(tr?'Görsel okunamadı.':'Image could not be read.');}finally{setImageBusy(false);}
             }}/></label>{imageBusy&&<p role="status">{tr?'Görseller okunuyor…':'Reading images…'}</p>}
+            <button type="button" className="studio-secondary publication-studio-button" disabled={imageBusy} onClick={()=>setStudioOpen(true)}><Shapes size={15}/>{tr?'Şablonla görsel hazırla':'Create an image from a template'}</button>
+            {studioOpen&&<DesignStudioDialog open onClose={()=>setStudioOpen(false)} lang={lang} mode="post" channel={form.channel} maxImages={['instagram','tiktok'].includes(form.channel)?5:1} initial={{headline:form.name,body:form.text.slice(0,200)}} onUse={images=>{
+              // A carousel replaces the images; a single image is added while the channel's limit and 5 MB allow it.
+              const max=['instagram','tiktok'].includes(form.channel)?5:1,combined=[...draftImages,...images],bytes=combined.reduce((sum,item)=>sum+item.data.length*0.75,0);
+              replaceImages(images.length>1||combined.length>max||bytes>5*1024*1024?images.slice(0,max):combined);setStudioOpen(false);setError('');
+              setNotice(tr?'Şablon görseli taslağa eklendi. Taslağı kaydetmeyi unutmayın.':'The template image was added to the draft. Remember to save the draft.');
+            }}/>}
             <div className="publication-gallery">{draftImages.map((media,index)=><figure key={`${index}-${media.data.slice(-32)}`}><img src={`data:${media.mime};base64,${media.data}`} alt={`${tr?'Taslak görseli':'Draft image'} ${index+1}`} className="publication-image"/><figcaption><span>{index+1} / {draftImages.length}</span><div className="publication-gallery-actions">{draftImages.length>1&&<><button className="icon-button" type="button" disabled={index===0||imageBusy} title={tr?'Öne taşı':'Move earlier'} aria-label={`${tr?'Görseli öne taşı':'Move image earlier'} ${index+1}`} onClick={()=>{const next=[...draftImages];[next[index-1],next[index]]=[next[index],next[index-1]];replaceImages(next);}}><ArrowUp size={16}/></button><button className="icon-button" type="button" disabled={index===draftImages.length-1||imageBusy} title={tr?'Sona taşı':'Move later'} aria-label={`${tr?'Görseli sona taşı':'Move image later'} ${index+1}`} onClick={()=>{const next=[...draftImages];[next[index+1],next[index]]=[next[index],next[index+1]];replaceImages(next);}}><ArrowDown size={16}/></button></>}<button className="icon-button" type="button" disabled={imageBusy} title={tr?'Görseli kaldır':'Remove image'} aria-label={`${tr?'Görseli kaldır':'Remove image'} ${index+1}`} onClick={()=>replaceImages(draftImages.filter((_,i)=>i!==index))}><X size={16}/></button></div></figcaption></figure>)}</div><small>{tr?'En az 320 px genişlik · En/boy 0,8–1,91 · Instagram: en fazla 5 görsel':'At least 320 px wide · Aspect ratio 0.8–1.91 · Instagram: up to 5 images'}</small></div>}
             {!campaigns&&form.channel==='instagram'&&draftImages.length===1&&!video&&<label className="studio-form-full automation-choice"><input type="checkbox" checked={story} onChange={event=>{setStory(event.target.checked);setStoryChanged(true);}}/>{tr?'Bu görseli Story olarak paylaş (Story’de açıklama metni görünmez)':'Share this image as a Story (Stories show no caption)'}</label>}
             {campaigns&&['instagram','facebook','tiktok','youtube','pinterest'].some(channel=>selectedChannels.includes(channel))&&<div className="studio-form-full publication-video-editor"><label>{tr?'Video (isteğe bağlı, kendi sitenizdeki https adresi)':'Video (optional, https address you host)'}<input type="url" inputMode="url" placeholder="https://…/video.mp4" value={campaignVideo.url} onChange={event=>{const url=event.target.value;setCampaignVideo(old=>({url,instagram:url&&!old.instagram&&selectedChannels.includes('instagram')?'reel':old.instagram,facebook:url&&!old.facebook&&selectedChannels.includes('facebook')?'feed':old.facebook}));}}/></label>
               {campaignVideo.url&&selectedChannels.includes('instagram')&&<label>{tr?'Instagram biçimi':'Instagram format'}<select value={campaignVideo.instagram} onChange={event=>setCampaignVideo(old=>({...old,instagram:event.target.value as ''|'reel'|'story'}))}><option value="">{tr?'Instagram’a video gönderme':'No video on Instagram'}</option><option value="reel">Reels</option><option value="story">Story</option></select></label>}
               {campaignVideo.url&&selectedChannels.includes('facebook')&&<label>{tr?'Facebook biçimi':'Facebook format'}<select value={campaignVideo.facebook} onChange={event=>setCampaignVideo(old=>({...old,facebook:event.target.value as ''|'feed'|'reel'}))}><option value="">{tr?'Facebook’a video gönderme':'No video on Facebook'}</option><option value="feed">{tr?'Sayfa videosu':'Page video'}</option><option value="reel">Reels</option></select></label>}
+              <button type="button" className="studio-secondary publication-studio-button" onClick={()=>setVideoStudio('campaign')}><Film size={15}/>{tr?'Şablonla video hazırla':'Create a video from a template'}</button>
               <p className="studio-note">{tr?'Video yalnız seçtiğiniz biçimle Instagram ve Facebook sayfasına gider; diğer kanallar metinle paylaşılır. MP4 veya MOV, en çok 300 MB, yönlendirmesiz doğrudan dosya adresi. Ryzevo yalnız adresi saklar ve yayından önce dosyanın değişmediğini kontrol eder.':'The video goes only to Instagram and the Facebook Page, in the format you choose; other channels get the text. MP4 or MOV, up to 300 MB, a direct file address without redirects. Ryzevo stores only the address and checks before publishing that the file has not changed.'}</p></div>}
             {!campaigns&&['instagram','facebook','tiktok','youtube','pinterest'].includes(form.channel)&&<div className="studio-form-full publication-video-editor"><label>{tr?'Video (kendi sitenizdeki https adresi)':'Video (https address you host)'}<input type="url" inputMode="url" placeholder="https://…/video.mp4" value={video?.url||''} onChange={event=>{const url=event.target.value;setVideo(url?{url,format:video?.format||(['facebook','tiktok','youtube','pinterest'].includes(form.channel)?'feed':'reel')}:null);setVideoChanged(true);}}/></label>
               {video&&['instagram','facebook'].includes(form.channel)&&<label>{tr?'Biçim':'Format'}<select value={video.format} onChange={event=>{setVideo({...video,format:event.target.value as 'reel'|'story'|'feed'});setVideoChanged(true);}}>{form.channel==='facebook'?<><option value="feed">{tr?'Sayfa videosu':'Page video'}</option><option value="reel">Reels</option></>:<><option value="reel">Reels</option><option value="story">Story</option></>}</select></label>}
-              <p className="studio-note">{tr?'MP4 veya MOV, en çok 300 MB; adres yönlendirmesiz olarak doğrudan dosyayı vermeli. Ryzevo yalnız adresi saklar; yayından önce dosyanın değişmediğini kontrol eder. Video ile görsel aynı içerikte kullanılamaz.':'MP4 or MOV, up to 300 MB; the address must return the file directly, without redirects. Ryzevo stores only the address and checks before publishing that the file has not changed. A video and images cannot be used in the same item.'}</p></div>}
+              <button type="button" className="studio-secondary publication-studio-button" onClick={()=>setVideoStudio('draft')}><Film size={15}/>{tr?'Şablonla video hazırla':'Create a video from a template'}</button>
+              <p className="studio-note">{tr?'MP4 veya MOV, en çok 300 MB; adres yönlendirmesiz olarak doğrudan dosyayı vermeli. Ryzevo yalnız adresi saklar; yayından önce dosyanın değişmediğini kontrol eder. Şablonla hazırlanan videoyu ise Ryzevo barındırır. Video ile görsel aynı içerikte kullanılamaz.':'MP4 or MOV, up to 300 MB; the address must return the file directly, without redirects. Ryzevo stores only the address and checks before publishing that the file has not changed; a video made from a template is hosted by Ryzevo. A video and images cannot be used in the same item.'}</p></div>}
+            {videoStudio&&<DesignStudioDialog open onClose={()=>setVideoStudio('')} lang={lang} mode="video" channel={form.channel} initial={{headline:form.name,body:(form.text||'').slice(0,200)}} onUseVideo={({url})=>{
+              if(videoStudio==='campaign')setCampaignVideo(old=>({url,instagram:old.instagram||(selectedChannels.includes('instagram')?'reel':''),facebook:old.facebook||(selectedChannels.includes('facebook')?'feed':'')}));
+              else{setVideo({url,format:video?.format||(['facebook','tiktok','youtube','pinterest'].includes(form.channel)?'feed':'reel')});setVideoChanged(true);}
+              setVideoStudio('');setError('');setNotice(tr?'Video hazırlandı ve taslağa eklendi. Taslağı kaydetmeyi unutmayın.':'The video was made and added to the draft. Remember to save the draft.');
+            }}/>}
             <div className="studio-form-full studio-ai-brief">
               <label>
                 {tr ? 'AI içerik briefi' : 'AI content brief'}

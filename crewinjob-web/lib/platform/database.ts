@@ -1680,6 +1680,47 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX legacy_records_order ON legacy_records(store,position);
     INSERT INTO platform_migrations(version,applied_at) VALUES(79,datetime('now'));
   `))();
+  // Design studio: the brand kit (logo, colours, font) and the short videos it makes, which Ryzevo hosts itself (uploaded
+  // in parts, served at a signed public address for Instagram, Facebook and TikTok), plus the opt-in automatic ad pause
+  // and its log (ad-auto-pause.ts). Only new tables, so SQL Server takes
+  // the whole round with one db:upgrade.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=80').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_brand_kits (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision >= 1),
+      kit_json TEXT NOT NULL, logo_data TEXT, logo_mime TEXT CHECK(logo_mime IS NULL OR logo_mime IN ('image/png','image/jpeg','image/webp')),
+      updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_media_videos (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('uploading','ready')), bytes INTEGER NOT NULL CHECK(bytes > 0 AND bytes <= 52428800),
+      sha256 TEXT NOT NULL CHECK(length(sha256) = 64), width INTEGER NOT NULL CHECK(width > 0), height INTEGER NOT NULL CHECK(height > 0),
+      duration_ms INTEGER NOT NULL CHECK(duration_ms > 0), parts INTEGER NOT NULL CHECK(parts > 0),
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, ready_at TEXT,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_media_videos_project ON platform_media_videos(organization_id,project_id,created_at);
+    CREATE TABLE platform_media_video_parts (
+      video_id TEXT NOT NULL, part INTEGER NOT NULL CHECK(part >= 0), data BLOB NOT NULL,
+      PRIMARY KEY(video_id,part),
+      FOREIGN KEY(video_id) REFERENCES platform_media_videos(id)
+    );
+    CREATE TABLE platform_ad_auto_pause (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), kinds_json TEXT NOT NULL,
+      enabled_by TEXT, enabled_at TEXT, checked_at TEXT, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_ad_auto_pause_log (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, plan_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('overspend','cpi')), spend_minor INTEGER NOT NULL, limit_minor INTEGER NOT NULL, currency TEXT NOT NULL,
+      outcome TEXT NOT NULL CHECK(outcome IN ('paused','failed')), detail TEXT, created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_ad_auto_pause_log_recent ON platform_ad_auto_pause_log(organization_id,project_id,created_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(80,datetime('now'));
+  `))();
   return db;
 }
 

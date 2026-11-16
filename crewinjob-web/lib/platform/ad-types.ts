@@ -25,5 +25,7 @@ export type AdsSnapshot={
   // The project's mobile apps (Mobile growth), offered as the promoted app of an app-install plan.
   apps:{id:string;name:string;appleId:string;packageName:string}[];
   // Spend warnings of this provider's running plans and the project's thresholds (ad-alerts.ts).
-  alerts?:{warnings:{kind:'overspend'|'cpi';planId:string;day:string;spendMinor:number;limitMinor:number;installs?:number;cpiMinor?:number|null;currency:string}[];settings:{overspendPercent:number;cpiCaps:Record<string,number>;updatedAt:string|null};canEdit:boolean};
+  alerts?:{warnings:{kind:'overspend'|'cpi';planId:string;day:string;spendMinor:number;limitMinor:number;installs?:number;cpiMinor?:number|null;currency:string}[];settings:{overspendPercent:number;cpiCaps:Record<string,number>;updatedAt:string|null};canEdit:boolean;
+    // Opt-in automatic pause (ad-auto-pause.ts) and its last attempts.
+    autoPause?:{enabled:boolean;kinds:('overspend'|'cpi')[];enabledAt:string|null;enabledByMe:boolean;recent:{planId:string;kind:'overspend'|'cpi';outcome:'paused'|'failed';spendMinor:number;limitMinor:number;currency:string;at:string}[]}};
 };

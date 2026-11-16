@@ -15,6 +15,7 @@ import { webPushConfiguration } from './web-push-config';
 import { searchDropped } from './seo-operations-types';
 import { TEAM_ALERT_LIMITS as LIMITS, type TeamAlert, type TeamAlertsView } from './team-alerts-types';
 import { ryzevoFeature } from './ryzevo-features';
+import { inboxSignal } from './inbox-signals';
 import { iysAttention } from './iys';
 import { adWarnings } from './ad-alerts';
 import { fatiguedCreatives } from './ad-creative-stats';
@@ -41,6 +42,10 @@ export async function teamAlerts(db: Db, scope: Scope, now = Date.now()): Promis
     const window = INBOX_LIMITS.messageWindowHours * HOUR;
     const rows = await db.prepare("SELECT id,received_at FROM platform_social_inbox WHERE organization_id=? AND project_id=? AND kind='message' AND state='new' AND (reply_state IS NULL OR reply_state IN ('draft','rejected')) AND received_at>? AND received_at<=? ORDER BY received_at,id LIMIT 200")
       .all(...args(scope), iso(now - window), iso(now - window + LIMITS.inboxWarningHours * HOUR)) as { id: string; received_at: string }[];
+    // Unanswered comments and messages of the last three days that read like a complaint or an escalation (inbox-signals.ts).
+    const recent = await db.prepare("SELECT id,text,received_at FROM platform_social_inbox WHERE organization_id=? AND project_id=? AND state='new' AND received_at>? ORDER BY received_at DESC,id LIMIT 300").all(...args(scope), iso(now - 3 * DAY)) as { id: string; text: string; received_at: string }[];
+    const flagged = recent.map(row => ({ row, signal: inboxSignal(row.text) })).filter(item => item.signal.level !== 'none');
+    if (flagged.length) alerts.push({ kind: 'inbox_negative', severity: flagged.some(item => item.signal.level === 'urgent') ? 'urgent' : 'warning', count: flagged.length, at: flagged[0].row.received_at, href: '/?tab=campaigns&campaignView=inbox', keys: flagged.map(item => `inbox-signal:${item.row.id}`) });
     if (rows.length) alerts.push({ kind: 'inbox_window', severity: 'urgent', count: rows.length, at: iso(Date.parse(rows[0].received_at) + window), href: '/?tab=campaigns&campaignView=inbox', keys: rows.map(row => `inbox:${row.id}`) });
   }
   // Live posts the provider rejected, that were stopped, or whose outcome is unknown, in the last week.
@@ -138,6 +143,7 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
   const line = (alert: TeamAlert) => {
     switch (alert.kind) {
       case 'inbox_window': return tr ? `${n(alert.count)} mesajın 24 saatlik cevap penceresi kapanmak üzere (${alert.count > 1 ? 'ilk kapanış' : 'kapanış'}: ${time(alert.at)}). Pencere kapanınca bu kanaldan cevap gönderilemez.` : `The 24-hour reply window of ${n(alert.count)} message(s) is about to close (${alert.count > 1 ? 'first closes' : 'closes'} ${time(alert.at)}). After it closes, no reply can be sent on that channel.`;
+      case 'inbox_negative': return tr ? `Gelen kutusunda cevap bekleyen ${n(alert.count)} yorum veya mesaj şikâyet ya da hukuki ifade içeriyor (son 3 gün). Önce bunlara bakın.` : `${n(alert.count)} unanswered comment(s) or message(s) contain a complaint or legal wording (last 3 days). Look at these first.`;
       case 'publication_failed': return tr ? `${n(alert.count)} gerçek yayın reddedildi, durduruldu veya sonucu belirsiz. Tekrar yayınlamadan önce sosyal hesabı kontrol edin.` : `${n(alert.count)} live post(s) were rejected, stopped or have an unknown outcome. Check the social account before publishing again.`;
       case 'connection_expiring': return tr ? `${n(alert.count)} sosyal hesap bağlantısının izni bitti veya 7 gün içinde bitiyor (${alert.count > 1 ? 'ilk bitiş' : 'bitiş'}: ${time(alert.at)}). Planlı yayınların gitmesi için yeniden bağlanın.` : `${n(alert.count)} social account grant(s) ended or end within 7 days (${alert.count > 1 ? 'first ends' : 'ends'} ${time(alert.at)}). Reconnect so scheduled posts can go out.`;
       case 'billing_period': return alert.phase === 'grace' ? (tr ? `Ücretli dönem bitti; ek süre ${time(alert.at)} tarihinde sona eriyor. Sonra yeni üretim durur, kayıtlar korunur.` : `The paid period has ended; the grace period ends at ${time(alert.at)}. After that, new work stops and records are kept.`)
@@ -146,7 +152,7 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
       case 'ad_error': return tr ? `${n(alert.count)} reklam planında sağlayıcı hatası var. Harcamanın durumunu reklam hesabından kontrol edin.` : `${n(alert.count)} ad plan(s) have a provider error. Check the spend status in the ad account.`;
       case 'iys_deadline': return tr ? `${n(alert.count)} izin veya ret kaydının İYS bildirim süresi doluyor ya da gönderilemedi (ilk son tarih: ${time(alert.at)}).` : `${n(alert.count)} consent or opt-out record(s) are close to their IYS deadline or could not be sent (first deadline: ${time(alert.at)}).`;
       case 'iys_sync': return tr ? 'İYS değişiklikleri 6 saattir okunamadı; okunana kadar durumu eski alıcılara canlı gönderim yapılmaz.' : 'IYS changes have not been read for 6 hours; until they are, live messages skip recipients with an old status.';
-      case 'ad_overspend': return tr ? `${n(alert.count)} yayındaki reklam planı harcama eşiğini aştı. Duraklatmayı değerlendirin; Ryzevo kendiliğinden duraklatmaz.` : `${n(alert.count)} running ad plan(s) are above the spend threshold. Consider pausing; Ryzevo never pauses on its own.`;
+      case 'ad_overspend': return tr ? `${n(alert.count)} yayındaki reklam planı harcama eşiğini aştı. Duraklatmayı değerlendirin; otomatik duraklatma açık değilse Ryzevo kendiliğinden duraklatmaz.` : `${n(alert.count)} running ad plan(s) are above the spend threshold. Consider pausing; unless automatic pause is on, Ryzevo never pauses on its own.`;
       case 'competitor_change': return tr ? `Rakip uygulamalarda ${n(alert.count)} değişiklik var (sürüm, ad veya puan).` : `Competitor apps show ${n(alert.count)} change(s) (version, name or rating).`;
       case 'ad_fatigue': return tr ? `${n(alert.count)} reklam görselinin tıklanma oranı son günlerde belirgin düştü. Yeni bir görsel eklemeyi değerlendirin.` : `The click-through rate of ${n(alert.count)} ad image(s) fell clearly in recent days. Consider adding a new image.`;
       case 'ad_cpi': return tr ? `${n(alert.count)} yayındaki reklam planında son 7 günün yükleme başına maliyeti sınırın üstünde. Duraklatmayı değerlendirin.` : `${n(alert.count)} running ad plan(s) cost more per install than the cap over the last 7 days. Consider pausing.`;

@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { lazyTab } from '@/components/lazy-tab';
-import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck, Rocket } from 'lucide-react';
+import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck, Rocket, Shapes } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { localeTag } from '@/lib/i18n/shared';
 import TeamAdministration from './TeamAdministration';
@@ -13,6 +13,7 @@ import IysPanel from './IysPanel';
 import GoLivePanel from './GoLivePanel';
 import { iysEnabled } from '@/lib/platform/iys-types';
 import { ryzevoFeature } from '@/lib/platform/ryzevo-features';
+const BrandKitPanel=lazyTab(() => import('./BrandKitPanel'));
 const ProductDataSources=lazyTab(() => import('./ProductDataSources'));
 const ProjectPlan=lazyTab(() => import('./ProjectPlan'));
 const ProjectBilling=lazyTab(() => import('./ProjectBilling'));
@@ -61,6 +62,7 @@ export default function ProjectSettings({
     else if (dataOpen && requested==='data') setSection('data');
     else if(workspace.accessMode==='platform_account'&&project.productPack==='standard'&&requested==='plan')setSection('plan');
     else if(brandOpen&&requested==='brand')setSection('brand');
+    else if(brandOpen&&requested==='brandkit')setSection('brandkit');
     else if(goLiveOpen&&requested==='golive')setSection('golive');
     else if(iysOpen&&requested==='iys')setSection('iys');
     else if (canOperate && requested === 'operations') setSection('operations');
@@ -117,6 +119,10 @@ export default function ProjectSettings({
           },
           {
             id:'brand',Icon:Palette,label:tr?'Marka dili & rakipler':'Brand voice & competitors',
+            visible:brandOpen,
+          },
+          {
+            id:'brandkit',Icon:Shapes,label:tr?'Marka kiti':'Brand kit',
             visible:brandOpen,
           },
           {
@@ -274,6 +280,7 @@ export default function ProjectSettings({
       {section === 'data' && dataOpen && <ProductDataSources key={project.id} lang={lang} webhookOnly={crewin} />}
       {section==='golive'&&goLiveOpen&&<div className="mt-6"><GoLivePanel key={'golive-'+project.id} lang={lang}/></div>}
       {section==='iys'&&iysOpen&&<div className="mt-6"><IysPanel key={'iys-'+project.id} lang={lang} crewin={crewin}/></div>}
+      {section==='brandkit'&&brandOpen&&<div className="mt-6"><BrandKitPanel key={'brandkit-'+project.id} lang={lang} projectName={project.name}/></div>}
       {section==='brand'&&brandOpen&&<div className="mt-6"><CoachBrandStudio key={'brand-'+project.id} workspace={workspace} lang={lang} onUpdate={onUpdate}/></div>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&<ProjectPlan key={'plan-'+project.id} lang={lang}/>}
       {section==='plan'&&workspace.accessMode==='platform_account'&&project.productPack==='standard'&&workspace.permissions?.includes('billing.manage')&&<AgencyLinksPanel key={'agency-links-'+project.id} lang={lang}/>}

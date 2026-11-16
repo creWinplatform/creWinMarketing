@@ -1,0 +1,85 @@
+/* Design studio, brand kit and banner set. Phone first: one column; from 960px the controls sit beside a sticky
+   preview. Colours come from the studio tokens so light and dark themes both work. Touch targets are at least 40px. */
+.design-studio{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start;min-width:0}
+@media(min-width:960px){.design-studio{grid-template-columns:minmax(300px,380px) minmax(0,1fr)}.design-preview{position:sticky;top:12px}}
+.design-controls{display:grid;gap:16px;min-width:0}
+.design-fieldset{border:0;padding:0;margin:0;display:grid;gap:10px;min-width:0}
+.design-fieldset legend,.design-select{font-size:12px;font-weight:600;color:var(--studio-muted);margin-bottom:8px}
+.design-select select{display:block;width:100%;margin-top:7px;min-height:40px;font-size:13px;color:var(--studio-ink);border:1px solid var(--studio-border);background:var(--studio-surface);border-radius:var(--rz-r-control,8px);padding:0 10px}
+.design-chips,.design-swatches{display:flex;flex-wrap:wrap;gap:8px}
+.design-chip,.design-swatch{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:8px 12px;font-size:13px;font-weight:600;color:var(--studio-ink);background:var(--studio-surface);border:1px solid var(--studio-border);border-radius:999px;cursor:pointer}
+.design-chip:hover,.design-swatch:hover{background:var(--studio-hover)}
+.design-chip[aria-pressed=true],.design-swatch[aria-pressed=true]{border-color:var(--studio-ink);box-shadow:inset 0 0 0 1px var(--studio-ink)}
+.design-chip:disabled{opacity:.45;cursor:not-allowed}
+.design-swatch span{width:18px;height:18px;border-radius:50%;border:1px solid var(--studio-border);flex:none}
+.design-studio .design-toggle{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--studio-ink);min-height:40px}
+.design-toggle input{width:18px;height:18px;flex:none}
+.design-fields{margin:0}
+.design-fields small{display:block;font-weight:400}
+.design-photo{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.design-photo .studio-note{flex-basis:100%}
+.design-file{position:relative;overflow:hidden;cursor:pointer}
+.design-file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.design-file:focus-within{outline:2px solid var(--studio-ink);outline-offset:2px}
+.design-kit-hint{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border:1px dashed var(--studio-border);border-radius:var(--rz-r-control,8px)}
+.design-preview{display:grid;gap:14px;min-width:0;justify-items:center}
+.design-canvas{display:block;max-width:100%;max-height:min(68vh,640px);width:auto;height:auto;border-radius:10px;box-shadow:var(--rz-shadow-1,0 8px 24px rgba(0,0,0,.08));background:var(--studio-hover)}
+.design-slides{display:flex;gap:8px;overflow-x:auto;max-width:100%;padding:2px}
+.design-slides button{min-width:40px;min-height:40px;border-radius:8px;border:1px solid var(--studio-border);background:var(--studio-surface);color:var(--studio-ink);font-weight:700}
+.design-slides button[aria-selected=true]{border-color:var(--studio-ink);box-shadow:inset 0 0 0 1px var(--studio-ink)}
+.design-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center;width:100%}
+.design-actions-top{justify-content:flex-start}
+.design-actions .studio-primary,.design-actions .studio-secondary{min-height:44px}
+.design-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;width:100%}
+.design-thumb{display:grid;gap:8px;padding:10px;border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);background:var(--studio-surface);color:var(--studio-ink);cursor:pointer;text-align:left;min-width:0}
+.design-thumb:hover{background:var(--studio-hover)}
+.design-thumb:disabled{opacity:.6;cursor:progress}
+.design-thumb-frame{display:flex;align-items:center;justify-content:center;height:130px;background:var(--studio-hover);border-radius:8px;overflow:hidden}
+.design-thumb-frame canvas{display:block;max-width:100%;max-height:120px;width:auto;height:auto}
+.design-thumb-label{display:grid;font-size:11px;color:var(--studio-muted);line-height:1.4;overflow-wrap:anywhere}
+.design-thumb-label b{font-size:12px;color:var(--studio-ink)}
+.publication-studio-button{margin-top:10px}
+.design-ads{display:grid;gap:16px;min-width:0}
+/* Dialog: full screen on phones, a wide panel from 640px. */
+.design-dialog-layer{position:fixed;inset:0;z-index:80;display:flex;align-items:stretch;justify-content:center}
+.design-dialog-backdrop{position:absolute;inset:0;border:0;background:rgba(10,12,9,.55)}
+.design-dialog{position:relative;display:flex;flex-direction:column;gap:16px;width:100%;max-height:100%;overflow:auto;background:var(--studio-surface,#fff);color:var(--studio-ink);padding:16px max(16px,env(safe-area-inset-right)) calc(16px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+@media(min-width:640px){.design-dialog-layer{align-items:center;padding:24px}.design-dialog{width:min(1120px,100%);max-height:calc(100vh - 48px);border-radius:var(--rz-r-panel,20px);padding:24px;box-shadow:var(--rz-shadow-2,0 20px 50px rgba(0,0,0,.2))}}
+.design-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:-16px;z-index:2;background:inherit;padding:4px 0}
+.design-dialog-header h2{font-size:17px;font-weight:700;margin:0}
+.design-dialog-header .icon-button{width:40px;height:40px}
+/* Brand kit */
+.brand-kit{display:grid;gap:16px;min-width:0}
+.brand-kit-form{display:grid;gap:16px;min-width:0}
+.brand-logo{display:flex;flex-wrap:wrap;gap:16px;align-items:center}
+.brand-logo-frame{display:flex;align-items:center;justify-content:center;width:120px;height:120px;border-radius:var(--rz-r-card,12px);border:1px solid var(--studio-border);overflow:hidden;flex:none;color:#fff;font-size:12px}
+.brand-logo-frame img{max-width:84%;max-height:84%;object-fit:contain}
+.brand-logo-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center;min-width:0;flex:1 1 240px}
+.brand-logo-actions .studio-note{flex-basis:100%}
+.brand-colors{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.brand-color{display:grid;gap:8px;padding:12px;border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);font-size:12px;font-weight:600;color:var(--studio-ink)}
+.brand-color small{display:block;font-weight:400;color:var(--studio-muted)}
+.brand-color-input{display:flex;gap:8px;align-items:center}
+.brand-color-input input[type=color]{width:44px;height:40px;padding:2px;border:1px solid var(--studio-border);border-radius:8px;background:var(--studio-surface);flex:none;cursor:pointer}
+.brand-color-input input:not([type=color]){flex:1;min-width:0;min-height:40px;padding:0 10px;font:13px ui-monospace,Menlo,Consolas,monospace;color:var(--studio-ink);background:var(--studio-surface);border:1px solid var(--studio-border);border-radius:8px}
+.brand-assets-title{margin-top:12px}
+.brand-highlights{display:block;font-size:12px;font-weight:500;color:var(--studio-muted)}
+.brand-highlights input{display:block;width:100%;margin-top:7px;min-height:40px;padding:0 10px;font-size:13px;color:var(--studio-ink);border:1px solid var(--studio-border);background:var(--studio-surface);border-radius:8px}
+@media(max-width:639px){.design-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.design-thumb-frame{height:110px}.design-thumb-frame canvas{max-height:100px}.design-actions .studio-primary,.design-actions .studio-secondary{flex:1 1 100%}}
+/* Phones and tablets: the preview (with its buttons) comes first, so a change is visible without scrolling past the form. */
+@media(max-width:959px){.design-studio-post .design-preview{order:-1}.design-canvas{max-height:46vh}}
+/* Inbox: complaint and escalation hints (inbox-signals.ts). Colour plus text, never colour alone. */
+.inbox-signal{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;margin:6px 0 2px;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid}
+.inbox-signal-urgent{color:var(--rz-bad,#b3362b);border-color:var(--rz-bad,#b3362b);background:color-mix(in srgb,var(--rz-bad,#b3362b) 10%,transparent)}
+.inbox-signal-complaint{color:color-mix(in srgb,var(--rz-amber,#b9800f) 62%,var(--rz-ink,#111510));border-color:var(--rz-amber,#b9800f);background:color-mix(in srgb,var(--rz-amber,#b9800f) 10%,transparent)}
+.inbox-signal-words{font-weight:500;color:var(--studio-muted);overflow-wrap:anywhere}
+/* Ads: opt-in automatic pause. */
+.ads-auto-pause{display:grid;gap:10px;margin:14px 0;padding:14px;border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);min-width:0}
+.ads-auto-pause .ads-form-title{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
+.ads-auto-on{color:var(--rz-good,#3e7d2c)}
+.ads-auto-kinds{border:0;padding:0;margin:0;display:grid;gap:6px}
+.ads-auto-kinds label,.ads-auto-ack{display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.5;color:var(--studio-ink);min-height:32px}
+.ads-auto-kinds input,.ads-auto-ack input{width:18px;height:18px;flex:none;margin-top:2px}
+.ads-auto-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.ads-auto-log{display:grid;gap:6px;margin:0;padding:0;list-style:none;font-size:12px;color:var(--studio-muted);overflow-wrap:anywhere}
+.ads-auto-log b{color:var(--studio-ink)}
