@@ -374,6 +374,7 @@ export const UI_PAIRS: Record<string, string> = {
   "Sorumlu:": "Owner:",
   "Sosyal hesabı bağlayın": "Connect a social account",
   "Sosyal medya’da bir içerik üretip “📤 Paylaş”ı açın; bağlı olmayan platformun yanındaki “Bağlan” düğmesiyle sağlayıcının kendi ekranında izin verin. Şifreniz bu panele girilmez.": "In Social media, generate a post and open “📤 Share”; use “Connect” next to an unconnected platform and approve on the provider’s own screen. Your password is never typed here.",
+  "Stok görsel araması şu anda yapılamadı. Biraz sonra tekrar deneyin.": "Stock search is not available right now. Try again shortly.",
   "Strateji briefi onaylandı. İlk hafta için {0} başlangıç taslağı İçerik kütüphanesinde hazır; her birini okuyup kendi bilginizle düzenleyin. Hiçbiri kendiliğinden yayınlanmaz.": "Strategy brief approved. {0} starter drafts for the first week are ready in the content library; read and edit each with your own facts. None is published on its own.",
   "Sunucu hatası": "Server error",
   "Sunucuya bağlanılamadı. Tekrar deneyin.": "Could not connect to the server. Try again.",

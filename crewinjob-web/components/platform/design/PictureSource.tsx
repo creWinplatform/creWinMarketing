@@ -5,6 +5,7 @@ import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest } from '@/lib/platform/client';
 import type { DesignPicture, StockImage } from '@/lib/platform/design-assets';
 import { loadImage } from './render';
+import { browserStockPicture, browserStockSearch } from './openverse-browser';
 
 type Source = 'upload' | 'stock' | 'ai' | 'product';
 // A product photo is scaled to at most 1024 px and sent as JPEG, so the request stays small on a phone connection.
@@ -25,14 +26,22 @@ export default function PictureSource({ lang, aspect, onPick, onError }: {
 }) {
   const tr = lang === 'tr';
   const [source, setSource] = useState<Source>('upload'), [query, setQuery] = useState(''), [prompt, setPrompt] = useState('');
+  // direct: the server could not reach Openverse, so the search and the chosen image come straight from the browser.
+  const [direct, setDirect] = useState(false);
   const [items, setItems] = useState<StockImage[] | null>(null), [busy, setBusy] = useState(''), [product, setProduct] = useState<{ data: string; mime: string; preview: string } | null>(null);
   const use = async (picture: DesignPicture) => onPick(await loadImage(`data:${picture.mime};base64,${picture.data}`), picture.credit);
   const call = async (key: string, work: () => Promise<void>) => {
     if (busy) return; setBusy(key); onError('');
     try { await work(); } catch (reason) { onError(reason instanceof Error ? reason.message : tr ? 'İstek tamamlanamadı.' : 'Request failed.'); } finally { setBusy(''); }
   };
-  const search = (event: FormEvent) => { event.preventDefault(); void call('search', async () => setItems((await projectRequest<{ items: StockImage[] }>('/api/platform/design/assets', { method: 'POST', body: JSON.stringify({ action: 'stock-search', query }), signal: AbortSignal.timeout(45000) })).items)); };
-  const pickStock = (item: StockImage) => call(`stock-${item.id}`, async () => use(await projectRequest<DesignPicture>('/api/platform/design/assets', { method: 'POST', body: JSON.stringify({ action: 'stock-image', id: item.id }), signal: AbortSignal.timeout(45000) })));
+  const search = (event: FormEvent) => { event.preventDefault(); void call('search', async () => {
+    if (!direct) {
+      try { setItems((await projectRequest<{ items: StockImage[] }>('/api/platform/design/assets', { method: 'POST', body: JSON.stringify({ action: 'stock-search', query }), signal: AbortSignal.timeout(45000) })).items); return; }
+      catch (reason) { if (!(reason instanceof Error) || !/şu anda yapılamadı|could not be reached|right now/i.test(reason.message)) throw reason; setDirect(true); }
+    }
+    try { setItems(await browserStockSearch(query)); } catch { throw new Error(tr ? 'Stok görsel araması şu anda yapılamadı. Biraz sonra tekrar deneyin.' : 'Stock search is not available right now. Try again shortly.'); }
+  }); };
+  const pickStock = (item: StockImage) => call(`stock-${item.id}`, async () => use(direct ? await browserStockPicture(item.id) : await projectRequest<DesignPicture>('/api/platform/design/assets', { method: 'POST', body: JSON.stringify({ action: 'stock-image', id: item.id }), signal: AbortSignal.timeout(45000) })));
   const generate = (event: FormEvent) => { event.preventDefault(); void call('ai', async () => use(await projectRequest<DesignPicture>('/api/platform/design/assets', { method: 'POST', body: JSON.stringify({ action: 'ai-image', prompt, aspect, ...(source === 'product' && product ? { source: { data: product.data, mime: product.mime } } : {}) }), signal: AbortSignal.timeout(90000) }))); };
   const pickProduct = (file: File | undefined) => {
     if (!file) return;
@@ -57,7 +66,7 @@ export default function PictureSource({ lang, aspect, onPick, onError }: {
         <small className="studio-note">{tr ? 'Openverse’ten yalnız ticari kullanıma serbest, atıf gerektirmeyen (CC0 ve kamu malı) görseller gelir. Arama İngilizce kelimelerle daha iyi sonuç verir.' : 'Only images free for commercial use without attribution (CC0 and public domain) come from Openverse. English words give better results.'}</small>
       </form>}
       {source === 'stock' && items && (items.length ? <div className="picture-grid">{items.map(item => <button key={item.id} type="button" className="picture-thumb" disabled={Boolean(busy)} onClick={() => void pickStock(item)} aria-label={`${item.title || (tr ? 'Görsel' : 'Image')} ${tr ? 'seç' : 'choose'}`}>
-        <img src={item.thumb} alt="" />{busy === `stock-${item.id}` && <span className="picture-busy"><Loader2 size={18} className="animate-spin" /></span>}
+        <img src={item.thumb} alt="" loading="lazy" referrerPolicy="no-referrer" />{busy === `stock-${item.id}` && <span className="picture-busy"><Loader2 size={18} className="animate-spin" /></span>}
       </button>)}</div> : <p className="studio-note">{tr ? 'Sonuç yok; başka bir kelime deneyin.' : 'No results; try another word.'}</p>)}
       {source === 'product' && <div className="picture-product">
         <label className="studio-secondary design-file">{busy === 'product' ? <Loader2 size={15} className="animate-spin" /> : <Package size={15} />}{product ? (tr ? 'Ürün fotoğrafını değiştir' : 'Change the product photo') : (tr ? 'Ürün fotoğrafı seç' : 'Choose a product photo')}<input type="file" accept="image/*" onChange={event => { pickProduct(event.target.files?.[0]); event.target.value = ''; }} /></label>
