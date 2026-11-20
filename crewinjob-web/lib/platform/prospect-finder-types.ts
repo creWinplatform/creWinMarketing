@@ -65,9 +65,9 @@ export type ProspectInsight = {
   report: { active: boolean; views: number; lastViewedAt: string | null; expiresAt: string; createdAt: string } | null;
 };
 export type FinderSearch = { id: string; source: 'osm' | 'maps'; city: string; sector: string; found: number; added: number; withoutWebsite: number; status: 'done' | 'failed'; createdAt: string };
-// Paid Google Maps requests: per project by plan, per person across projects, and a platform-wide ceiling; a repeated
-// search within 30 days is answered from the shared cache at no cost.
-export const MAPS_QUOTA = { paid: { day: 10, month: 100 }, trial: { day: 2, month: 5 }, perUserDay: 10, platformDay: 300, platformMonth: 3000, cacheDays: 30 } as const;
+// Paid Google Maps requests: per project by plan (plan-catalog.ts), per person across projects, and a platform-wide
+// ceiling; a repeated search within 30 days is answered from the shared cache at no cost.
+export const MAPS_QUOTA = { perUserDay: 10, platformDay: 300, platformMonth: 3000, cacheDays: 30 } as const;
 export type MapsQuota = { usedToday: number; usedMonth: number; dayLimit: number; monthLimit: number; blocked: null | 'inactive' | 'project' | 'user' | 'platform' };
 export type FinderSnapshot = {
   insights: Record<string, ProspectInsight>; settings: FinderSettings; searchesLeft: number; searches: FinderSearch[]; maps: MapsQuota;

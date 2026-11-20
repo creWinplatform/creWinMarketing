@@ -1781,4 +1781,8 @@ export const MESSAGES_EN: Record<string, string> = {
   "Bugün tüm projelerinizde en çok {0} Google Haritalar araması yapabilirsiniz. Yarın tekrar deneyin.": "You can run at most {0} Google Maps searches a day across all your projects. Try again tomorrow.",
   "Google Haritalar araması bugün için geçici olarak kapalı. OpenStreetMap ile arayabilir veya yarın tekrar deneyebilirsiniz.": "Google Maps search is paused for today. You can search OpenStreetMap or try again tomorrow.",
   "Google Haritalar araması bu ay için geçici olarak kapalı. OpenStreetMap ile arayabilirsiniz.": "Google Maps search is paused for this month. You can search OpenStreetMap.",
+  "Arama reklamı içeriği, bütçe önerisi ve otomatik duraklatma Growth ve üstü paketlerde var. Plan ve ödeme bölümünden yükseltebilirsiniz.": "Search ad content, the budget suggestion and automatic pausing come with Growth and higher. You can upgrade under Plan and payment.",
+  "Web takibi etkin bir plan gerektirir. Plan ve ödeme bölümünden planınızı yenileyin.": "Web mentions need an active plan. Renew your plan under Plan and payment.",
+  "Paketiniz en çok {0} arama ifadesi ve {1} besleme içerir. Fazlasını kaldırın veya paketinizi yükseltin.": "Your package includes up to {0} search terms and {1} feeds. Remove the extra ones or upgrade your package.",
+  "Paketiniz en çok {0} arama ifadesi içerir; RSS/Atom beslemeleri Growth ve üstü paketlerde. Fazlasını kaldırın veya paketinizi yükseltin.": "Your package includes up to {0} search term; RSS/Atom feeds come with Growth and higher. Remove the extra ones or upgrade your package.",
 };

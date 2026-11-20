@@ -2,6 +2,7 @@ import type { Db } from '../db/client';
 import 'server-only';
 import { randomUUID } from 'node:crypto';
 import { MarketingStoreError } from './errors';
+import { requireAdTools } from './entitlements';
 import { PlatformRepository } from './repository';
 import { ProjectAds } from './ad-manager';
 import type { AdProvider } from './ad-providers';
@@ -45,6 +46,8 @@ export async function saveAdAutoPause(db: Db, scope: Scope, raw: Record<string, 
   const kinds = Array.isArray(raw.kinds) ? KINDS.filter(kind => (raw.kinds as unknown[]).includes(kind)) : [];
   if (raw.enabled && !kinds.length) throw new MarketingStoreError('En az bir eşik seçin (bütçe aşımı veya yükleme başına maliyet).');
   if (raw.enabled && raw.acknowledged !== true) throw new MarketingStoreError('Otomatik duraklatmayı açmak için onay kutusunu işaretleyin.');
+  // Turning it on is a Growth feature; turning it off always works.
+  if (raw.enabled) await requireAdTools(db, scope);
   const now = new Date().toISOString();
   await db.transaction(async () => {
     const row = await db.prepare('SELECT enabled FROM platform_ad_auto_pause WHERE organization_id=? AND project_id=?').get(...args(scope)) as { enabled: number } | undefined;

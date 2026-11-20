@@ -28,9 +28,9 @@ const project=(patch={})=>({action:'create',homeOrganizationId:'x',homeProjectId
 test('the agency package is bought like any live plan, as a Growth period marked agency, and gives the home project Growth rights',()=>withConfig(async()=>{
  const f=await fixture(),billing=new ProjectLiveBilling(f.db,f.home,KEY);
  const order=await billing.start({planId:'agency',cadence:'monthly',idempotencyKey:'agency-attempt-000001',acceptTerms:true,language:'tr',contact:{name:'Ajans Ltd',phone:'+90 555 000 0000',address:'Fixture address only'}},IP,async()=>({state:'accepted',token:'agencycheckouttoken12345'}));
- assert.equal(order.planId,'agency');assert.equal(order.amountMinor,29900);
- assert.deepEqual(plain(f.db.prepare('SELECT plan_id,package,amount_minor FROM platform_billing_live_orders WHERE id=?').get(order.id)),{plan_id:'growth',package:'agency',amount_minor:29900});
- assert.equal((await receivePaytrLiveNotification(f.db,notice(order.id,29900))).state,'paid');
+ assert.equal(order.planId,'agency');assert.equal(order.amountMinor,39900);
+ assert.deepEqual(plain(f.db.prepare('SELECT plan_id,package,amount_minor FROM platform_billing_live_orders WHERE id=?').get(order.id)),{plan_id:'growth',package:'agency',amount_minor:39900});
+ assert.equal((await receivePaytrLiveNotification(f.db,notice(order.id,39900))).state,'paid');
  const rights=await projectEntitlement(f.db,f.home);assert.equal(rights.id,'paid');assert.equal(rights.plan,'growth');assert.equal(rights.agency,'home');assert.equal(rights.seats,5);
  assert.equal((await billing.read()).current.planId,'agency');assert.equal((await agencyHomes(f.db,f.agency.userId))[0].limit,10);
 }));
@@ -91,7 +91,7 @@ test('the contract email names the agency package and the sales terms list its p
  const {contractEmailMessage}=load('billing-contract.ts'),{salesTermsPlainText}=load('sales-terms-document.ts');
  const mail=contractEmailMessage({id:'RZLIVE'+'b'.repeat(32),plan_id:'growth',package:'agency',cadence:'monthly',amount_minor:29900,paid_at:'2026-10-27T10:00:00.000Z',terms_version:'2026-10-27',terms_language:'en',terms_text:'x'},{starts_at:'2026-10-27T10:00:00.000Z',ends_at:'2026-11-27T10:00:00.000Z'});
  assert.match(mail.text,/Ryzevo Agency \(monthly\)/);assert.match(mail.text,/\$299/);
- const terms=salesTermsPlainText('tr','https://ryzevo.example');assert.match(terms,/Agency \(ajans paketi\)/);assert.match(terms,/\$299/);assert.match(terms,/\$2,?990/);assert.match(terms,/en fazla 10 müşteri projesini/);
+ const terms=salesTermsPlainText('tr','https://ryzevo.example');assert.match(terms,/Agency \(ajans paketi\)/);assert.match(terms,/\$399/);assert.match(terms,/\$3,?990/);assert.match(terms,/en fazla 10 müşteri projesini/);
 });
 
 test('migration 61 is additive and repeatable',async()=>{

@@ -3,7 +3,7 @@ import 'server-only';
 import type Database from 'better-sqlite3';
 import { PILOT_LIMITS } from './limits';
 import { MarketingStoreError } from './errors';
-import { PLAN_CATALOG } from './plan-catalog';
+import { PLAN_CATALOG, TRIAL_FEATURES } from './plan-catalog';
 
 type Scope = { organizationId: string; projectId: string };
 export const TRIAL_LIMITS = Object.freeze({ ai: 10, audits: 3, campaigns: 10, content: 25, tasks: 25, members: 10 });
@@ -71,4 +71,23 @@ export async function assertSeatCapacity(db: Db, scope: Scope) {
   if (rights.seats === null) return;
   const count = (await db.prepare('SELECT COUNT(*) AS n FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE m.organization_id=? AND m.project_id=? AND m.active=1 AND u.active=1').get(scope.organizationId, scope.projectId) as {n:number}).n;
   if (count >= rights.seats) throw new MarketingStoreError('Aktif ekip üyesi sınırına ulaşıldı.', 429);
+}
+
+// Plan features beyond the shared workflow: Google Maps company searches, web mention terms and feeds, and the ad
+// tools (search ad content, budget suggestion, automatic pausing). Paid periods follow their plan (an agency package
+// is Growth), pilots get Growth's, a running trial gets the trial allowances, anything else gets none.
+export type PlanFeatures = { plan: 'launch' | 'growth' | 'team' | 'trial' | 'pilot' | 'none'; mapsSearches: number; mapsPerDay: number; webQueries: number; webFeeds: number; adTools: boolean };
+const NO_FEATURES: PlanFeatures = { plan: 'none', mapsSearches: 0, mapsPerDay: 0, webQueries: 0, webFeeds: 0, adTools: false };
+export async function projectFeatures(db: Db, scope: Scope): Promise<PlanFeatures> {
+  let rights: Awaited<ReturnType<typeof projectEntitlement>>;
+  try { rights = await projectEntitlement(db, scope); } catch { return NO_FEATURES; }
+  if (!rights.active) return NO_FEATURES;
+  const pick = (id: 'launch' | 'growth' | 'team') => { const plan = PLAN_CATALOG.find(item => item.id === id)!; return { mapsSearches: plan.mapsSearches, mapsPerDay: plan.mapsPerDay, webQueries: plan.webQueries, webFeeds: plan.webFeeds, adTools: plan.adTools }; };
+  if (rights.id === 'paid') { const id = (['launch', 'growth', 'team'] as const).find(item => item === (rights as { plan?: string }).plan) || 'growth'; return { plan: id, ...pick(id) }; }
+  if (rights.id === 'trial') return { plan: 'trial', ...TRIAL_FEATURES };
+  return { plan: 'pilot', ...pick('growth') };
+}
+// Ad tools are a Growth feature; the error explains how to get them.
+export async function requireAdTools(db: Db, scope: Scope) {
+  if (!(await projectFeatures(db, scope)).adTools) throw new MarketingStoreError('Arama reklamı içeriği, bütçe önerisi ve otomatik duraklatma Growth ve üstü paketlerde var. Plan ve ödeme bölümünden yükseltebilirsiniz.', 402);
 }

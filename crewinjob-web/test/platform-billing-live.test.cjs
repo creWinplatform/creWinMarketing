@@ -17,7 +17,7 @@ async function fixture(){
 }
 const input=patch=>({planId:'launch',cadence:'monthly',idempotencyKey:'live-attempt-0000001',acceptTerms:true,language:'tr',contact:{name:'Fixture Ltd',phone:'+90 555 000 0000',address:'Fixture address only'},...patch});
 const accepted=async()=>({state:'accepted',token:'livecheckouttoken1234567890'});
-function notice(id,patch={}){const value={merchant_oid:id,status:'success',total_amount:'2900',currency:'USD',test_mode:'0',payment_amount:'2900',payment_type:'card',...patch};value.hash=createHmac('sha256',env.PLATFORM_PAYTR_MERCHANT_KEY).update(value.merchant_oid+env.PLATFORM_PAYTR_MERCHANT_SALT+value.status+value.total_amount).digest('base64');return new URLSearchParams(value).toString();}
+function notice(id,patch={}){const value={merchant_oid:id,status:'success',total_amount:'3900',currency:'USD',test_mode:'0',payment_amount:'3900',payment_type:'card',...patch};value.hash=createHmac('sha256',env.PLATFORM_PAYTR_MERCHANT_KEY).update(value.merchant_oid+env.PLATFORM_PAYTR_MERCHANT_SALT+value.status+value.total_amount).digest('base64');return new URLSearchParams(value).toString();}
 const subs=f=>f.db.prepare('SELECT * FROM platform_project_subscriptions ORDER BY starts_at').all();
 const IP='203.0.113.5';
 
@@ -35,7 +35,7 @@ test('every live gate is required: switch, merchant, USD approval, https origin 
 }));
 
 test('Launch, Growth and the agency package are sold monthly and yearly (a year costs ten months); Team is not',()=>{
-  assert.deepEqual(JSON.parse(JSON.stringify(livePlans().map(p=>[p.id,p.cadence,p.amountMinor]))),[['launch','monthly',2900],['launch','yearly',29000],['growth','monthly',7900],['growth','yearly',79000],['agency','monthly',29900],['agency','yearly',299000]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(livePlans().map(p=>[p.id,p.cadence,p.amountMinor]))),[['launch','monthly',3900],['launch','yearly',39000],['growth','monthly',9900],['growth','yearly',99000],['agency','monthly',39900],['agency','yearly',399000]]);
   assert.equal(livePlans().find(p=>p.id==='agency').projects,10);
 });
 
@@ -45,8 +45,8 @@ test('the server picks the price; the owner must accept the terms and have a ver
   for(const role of ['admin','editor','viewer']){const g=await fixture();const user=await g.repo.addMember(g.a.userId,g.a.organizationId,g.a.projectId,{username:'live-'+role,password:'fixture-password-123',role});
     await assert.rejects(async ()=>await new ProjectLiveBilling(g.db,{...g.scope,subject:user.userId},KEY).read(),e=>e.status===403,role);}
   let form;const order=await f.service.start(input({cadence:'yearly',planId:'growth'}),IP,async value=>{form=value;return accepted();});
-  assert.match(order.id,/^RZLIVE[a-f0-9]{32}$/);assert.equal(order.amountMinor,79000);assert.equal(order.state,'pending');assert.match(order.checkoutUrl,/^https:\/\/www\.paytr\.com\/odeme\/guvenli\//);
-  assert.equal(await form.get('test_mode'),'0');assert.equal(await form.get('currency'),'USD');assert.equal(await form.get('payment_amount'),'79000');assert.equal(await form.get('no_installment'),'1');
+  assert.match(order.id,/^RZLIVE[a-f0-9]{32}$/);assert.equal(order.amountMinor,99000);assert.equal(order.state,'pending');assert.match(order.checkoutUrl,/^https:\/\/www\.paytr\.com\/odeme\/guvenli\//);
+  assert.equal(await form.get('test_mode'),'0');assert.equal(await form.get('currency'),'USD');assert.equal(await form.get('payment_amount'),'99000');assert.equal(await form.get('no_installment'),'1');
   const stored=JSON.stringify(f.db.prepare('SELECT * FROM platform_billing_live_orders').all());assert.doesNotMatch(stored,/livecheckouttoken|Fixture Ltd|555 000/,'the token is encrypted and contact details are not stored');
   assert.equal((await f.service.start(input({cadence:'yearly',planId:'growth'}),IP,()=>assert.fail('no second request'))).id,order.id,'the same attempt is idempotent');
   await assert.rejects(async ()=>await f.service.start(input({idempotencyKey:'live-attempt-0000002'}),IP,accepted),e=>e.status===409,'one open payment at a time');
@@ -69,14 +69,14 @@ test('a wrong amount, sandbox or foreign metadata, a failed payment or a second 
     await receivePaytrLiveNotification(f.db,notice(order.id,patch));assert.equal((await f.service.read()).orders[0].state,'review',JSON.stringify(patch));assert.equal(subs(f).length,0);assert.equal((await projectEntitlement(f.db,f.scope)).id,'trial');}
   const f=await fixture();const order=await f.service.start(input(),IP,accepted);await receivePaytrLiveNotification(f.db,notice(order.id,{status:'failed'}));assert.equal((await f.service.read()).orders[0].state,'failed');assert.equal(subs(f).length,0);
   await receivePaytrLiveNotification(f.db,notice(order.id));assert.equal((await f.service.read()).orders[0].state,'review','success after failure is contradictory');assert.equal(subs(f).length,0);
-  await assert.rejects(async ()=>await receivePaytrLiveNotification(f.db,notice(order.id).replace('total_amount=2900','total_amount=2901')),'a tampered amount breaks the signature');
+  await assert.rejects(async ()=>await receivePaytrLiveNotification(f.db,notice(order.id).replace('total_amount=3900','total_amount=2901')),'a tampered amount breaks the signature');
   await assert.rejects(async ()=>await receivePaytrLiveNotification(f.db,notice('RZLIVE'+'b'.repeat(32))),'an unknown order is not settled');
 }));
 
 test('sandbox and live never mix: each verifier refuses the other prefix and sandbox notices are not routed to live',()=>withConfig(()=>{
   const config=paytrConfiguration(),test=notice('RZTEST'+'c'.repeat(32),{test_mode:'1'}),live=notice('RZLIVE'+'c'.repeat(32));
   assert.equal(isLiveNotification(test),false);assert.throws(()=>verifyPaytrLiveNotification(config,test));assert.throws(()=>verifyPaytrNotification(config,live));
-  assert.throws(()=>paytrLiveCheckoutForm(config,{orderId:'RZTEST'+'a'.repeat(32),amountMinor:2900,name:'x',email:'a@b.co',phone:'12345',address:'xxxxx',ip:IP,planName:'x',language:'en'}));
+  assert.throws(()=>paytrLiveCheckoutForm(config,{orderId:'RZTEST'+'a'.repeat(32),amountMinor:3900,name:'x',email:'a@b.co',phone:'12345',address:'xxxxx',ip:IP,planName:'x',language:'en'}));
 }));
 
 test('renewal opens in the last 14 days and the new period starts where the current one ends',()=>withConfig(async()=>{
@@ -84,7 +84,7 @@ test('renewal opens in the last 14 days and the new period starts where the curr
   await assert.rejects(async ()=>await f.service.start(input({idempotencyKey:'live-attempt-0000002'}),IP,accepted),e=>e.status===409);
   const ends=new Date(Date.now()+10*86400000).toISOString();f.db.prepare('UPDATE platform_project_subscriptions SET ends_at=?,grace_ends_at=?').run(ends,new Date(Date.parse(ends)+7*86400000).toISOString());
   assert.equal((await f.service.read()).canPurchase,true);
-  const second=await f.service.start(input({idempotencyKey:'live-attempt-0000002',cadence:'yearly'}),IP,accepted);await receivePaytrLiveNotification(f.db,notice(second.id,{total_amount:'29000',payment_amount:'29000'}));
+  const second=await f.service.start(input({idempotencyKey:'live-attempt-0000002',cadence:'yearly'}),IP,accepted);await receivePaytrLiveNotification(f.db,notice(second.id,{total_amount:'39000',payment_amount:'39000'}));
   const [a,b]=subs(f);assert.equal(b.starts_at,a.ends_at,'no gap and no overlap');assert.equal(b.ends_at,addPeriod(a.ends_at,'yearly'));
   assert.equal((await projectEntitlement(f.db,f.scope)).endsAt,a.ends_at,'the running period stays current until it ends');
 }));

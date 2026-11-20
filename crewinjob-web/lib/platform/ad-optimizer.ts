@@ -4,6 +4,7 @@ import { MarketingStoreError } from './errors';
 import { ProjectAds, digestOf, adMinorUnit, type AdPlanRow } from './ad-manager';
 import { GoogleAdsClient, googleAdsConfigured } from './ad-providers';
 import { parseCoachJson, runCoachAi } from './coach-ai';
+import { requireAdTools } from './entitlements';
 import type { CoachGenerator } from './coach';
 
 // Two jobs a performance agency does by hand, done with the team's approval:
@@ -40,6 +41,8 @@ export function normalizeSearchContent(raw: Record<string, unknown>, planUrl: st
 
 type ContentRow = { content_json: string; digest: string; state: SearchContentView['state']; approved_by: string | null; approved_at: string | null; validated_digest: string | null; validated_at: string | null; sent_at: string | null; last_error: string | null };
 export class AdOptimizer extends ProjectAds {
+  // Every optimizer action is a Growth feature (search ad content, budget suggestion and applying it).
+  async authorize(need: 'read' | 'content.write' | 'campaign.approve' | 'manage' = 'read') { await super.authorize(need); await requireAdTools(this.db, this.scope); }
   private async googlePlan(id: unknown) {
     if (this.provider !== 'google') throw new MarketingStoreError('Arama reklamı içeriği yalnız Google Ads planları için.', 409);
     const row = await this.row(id);

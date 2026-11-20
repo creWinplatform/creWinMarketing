@@ -3,7 +3,7 @@ import 'server-only';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { fetchPublic, readLimited } from '../site-audit';
 import { PlatformRepository } from './repository';
-import { projectEntitlement } from './entitlements';
+import { projectFeatures } from './entitlements';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import {
   FINDER_LIMITS, FINDER_SECTORS, MAPS_QUOTA, type MapsQuota, FINDER_TERMS_VERSION, SIGNALS, SIGNAL_KEYS,
@@ -135,10 +135,9 @@ export class ProspectFinder {
   private periods() { const now = new Date().toISOString(); return { day: now.slice(0, 10), month: now.slice(0, 7) }; }
   private async providerCount(scopeKey: string, period: string) { return Number((await this.db.prepare('SELECT requests FROM platform_provider_usage WHERE provider=? AND scope_key=? AND period=?').get(MAPS, scopeKey, period) as { requests: number } | undefined)?.requests || 0); }
   private async projectMapsLimits() {
-    let entitlement: Awaited<ReturnType<typeof projectEntitlement>>;
-    try { entitlement = await projectEntitlement(this.db, this.args2()); } catch { return null; }
-    if (!entitlement.active) return null;
-    return entitlement.id === 'trial' ? MAPS_QUOTA.trial : MAPS_QUOTA.paid;
+    // The plan decides: Launch 30, Growth 100, Team 300 a month; a running trial 5; no active plan, none.
+    const features = await projectFeatures(this.db, this.args2());
+    return features.mapsSearches > 0 ? { day: features.mapsPerDay, month: features.mapsSearches } : null;
   }
   private args2() { return { organizationId: this.scope.organizationId, projectId: this.scope.projectId }; }
   async mapsQuota(): Promise<MapsQuota> {

@@ -28,7 +28,7 @@ export function livePlans(): LiveBillingPlan[] {
   return [...PLAN_CATALOG.filter(plan => plan.availability === 'planned').map(plan => ({ ...plan, id: plan.id as LivePlanId, projects: undefined })), { ...growth, id: AGENCY_PACKAGE.id, name: AGENCY_PACKAGE.name, monthlyUsdMinor: AGENCY_PACKAGE.monthlyUsdMinor, projects: AGENCY_PACKAGE.projects }]
     .flatMap(plan => (['monthly', 'yearly'] as const).map(cadence => ({
       id: plan.id, name: plan.name, cadence, amountMinor: cadence === 'monthly' ? plan.monthlyUsdMinor : plan.monthlyUsdMinor * 10,
-      seats: plan.seats, socialAccounts: plan.socialAccounts, ai: plan.ai, audits: plan.audits, ...(plan.projects ? { projects: plan.projects } : {}),
+      seats: plan.seats, socialAccounts: plan.socialAccounts, ai: plan.ai, audits: plan.audits, mapsSearches: plan.mapsSearches, webQueries: plan.webQueries, adTools: plan.adTools, ...(plan.projects ? { projects: plan.projects } : {}),
     })));
 }
 // Calendar periods in UTC: a month from 31 January ends on the last day of February, never in March.

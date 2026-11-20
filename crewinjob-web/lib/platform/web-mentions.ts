@@ -5,6 +5,7 @@ import { fetchPublic } from '../site-audit';
 import type { MarketingScope } from './marketing-store';
 import { MarketingStoreError } from './errors';
 import { PlatformRepository } from './repository';
+import { projectFeatures } from './entitlements';
 import { ryzevoFeature } from './ryzevo-features';
 import { inboxSignal } from './inbox-signals';
 
@@ -12,7 +13,7 @@ import { inboxSignal } from './inbox-signals';
 // News searches for the team's words (its public RSS) and RSS/Atom feeds the team adds (a Google Alerts feed, a forum's
 // feed). The worker reads them every 3 hours; each new item is labelled with the same complaint/escalation rules as the
 // inbox (inbox-signals.ts) and complaints raise a team alert. Only titles, links and short snippets are kept, 90 days.
-export type WebWatch = { enabled: boolean; queries: string[]; feeds: string[]; language: 'tr' | 'en'; checkedAt: string | null; lastError: string | null; canEdit: boolean };
+export type WebWatch = { enabled: boolean; queries: string[]; feeds: string[]; language: 'tr' | 'en'; checkedAt: string | null; lastError: string | null; canEdit: boolean; limits: { queries: number; feeds: number } };
 export type WebMention = { id: string; source: string; title: string; url: string; snippet: string; publishedAt: string | null; level: 'urgent' | 'complaint' | 'none'; state: 'new' | 'seen'; firstSeenAt: string };
 type Scope = MarketingScope;
 const args = (scope: { organizationId: string; projectId: string }) => [scope.organizationId, scope.projectId] as const;
@@ -42,11 +43,20 @@ export async function webWatch(db: Db, scope: Scope): Promise<WebWatch> {
   const { repo, project } = await authorize(db, scope, false);
   const row = await db.prepare('SELECT enabled,queries_json,feeds_json,language,checked_at,last_error FROM platform_web_watch WHERE organization_id=? AND project_id=?').get(...args(scope)) as { enabled: number; queries_json: string; feeds_json: string; language: 'tr' | 'en'; checked_at: string | null; last_error: string | null } | undefined;
   return { enabled: Boolean(row?.enabled), queries: row ? JSON.parse(row.queries_json) : [project.name], feeds: row ? JSON.parse(row.feeds_json) : [], language: row?.language || (project.language === 'en' ? 'en' : 'tr'),
-    checkedAt: row?.checked_at || null, lastError: row?.last_error || null, canEdit: await repo.can(scope.subject, ...args(scope), 'content.write') };
+    checkedAt: row?.checked_at || null, lastError: row?.last_error || null, canEdit: await repo.can(scope.subject, ...args(scope), 'content.write'), limits: await watchLimits(db, scope) };
+}
+// Launch and trials: one search term and no feeds; Growth and higher (and pilots): three terms and five feeds.
+async function watchLimits(db: Db, scope: Scope) {
+  const features = await projectFeatures(db, scope);
+  return { queries: features.webQueries, feeds: features.webFeeds };
 }
 export async function saveWebWatch(db: Db, scope: Scope, raw: Record<string, unknown>) {
   await authorize(db, scope, true);
-  const value = normalizeWatch(raw), now = new Date().toISOString();
+  const value = normalizeWatch(raw), now = new Date().toISOString(), limits = await watchLimits(db, scope);
+  if (value.enabled && (value.queries.length > limits.queries || value.feeds.length > limits.feeds)) throw new MarketingStoreError(limits.queries === 0
+    ? 'Web takibi etkin bir plan gerektirir. Plan ve ödeme bölümünden planınızı yenileyin.'
+    : limits.feeds ? `Paketiniz en çok ${limits.queries} arama ifadesi ve ${limits.feeds} besleme içerir. Fazlasını kaldırın veya paketinizi yükseltin.`
+    : `Paketiniz en çok ${limits.queries} arama ifadesi içerir; RSS/Atom beslemeleri Growth ve üstü paketlerde. Fazlasını kaldırın veya paketinizi yükseltin.`, 402);
   await db.prepare('INSERT INTO platform_web_watch(organization_id,project_id,enabled,queries_json,feeds_json,language,updated_by,updated_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id) DO UPDATE SET enabled=excluded.enabled,queries_json=excluded.queries_json,feeds_json=excluded.feeds_json,language=excluded.language,checked_at=NULL,last_error=NULL,updated_by=excluded.updated_by,updated_at=excluded.updated_at')
     .run(...args(scope), value.enabled ? 1 : 0, JSON.stringify(value.queries), JSON.stringify(value.feeds), value.language, scope.subject, now);
   await db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(scope.subject, ...args(scope), 'web_watch.save', now);

@@ -17,7 +17,7 @@ const run=fn=>async()=>{
     db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(a.userId,start.toISOString(),end.toISOString(),a.organizationId,a.projectId);
     const service=new ProjectLiveBilling(db,scope,KEY);
     const order=async(language='tr',key='contract-attempt-001')=>await service.start({planId:'launch',cadence:'monthly',idempotencyKey:key,acceptTerms:true,language,contact:{name:'Fixture Ltd',phone:'+90 555 000 0000',address:'Fixture address only'}},'203.0.113.5',async()=>({state:'accepted',token:'livecheckouttoken1234567890'}));
-    const pay=async id=>{const value={merchant_oid:id,status:'success',total_amount:'2900',currency:'USD',test_mode:'0',payment_amount:'2900',payment_type:'card'};value.hash=createHmac('sha256',env.PLATFORM_PAYTR_MERCHANT_KEY).update(value.merchant_oid+env.PLATFORM_PAYTR_MERCHANT_SALT+value.status+value.total_amount).digest('base64');return await receivePaytrLiveNotification(db,new URLSearchParams(value).toString());};
+    const pay=async id=>{const value={merchant_oid:id,status:'success',total_amount:'3900',currency:'USD',test_mode:'0',payment_amount:'3900',payment_type:'card'};value.hash=createHmac('sha256',env.PLATFORM_PAYTR_MERCHANT_KEY).update(value.merchant_oid+env.PLATFORM_PAYTR_MERCHANT_SALT+value.status+value.total_amount).digest('base64');return await receivePaytrLiveNotification(db,new URLSearchParams(value).toString());};
     const queue=()=>db.prepare('SELECT * FROM platform_billing_contract_emails').all();
     await fn({db,a,scope,service,order,pay,queue});
   }finally{db.close();for(const key of keys){if(original[key]===undefined)delete process.env[key];else process.env[key]=original[key];}}
@@ -29,7 +29,7 @@ test('the page and the email use one document; the plain text keeps every sectio
     assert.equal(doc.sections.length,10);for(const section of doc.sections)assert.ok(text.includes(section.title.toLocaleUpperCase(lang==='tr'?'tr-TR':'en-US')),section.title);
     if(lang==='tr')assert.match(text,/^ÖN BİLGİLENDİRME FORMU/,'Turkish capitals keep the dotted İ');
     assert.match(text,/https:\/\/ryzevo\.example\/legal\/privacy/);assert.match(text,/\[[^\]]+\]/,'unfilled seller fields stay visible as placeholders');
-    assert.match(text,/\$29 \| \$290/);
+    assert.match(text,/\$39 \| \$390/);
   }
   const tr=termsSnapshot('tr','https://ryzevo.example'),en=termsSnapshot('en','https://ryzevo.example');
   assert.doesNotMatch(tr.text,/ENGLISH TRANSLATION/);assert.ok(en.text.startsWith(tr.text),'the Turkish text comes first and prevails');assert.match(en.text,/ENGLISH TRANSLATION/);
@@ -52,7 +52,7 @@ test('the worker sends the copy once to the verified email, with the order detai
   assert.equal(await deliverNextContractEmail(f.db,async mail=>{sent.push(mail);},null),false,'without account email configured the copy waits');assert.equal((await f.queue())[0].state,'queued');
   assert.equal(await deliverNextContractEmail(f.db,async mail=>{sent.push(mail);},config),'sent');
   assert.equal(sent.length,1);const mail=sent[0];assert.equal(mail.to,'owner@alpha.example');
-  assert.match(mail.subject,new RegExp(created.id));assert.match(mail.text,/Plan: Ryzevo Launch \(aylık\)/);assert.match(mail.text,/Tutar: \$29 \(USD\)/);assert.match(mail.text,/Dönem: \d{4}-\d{2}-\d{2} – \d{4}-\d{2}-\d{2} \(UTC\)/);
+  assert.match(mail.subject,new RegExp(created.id));assert.match(mail.text,/Plan: Ryzevo Launch \(aylık\)/);assert.match(mail.text,/Tutar: \$39 \(USD\)/);assert.match(mail.text,/Dönem: \d{4}-\d{2}-\d{2} – \d{4}-\d{2}-\d{2} \(UTC\)/);
   assert.ok(mail.text.endsWith(f.db.prepare('SELECT terms_text t FROM platform_billing_live_orders WHERE id=?').get(created.id).t),'the email carries the exact frozen text');
   assert.equal(await deliverNextContractEmail(f.db,async mail=>{sent.push(mail);},config),null,'nothing left to send');assert.equal(sent.length,1);
   assert.equal((await f.service.read()).orders[0].contractEmail,'sent');
