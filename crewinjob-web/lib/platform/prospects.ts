@@ -8,6 +8,7 @@ import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { ProjectOperations } from './operations';
 import { COACH_BANNED, coachClip, coachObject, coachText, type CoachGenerator } from './coach';
 import { parseCoachJson, runCoachAi } from './coach-ai';
+import { prospectDetailsReady, removeProspectDetails } from './prospect-finder';
 import { PROSPECT_LIMITS, type ProspectState, type ProspectView, type ProspectsSnapshot } from './prospect-types';
 
 type Row={id:string;company:string;website:string;sector:string;country:string;reason:string;contact_role:string;check_status:'not_checked'|'ok'|'unreachable';source_url:string|null;page_title:string|null;page_summary:string|null;evidence:string|null;checked_at:string|null;reason_source:'human'|'ai'|null;state:ProspectState;decided_at:string|null;note:string;task_id:string|null;revision:number;created_at:string;updated_at:string};
@@ -23,7 +24,7 @@ export const readProspectPage:ProspectReader=async url=>{
   if(!type.includes('text/html')&&!type.includes('application/xhtml+xml'))throw new Error('not_html');
   const html=await readLimited(response,1_000_000);
   const title=plain(html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]||'').slice(0,200);
-  const description=decode(html.match(/<meta\b[^>]*name\s*=\s*["']description["'][^>]*>/i)?.[0].match(/content\s*=\s*["']([^"']*)["']/i)?.[1]||'').trim().slice(0,400);
+  const description=decode(html.match(/<meta\b[^>]*name\s*=\s*["']description["'][^>]*>/i)?.[0].match(/content\s*=\s*(["'])([\s\S]*?)\1/i)?.[2]||'').trim().slice(0,400);
   const headings=[...html.matchAll(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/gi)].map(match=>plain(match[1])).filter(Boolean).slice(0,8).map(item=>item.slice(0,160));
   return {finalUrl:finalUrl.toString(),title,description,headings,text:plain(html.replace(/<head[\s\S]*?<\/head>/i,' ')).slice(0,12000)};
 };
@@ -120,7 +121,7 @@ export class ProjectProspects{
       await this.db.prepare('UPDATE platform_prospects SET task_id=?,revision=revision+1,updated_at=? WHERE id=?').run(task.id,new Date().toISOString(),row.id);await this.audit('prospect.plan');
       return {created:true,task,snapshot:await this.read()};});
   }
-  async remove(raw:Record<string,unknown>){await this.authorize('content.write');return await this.db.transaction(async ()=>{const row=await this.row(raw.id);await this.db.prepare('DELETE FROM platform_prospects WHERE id=?').run(row.id);await this.audit('prospect.delete');return await this.read();});}
+  async remove(raw:Record<string,unknown>){await this.authorize('content.write');const details=await prospectDetailsReady(this.db);return await this.db.transaction(async ()=>{const row=await this.row(raw.id);if(details)await removeProspectDetails(this.db,row.id);await this.db.prepare('DELETE FROM platform_prospects WHERE id=?').run(row.id);await this.audit('prospect.delete');return await this.read();});}
   async read():Promise<ProspectsSnapshot>{
     await this.authorize();const rows=await this.db.prepare("SELECT * FROM platform_prospects WHERE organization_id=? AND project_id=? ORDER BY CASE state WHEN 'candidate' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,updated_at DESC,id LIMIT 300").all(...this.args()) as Row[];
     const tasks=new Map((await new ProjectOperations(this.db,this.scope).tasks()).map(task=>[task.id,task.status]));const counts={candidate:0,approved:0,rejected:0} as Record<ProspectState,number>;for(const row of rows)counts[row.state]++;

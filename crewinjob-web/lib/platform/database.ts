@@ -1785,6 +1785,57 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(81,datetime('now'));
   `))();
+  // Sales assistant: company searches (Google Maps through DataForSEO, or OpenStreetMap), what each company's own site
+  // shows (signals), the contact addresses it publishes, shareable mini analyses, the team's signal choices and the
+  // owner's acceptance of the data provider terms, paid provider request counters and a shared Maps result cache.
+  // Only new tables (db:upgrade).
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=82').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_prospect_insights (
+      prospect_id TEXT PRIMARY KEY REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      source TEXT NOT NULL CHECK(source IN ('manual','osm','maps')), source_ref TEXT, city TEXT NOT NULL, address TEXT NOT NULL, category TEXT NOT NULL,
+      rating REAL, reviews INTEGER, signals_json TEXT, scanned_at TEXT, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_insights_scope ON platform_prospect_insights(organization_id,project_id);
+    CREATE TABLE platform_prospect_contacts (
+      id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('email','phone')), value TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('site','osm','maps')),
+      source_url TEXT, found_at TEXT NOT NULL,
+      UNIQUE(prospect_id,kind,value)
+    );
+    CREATE INDEX platform_prospect_contacts_scope ON platform_prospect_contacts(organization_id,project_id);
+    CREATE TABLE platform_prospect_reports (
+      id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL UNIQUE REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash) = 64), content_json TEXT NOT NULL, views INTEGER NOT NULL CHECK(views >= 0),
+      last_viewed_at TEXT, expires_at TEXT NOT NULL, revoked_at TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    CREATE TABLE platform_prospect_searches (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('osm','maps')),
+      city TEXT NOT NULL, sector TEXT NOT NULL, found INTEGER NOT NULL, added INTEGER NOT NULL, without_website INTEGER NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('done','failed')), created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_searches_recent ON platform_prospect_searches(organization_id,project_id,created_at);
+    CREATE TABLE platform_prospect_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, signals_json TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_prospect_consents (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, terms_version TEXT NOT NULL, accepted_by TEXT NOT NULL, accepted_at TEXT NOT NULL,
+      revoked_by TEXT, revoked_at TEXT,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_provider_usage (
+      provider TEXT NOT NULL, scope_key TEXT NOT NULL, period TEXT NOT NULL, requests INTEGER NOT NULL CHECK(requests >= 0),
+      PRIMARY KEY(provider,scope_key,period)
+    );
+    CREATE TABLE platform_maps_cache (
+      query_hash TEXT PRIMARY KEY CHECK(length(query_hash) = 64), listings_json TEXT NOT NULL, created_at TEXT NOT NULL
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(82,datetime('now'));
+  `))();
   return db;
 }
 

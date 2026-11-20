@@ -145,6 +145,30 @@ async function resetDatabase() {
     if (Buffer.compare(back.data, file) !== 0 || reviewed.client.requests[0].state !== 'approved') throw new Error('expert request mismatch');
     return `${started.parts} parts, ${file.length} bytes back intact, approved`;
   });
+  await step('sales assistant: maps search, site scan, mini analysis', async () => {
+    const { ProspectFinder, openProspectAnalysis } = load('prospect-finder.ts'), { FINDER_TERMS_VERSION } = load('prospect-finder-types.ts'), { ProjectProspects } = load('prospects.ts');
+    const saved = { login: process.env.PLATFORM_DATAFORSEO_LOGIN, password: process.env.PLATFORM_DATAFORSEO_PASSWORD };
+    process.env.PLATFORM_DATAFORSEO_LOGIN = 'smoke'; process.env.PLATFORM_DATAFORSEO_PASSWORD = 'smoke';
+    try {
+      // Fake providers: nothing leaves this machine.
+      const http = async url => url.startsWith('https://nominatim') ? { status: 200, text: JSON.stringify([{ osm_type: 'relation', osm_id: 1, lat: '41', lon: '29', name: 'Smoke', address: { country: 'Türkiye' } }]) }
+        : { status: 200, text: JSON.stringify({ status_code: 20000, tasks: [{ status_code: 20000, result: [{ items: [{ type: 'maps_search', title: 'Smoke Klinik', url: 'https://smoke-klinik.example/', phone: '+90 212 000 00 00', address_info: { city: 'Smoke' }, category: 'Klinik', rating: { value: 4.5, votes_count: 10 }, place_id: 'p1' }] }] }] }) };
+      const site = async () => ({ finalUrl: 'https://smoke-klinik.example/', html: '<html><head><title>Smoke Klinik</title><meta name="viewport" content="width=device-width"></head><body><a href="mailto:info@smoke-klinik.example">info</a> © 2026</body></html>' });
+      const finder = new ProspectFinder(db, scope, http, site);
+      await finder.acceptTerms({ accepted: true, version: FINDER_TERMS_VERSION });
+      await finder.saveSettings({ signals: { online_booking: 'missing' } }); await finder.saveSettings({ signals: { online_booking: 'missing', mobile: 'present' } });
+      const found = await finder.discover({ city: 'Smoke', sector: 'Klinik', source: 'maps' }), again = await finder.discover({ city: 'smoke', sector: 'klinik', source: 'maps' });
+      const counted = (await db.prepare("SELECT requests FROM platform_provider_usage WHERE provider='dataforseo_maps' AND scope_key=? AND period=?").get(`project:${scope.projectId}`, new Date().toISOString().slice(0, 10)))?.requests;
+      if (again.found !== 1 || Number(counted) !== 1) throw new Error(`maps quota/cache mismatch (${counted})`);
+      const id = (await new ProjectProspects(db, scope).read()).prospects.find(item => item.company === 'Smoke Klinik').id;
+      const scanned = await finder.scan({ id }), insight = scanned.insights[id];
+      const { url } = await finder.createReport({ id }, 'https://ryzevo.example'), token = new URLSearchParams(new URL(url).hash.slice(1)).get('token');
+      const analysis = await openProspectAnalysis(db, token);
+      await new ProjectProspects(db, scope).remove({ id });
+      if (found.added !== 1 || insight.score.signals !== 40 || !insight.contacts.some(item => item.value === 'info@smoke-klinik.example') || !analysis || analysis.company !== 'Smoke Klinik') throw new Error('sales assistant mismatch');
+      return `added ${found.added}, score ${insight.score.total}, analysis opened, removed with its details`;
+    } finally { process.env.PLATFORM_DATAFORSEO_LOGIN = saved.login; process.env.PLATFORM_DATAFORSEO_PASSWORD = saved.password; if (saved.login === undefined) delete process.env.PLATFORM_DATAFORSEO_LOGIN; if (saved.password === undefined) delete process.env.PLATFORM_DATAFORSEO_PASSWORD; }
+  });
   await step('growth coach read', async () => { const { GrowthCoach } = load('coach.ts'); const coach = await new GrowthCoach(db, scope).read(); return `revision ${coach.revision}`; });
   await step('job guide', async () => { const { jobGuide } = load('job-guide.ts'); const view = await jobGuide(db, scope); return `${view.jobs.length} jobs`; });
   await step('team alerts', async () => { const { teamAlerts } = load('team-alerts.ts'); return `${(await teamAlerts(db, scope)).length} alerts`; });

@@ -57,7 +57,7 @@ test('SQL Server backup: one file per table, verified offline with the encrypted
   const f = await fixture(t);
   const { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /SQL Server .*schema 81, 167 tables, .*authenticated/);
+  assert.match(result.stdout, /SQL Server .*schema 82, 175 tables, .*authenticated/);
   const manifest = manifestAt(folder);
   assert.equal(manifest.formatVersion, 3); assert.equal(manifest.provider, 'mssql'); assert.equal(manifest.keySource, 'file');
   assert.match(manifest.keyProof, /^[a-f0-9]{64}$/);
@@ -88,7 +88,7 @@ test('SQL Server backup: one file per table, verified offline with the encrypted
   const monitored = f.run('scripts/platform-monitor.mjs', [], { PLATFORM_DRILL_PATH: path.join(f.directory, 'no-drills') });
   const status = JSON.parse(monitored.stdout);
   assert.equal(status.provider, 'mssql');
-  assert.deepEqual(status.database, { status: 'readable', schemaVersion: 81 });
+  assert.deepEqual(status.database, { status: 'readable', schemaVersion: 82 });
   assert.equal(status.queue.status, 'checked');
   assert.equal(status.backup.status, 'verified', JSON.stringify(status.alerts));
   assert.ok(!status.alerts.some(item => /database|backup/.test(item.code)), JSON.stringify(status.alerts));
@@ -112,29 +112,29 @@ test('SQL Server restore drill: offline by default, into a new drill database wi
   assert.equal(server.status, 0, server.stderr);
   const restored = JSON.parse(server.stdout).serverRestore;
   assert.match(restored.database, /^RyzevoDrill_\d{14}$/);
-  assert.equal(restored.tables, 167); assert.equal(restored.constraints, 'trusted'); assert.equal(restored.values, 'match'); assert.equal(restored.kept, false);
+  assert.equal(restored.tables, 175); assert.equal(restored.constraints, 'trusted'); assert.equal(restored.values, 'match'); assert.equal(restored.kept, false);
   const sql = require('mssql'), master = await new sql.ConnectionPool(withDatabase(connection, 'master')).connect();
   try { assert.equal((await master.request().query(`SELECT DB_ID('${restored.database}') id`)).recordset[0].id, null, 'the drill database is dropped'); } finally { await master.close(); }
 });
 
 test('phase 4 tools: db:upgrade adds the missing tables in one step; the live guard wants a fresh backup of this very database', { skip: !local && 'no local SQL Server test connection' }, async t => {
   const f = await fixture(t), sql = require('mssql');
-  // The fixture database plays RDS as it is live today, at schema 80: without the eight new tables of schema 81.
+  // The fixture database plays RDS as it is live today, at schema 81: without the eight sales assistant tables of schema 82.
   const pool = await new sql.ConnectionPool(f.target).connect();
-  try { await pool.request().batch('DROP TABLE platform_expert_file_parts; DROP TABLE platform_expert_files; DROP TABLE platform_expert_requests; DROP TABLE platform_partner_profiles; DROP TABLE platform_ad_search_content; DROP TABLE platform_music_tracks; DROP TABLE platform_web_mentions; DROP TABLE platform_web_watch; DELETE FROM platform_migrations WHERE version = 81;'); } finally { await pool.close(); }
-  // The backup taken before db:upgrade (database at 80, code at 81) still verifies offline.
+  try { await pool.request().batch('DROP TABLE platform_maps_cache; DROP TABLE platform_provider_usage; DROP TABLE platform_prospect_consents; DROP TABLE platform_prospect_settings; DROP TABLE platform_prospect_searches; DROP TABLE platform_prospect_reports; DROP TABLE platform_prospect_contacts; DROP TABLE platform_prospect_insights; DELETE FROM platform_migrations WHERE version = 82;'); } finally { await pool.close(); }
+  // The backup taken before db:upgrade (database at 81, code at 82) still verifies offline.
   const before = f.backup();
   assert.equal(before.result.status, 0, before.result.stderr);
-  assert.match(before.result.stdout, /schema 80, 159 tables/);
+  assert.match(before.result.stdout, /schema 81, 167 tables/);
   const verified80 = f.run('scripts/platform-verify-backup.mjs', [before.folder]);
   assert.equal(verified80.status, 0, verified80.stderr);
-  assert.equal(JSON.parse(verified80.stdout).schemaVersion, 80);
+  assert.equal(JSON.parse(verified80.stdout).schemaVersion, 81);
   const plan = f.run('scripts/mssql-upgrade.cjs');
   assert.equal(plan.status, 0, plan.stderr);
-  assert.match(plan.stdout, /Schema: database 80, code 81[\s\S]*record schema version\(s\) 81[\s\S]*Plan only/);
-  for (const table of ['platform_ad_search_content', 'platform_expert_file_parts', 'platform_expert_files', 'platform_expert_requests', 'platform_music_tracks', 'platform_partner_profiles', 'platform_web_mentions', 'platform_web_watch']) assert.match(plan.stdout, new RegExp(`\\+ table ${table}\\b`), table);
+  assert.match(plan.stdout, /Schema: database 81, code 82[\s\S]*record schema version\(s\) 82[\s\S]*Plan only/);
+  for (const table of ['platform_maps_cache', 'platform_prospect_consents', 'platform_prospect_contacts', 'platform_prospect_insights', 'platform_prospect_reports', 'platform_prospect_searches', 'platform_prospect_settings', 'platform_provider_usage']) assert.match(plan.stdout, new RegExp(`\\+ table ${table}\\b`), table);
   const applied = f.run('scripts/mssql-upgrade.cjs', ['--apply']);
-  assert.equal(applied.status, 0, applied.stderr); assert.match(applied.stdout, /Applied \d+ change\(s\); schema 81/);
+  assert.equal(applied.status, 0, applied.stderr); assert.match(applied.stdout, /Applied \d+ change\(s\); schema 82/);
   assert.match(f.run('scripts/mssql-upgrade.cjs').stdout, /Up to date/);
 
   // The guard: a verified SQL Server backup of this database from the last 24 hours, nothing else.
@@ -145,7 +145,7 @@ test('phase 4 tools: db:upgrade adds the missing tables in one step; the live gu
   const saved = process.env.PLATFORM_BACKUP_PATH; process.env.PLATFORM_BACKUP_PATH = f.backups;
   try {
     const ok = await requireFreshBackup({ connection: own });
-    assert.equal(ok.schemaVersion, 81);
+    assert.equal(ok.schemaVersion, 82);
     await assert.rejects(requireFreshBackup({ connection: own, now: Date.now() + 25 * 3600000 }), /older than 24 hours/);
     await assert.rejects(requireFreshBackup({ connection: withDatabase(connection, 'master') }), /not .*master/);
   } finally { if (saved === undefined) delete process.env.PLATFORM_BACKUP_PATH; else process.env.PLATFORM_BACKUP_PATH = saved; }

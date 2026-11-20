@@ -59,6 +59,8 @@ export async function middleware(req: NextRequest) {
   if(pathname==='/robots.txt'||pathname==='/sitemap.xml')return pass(req);
   // Shared monthly report: the page reads its token from the URL fragment and the API checks it (hash, expiry, revocation).
   if(pathname==='/report'||pathname==='/api/report')return pass(req);
+  // Shared mini analysis of a prospect's site: the same fragment-token pattern as the report.
+  if(pathname==='/analiz'||pathname==='/api/analysis')return pass(req);
   if (['/welcome','/join','/api/auth/enroll','/api/platform/worker'].includes(pathname) || PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
     return pass(req);
   }

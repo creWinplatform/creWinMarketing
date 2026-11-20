@@ -189,3 +189,17 @@
 :is(.expert-form,.expert-review) textarea{min-height:84px;line-height:1.45;resize:vertical}
 :is(.expert-form,.expert-review) label{color:var(--studio-ink)}
 :is(.expert-form,.expert-review) .design-toggle{align-items:center;gap:8px;min-height:40px}.expert-chips .design-toggle input,.expert-form .design-toggle input{width:18px;height:18px;flex:none}
+/* Public mini analysis of a prospect's site (/analiz), in the sender's brand colours. */
+.analysis-page{min-height:100vh;background:var(--studio-bg);color:var(--studio-ink);display:grid;align-content:start;justify-items:center;gap:16px;padding-block:28px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.analysis-page>*{width:100%;max-width:680px;min-width:0}
+.analysis-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:12px;border-bottom:3px solid var(--analysis-accent,#baf331)}
+.analysis-logo{max-height:44px;max-width:180px;object-fit:contain}.analysis-sender{font-size:18px}.analysis-head span{color:var(--studio-muted);font-size:13px}
+.analysis-card{display:grid;gap:12px;padding:20px;border:1px solid var(--studio-border);border-radius:var(--rz-r-card,12px);background:var(--studio-surface)}
+.analysis-card h1{margin:0;font-size:clamp(22px,5vw,30px);line-height:1.2;text-wrap:balance;overflow-wrap:anywhere}
+.analysis-card h2{margin:8px 0 0;font-size:15px}
+.analysis-eyebrow{margin:0;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--studio-muted)}
+.analysis-site{display:inline-flex;align-items:center;gap:6px;justify-self:start;min-height:24px;color:var(--studio-ink);text-decoration:underline;text-underline-offset:3px;overflow-wrap:anywhere}
+.analysis-note{margin:0;font-size:13px;line-height:1.5;color:var(--studio-muted)}
+.analysis-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}.analysis-list li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;line-height:1.5}
+.analysis-icon-miss{color:#c2410c;margin-top:2px}.analysis-icon-ok{color:#15803d;margin-top:2px}
+.analysis-foot{display:grid;gap:4px;font-size:13px}.analysis-foot p{margin:0}.analysis-foot a{color:var(--studio-ink);text-decoration:underline;text-underline-offset:3px}.analysis-muted{color:var(--studio-muted)}

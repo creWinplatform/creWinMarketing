@@ -177,6 +177,20 @@ if(process.argv.includes('--agency')){
   // Client projects from --portfolio become self-service trials, so they can join the package with their owner's consent.
   for(const row of db.prepare("SELECT m.user_id,m.organization_id,m.project_id FROM platform_memberships m JOIN platform_users u ON u.id=m.user_id WHERE u.username LIKE 'qa-client-%' AND m.role='owner'").all())db.prepare("UPDATE platform_project_entitlements SET mode='trial',trial_owner_id=?,started_at=?,ends_at=? WHERE organization_id=? AND project_id=?").run(row.user_id,new Date().toISOString(),new Date(Date.now()+14*86400000).toISOString(),row.organization_id,row.project_id);
   console.log('Agency QA: the fixture project has a running agency package (stub period, no PayTR call).');}
+if(process.argv.includes('--prospects')){
+  // Sales assistant QA: three disposable companies as if found on Google Maps, one scanned with signals, role
+  // addresses and a mini analysis link. No provider is called; the sites are fixtures.
+  const {ProspectFinder}=load('prospect-finder.ts'),{ProjectProspects}=load('prospects.ts'),scope={subject:fixture.userId,organizationId:fixture.organizationId,projectId:fixture.projectId},now=new Date().toISOString();
+  const html=`<html><head><title>Gülüş Diş Kliniği</title><meta name="viewport" content="width=device-width"><meta name="description" content="Kadıköy'de implant, ortodonti ve estetik diş tedavileri sunan diş kliniği."><script src="https://connect.facebook.net/en_US/fbevents.js"></script></head><body><a href="https://wa.me/905550000000">WhatsApp</a><a href="https://instagram.com/qa">Instagram</a><p>info@gulus-qa.example</p><a href="tel:+902160000000">Ara</a><footer>© ${new Date().getUTCFullYear()}</footer></body></html>`;
+  const finder=new ProspectFinder(db,scope,async()=>{throw new Error('no provider in QA');},async url=>({finalUrl:`${url.replace(/\/$/,'')}/`,html}));
+  for(const [company,website,rating,reviews,reason] of [['Gülüş Diş Kliniği','https://gulus-qa.example',4.8,212,'Güçlü uyum: Kadıköy’de implant ve estetik tedavi sunuyor; online randevu yok.'],['Moda Ağız ve Diş Sağlığı','https://moda-qa.example',4.4,58,''],['Bağdat Ortodonti','https://bagdat-qa.example',4.9,431,'']]){
+    const id=(await new ProjectProspects(db,scope).add({company,website,sector:'Diş hekimi',country:'Türkiye',reason})).prospects.find(item=>item.company===company).id;
+    db.prepare("INSERT INTO platform_prospect_insights(prospect_id,organization_id,project_id,source,source_ref,city,address,category,rating,reviews,signals_json,scanned_at,updated_at) VALUES(?,?,?,'maps',?,'Kadıköy','Bağdat Cd., Kadıköy','Diş hekimi',?,?,NULL,NULL,?)").run(id,scope.organizationId,scope.projectId,`qa-${id}`,rating,reviews,now);
+  }
+  await finder.saveSettings({signals:{online_booking:'missing',google_tag:'missing',meta_pixel:'present'}});
+  const first=(await new ProjectProspects(db,scope).read()).prospects.find(item=>item.company==='Gülüş Diş Kliniği').id;await finder.scan({id:first});
+  const {url}=await finder.createReport({id:first},'http://localhost:31450');
+  console.log(`Prospects QA: three companies, one scanned. Mini analysis: ${url}`);}
 if(process.argv.includes('--experts')){
   // Expert requests QA (with --portfolio --agency): the fixture project is a listed partner with one new request from
   // Deniz Mobilya; a second disposable agency ("Mavi Stüdyo") is listed too and has delivered a file to the fixture.
