@@ -5,6 +5,7 @@ import { fetchPublic, readLimited } from '../site-audit';
 import { PlatformRepository } from './repository';
 import { projectFeatures } from './entitlements';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
+import { extraContacts, suppressedHosts } from './prospect-contacts';
 import {
   FINDER_LIMITS, FINDER_SECTORS, MAPS_QUOTA, type MapsQuota, FINDER_TERMS_VERSION, SIGNALS, SIGNAL_KEYS,
   type FinderSearch, type FinderSettings, type FinderSnapshot, type ProspectAnalysis, type ProspectContact, type ProspectInsight, type ProspectScore, type Signal, type SignalKey, type SignalWish,
@@ -26,6 +27,7 @@ const OVERPASS = ['https://overpass.kumi.systems/api/interpreter', 'https://over
 const NOT_A_SITE = /(^|\.)(facebook|instagram|linktr|wa|whatsapp|twitter|x|tiktok|youtube|google|goo|maps\.app\.goo|sahibinden|yemeksepeti|trendyol|hepsiburada|booking|tripadvisor)\.[a-z.]+$/i;
 // Role addresses: a company's own published contact points, not a person.
 const ROLE = /^(info|iletisim|contact|hello|merhaba|bilgi|satis|sales|destek|support|office|ofis|randevu|rezervasyon|reservation|booking|muhasebe|siparis|order|musteri|customer|hizmet|kurumsal|pazarlama|marketing|ik|hr|kariyer|career|team|mail|admin|yonetim|klinik|resepsiyon|reception)([._-][a-z0-9]+)?$/i;
+export const ROLE_ADDRESS = ROLE;
 const JUNK_DOMAIN = /(^|\.)(example\.(com|org)|sentry\.io|wixpress\.com|domain\.com|email\.com|yourdomain\.com|sentry-next\.wixpress\.com)$/i;
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 const clean = (value: unknown, max: number) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
@@ -74,6 +76,7 @@ export function readSignals(html: string, finalUrl: string, now = new Date()): S
     signal('blog', found(/href\s*=\s*["'][^"']*\/(?:blog|haberler|makaleler|news|articles)(?:[/"'?#]|$)/i)),
     signal('meta_description', description.length >= 50 ? clean(description, 80) : ''),
     signal('social', found(/(?:instagram\.com|facebook\.com|linkedin\.com\/company|tiktok\.com\/@|youtube\.com)\/[A-Za-z0-9_.@-]+/i)),
+    signal('hiring', found(/href\s*=\s*["'][^"']*\/(?:kariyer|careers?|jobs|is-ilanlari|acik-pozisyonlar|insan-kaynaklari)(?:[/"'?#.]|$)|açık pozisyonlar|iş ilanlarımız|we(?:'|’)?re hiring|join our team/i)),
     years.length ? signal('fresh', String(Math.max(...years)), Math.max(...years) >= now.getUTCFullYear() - 1) : { key: 'fresh', present: null, evidence: '' },
   ];
   return list;
@@ -195,12 +198,15 @@ export class ProspectFinder {
     const insights = new Map((await this.db.prepare('SELECT * FROM platform_prospect_insights WHERE organization_id=? AND project_id=?').all(...this.args()) as InsightRow[]).map(row => [row.prospect_id, row]));
     const contacts = await this.db.prepare('SELECT id,prospect_id,kind,value,source,source_url FROM platform_prospect_contacts WHERE organization_id=? AND project_id=? ORDER BY kind,found_at').all(...this.args()) as (ProspectContact & { prospect_id: string; source_url: string | null })[];
     const reports = new Map((await this.db.prepare('SELECT prospect_id,views,last_viewed_at,expires_at,revoked_at,created_at FROM platform_prospect_reports WHERE organization_id=? AND project_id=?').all(...this.args()) as { prospect_id: string; views: number; last_viewed_at: string | null; expires_at: string; revoked_at: string | null; created_at: string }[]).map(row => [row.prospect_id, row]));
+    const extras = await extraContacts(this.db, this.args2()), changes = new Map<string, string>();
+    try { for (const row of await this.db.prepare("SELECT prospect_id,MAX(created_at) at FROM platform_prospect_events WHERE organization_id=? AND project_id=? AND kind='site_changed' AND created_at>? GROUP BY prospect_id").all(...this.args(), new Date(Date.now() - 60 * 86400000).toISOString()) as { prospect_id: string; at: string }[]) changes.set(row.prospect_id, row.at); } catch { /* before schema 83 */ }
     const now = new Date().toISOString(), out: Record<string, ProspectInsight> = {};
     for (const prospect of prospects) {
-      const insight = insights.get(prospect.id), own = contacts.filter(item => item.prospect_id === prospect.id), signals = insight?.signals_json ? JSON.parse(insight.signals_json) as Signal[] : null, report = reports.get(prospect.id);
+      const insight = insights.get(prospect.id), own = [...contacts.filter(item => item.prospect_id === prospect.id), ...extras.filter(item => item.prospectId === prospect.id).map(item => ({ ...item.contact, source_url: null }))], signals = insight?.signals_json ? JSON.parse(insight.signals_json) as Signal[] : null, report = reports.get(prospect.id);
       out[prospect.id] = { source: insight?.source || 'manual', city: insight?.city || '', address: insight?.address || '', category: insight?.category || '', rating: insight?.rating ?? null, reviews: insight?.reviews ?? null,
         signals, scannedAt: insight?.scanned_at || null, score: scoreOf(prospect, signals, settings, own),
-        contacts: own.map(item => ({ id: item.id, kind: item.kind, value: item.value, source: item.source, sourceUrl: item.source_url })),
+        contacts: own.map(item => ({ id: item.id, kind: item.kind, value: item.value, source: item.source, sourceUrl: item.source_url, ...('person' in item ? { person: item.person, confidence: item.confidence, note: item.note } : {}) })),
+        triggers: { hiring: Boolean(signals?.find(item => item.key === 'hiring')?.present), newBusiness: insight?.source === 'maps' && insight.reviews !== null && insight.rating !== null && Number(insight.reviews) < 10, siteChangedAt: changes.get(prospect.id) || null },
         report: report ? { active: !report.revoked_at && report.expires_at > now, views: Number(report.views), lastViewedAt: report.last_viewed_at, expiresAt: report.expires_at, createdAt: report.created_at } : null };
     }
     const terms = await this.terms();
@@ -308,12 +314,14 @@ export class ProspectFinder {
       throw new MarketingStoreError(source === 'maps' ? 'Google Haritalar sonuçları şu anda alınamadı. Biraz sonra tekrar deneyin.' : 'OpenStreetMap şu anda yanıt vermiyor. Biraz sonra tekrar deneyin.', 502);
     }
     const withSite = listings.map(item => ({ ...item, origin: siteOrigin(item.website) })).filter((item): item is Listing & { origin: string } => Boolean(item.origin && item.name)), withoutWebsite = listings.length - withSite.length;
+    // Companies that asked never to be contacted again are not added back.
+    const suppressed = await suppressedHosts(this.db, this.args2());
     const added = await this.db.transaction(async () => {
       const existing = await this.db.prepare('SELECT website FROM platform_prospects WHERE organization_id=? AND project_id=?').all(...this.args()) as { website: string }[];
       const seen = new Set(existing.map(row => host(row.website))); let room = Math.max(0, 200 - existing.length), count = 0;
       for (const item of withSite) {
         if (count >= FINDER_LIMITS.perSearch || room <= 0) break;
-        const key = host(item.origin); if (!key || seen.has(key)) continue; seen.add(key);
+        const key = host(item.origin); if (!key || seen.has(key) || suppressed.has(key)) continue; seen.add(key);
         const id = `prospect_${randomUUID()}`;
         await this.db.prepare('INSERT INTO platform_prospects(id,organization_id,project_id,company,website,sector,country,reason,contact_role,reason_source,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)').run(id, ...this.args(), item.name, item.origin, (item.category || sectorText).slice(0, 80), country, '', '', null, this.scope.subject, now, now);
         await this.db.prepare('INSERT INTO platform_prospect_insights(prospect_id,organization_id,project_id,source,source_ref,city,address,category,rating,reviews,signals_json,scanned_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,NULL,NULL,?)').run(id, ...this.args(), source, item.ref || null, item.city, item.address, item.category, item.rating, item.reviews, now);
@@ -343,14 +351,21 @@ export class ProspectFinder {
     let extra: { finalUrl: string; html: string } | null = null;
     const link = page ? contactPage(page.html, page.finalUrl) : null;
     if (link) { try { extra = await this.site(link); if (host(extra.finalUrl) !== host(prospect.website)) extra = null; } catch { extra = null; } }
-    const now = new Date().toISOString();
-    return await this.db.transaction(async () => {
+    const now = new Date().toISOString(), history = await prospectDetailsReady(this.db) === 'sales';
+    await this.db.transaction(async () => {
       await this.count('prospect_check');
-      if (!page) { await this.db.prepare("UPDATE platform_prospects SET check_status='unreachable',checked_at=?,revision=revision+1,updated_at=? WHERE id=?").run(now, now, prospect.id); await this.audit('prospect.scan'); return await this.read(); }
+      if (!page) { await this.db.prepare("UPDATE platform_prospects SET check_status='unreachable',checked_at=?,revision=revision+1,updated_at=? WHERE id=?").run(now, now, prospect.id); await this.audit('prospect.scan'); return; }
       const title = plain(page.html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || '').slice(0, 200), description = decode(page.html.match(/<meta\b[^>]*name\s*=\s*["']description["'][^>]*>/i)?.[0].match(/content\s*=\s*(["'])([\s\S]*?)\1/i)?.[2] || '').trim().slice(0, 400);
       const headings = [...page.html.matchAll(/<h[12][^>]*>([\s\S]*?)<\/h[12]>/gi)].map(match => plain(match[1])).filter(Boolean).slice(0, 8).map(item => item.slice(0, 160)), summary = [description, ...headings].filter(Boolean).join(' · ').slice(0, 600);
       await this.db.prepare("UPDATE platform_prospects SET check_status='ok',source_url=?,page_title=?,page_summary=?,evidence=COALESCE(evidence,?),checked_at=?,revision=revision+1,updated_at=? WHERE id=?").run(page.finalUrl, title || null, summary || null, (description || headings[0] || title || '').slice(0, 300) || null, now, now, prospect.id);
       const signals = readSignals(page.html, page.finalUrl);
+      // A rescan that finds a different site (a new booking link, a pixel, a fresh year) is a moment worth a message.
+      const before = await this.db.prepare('SELECT signals_json FROM platform_prospect_insights WHERE prospect_id=?').get(prospect.id) as { signals_json: string | null } | undefined;
+      if (history && before?.signals_json) {
+        const old = new Map((JSON.parse(before.signals_json) as Signal[]).map(item => [item.key, item.present]));
+        const changed = signals.filter(item => item.present !== null && old.has(item.key) && old.get(item.key) !== null && old.get(item.key) !== item.present).map(item => item.key);
+        if (changed.length) await this.db.prepare('INSERT INTO platform_prospect_events(id,prospect_id,organization_id,project_id,kind,detail_json,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)').run(`pevent_${randomUUID()}`, prospect.id, ...this.args(), 'site_changed', JSON.stringify({ keys: changed }), this.scope.subject, now);
+      }
       if (await this.db.prepare('SELECT 1 FROM platform_prospect_insights WHERE prospect_id=?').get(prospect.id)) await this.db.prepare('UPDATE platform_prospect_insights SET signals_json=?,scanned_at=?,updated_at=? WHERE prospect_id=?').run(JSON.stringify(signals), now, now, prospect.id);
       else await this.db.prepare("INSERT INTO platform_prospect_insights(prospect_id,organization_id,project_id,source,source_ref,city,address,category,rating,reviews,signals_json,scanned_at,updated_at) VALUES(?,?,?,'manual',NULL,'','','',NULL,NULL,?,?,?)").run(prospect.id, ...this.args(), JSON.stringify(signals), now, now);
       for (const [pageUrl, html] of [[page.finalUrl, page.html], ...(extra ? [[extra.finalUrl, extra.html]] : [])] as [string, string][]) {
@@ -359,12 +374,47 @@ export class ProspectFinder {
         for (const phone of found.phones) await this.contact(prospect.id, 'phone', phone, 'site', pageUrl, now);
       }
       await this.audit('prospect.scan');
-      return await this.read();
     });
+    return await this.read();
+  }
+  // "Find companies like my best customers": the sector, the place and the site signals most of them share, from the
+  // companies marked won in the pipeline or from up to five websites the team enters. Nothing is saved until the team
+  // applies the signals to the score.
+  async lookalike(raw: Json) {
+    await this.authorize('content.write');
+    type Example = { sector: string; city: string; signals: Signal[] };
+    let examples: Example[] = [];
+    if (raw.from === 'won') {
+      try {
+        examples = (await this.db.prepare("SELECT p.sector,i.city,i.category,i.signals_json FROM platform_prospect_pipeline l JOIN platform_prospects p ON p.id=l.prospect_id JOIN platform_prospect_insights i ON i.prospect_id=p.id WHERE l.organization_id=? AND l.project_id=? AND l.stage='won' AND i.signals_json IS NOT NULL ORDER BY l.updated_at DESC LIMIT 20").all(...this.args()) as { sector: string; city: string; category: string; signals_json: string }[])
+          .map(row => ({ sector: row.category || row.sector, city: row.city, signals: JSON.parse(row.signals_json) as Signal[] }));
+      } catch { examples = []; }
+      if (examples.length < 2) throw new MarketingStoreError('Benzer firma profili için satış hunisinde sitesi taranmış en az 2 kazanılmış firma gerekir. Dilerseniz en iyi müşterilerinizin sitelerini yazın.', 409);
+    } else {
+      const sites = [...new Set((Array.isArray(raw.websites) ? raw.websites : []).map(siteOrigin).filter((item): item is string => Boolean(item)))].slice(0, 5);
+      if (sites.length < 2) throw new MarketingStoreError('En iyi müşterilerinizden en az 2, en çok 5 web sitesi yazın.');
+      if ((await this.used('prospect_check')) + sites.length > 50) throw new MarketingStoreError('Günlük web sitesi kontrol sınırına ulaşıldı.', 429);
+      for (const site of sites) {
+        await this.count('prospect_check');
+        try { const page = await this.site(site); if (host(page.finalUrl) === host(site)) examples.push({ sector: '', city: '', signals: readSignals(page.html, page.finalUrl) }); } catch { /* unreachable sites are skipped */ }
+      }
+      if (examples.length < 2) throw new MarketingStoreError('Sitelerden en az ikisi okunamadı. Adresleri kontrol edin.', 502);
+    }
+    const common = (values: string[]) => { const counts = new Map<string, number>(); for (const value of values.filter(Boolean)) counts.set(value, (counts.get(value) || 0) + 1); return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || ''; };
+    const signals: Partial<Record<SignalKey, SignalWish>> = {};
+    for (const key of SIGNAL_KEYS.filter(key => !['https', 'fresh', 'meta_description'].includes(key))) {
+      const known = examples.map(item => item.signals.find(signal => signal.key === key)?.present).filter((value): value is boolean => value === true || value === false);
+      if (known.length < 2) continue;
+      const share = known.filter(Boolean).length / known.length;
+      if (share >= 0.75) signals[key] = 'present'; else if (share <= 0.25) signals[key] = 'missing';
+    }
+    await this.audit('prospect.finder.lookalike');
+    return { examples: examples.length, sector: common(examples.map(item => item.sector)), city: common(examples.map(item => item.city)), signals };
   }
   async removeContact(raw: Json) {
     await this.authorize('content.write');
-    const changed = (await this.db.prepare('DELETE FROM platform_prospect_contacts WHERE id=? AND organization_id=? AND project_id=?').run(raw.contactId, ...this.args())).changes;
+    const table = typeof raw.contactId === 'string' && raw.contactId.startsWith('pxcontact_') ? 'platform_prospect_extra_contacts' : 'platform_prospect_contacts';
+    const changed = (await this.db.prepare(`DELETE FROM ${table} WHERE id=? AND organization_id=? AND project_id=?`).run(raw.contactId, ...this.args())).changes;
     if (!changed) throw new MarketingStoreError('İletişim bilgisi bulunamadı.', 404);
     await this.audit('prospect.contact.remove');
     return await this.read();
@@ -381,7 +431,7 @@ export class ProspectFinder {
     // A missing item is shown only when it matters for any site (the core set) or the team chose it for its offer;
     // a dental clinic is not told it lacks a web shop.
     const core: SignalKey[] = ['https', 'mobile', 'meta_description', 'google_tag', 'fresh'];
-    const signals = (JSON.parse(insight.signals_json) as Signal[]).filter((item): item is Signal & { present: boolean } => item.present !== null && (item.present || core.includes(item.key) || Boolean(settings.signals[item.key])));
+    const signals = (JSON.parse(insight.signals_json) as Signal[]).filter((item): item is Signal & { present: boolean } => item.present !== null && item.key !== 'hiring' && (item.present || core.includes(item.key) || Boolean(settings.signals[item.key])));
     const wished = (key: SignalKey) => settings.signals[key] ? 0 : 1;
     const findings = signals.sort((a, b) => wished(a.key) - wished(b.key) || Number(a.present) - Number(b.present)).map(item => ({ key: item.key, present: item.present, text: SIGNALS[item.key][item.present ? 'yes' : 'no'][idx] }));
     const now = new Date(), expires = new Date(now.getTime() + FINDER_LIMITS.reportDays * 86400000).toISOString(), token = randomBytes(32).toString('base64url');
@@ -417,8 +467,17 @@ export async function openProspectAnalysis(db: Db, token: string, preview = fals
 }
 // Whether the sales assistant tables exist (db:upgrade adds them). Asked outside a transaction: on SQL Server a
 // missing table inside one would end the whole transaction.
-export async function prospectDetailsReady(db: Db) { try { await db.prepare('SELECT COUNT(*) AS n FROM platform_prospect_insights WHERE 1=0').get(); return true; } catch { return false; } }
-// Dependent rows of a prospect, removed before the prospect itself.
-export async function removeProspectDetails(db: Db, prospectId: string) {
+// 'sales' when the outreach tables (schema 83) exist too.
+export async function prospectDetailsReady(db: Db): Promise<false | 'finder' | 'sales'> {
+  try { await db.prepare('SELECT COUNT(*) AS n FROM platform_prospect_insights WHERE 1=0').get(); } catch { return false; }
+  try { await db.prepare('SELECT COUNT(*) AS n FROM platform_prospect_outreach WHERE 1=0').get(); return 'sales'; } catch { return 'finder'; }
+}
+// Dependent rows of a prospect, removed before the prospect itself. The touch history (no names, no addresses) stays
+// for the team's figures; blocked addresses stay blocked.
+export async function removeProspectDetails(db: Db, prospectId: string, level: 'finder' | 'sales' = 'finder') {
+  if (level === 'sales') {
+    await db.prepare('DELETE FROM platform_prospect_outreach_sends WHERE outreach_id IN (SELECT id FROM platform_prospect_outreach WHERE prospect_id=?)').run(prospectId);
+    for (const table of ['platform_prospect_outreach', 'platform_prospect_pipeline', 'platform_prospect_extra_contacts', 'platform_prospect_proposals']) await db.prepare(`DELETE FROM ${table} WHERE prospect_id=?`).run(prospectId);
+  }
   for (const table of ['platform_prospect_contacts', 'platform_prospect_reports', 'platform_prospect_insights']) await db.prepare(`DELETE FROM ${table} WHERE prospect_id=?`).run(prospectId);
 }

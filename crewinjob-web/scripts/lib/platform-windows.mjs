@@ -34,7 +34,7 @@ export function windowsEnvironmentChecks(env, releaseRoot, { platform = process.
   let publicOrigin;
   try { const url = new URL(env.PLATFORM_AUTH_ORIGIN); if (url.protocol === 'https:' && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash) publicOrigin = url.origin; } catch {}
   record('public_https_origin', publicOrigin && publicOrigin === env.NEXT_PUBLIC_APP_URL);
-  const liveGates = ['PLATFORM_EMAIL_PILOT_SEND_ENABLED', 'PLATFORM_SOCIAL_PUBLISH_ENABLED', 'PLATFORM_MOBILE_SEND_ENABLED','PLATFORM_MOBILE_LINKS_ENABLED','PLATFORM_AUTH_EMAIL_ENABLED', 'PLATFORM_PUBLIC_SIGNUP_ENABLED', 'PLATFORM_PAYTR_SANDBOX_ENABLED'].filter(key => env[key] === '1');
+  const liveGates = ['PLATFORM_EMAIL_PILOT_SEND_ENABLED', 'PLATFORM_PROSPECT_EMAIL_ENABLED', 'PLATFORM_SOCIAL_PUBLISH_ENABLED', 'PLATFORM_MOBILE_SEND_ENABLED','PLATFORM_MOBILE_LINKS_ENABLED','PLATFORM_AUTH_EMAIL_ENABLED', 'PLATFORM_PUBLIC_SIGNUP_ENABLED', 'PLATFORM_PAYTR_SANDBOX_ENABLED'].filter(key => env[key] === '1');
   return { ok: checks.every(check => check.ok), checks, liveGates, scope: 'windows_configuration_only', productionAccepted: false };
 }
 

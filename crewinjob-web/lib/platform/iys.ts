@@ -272,3 +272,41 @@ export async function iysAttention(db: Db, scope: Scope, now = Date.now()) {
   const stale = Boolean(row.connection_id) && (row.pull_state === 'failed' || !row.pulled_at || now - Date.parse(row.pulled_at) > 6 * HOUR);
   return { items, stale, pulledAt: row.pulled_at };
 }
+
+// Sales emails (lib/platform/prospect-outreach.ts) go to role addresses a company publishes on its own site, so they are
+// merchants (tacir): no prior consent, but no message after a rejection in İYS. What a project's İYS setup allows:
+export async function outreachIysState(db: Db, scope: Scope): Promise<'not_required' | 'ready' | 'needs_exemption' | 'not_connected' | 'scope_missing'> {
+  if (!iysEnabled()) return 'not_required';
+  const row = await settings(db, scope);
+  if (!row?.scope) return 'scope_missing';
+  if (row.scope === 'none') return 'not_required';
+  if (!await connection(db, scope)) return 'not_connected';
+  return row.merchant_exemption ? 'ready' : 'needs_exemption';
+}
+// Before one sales email: marks the address as a merchant with the evidence (where the company publishes it) and, when
+// its status is older than a day, asks İYS once. Returns why the email may not go, or null.
+export async function checkOutreachRecipient(db: Db, scope: Scope, key: string, email: string, evidence: string, actor: string, transport: IysTransport = fetchTransport): Promise<IysGateReason | 'needs_exemption' | null> {
+  const state = await outreachIysState(db, scope);
+  if (state === 'not_required') return null;
+  if (state === 'scope_missing') return 'iys_scope_missing';
+  if (state === 'not_connected') return 'iys_not_connected';
+  if (state === 'needs_exemption') return 'needs_exemption';
+  const value = normalize('EPOSTA', email); if (!value) return 'iys_no_consent';
+  const id = recipientKey(scope, key, 'EPOSTA', value), now = new Date().toISOString();
+  if (!await db.prepare("SELECT 1 FROM platform_iys_merchants WHERE organization_id=? AND project_id=? AND channel='EPOSTA' AND recipient_key=?").get(...args(scope), id)) {
+    if ((await db.prepare('SELECT COUNT(*) n FROM platform_iys_merchants WHERE organization_id=? AND project_id=?').get(...args(scope)) as { n: number }).n >= LIMITS.merchants) throw new MarketingStoreError('Tacir alıcı sınırına ulaşıldı.', 429);
+    await db.prepare('INSERT INTO platform_iys_merchants VALUES(?,?,?,?,?,?,?,NULL,?,?)').run(...args(scope), 'EPOSTA', id, encryptCredentials({ recipient: value }, key, ...args(scope), `iys-merchant:EPOSTA:${id}`), maskEmail(value), evidence.replace(/[\x00-\x1f]/g, ' ').slice(0, 200), actor, now);
+  }
+  let reason = await iysGate(db, scope, 'EPOSTA', id);
+  if (reason === 'iys_stale') {
+    const creds = await credentials(db, scope, key); if (!creds) return 'iys_not_connected';
+    try {
+      const status = await new IysClient(creds, transport).status(value, 'EPOSTA', 'TACIR');
+      await db.prepare("UPDATE platform_iys_merchants SET checked_at=? WHERE organization_id=? AND project_id=? AND channel='EPOSTA' AND recipient_key=?").run(new Date().toISOString(), ...args(scope), id);
+      if (status) await remember(db, scope, key, 'EPOSTA', value, status.status, 'query', status.consentDate, status.source);
+      else await db.prepare("DELETE FROM platform_iys_recipients WHERE organization_id=? AND project_id=? AND channel='EPOSTA' AND recipient_key=?").run(...args(scope), id);
+    } catch { return 'iys_stale'; }
+    reason = await iysGate(db, scope, 'EPOSTA', id);
+  }
+  return reason;
+}

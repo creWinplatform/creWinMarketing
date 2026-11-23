@@ -21,6 +21,7 @@ const handle = coachRoute(async (scope, request: NextRequest) => {
     case 'remove-contact': return await finder.removeContact(raw);
     case 'report': return await finder.createReport(raw, panelOrigin(request));
     case 'revoke-report': return await finder.revokeReport(raw);
+    case 'lookalike': return await finder.lookalike(raw);
   }
   throw new MarketingStoreError('Geçersiz satış asistanı işlemi.');
 });

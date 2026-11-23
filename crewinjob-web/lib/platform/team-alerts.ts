@@ -18,6 +18,7 @@ import { ryzevoFeature } from './ryzevo-features';
 import { inboxSignal } from './inbox-signals';
 import { recentNegativeMentions } from './web-mentions';
 import { expertAttention } from './experts';
+import { outreachReady, salesAttention } from './prospect-outreach';
 import { iysAttention } from './iys';
 import { adWarnings } from './ad-alerts';
 import { fatiguedCreatives } from './ad-creative-stats';
@@ -123,6 +124,13 @@ export async function teamAlerts(db: Db, scope: Scope, now = Date.now()): Promis
     let waiting: Awaited<ReturnType<typeof expertAttention>> = []; try { waiting = await expertAttention(db, scope, await can('content.write'), await can('campaign.approve')); } catch { waiting = []; }
     if (waiting.length) alerts.push({ kind: 'expert_request', severity: 'warning', count: waiting.length, at: waiting[0].updated_at, href: '/?tab=project&settings=experts', keys: waiting.map(item => `expert:${item.id}:${item.state}:${item.updated_at}`) });
   }
+  // Sales assistant: mini analyses opened by contacted companies, due "not now" reminders, LinkedIn/WhatsApp touches
+  // without an answer for 5 days, and sales emails paused after bounces or spam reports.
+  if (project?.productPack === 'standard' && await can('content.write') && await outreachReady(db)) {
+    let sales: Awaited<ReturnType<typeof salesAttention>> | null = null; try { sales = await salesAttention(db, scope, now); } catch { sales = null; }
+    const keys = sales ? [...sales.viewed.map(item => `sales:view:${item.prospect_id}:${item.views}`), ...sales.reminders.map(item => `sales:remind:${item.prospect_id}:${item.remind_at}`), ...sales.touches.map(item => `sales:touch:${item.prospect_id}:${item.at}`), ...sales.bookings.map(item => `sales:booking:${item.id}`), ...(sales.paused ? [`sales:paused:${sales.paused.paused_at}`] : [])] : [];
+    if (sales && keys.length) alerts.push({ kind: 'sales_follow_up', severity: sales.paused ? 'urgent' : 'warning', count: keys.length, at: sales.viewed[0]?.last_viewed_at || sales.paused?.paused_at || null, href: '/?tab=campaigns&campaignView=prospects', keys, sales: { viewed: sales.viewed.length, reminders: sales.reminders.length, touches: sales.touches.length, bookings: sales.bookings.length, paused: Boolean(sales.paused) } });
+  }
   // Competitor websites that changed in the last week (title, headings, new pages, pricing).
   if (await can('content.write')) {
     let changes: Awaited<ReturnType<typeof recentCompetitorSiteChanges>> = []; try { changes = await recentCompetitorSiteChanges(db, scope, now); } catch { changes = []; }
@@ -169,6 +177,7 @@ export function alertMessage(alerts: TeamAlert[], lang: Lang, project: { name: s
       case 'ad_fatigue': return tr ? `${n(alert.count)} reklam görselinin tıklanma oranı son günlerde belirgin düştü. Yeni bir görsel eklemeyi değerlendirin.` : `The click-through rate of ${n(alert.count)} ad image(s) fell clearly in recent days. Consider adding a new image.`;
       case 'ad_cpi': return tr ? `${n(alert.count)} yayındaki reklam planında son 7 günün yükleme başına maliyeti sınırın üstünde. Duraklatmayı değerlendirin.` : `${n(alert.count)} running ad plan(s) cost more per install than the cap over the last 7 days. Consider pausing.`;
       case 'web_negative': return tr ? `İnternette markanız hakkında ${n(alert.count)} olumsuz haber veya yazı bulundu (son 3 gün). Kontrol edin.` : `${n(alert.count)} negative news item(s) or post(s) about your brand were found on the web (last 3 days). Take a look.`;
+      case 'sales_follow_up': return tr ? `Satış asistanında sizi bekleyen ${n(alert.count)} iş var (açılan mini analiz, yaklaşan randevu, hatırlatma veya takip zamanı gelen temas${alert.sales?.paused ? '; satış e-postaları durduruldu' : ''}).` : `${n(alert.count)} sales assistant item(s) are waiting for you (an opened mini analysis, an upcoming booking, a reminder or a touch due for follow-up${alert.sales?.paused ? '; sales emails are paused' : ''}).`;
       case 'expert_request': return tr ? `Uzman taleplerinde sizi bekleyen ${n(alert.count)} iş var (yeni talep, düzeltme veya onay bekleyen teslim).` : `${n(alert.count)} expert request item(s) are waiting for you (a new request, a change request or a delivery to review).`;
       case 'competitor_site': return tr ? `Rakip sitelerinde ${n(alert.count)} değişiklik var (başlık, yeni sayfa veya fiyat).` : `Competitor websites show ${n(alert.count)} change(s) (title, new pages or pricing).`;
       case 'weekly_pack': return tr ? `Koç bu haftanın ${n(alert.count)} taslağını hazırladı. Okuyup düzenleyin ve onaylayın; hiçbiri kendiliğinden yayınlanmaz.` : `The coach prepared ${n(alert.count)} draft(s) for this week. Read, edit and approve them; none is published on its own.`;

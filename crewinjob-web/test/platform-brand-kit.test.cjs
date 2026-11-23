@@ -57,7 +57,7 @@ test('schema 80 (brand kits) is additive and repeatable',coachRun(async f=>{
   await f.db.backup(file);let db=openPlatformDatabase(file);
   const users=db.prepare('SELECT COUNT(*) n FROM platform_users').get().n;
   require('./schema-fixture.cjs').removeBrandKitSchema(db);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,79);db.close();
-  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,82);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_brand_kits').get().n,0);
+  db=openPlatformDatabase(file);assert.equal(db.prepare('SELECT MAX(version) n FROM platform_migrations').get().n,83);assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_brand_kits').get().n,0);
   assert.equal(db.prepare('SELECT COUNT(*) n FROM platform_users').get().n,users,'other data is untouched');assert.equal(db.pragma('foreign_key_check').length,0);db.close();
 }));
 

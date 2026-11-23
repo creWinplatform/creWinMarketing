@@ -1,6 +1,6 @@
 // Things that need the team before a deadline passes. Computed from existing records for the viewing member's rights;
 // nothing is sent to customers and no message text, contact or account name leaves the app in the email.
-export type TeamAlertKind = 'inbox_window' | 'inbox_negative' | 'web_negative' | 'publication_failed' | 'connection_expiring' | 'billing_period' | 'ad_error' | 'invite_pending' | 'seo_findings' | 'search_drop' | 'iys_deadline' | 'iys_sync' | 'ad_overspend' | 'ad_cpi' | 'ad_fatigue' | 'competitor_change' | 'worker_stale' | 'weekly_pack' | 'competitor_site' | 'expert_request';
+export type TeamAlertKind = 'inbox_window' | 'inbox_negative' | 'web_negative' | 'publication_failed' | 'connection_expiring' | 'billing_period' | 'ad_error' | 'invite_pending' | 'seo_findings' | 'search_drop' | 'iys_deadline' | 'iys_sync' | 'ad_overspend' | 'ad_cpi' | 'ad_fatigue' | 'competitor_change' | 'worker_stale' | 'weekly_pack' | 'competitor_site' | 'expert_request' | 'sales_follow_up';
 export type TeamAlert = {
   kind: TeamAlertKind; severity: 'urgent' | 'warning'; count: number;
   // The earliest deadline (inbox window close, access expiry, period end) or the latest event time.
@@ -11,6 +11,8 @@ export type TeamAlert = {
   clicks?: { current: number; previous: number };
   // Ad spend warnings: the plans' names (team-only alerts).
   plans?: string[];
+  // Sales assistant: what is waiting (counts only).
+  sales?: { viewed: number; reminders: number; touches: number; bookings?: number; paused: boolean };
   // Underlying records; a new one makes the alert new for the email.
   keys: string[];
 };

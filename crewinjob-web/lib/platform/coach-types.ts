@@ -18,7 +18,7 @@ export const COACH_OBSTACLES=['start','audience','time','ideas','conversion','me
 export const COACH_CHANNELS=['linkedin','instagram','facebook','twitter','email','seo','whatsapp','ads'] as const;
 // Channels the content studio drafts for (and the monthly content plan rotates over).
 export const COACH_CONTENT_CHANNELS=['linkedin','instagram','facebook','twitter','email','seo'] as const;
-export const COACH_TOOLS=['library','campaigns','seo','calendar','project','connections','analytics','ads','whatsapp'] as const;
+export const COACH_TOOLS=['library','campaigns','seo','calendar','project','connections','analytics','ads','whatsapp','prospects'] as const;
 export type CoachChannel=typeof COACH_CHANNELS[number];
 export type CoachTool=typeof COACH_TOOLS[number];
 export type CoachAnswers={

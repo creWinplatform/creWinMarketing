@@ -8,6 +8,7 @@ import {MarketingStoreError} from './marketing-store';
 import {PlatformRepository} from './repository';
 import {emailAddress,emailIdentity,blockEmail,blockEntity} from './email-safety';
 import {EmailPilotQueue} from './email-pilots';
+import {receiveOutreachFeedback} from './prospect-outreach';
 
 type Notification={Type:string;TopicArn:string;Message:string;MessageId:string;Timestamp:string;SignatureVersion:string;Signature:string;SigningCertURL:string;Subject?:string};
 export type CertificateLoader=(url:URL)=>Promise<string>;
@@ -59,6 +60,16 @@ export async function receiveSesFeedback(db:Db,connectionId:string,raw:unknown,k
     if(!['Delivery','Bounce','Complaint'].includes(kind))return {observed:true};
     if(kind==='Bounce'&&event.bounce?.bounceType!=='Permanent')return {ignored:true};
     const tags=event.mail?.tags,jobId=tags?.ryzevoJob?.[0],position=Number(tags?.ryzevoPosition?.[0]),attempt=tags?.ryzevoAttempt?.[0];
+    // A sales email (lib/platform/prospect-outreach.ts) carries its sequence instead of a pilot job.
+    const outreachId=tags?.ryzevoOutreach?.[0];
+    if(typeof outreachId==='string'){
+      if(typeof attempt!=='string'||event.mail?.sendingAccountId!==provider.topic_arn.split(':')[4])return {ignored:true};
+      const emails:unknown[]=kind==='Delivery'?event.delivery?.recipients:kind==='Bounce'?event.bounce?.bouncedRecipients?.map((r:{emailAddress:unknown})=>r.emailAddress):event.complaint?.complainedRecipients?.map((r:{emailAddress:unknown})=>r.emailAddress);
+      const messageId=event.mail?.messageId;if(typeof messageId!=='string'||!/^[A-Za-z0-9_-]{1,200}$/.test(messageId))return {ignored:true};
+      const result=await receiveOutreachFeedback(db,{organizationId:args[0],projectId:args[1]},key,kind as 'Delivery'|'Bounce'|'Complaint',outreachId,attempt,emails,messageId);
+      if('recorded' in result)await db.prepare('INSERT INTO platform_audit(actor_id,organization_id,project_id,operation,created_at) VALUES(?,?,?,?,?)').run(provider.manager_id,...args,`prospect.outreach.feedback.${kind.toLowerCase()}`,new Date().toISOString());
+      return result;
+    }
     if(typeof jobId!=='string'||!Number.isInteger(position)||position<1||position>5||typeof attempt!=='string'||event.mail?.sendingAccountId!==provider.topic_arn.split(':')[4])return {ignored:true};
     const row=await db.prepare(`SELECT r.*,p.state,p.email_key,p.masked_email,p.provider_message_id FROM platform_email_send_reservations r JOIN platform_email_pilot_recipients p ON p.job_id=r.job_id AND p.position=r.position WHERE r.job_id=? AND r.position=? AND r.attempt_id=? AND r.organization_id=? AND r.project_id=? AND r.submitted_at IS NOT NULL`).get(jobId,position,attempt,...args) as {state:string;email_key:string;masked_email:string;provider_message_id:string|null}|undefined;
     if(!row)return {ignored:true};

@@ -5,7 +5,7 @@ import { lstat, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { join, parse, relative, resolve, sep } from 'node:path';
 
 // Bump alongside schema changes and add any new encrypted-column AAD contracts.
-export const MAX_RECOVERY_SCHEMA = 82;
+export const MAX_RECOVERY_SCHEMA = 83;
 const MAX_DATABASE_BYTES = 4 * 1024 ** 3;
 const identifier = value => `"${value.replaceAll('"', '""')}"`;
 export class RecoveryError extends Error {
@@ -108,6 +108,9 @@ const ENCRYPTED_COLUMNS = [
   { since: 68, table: 'platform_channel_tokens', column: 'encrypted_refresh', resource: row => `channel-refresh:${row.connection_id}` },
   { since: 67, table: 'platform_iys_outbox', column: 'encrypted_recipient', resource: row => `iys-outbox:${row.id}` },
   { since: 77, table: 'platform_iys_merchants', column: 'encrypted_recipient', resource: row => `iys-merchant:${row.channel}:${row.recipient_key}` },
+  { since: 83, table: 'platform_prospect_outreach', column: 'encrypted_link', resource: row => `outreach-link:${row.id}` },
+  { since: 83, table: 'platform_prospect_provider_keys', column: 'encrypted_key', resource: () => 'prospect-hunter' },
+  { since: 83, table: 'platform_bookings', column: 'encrypted_contact', resource: row => `booking:${row.id}` },
 ];
 // Both spellings mark an encrypted field: encrypted_<name> (older tables) and <name>_encrypted (WhatsApp, inbox).
 const isEncryptedColumn = column => column.startsWith('encrypted_') || column.endsWith('_encrypted');

@@ -169,6 +169,51 @@ async function resetDatabase() {
       return `added ${found.added}, score ${insight.score.total}, analysis opened, removed with its details`;
     } finally { process.env.PLATFORM_DATAFORSEO_LOGIN = saved.login; process.env.PLATFORM_DATAFORSEO_PASSWORD = saved.password; if (saved.login === undefined) delete process.env.PLATFORM_DATAFORSEO_LOGIN; if (saved.password === undefined) delete process.env.PLATFORM_DATAFORSEO_PASSWORD; }
   });
+  await step('sales assistant: outreach, pipeline, sources, booking, proposal, data keeping', async () => {
+    const { ProspectFinder } = load('prospect-finder.ts'), { ProjectProspects } = load('prospects.ts');
+    const { ProspectOutreach, deliverDueOutreach, salesAttention, salesMonth, suppressProspectHost, prospectSuppressed, pruneStaleProspects, pruneProspectOptOutTokens } = load('prospect-outreach.ts');
+    const { ProspectSources, recordVisit, pruneVisitorCompanies } = load('prospect-sources.ts'), { SOURCE_TERMS_VERSION } = load('prospect-sources-types.ts');
+    const { ProspectBooking, ProspectProposals, publicBooking, bookMeeting, openProposal } = load('prospect-workflow.ts');
+    const saved = process.env.PLATFORM_PUBLIC_ORIGIN; process.env.PLATFORM_PUBLIC_ORIGIN = 'https://ryzevo.example';
+    try {
+      const html = '<html><head><title>Satış Smoke</title><meta name="viewport" content="width=device-width"></head><body><a href="mailto:info@satis-smoke.example">info</a><a href="/kariyer">Kariyer</a> © 2026</body></html>';
+      const finder = new ProspectFinder(db, scope, async () => { throw new Error('no provider'); }, async url => ({ finalUrl: `${url.replace(/\/$/, '')}/`, html })), prospects = new ProjectProspects(db, scope);
+      const id = (await prospects.add({ company: 'Satış Smoke', website: 'https://satis-smoke.example', sector: 'Klinik' })).prospects.find(item => item.company === 'Satış Smoke').id;
+      await finder.scan({ id }); await finder.scan({ id });
+      let row = (await prospects.read()).prospects.find(item => item.id === id); await prospects.update({ id, reason: 'Güçlü uyum: smoke.', contactRole: 'Müdür', sector: 'Klinik', country: 'TR', expectedRevision: row.revision });
+      row = (await prospects.read()).prospects.find(item => item.id === id); await prospects.decide({ id, decision: 'approve', expectedRevision: row.revision });
+      const outreach = new ProspectOutreach(db, scope, KEY);
+      await outreach.saveSettings({ followUpDays: [3, 7], assignMode: 'round_robin', retentionMonths: 6, privacyUrl: 'https://satis-smoke.example/kvkk' });
+      let snap = await outreach.draft({ id, mode: 'template' }); const draft = snap.outreach[id];
+      snap = await outreach.save({ id, expectedRevision: draft.revision, steps: draft.steps, linkedin: draft.linkedin, whatsapp: draft.whatsapp });
+      await outreach.touch({ id, channel: 'linkedin' }); await outreach.assign({ id, userId: scope.subject });
+      snap = await outreach.stage({ id, stage: 'won', valueMinor: 100000, currency: 'TRY' });
+      const month = await salesMonth(db, scope, new Date(Date.now() - 86400000).toISOString(), new Date(Date.now() + 86400000).toISOString());
+      await salesAttention(db, scope); await deliverDueOutreach(db, KEY);
+      await suppressProspectHost(db, scope, 'https://engel-smoke.example', 'unsubscribe'); await suppressProspectHost(db, scope, 'https://engel-smoke.example', 'unsubscribe');
+      const blocked = await prospectSuppressed(db, scope, 'https://www.engel-smoke.example');
+      const sources = new ProspectSources(db, scope, KEY);
+      await sources.acceptTerms({ kind: 'list', accepted: true, version: SOURCE_TERMS_VERSION }); await sources.acceptTerms({ kind: 'visitors', accepted: true, version: SOURCE_TERMS_VERSION });
+      const imported = await sources.importList({ csv: 'Firma;Web sitesi;E-posta\nListe Smoke;liste-smoke.example;info@liste-smoke.example\nEngel;engel-smoke.example;' });
+      await sources.guess({ id, firstName: 'Ayşe', lastName: 'Kaya' });
+      const visitors = await sources.setVisitors({ enabled: true }), workspace = (await repo.workspace(scope.subject, scope.organizationId, scope.projectId)).project;
+      await recordVisit(db, { key: visitors.visitors.siteKey, origin: workspace.website, path: '/fiyat', ip: '81.0.0.2' }, async () => ({ name: 'Ziyaretçi A.Ş.', domain: 'ziyaretci-smoke.example', kind: 'business' }));
+      await recordVisit(db, { key: visitors.visitors.siteKey, origin: workspace.website, path: '/', ip: '81.0.0.2' }, async () => ({ name: 'Ziyaretçi A.Ş.', domain: 'ziyaretci-smoke.example', kind: 'business' }));
+      const visits = (await sources.read()).visitors.companies[0]?.visits;
+      const booking = new ProspectBooking(db, scope, KEY), settings = await booking.save({ enabled: true, title: 'Smoke', durationMin: 30, weekdays: [0, 1, 2, 3, 4, 5, 6], startHour: 6, endHour: 23, noticeHours: 1, horizonDays: 7 });
+      const key = new URLSearchParams(new URL(settings.link).hash.slice(1)).get('k'), page = await publicBooking(db, key);
+      await bookMeeting(db, key, { start: page.slots[0], name: 'Smoke Kişi', email: 'kisi@satis-smoke.example', consent: true }, KEY);
+      const booked = (await booking.read()).upcoming; await booking.cancel({ id: booked[0].id });
+      const proposals = new ProspectProposals(db, scope); let proposal = (await proposals.draft({ id, mode: 'template', price: '1.000 TL' })).proposal;
+      proposal = (await proposals.save({ id, expectedRevision: proposal.revision, content: { ...proposal.content, timeline: '2 hafta' } })).proposal;
+      const shared = await proposals.share({ id }, 'https://ryzevo.example'), opened = await openProposal(db, new URLSearchParams(new URL(shared.url).hash.slice(1)).get('token'));
+      await proposals.revoke({ id });
+      const removed = await pruneStaleProspects(db) + await pruneProspectOptOutTokens(db) + await pruneVisitorCompanies(db);
+      for (const item of (await prospects.read()).prospects.filter(item => /Smoke/.test(item.company))) await prospects.remove({ id: item.id });
+      if (!snap.pipeline[id] || snap.pipeline[id].stage !== 'won' || month.won !== 1 || month.touches !== 1 || !blocked || imported.added !== 1 || visits !== 2 || booked[0].email !== 'kisi@satis-smoke.example' || !opened || opened.content.timeline !== '2 hafta') throw new Error('sales outreach mismatch');
+      return `won ${month.won}, imported ${imported.added}, visits ${visits}, booking and proposal ok, pruned ${removed}`;
+    } finally { if (saved === undefined) delete process.env.PLATFORM_PUBLIC_ORIGIN; else process.env.PLATFORM_PUBLIC_ORIGIN = saved; }
+  });
   await step('growth coach read', async () => { const { GrowthCoach } = load('coach.ts'); const coach = await new GrowthCoach(db, scope).read(); return `revision ${coach.revision}`; });
   await step('job guide', async () => { const { jobGuide } = load('job-guide.ts'); const view = await jobGuide(db, scope); return `${view.jobs.length} jobs`; });
   await step('team alerts', async () => { const { teamAlerts } = load('team-alerts.ts'); return `${(await teamAlerts(db, scope)).length} alerts`; });

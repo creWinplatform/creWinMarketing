@@ -61,6 +61,10 @@ export async function middleware(req: NextRequest) {
   if(pathname==='/report'||pathname==='/api/report')return pass(req);
   // Shared mini analysis of a prospect's site: the same fragment-token pattern as the report.
   if(pathname==='/analiz'||pathname==='/api/analysis')return pass(req);
+  // Visitor companies: the consented beacon from a customer's own site and its script (no session; the key decides).
+  if(pathname==='/api/visit'||pathname==='/rz-visit.js')return pass(req);
+  // The team's booking page and shared proposals: fragment keys and tokens, checked by their APIs.
+  if(pathname==='/randevu'||pathname==='/api/booking'||pathname==='/teklif'||pathname==='/api/proposal')return pass(req);
   if (['/welcome','/join','/api/auth/enroll','/api/platform/worker'].includes(pathname) || PUBLIC_PATHS.some(p => pathname === p || pathname.startsWith(p + '/'))) {
     return pass(req);
   }

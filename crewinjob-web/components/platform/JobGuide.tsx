@@ -1,16 +1,16 @@
 'use client';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
-import { ArrowRight, BarChart3, Briefcase, Building2, Check, ChevronDown, CircleAlert, FolderOpen, LockKeyhole, Mail, Megaphone, MessagesSquare, Search, Send, Shuffle, Sparkles, UserPlus, UserRoundCheck, Wallet, X } from 'lucide-react';
+import { ArrowRight, BarChart3, Briefcase, Building2, Check, ChevronDown, CircleAlert, FolderOpen, LockKeyhole, Mail, Megaphone, MessagesSquare, Search, Send, Shuffle, Sparkles, UserPlus, UserRoundCheck, Wallet, X, Handshake } from 'lucide-react';
 import type { Locale } from '@/lib/platform/catalog';
 import { projectRequest, searchText } from '@/lib/platform/client';
 import type { JobGuideItem, JobGuideView, JobId } from '@/lib/platform/job-guide-types';
 import Msg from '@/components/Msg';
 
-const ICONS: Record<JobId, typeof Send> = { social_post: Send, inbox: MessagesSquare, google: Search, ai_answers: Sparkles, email: Mail, ads: Megaphone, results: BarChart3, team: UserPlus, repurpose: Shuffle,
+const ICONS: Record<JobId, typeof Send> = { social_post: Send, inbox: MessagesSquare, google: Search, ai_answers: Sparkles, email: Mail, ads: Megaphone, results: BarChart3, team: UserPlus, repurpose: Shuffle, find_customers: Building2, sales_outreach: Mail, sales_close: Handshake,
   crewin_jobs: Briefcase, crewin_profiles: UserRoundCheck, crewin_social: Send, crewin_leads: Building2, crewin_campaign: Mail, crewin_seo: Search, crewin_results: BarChart3, crewin_credits: Wallet,
   crewin_growth: Sparkles, crewin_ai: Sparkles, crewin_search: Search, crewin_inbox: MessagesSquare };
 // The Crewin workspace has its own jobs; only the search examples differ.
-const EXAMPLES = { ryzevo: { tr: 'Ör. instagram, rapor, google, reklam…', en: 'E.g. instagram, report, google, ads…' }, crewin: { tr: 'Ör. ilan, lead, profil, rapor, havale…', en: 'E.g. job ad, lead, profile, report, transfer…' } };
+const EXAMPLES = { ryzevo: { tr: 'Ör. instagram, rapor, müşteri bul, teklif…', en: 'E.g. instagram, report, find customers, proposal…' }, crewin: { tr: 'Ör. ilan, lead, profil, rapor, havale…', en: 'E.g. job ad, lead, profile, report, transfer…' } };
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 // Keeps keyboard focus inside the open dialog: Tab from the last control goes to the first and Shift+Tab the other way.
 function trapTab(event: ReactKeyboardEvent<HTMLDialogElement>, panel: HTMLDialogElement | null) {

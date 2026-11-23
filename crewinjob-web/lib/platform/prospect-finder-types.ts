@@ -2,7 +2,7 @@
 // company contact addresses and a shareable mini analysis. Pure data shared by the server and the browser.
 export const FINDER_LIMITS = { searchesPerDay: 10, perSearch: 30, reportDays: 60, phones: 3, emails: 5 } as const;
 
-export type SignalKey = 'https' | 'mobile' | 'online_booking' | 'whatsapp' | 'meta_pixel' | 'google_tag' | 'contact_form' | 'ecommerce' | 'blog' | 'meta_description' | 'social' | 'fresh';
+export type SignalKey = 'https' | 'mobile' | 'online_booking' | 'whatsapp' | 'meta_pixel' | 'google_tag' | 'contact_form' | 'ecommerce' | 'blog' | 'meta_description' | 'social' | 'fresh' | 'hiring';
 type Pair = [string, string];
 // label: the signal; yes/no: how the mini analysis words it when the site shows it or not (neutral, never a judgement).
 export const SIGNALS: Record<SignalKey, { label: Pair; yes: Pair; no: Pair }> = {
@@ -17,6 +17,7 @@ export const SIGNALS: Record<SignalKey, { label: Pair; yes: Pair; no: Pair }> = 
   blog: { label: ['Blog / haber bölümü', 'Blog / news section'], yes: ['Sitede blog veya haber bölümü var.', 'The site has a blog or news section.'], no: ['Sitede blog veya haber bölümü görmedik; aramalarda görünürlük sınırlı kalabilir.', 'We did not see a blog or news section; search visibility may stay limited.'] },
   meta_description: { label: ['Arama sonucu açıklaması', 'Search result description'], yes: ['Sayfanın arama sonucu açıklaması yazılmış.', 'The page has a search result description.'], no: ['Sayfanın arama sonucu açıklaması eksik veya çok kısa.', 'The page’s search result description is missing or very short.'] },
   social: { label: ['Sosyal medya bağlantıları', 'Social media links'], yes: ['Sitede sosyal medya hesaplarına bağlantı var.', 'The site links to social media accounts.'], no: ['Sitede sosyal medya hesaplarına bağlantı görmedik.', 'We did not see links to social media accounts.'] },
+  hiring: { label: ['İşe alım yapıyor (kariyer sayfası)', 'Hiring (careers page)'], yes: ['Sitede kariyer veya açık pozisyon bölümü var; firma büyüyor olabilir.', 'The site has a careers or open positions section; the company may be growing.'], no: ['Sitede kariyer veya açık pozisyon bölümü görmedik.', 'We did not see a careers or open positions section.'] },
   fresh: { label: ['Güncel görünen site', 'Recently updated site'], yes: ['Sitenin telif yılı güncel.', 'The site’s copyright year is current.'], no: ['Sitenin telif yılı eski; site bir süredir güncellenmemiş olabilir.', 'The site’s copyright year is old; it may not have been updated for a while.'] },
 };
 export const SIGNAL_KEYS = Object.keys(SIGNALS) as SignalKey[];
@@ -57,11 +58,14 @@ export const FINDER_TERMS: Pair = [
   'Google Maps results come from an independent data provider (DataForSEO) that collects and supplies this data. You decide which companies to contact, through which channel and when. The business that owns this project is solely responsible for how the data is used and for complying with data protection law (KVKK No. 6698), the e-commerce law No. 6563 (including İYS) and the rules of the platforms concerned. Ryzevo does not warrant the accuracy or freshness of the data; it only runs the search on your instruction and keeps the results in your project.',
 ];
 
-export type ProspectContact = { id: string; kind: 'email' | 'phone'; value: string; source: 'site' | 'osm' | 'maps'; sourceUrl: string | null };
+// Extra addresses (lib/platform/prospect-sources.ts) carry whether they belong to a person, a confidence and a note.
+export type ProspectContact = { id: string; kind: 'email' | 'phone'; value: string; source: 'site' | 'osm' | 'maps' | 'import' | 'hunter' | 'guess'; sourceUrl: string | null; person?: boolean; confidence?: number | null; note?: string };
 export type ProspectScore = { total: number; fit: number; signals: number; reach: number; signalsCounted: boolean };
 export type ProspectInsight = {
   source: 'manual' | 'osm' | 'maps'; city: string; address: string; category: string; rating: number | null; reviews: number | null;
   signals: Signal[] | null; scannedAt: string | null; score: ProspectScore; contacts: ProspectContact[];
+  // Moments worth acting on: the site shows hiring, few reviews on Maps (maybe a new business), or the site changed lately.
+  triggers: { hiring: boolean; newBusiness: boolean; siteChangedAt: string | null };
   report: { active: boolean; views: number; lastViewedAt: string | null; expiresAt: string; createdAt: string } | null;
 };
 export type FinderSearch = { id: string; source: 'osm' | 'maps'; city: string; sector: string; found: number; added: number; withoutWebsite: number; status: 'done' | 'failed'; createdAt: string };

@@ -12,6 +12,7 @@ import { LinkTracking } from './link-tracking';
 import { REPORT_LIMITS as LIMITS, type MonthlyReportFacts, type MonthlyReportView, type ReportPost, type SharedReport } from './monthly-report-types';
 import { ryzevoFeature } from './ryzevo-features';
 import { crewinDraftsIn, crewinPostsIn } from './coach-activity';
+import { outreachReady, salesMonth } from './prospect-outreach';
 import { ProjectAttribution } from './attribution';
 import { mobileMonthFacts } from './mobile-month';
 
@@ -93,6 +94,7 @@ export class MonthlyReports {
       email: email.sends ? email : null, ads, measurements,
       results: crewin ? null : await new ProjectAttribution(this.db, this.scope).monthResults(from, to),
       mobile: crewin ? [] : await mobileMonthFacts(this.db, this.scope, from, to),
+      sales: crewin || !await outreachReady(this.db) ? null : await salesMonth(this.db, this.scope, from, to).then(value => value.emails || value.touches || value.replies || value.won || value.lost || value.meetings ? value : null),
       work: { drafts, coachActionsDone: await count("SELECT COUNT(*) n FROM platform_growth_coach_actions WHERE organization_id=? AND project_id=? AND state='done' AND updated_at>=? AND updated_at<?", from, to),
         contentPlanApproved: await count('SELECT COUNT(*) n FROM platform_coach_content_items WHERE organization_id=? AND project_id=? AND approved_at>=? AND approved_at<?', from, to),
         tasksCompleted: await count("SELECT COUNT(*) n FROM platform_work_items WHERE organization_id=? AND project_id=? AND status='completed' AND due_at>=? AND due_at<?", from, to) },

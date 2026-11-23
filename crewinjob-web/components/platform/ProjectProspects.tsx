@@ -8,6 +8,11 @@ import type { ProspectState, ProspectsSnapshot, ProspectView } from '@/lib/platf
 import Msg from '@/components/Msg';
 import type { FinderSnapshot } from '@/lib/platform/prospect-finder-types';
 import { ProspectFinderPanel, ProspectInsightBlock } from './ProspectFinder';
+import type { SalesSnapshot } from '@/lib/platform/prospect-outreach-types';
+import { ProspectSalesBlock, SalesPipeline, SalesSetupPanel } from './ProspectOutreach';
+import type { SourcesSnapshot } from '@/lib/platform/prospect-sources-types';
+import { ProspectPeopleTools, ProspectSourcesPanel } from './ProspectSources';
+import { BookingPanel } from './ProspectWorkflow';
 import { onTabKeys } from './tab-keys';
 
 const STATES:Record<ProspectState,[string,string]>={candidate:['Aday','Candidate'],approved:['Onaylı','Approved'],rejected:['Reddedildi','Rejected']};
@@ -17,11 +22,13 @@ type Edit={id:string;revision:number;reason:string;contactRole:string;sector:str
 // Separate from the product's users. Research, approval and outreach are separate steps; nothing is sent.
 export default function ProjectProspects({lang}:{lang:Locale}){
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
-  const [data,setData]=useState<ProspectsSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(''),[filter,setFilter]=useState<ProspectState>('candidate');
+  const [data,setData]=useState<ProspectsSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(''),[filter,setFilter]=useState<ProspectState|'pipeline'>('candidate');
   const [form,setForm]=useState({company:'',website:'',sector:'',country:'',contactRole:'',reason:''}),[adding,setAdding]=useState(false),[edit,setEdit]=useState<Edit|null>(null);
   // Sales assistant (search, scan, score, contacts, mini analysis); absent until the database has its tables.
   const [finder,setFinder]=useState<FinderSnapshot|null>(null);
-  const load=useCallback(()=>{projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(reason=>setError(reason.message));projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>setFinder(null));},[]);
+  // Reaching out and the pipeline; absent until the database has its tables (schema 83).
+  const [sales,setSales]=useState<SalesSnapshot|null>(null),[sources,setSources]=useState<SourcesSnapshot|null>(null);
+  const load=useCallback(()=>{projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(reason=>setError(reason.message));projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>setFinder(null));projectRequest<SalesSnapshot>('/api/platform/prospects/outreach').then(setSales).catch(()=>setSales(null));projectRequest<SourcesSnapshot>('/api/platform/prospects/sources').then(setSources).catch(()=>setSources(null));},[]);
   useEffect(()=>{load();},[load]);
   const finderPost=async<T,>(key:string,body:Record<string,unknown>,message?:string):Promise<T|null>=>{if(busy)return null;setBusy(key);setError('');setNotice('');
     try{const value=await projectRequest<Record<string,unknown>>('/api/platform/prospects/finder',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(65000)});const snapshot=('snapshot' in value?value.snapshot:value) as FinderSnapshot;setFinder(snapshot);
@@ -30,6 +37,18 @@ export default function ProjectProspects({lang}:{lang:Locale}){
       if(['discover','scan','remove-contact'].includes(String(body.action)))projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(()=>undefined);
       return value as T;}
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));return null;}finally{setBusy('');}};
+  const salesPost=async<T,>(key:string,body:Record<string,unknown>,message?:string):Promise<T|null>=>{if(busy)return null;setBusy(key);setError('');setNotice('');
+    try{const value=await projectRequest<SalesSnapshot>('/api/platform/prospects/outreach',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(65000)});setSales(value);if(message)setNotice(message);
+      if(body.action==='approve')projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>undefined);return value as T;}
+    catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));projectRequest<SalesSnapshot>('/api/platform/prospects/outreach').then(setSales).catch(()=>undefined);return null;}finally{setBusy('');}};
+  const sourcesPost=async<T,>(key:string,body:Record<string,unknown>,message?:string):Promise<T|null>=>{if(busy)return null;setBusy(key);setError('');setNotice('');
+    try{const value=await projectRequest<Record<string,unknown>>('/api/platform/prospects/sources',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(65000)});setSources(('snapshot' in value?value.snapshot:value) as SourcesSnapshot);
+      if(body.action==='import')setNotice(tr?`${Number(value.added)} firma eklendi, ${Number(value.skipped)} satır atlandı (sitesiz, tekrar eden veya bir daha yazılmaması istenen).${value.more?' İlk 200 satır alındı.':''}`:`${Number(value.added)} companies added, ${Number(value.skipped)} rows skipped (no site, duplicates or asked not to be contacted).${value.more?' The first 200 rows were taken.':''}`);
+      else if(body.action==='hunter')setNotice(tr?`${Number(value.found)} yeni adres bulundu.`:`${Number(value.found)} new address(es) found.`);else if(message)setNotice(message);
+      if(['import','hunter','guess','add-visitor','remove-contact'].includes(String(body.action))){projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(()=>undefined);projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>undefined);}
+      return value as T;}
+    catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));return null;}finally{setBusy('');}};
+  const open=(id:string)=>{setFilter('approved');setTimeout(()=>document.getElementById(`prospect-${id}`)?.scrollIntoView({behavior:'smooth',block:'start'}),60);};
   const post=async(key:string,body:object,message?:string)=>{if(busy)return false;setBusy(key);setError('');setNotice('');
     try{const value=await projectRequest<Record<string,unknown>>('/api/platform/prospects',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(45000)});setData(('snapshot' in value?value.snapshot:value) as ProspectsSnapshot);if(message)setNotice(message);return true;}
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));load();return false;}finally{setBusy('');}};
@@ -37,9 +56,9 @@ export default function ProjectProspects({lang}:{lang:Locale}){
   const date=(value:string)=>new Date(value).toLocaleDateString(locale,{day:'numeric',month:'short',year:'numeric'});
   const add=async(event:FormEvent)=>{event.preventDefault();if(await post('add',{action:'add',...form},tr?'Aday eklendi. Şimdi web sitesini kontrol edin.':'Prospect added. Now check its website.')){setForm({company:'',website:'',sector:'',country:'',contactRole:'',reason:''});setAdding(false);}};
   const save=async(event:FormEvent)=>{event.preventDefault();if(edit&&await post(edit.id,{action:'update',...edit,expectedRevision:edit.revision},tr?'Kaydedildi.':'Saved.'))setEdit(null);};
-  const scoreOf=(item:ProspectView)=>finder?.insights[item.id]?.score.total??-1;
-  const shown=data.prospects.filter(item=>item.state===filter).sort((a,b)=>filter==='candidate'?scoreOf(b)-scoreOf(a):0);
-  const card=(item:ProspectView)=><li key={item.id} className="studio-draft-row">
+  const scoreOf=(id:string)=>finder?.insights[id]?.score.total??-1;
+  const shown=data.prospects.filter(item=>item.state===filter).sort((a,b)=>filter==='candidate'||filter==='approved'?scoreOf(b.id)-scoreOf(a.id):0);
+  const card=(item:ProspectView)=><li key={item.id} id={`prospect-${item.id}`} className="studio-draft-row">
     <div className="studio-draft-top"><div>
       <span className={`coach-state ${item.state==='approved'?'done':''}`}>{STATES[item.state][idx]}</span>{item.sector&&<span className="coach-muted"> · {item.sector}</span>}{item.country&&<span className="coach-muted"> · {item.country}</span>}
       <h2 className="mt-2">{item.company}</h2><a className="prospect-link" href={item.website} target="_blank" rel="noreferrer"><Globe size={13}/>{item.website.replace(/^https?:\/\//,'')}</a>
@@ -53,6 +72,8 @@ export default function ProjectProspects({lang}:{lang:Locale}){
     {item.check.status==='ok'?<div className="prospect-evidence"><p><strong>{tr?'Kanıt: ':'Evidence: '}</strong>“{item.check.evidence||item.check.pageTitle||'—'}”</p><p className="coach-muted">{tr?'Kaynak':'Source'}: <a href={item.check.sourceUrl!} target="_blank" rel="noreferrer">{item.check.sourceUrl}</a> · {tr?'kontrol':'checked'} {date(item.check.checkedAt!)}</p></div>
       :item.check.status==='unreachable'?<p className="coach-muted">{tr?`Web sitesi okunamadı (${date(item.check.checkedAt!)}). Kanıt olmadan onaylanamaz.`:`The website couldn’t be read (${date(item.check.checkedAt!)}). It can’t be approved without evidence.`}</p>:<p className="coach-muted">{tr?'Henüz kontrol edilmedi.':'Not checked yet.'}</p>}
     {finder?.insights[item.id]&&<ProspectInsightBlock tr={tr} id={item.id} insight={finder.insights[item.id]} canWrite={data.canWrite} busy={busy} post={finderPost}/>}
+    {sources&&item.state!=='rejected'&&<ProspectPeopleTools tr={tr} id={item.id} data={sources} busy={busy} post={sourcesPost}/>}
+    {sales&&item.state==='approved'&&<ProspectSalesBlock tr={tr} prospect={{id:item.id,company:item.company,contactRole:item.contactRole}} contacts={finder?.insights[item.id]?.contacts||[]} sales={sales} busy={busy} post={salesPost}/>}
     {edit?.id===item.id?<form className="prospect-form" onSubmit={event=>void save(event)}>
       <label>{tr?'Uygunluk gerekçesi':'Why they fit'}<textarea rows={3} maxLength={600} value={edit.reason} onChange={event=>setEdit({...edit,reason:event.target.value})}/></label>
       <label>{tr?'Önerilen temas rolü (kişi adı değil)':'Suggested contact role (not a name)'}<input maxLength={80} value={edit.contactRole} onChange={event=>setEdit({...edit,contactRole:event.target.value})}/></label>
@@ -79,6 +100,7 @@ export default function ProjectProspects({lang}:{lang:Locale}){
     {error&&<p className="studio-error" role="alert"><Msg text={error}/></p>}
     {notice&&<p className="coach-note" role="status">{notice}</p>}
     {finder&&<ProspectFinderPanel tr={tr} data={finder} busy={busy} post={finderPost}/>}
+    {finder&&sources&&<ProspectSourcesPanel tr={tr} data={sources} busy={busy} post={sourcesPost} finderPost={finderPost} mapsReady={finder.mapsConfigured&&Boolean(finder.termsAccepted)&&!finder.maps.blocked}/>}
     {adding&&<form className="studio-band prospect-form" onSubmit={event=>void add(event)}>
       <div className="prospect-form-row"><label>{tr?'Firma adı':'Company name'}<input required maxLength={120} value={form.company} onChange={event=>setForm({...form,company:event.target.value})}/></label>
         <label>{tr?'Web sitesi':'Website'}<input required maxLength={300} placeholder="firma.com" value={form.website} onChange={event=>setForm({...form,website:event.target.value})}/></label></div>
@@ -88,8 +110,12 @@ export default function ProjectProspects({lang}:{lang:Locale}){
       <p className="coach-muted">{tr?'Kişi adı, e-posta, telefon veya kullanıcı adı yazmayın; liste yalnız firmaları ve rolleri tutar.':'Don’t enter names, emails, phone numbers or handles; the list keeps companies and roles only.'}</p>
       <div className="coach-action-buttons"><button type="submit" className="studio-primary" disabled={Boolean(busy)}><Building2 size={15}/>{tr?'Ekle':'Add'}</button><button type="button" className="studio-text-button" onClick={()=>setAdding(false)}>{tr?'Vazgeç':'Cancel'}</button></div>
     </form>}
-    <div className="publication-view-tabs" role="tablist" onKeyDown={onTabKeys} aria-label={tr?'Aday durumu':'Prospect state'}>{(['candidate','approved','rejected'] as const).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}</div>
-    {shown.length?<ul className="prospect-list">{shown.map(card)}</ul>:<div className="studio-empty"><p>{filter==='candidate'?(tr?'Aday yok. Hedef müşteri profilinize uyan bir firmayı ve web sitesini ekleyin.':'No candidates. Add a company that fits your target customer, with its website.'):(tr?'Bu durumda aday yok.':'No prospects in this state.')}</p></div>}
-    <p className="compass-safety"><Building2 size={15}/>{tr?`Yalnız firmanın herkese açık sayfası okunur (bugün ${data.checksLeft} kontrol hakkı kaldı). AI kişi veya iletişim bilgisi üretmez; gerekçesi sayfada birebir geçen bir alıntıya dayanmak zorundadır. Yalnız firmanın kendi sitesinde yayımladığı kurumsal adresler (info@ gibi) saklanır. Bu listeden kimseye ileti gönderilmez.`:`Only the company’s public page is read (${data.checksLeft} checks left today). AI never produces people or contact details; its reason must rest on a quote that appears word for word on the page. Only role addresses a company publishes on its own site are kept. Nothing is sent to anyone from this list.`}</p>
+    <div className="publication-view-tabs" role="tablist" onKeyDown={onTabKeys} aria-label={tr?'Aday durumu':'Prospect state'}>{(['candidate','approved','rejected'] as const).map(state=><button key={state} role="tab" aria-selected={filter===state} tabIndex={filter===state?0:-1} onClick={()=>setFilter(state)}>{STATES[state][idx]} ({data.counts[state]})</button>)}
+      {sales&&<button role="tab" aria-selected={filter==='pipeline'} tabIndex={filter==='pipeline'?0:-1} onClick={()=>setFilter('pipeline')}>{tr?'Satış hunisi':'Pipeline'}</button>}</div>
+    {sales&&(filter==='approved'||filter==='pipeline')&&<SalesSetupPanel tr={tr} data={sales} busy={busy} post={salesPost}/>}
+    {sales&&(filter==='approved'||filter==='pipeline')&&<BookingPanel tr={tr}/>}
+    {filter==='pipeline'&&sales?<SalesPipeline tr={tr} items={data.prospects.filter(item=>item.state==='approved').map(item=>({id:item.id,company:item.company}))} sales={sales} score={scoreOf} onOpen={open}/>
+    :shown.length?<ul className="prospect-list">{shown.map(card)}</ul>:<div className="studio-empty"><p>{filter==='candidate'?(tr?'Aday yok. Hedef müşteri profilinize uyan bir firmayı ve web sitesini ekleyin.':'No candidates. Add a company that fits your target customer, with its website.'):(tr?'Bu durumda aday yok.':'No prospects in this state.')}</p></div>}
+    <p className="compass-safety"><Building2 size={15}/>{tr?`Yalnız firmanın herkese açık sayfası okunur (bugün ${data.checksLeft} kontrol hakkı kaldı). AI kişi veya iletişim bilgisi üretmez; gerekçesi sayfada birebir geçen bir alıntıya dayanmak zorundadır. Yalnız firmanın kendi sitesinde yayımladığı kurumsal adresler (info@ gibi) saklanır. ${sales?'Bu listeden yalnız bir ekip üyesinin metnini tek tek onayladığı satış e-postaları gider; LinkedIn ve WhatsApp mesajlarını kendiniz gönderirsiniz.':'Bu listeden kimseye ileti gönderilmez.'}`:`Only the company’s public page is read (${data.checksLeft} checks left today). AI never produces people or contact details; its reason must rest on a quote that appears word for word on the page. Only role addresses a company publishes on its own site are kept. ${sales?'Only sales emails whose texts a teammate approved one by one go out from this list; you send LinkedIn and WhatsApp messages yourself.':'Nothing is sent to anyone from this list.'}`}</p>
   </section>;
 }

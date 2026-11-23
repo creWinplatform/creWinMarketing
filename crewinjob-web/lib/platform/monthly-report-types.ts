@@ -14,6 +14,8 @@ export type MonthlyReportFacts = {
   ads: { name: string; provider: string; currency: string; spendMinor: number | null; impressions: number | null; clicks: number | null; checkedAt: string | null }[];
   measurements: { goal: { tr: string; en: string }; stage: { tr: string; en: string }; source: string; first: number; firstAt: string; last: number; lastAt: string; entries: number }[];
   work: { drafts: number; coachActionsDone: number; contentPlanApproved: number; tasksCompleted: number };
+  // Sales assistant figures for the month (counts only, no company names). Absent in reports approved before it existed.
+  sales?: { emails: number; followUps: number; touches: number; replies: number; meetings: number; proposals: number; won: number; lost: number; wonValues: { currency: string; minor: number }[] } | null;
   // People who arrived through a tagged post or email and reached a goal stage this month, by the team's own product
   // events (first touch, 90 days). Absent in reports approved before it existed.
   results?: MonthlyResults | null;

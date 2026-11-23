@@ -1,7 +1,7 @@
 import type { LocalizedText } from './catalog';
 // "What would you like to do?": each job is an outcome with the steps that lead to it. A step is done only when the
 // project's records show it (never because someone clicked here); the first step that is not done is the next one.
-export type JobId = 'social_post' | 'inbox' | 'google' | 'ai_answers' | 'email' | 'ads' | 'results' | 'team' | 'repurpose'
+export type JobId = 'social_post' | 'inbox' | 'google' | 'ai_answers' | 'email' | 'ads' | 'results' | 'team' | 'repurpose' | 'find_customers' | 'sales_outreach' | 'sales_close'
   // Crewin's own workspace (legacy tabs): jobs read from its JSON stores and the Crewin backend.
   | 'crewin_jobs' | 'crewin_profiles' | 'crewin_social' | 'crewin_leads' | 'crewin_campaign' | 'crewin_seo' | 'crewin_results' | 'crewin_credits'
   | 'crewin_growth' | 'crewin_ai' | 'crewin_search' | 'crewin_inbox';

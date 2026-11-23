@@ -190,7 +190,22 @@ if(process.argv.includes('--prospects')){
   await finder.saveSettings({signals:{online_booking:'missing',google_tag:'missing',meta_pixel:'present'}});
   const first=(await new ProjectProspects(db,scope).read()).prospects.find(item=>item.company==='Gülüş Diş Kliniği').id;await finder.scan({id:first});
   const {url}=await finder.createReport({id:first},'http://localhost:31450');
-  console.log(`Prospects QA: three companies, one scanned. Mini analysis: ${url}`);}
+  console.log(`Prospects QA: three companies, one scanned. Mini analysis: ${url}`);
+  if(process.argv.includes('--sales')){
+    // Sales QA (with --prospects): two approved companies; one with a template draft, one whose first email "went out"
+    // (rows written directly: no SMTP, no SES), a LinkedIn touch and a won deal. Nothing is sent anywhere.
+    const {ProspectOutreach}=load('prospect-outreach.ts'),prospects=new ProjectProspects(db,scope),list=(await prospects.read()).prospects,byName=name=>list.find(item=>item.company===name);
+    const bagdat=byName('Bağdat Ortodonti').id;await finder.scan({id:bagdat});
+    for(const id of [first,bagdat]){const row=(await prospects.read()).prospects.find(item=>item.id===id);
+      const reason=row.reason||'Olası uyum: ortodonti kliniği; online randevu yolu görünmüyor.';await prospects.update({id,reason,contactRole:'Klinik müdürü',sector:row.sector,country:row.country,expectedRevision:row.revision});
+      const fresh=(await prospects.read()).prospects.find(item=>item.id===id);await prospects.decide({id,decision:'approve',expectedRevision:fresh.revision});}
+    const sales=new ProspectOutreach(db,scope,'12'.repeat(32));await sales.draft({id:first,mode:'template'});await sales.draft({id:bagdat,mode:'template'});
+    const out=db.prepare('SELECT id FROM platform_prospect_outreach WHERE prospect_id=?').get(bagdat).id,sent=new Date(Date.now()-2*86400000).toISOString(),due=new Date(Date.now()+86400000).toISOString();
+    db.prepare("UPDATE platform_prospect_outreach SET state='active',approved_by=?,approved_at=?,sent_steps=1,last_sent_at=?,next_due_at=?,revision=revision+1 WHERE id=?").run(scope.subject,sent,sent,due,out);
+    db.prepare("INSERT INTO platform_prospect_outreach_sends(id,outreach_id,organization_id,project_id,step,state,provider_message_id,created_at,submitted_at,updated_at) VALUES(?,?,?,?,0,'delivered','qa',?,?,?)").run('osend_qa',out,scope.organizationId,scope.projectId,sent,sent,sent);
+    db.prepare("INSERT INTO platform_prospect_pipeline(prospect_id,organization_id,project_id,stage,value_minor,currency,lost_reason,assigned_to,updated_by,updated_at) VALUES(?,?,?,'contacted',NULL,'','',NULL,?,?)").run(bagdat,scope.organizationId,scope.projectId,scope.subject,sent);
+    await sales.touch({id:bagdat,channel:'linkedin'});
+    console.log('Sales QA: two approved companies, a draft and a sequence in progress; nothing is sent.');}}
 if(process.argv.includes('--experts')){
   // Expert requests QA (with --portfolio --agency): the fixture project is a listed partner with one new request from
   // Deniz Mobilya; a second disposable agency ("Mavi Stüdyo") is listed too and has delivered a file to the fixture.

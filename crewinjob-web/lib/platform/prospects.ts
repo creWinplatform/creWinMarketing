@@ -9,6 +9,8 @@ import { ProjectOperations } from './operations';
 import { COACH_BANNED, coachClip, coachObject, coachText, type CoachGenerator } from './coach';
 import { parseCoachJson, runCoachAi } from './coach-ai';
 import { prospectDetailsReady, removeProspectDetails } from './prospect-finder';
+import { suppressedHosts } from './prospect-contacts';
+import { autoAssignProspect } from './prospect-outreach';
 import { PROSPECT_LIMITS, type ProspectState, type ProspectView, type ProspectsSnapshot } from './prospect-types';
 
 type Row={id:string;company:string;website:string;sector:string;country:string;reason:string;contact_role:string;check_status:'not_checked'|'ok'|'unreachable';source_url:string|null;page_title:string|null;page_summary:string|null;evidence:string|null;checked_at:string|null;reason_source:'human'|'ai'|null;state:ProspectState;decided_at:string|null;note:string;task_id:string|null;revision:number;created_at:string;updated_at:string};
@@ -49,6 +51,9 @@ export class ProjectProspects{
   private async checksToday(){return (await this.db.prepare("SELECT count FROM platform_usage WHERE organization_id=? AND project_id=? AND period=? AND resource='prospect_check'").get(...this.args(),new Date().toISOString().slice(0,10)) as {count:number}|undefined)?.count||0;}
   async add(raw:Record<string,unknown>){
     await this.authorize('content.write');const company=field(raw.company,120).trim(),website=origin(raw.website);if(!company)throw new MarketingStoreError('Firma adı gerekli.');
+    // A company that asked never to be contacted again stays off the list (read outside the transaction; absent before schema 83).
+    const host=new URL(website).hostname.replace(/^www\./,'').toLowerCase();
+    if((await suppressedHosts(this.db,{organizationId:this.scope.organizationId,projectId:this.scope.projectId})).has(host))throw new MarketingStoreError('Bu firma daha önce bir daha iletişim kurulmamasını istedi; listeye eklenemez.',409);
     return await this.db.transaction(async ()=>{
       await this.authorize('content.write');
       if((await this.db.prepare('SELECT COUNT(*) n FROM platform_prospects WHERE organization_id=? AND project_id=?').get(...this.args()) as {n:number}).n>=PROSPECT_LIMITS.prospects)throw new MarketingStoreError('Aday listesi sınırına ulaşıldı.',429);
@@ -103,11 +108,14 @@ export class ProjectProspects{
   async decide(raw:Record<string,unknown>){
     const decision=raw.decision==='approve'?'approved':raw.decision==='reject'?'rejected':raw.decision==='reopen'?'candidate':null;if(!decision)throw new MarketingStoreError('Geçersiz aday kararı.');
     await this.authorize(decision==='approved'?'campaign.approve':'content.write');
-    return await this.db.transaction(async ()=>{const row=await this.row(raw.id);this.expect(row,raw);
+    await this.db.transaction(async ()=>{const row=await this.row(raw.id);this.expect(row,raw);
       if(decision==='approved'&&(row.check_status!=='ok'||!row.reason.trim()||!row.source_url))throw new MarketingStoreError('Onay için kontrol edilmiş bir web sitesi ve yazılı bir uygunluk gerekçesi gerekli.',409);
       const now=new Date().toISOString(),note=field(raw.note,300);
       await this.db.prepare('UPDATE platform_prospects SET state=?,decided_by=?,decided_at=?,note=?,revision=revision+1,updated_at=? WHERE id=?').run(decision,decision==='candidate'?null:this.scope.subject,decision==='candidate'?null:now,note,now,row.id);
-      await this.audit(`prospect.${raw.decision}`);return await this.read();});
+      await this.audit(`prospect.${raw.decision}`);});
+    // A newly approved company gets a teammate when the team chose a rule (outside the transaction, best effort).
+    if(decision==='approved')await autoAssignProspect(this.db,this.scope,String(raw.id)).catch(()=>null);
+    return await this.read();
   }
   // Outreach is planned as a Calendar task for a person to do; nothing is sent from here.
   async plan(raw:Record<string,unknown>){
@@ -121,7 +129,7 @@ export class ProjectProspects{
       await this.db.prepare('UPDATE platform_prospects SET task_id=?,revision=revision+1,updated_at=? WHERE id=?').run(task.id,new Date().toISOString(),row.id);await this.audit('prospect.plan');
       return {created:true,task,snapshot:await this.read()};});
   }
-  async remove(raw:Record<string,unknown>){await this.authorize('content.write');const details=await prospectDetailsReady(this.db);return await this.db.transaction(async ()=>{const row=await this.row(raw.id);if(details)await removeProspectDetails(this.db,row.id);await this.db.prepare('DELETE FROM platform_prospects WHERE id=?').run(row.id);await this.audit('prospect.delete');return await this.read();});}
+  async remove(raw:Record<string,unknown>){await this.authorize('content.write');const details=await prospectDetailsReady(this.db);return await this.db.transaction(async ()=>{const row=await this.row(raw.id);if(details)await removeProspectDetails(this.db,row.id,details);await this.db.prepare('DELETE FROM platform_prospects WHERE id=?').run(row.id);await this.audit('prospect.delete');return await this.read();});}
   async read():Promise<ProspectsSnapshot>{
     await this.authorize();const rows=await this.db.prepare("SELECT * FROM platform_prospects WHERE organization_id=? AND project_id=? ORDER BY CASE state WHEN 'candidate' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,updated_at DESC,id LIMIT 300").all(...this.args()) as Row[];
     const tasks=new Map((await new ProjectOperations(this.db,this.scope).tasks()).map(task=>[task.id,task.status]));const counts={candidate:0,approved:0,rejected:0} as Record<ProspectState,number>;for(const row of rows)counts[row.state]++;

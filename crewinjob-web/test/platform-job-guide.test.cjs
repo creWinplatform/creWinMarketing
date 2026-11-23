@@ -4,7 +4,7 @@ const {load}=require('./platform-loader.cjs');
 const {coachRun,plain}=require('./coach-fixture.cjs');
 // "What would you like to do?": every job's steps come from the project's records for one member.
 const {jobGuide}=load('job-guide.ts');
-const ALL=['social_post','inbox','google','ai_answers','email','ads','results','team','repurpose'];
+const ALL=['social_post','inbox','google','ai_answers','email','ads','results','team','repurpose','find_customers','sales_outreach','sales_close'];
 const job=(view,id)=>view.jobs.find(item=>item.id===id);
 const states=item=>plain(item.steps.map(step=>[step.id,step.state]));
 const save=(f,patch={})=>f.db.prepare('INSERT INTO platform_content_history VALUES(?,?,?,?,?)').run(patch.id||`h-${Math.random()}`,f.scope.organizationId,f.scope.projectId,JSON.stringify({platform:'instagram',language:'tr',content:'Kahve',prompt:'',timestamp:Date.now(),...patch}),new Date().toISOString());
@@ -69,4 +69,23 @@ test('mobile growth is listed only for projects that need it, and stays enabled 
   assert.ok((await ws()).modules.some(item=>item.id==='mobile'),'it stays enabled: links and search still reach it');
   f.db.prepare("INSERT INTO platform_compass_preferences(user_id,organization_id,project_id,revision,deferred,preferences_json,created_at,updated_at) VALUES(?,?,?,1,0,?,?,?)").run(f.scope.subject,f.scope.organizationId,f.scope.projectId,JSON.stringify({intent:'mobile'}),new Date().toISOString(),new Date().toISOString());
   assert.equal((await ws()).hiddenNav,undefined,'a mobile path lists it');
+}));
+
+test('sales assistant jobs follow the records: companies found, approved, emailed, meetings, proposals and won',coachRun(async f=>{
+  const ids=['find_customers','sales_outreach','sales_close'],now=new Date().toISOString(),args=[f.a.organizationId,f.a.projectId];
+  let view=await jobGuide(f.db,f.scope);
+  assert.deepEqual(states(job(view,'find_customers')),[['signals','todo'],['search','todo'],['scan','todo'],['approve','todo']]);
+  assert.equal(job(view,'sales_outreach').steps.find(step=>step.id==='send').state,'blocked','sending waits for the server switch');
+  // A searched, scanned and approved company.
+  f.db.prepare("INSERT INTO platform_prospect_settings(organization_id,project_id,signals_json,updated_by,updated_at) VALUES(?,?,'{}',?,?)").run(...args,f.scope.subject,now);
+  f.db.prepare("INSERT INTO platform_prospect_searches(id,organization_id,project_id,source,city,sector,found,added,without_website,status,created_by,created_at) VALUES('s1',?,?,'osm','Kadıköy','Diş',1,1,0,'done',?,?)").run(...args,f.scope.subject,now);
+  f.db.prepare("INSERT INTO platform_prospects(id,organization_id,project_id,company,website,state,created_by,created_at,updated_at) VALUES('p1',?,?,'Firma','https://firma.example','approved',?,?,?)").run(...args,f.scope.subject,now,now);
+  f.db.prepare("INSERT INTO platform_prospect_insights(prospect_id,organization_id,project_id,source,city,address,category,signals_json,scanned_at,updated_at) VALUES('p1',?,?,'osm','','','','[]',?,?)").run(...args,now,now);
+  f.db.prepare("INSERT INTO platform_prospect_pipeline(prospect_id,organization_id,project_id,stage,currency,lost_reason,updated_by,updated_at) VALUES('p1',?,?,'won','','',?,?)").run(...args,f.scope.subject,now);
+  view=await jobGuide(f.db,f.scope);
+  assert.equal(job(view,'find_customers').complete,true);assert.equal(job(view,'sales_outreach').steps[0].state,'done');
+  assert.deepEqual(states(job(view,'sales_close')).map(([id,state])=>id+':'+state),['booking:todo','reply:done','meeting:done','proposal:todo','won:done']);
+  // A member who wants leads sees the sales jobs first.
+  f.db.prepare('INSERT INTO platform_compass_preferences(user_id,organization_id,project_id,preferences_json,revision,created_at,updated_at) VALUES(?,?,?,?,1,?,?)').run(f.scope.subject,...args,JSON.stringify({intent:'leads'}),now,now);
+  view=await jobGuide(f.db,f.scope);assert.ok(view.jobs.findIndex(item=>ids.includes(item.id))<3,'the sales assistant comes near the top for leads');
 }));

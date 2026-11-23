@@ -362,3 +362,48 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .prospect-score-high{background:#14532d;color:#dcfce7;border-color:#166534}:root:not([data-theme="light"]) .prospect-score-mid{background:#713f12;color:#fef9c3;border-color:#a16207}:root:not([data-theme="light"]) .prospect-signals .is-yes{color:#86efac}:root:not([data-theme="light"]) .prospect-signals .is-no{color:#fdba74}}
 :root[data-theme="dark"] .prospect-score-high{background:#14532d;color:#dcfce7;border-color:#166534}:root[data-theme="dark"] .prospect-score-mid{background:#713f12;color:#fef9c3;border-color:#a16207}:root[data-theme="dark"] .prospect-signals .is-yes{color:#86efac}:root[data-theme="dark"] .prospect-signals .is-no{color:#fdba74}
 .finder-quota{margin:0;font-size:12px}.finder-quota.is-blocked{color:#9a3412}
+/* Sales assistant: reaching out, replies and the pipeline */
+.sales-setup>summary{display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;list-style:none;min-height:44px}.sales-setup>summary::-webkit-details-marker{display:none}
+.sales-setup-body{display:grid;gap:12px;margin-top:10px;min-width:0}
+.sales-badge{margin-left:auto;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;border:1px solid var(--studio-border)}
+.sales-badge.is-ok{background:#dcfce7;color:#14532d;border-color:#86efac}.sales-badge.is-warn{background:#ffedd5;color:#7c2d12;border-color:#fdba74}
+.sales-checks{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:13px}.sales-checks li{display:flex;gap:8px;align-items:flex-start;min-width:0}.sales-checks li>svg{flex:none;margin-top:3px}.sales-checks li>span{min-width:0;overflow-wrap:anywhere}
+.sales-checks .is-ok>svg{color:#15803d}.sales-checks .is-warn>svg{color:#c2410c}.sales-checks .is-info>svg{color:var(--studio-muted)}
+.sales-inline-button{display:inline-flex;min-height:32px;padding:0 6px;margin-left:6px;font-size:12px}
+.sales-paused{display:flex;gap:10px;padding:10px 12px;border:1px solid #fdba74;border-left:3px solid #c2410c;border-radius:8px;background:var(--studio-bg);font-size:13px}.sales-paused>svg{flex:none;color:#c2410c;margin-top:2px}
+.sales-inline{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}.sales-inline select{min-height:40px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;font-size:13px;max-width:100%}
+.sales-inline label.design-toggle,.sales-approve label.design-toggle{display:flex;align-items:flex-start;gap:8px;font-size:13px}.sales-inline label.design-toggle input,.sales-approve label.design-toggle input{width:18px;height:18px;flex:none;margin-top:2px}
+.sales-block{display:grid;gap:10px;margin:10px 0 4px;padding-top:10px;border-top:1px dashed var(--studio-border);min-width:0}
+.sales-stage-row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px}.sales-stage-row label,.sales-editor label,.sales-step label{display:grid;gap:6px;font-size:12px;font-weight:600;color:var(--studio-muted);min-width:0}
+.sales-stage-row :is(input,select),.sales-editor :is(input,select,textarea),.sales-copy textarea{min-height:40px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:8px 10px;font:inherit;font-size:14px;max-width:100%;box-sizing:border-box}
+.sales-editor textarea,.sales-copy textarea{width:100%;resize:vertical;line-height:1.5}
+.sales-section{display:grid;gap:8px;min-width:0}.sales-section h3{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0;font-size:14px}
+.sales-editor{display:grid;gap:10px;min-width:0}.sales-step{border:1px solid var(--studio-border);border-radius:8px;padding:10px;margin:0;display:grid;gap:8px;min-width:0}.sales-step legend{font-size:12px;font-weight:700;padding:0 4px}
+.sales-approve{display:grid;gap:10px;padding:10px;border:1px solid var(--studio-border);border-left:3px solid var(--studio-accent);border-radius:8px}
+.sales-status{display:grid;gap:8px;min-width:0}.sales-status p{margin:0}
+.sales-sends{list-style:none;margin:0;padding:0;display:grid;gap:4px;font-size:13px}.sales-sends li{display:flex;flex-wrap:wrap;gap:4px 10px}.sales-sends .is-good{color:#166534}.sales-sends .is-bad{color:#9a3412}
+.sales-reply{display:grid;gap:6px;padding:10px;border:1px solid var(--studio-border);border-radius:8px}.sales-reply p{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;font-size:13px}
+.sales-copy{display:grid;gap:6px}.sales-reminder{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px;color:#9a3412}
+.sales-reply-form textarea{min-height:72px}
+.sales-channels>summary{display:flex;align-items:center;gap:8px;cursor:pointer;min-height:44px;font-weight:700;font-size:14px}
+.sales-channel{display:grid;gap:6px;padding:8px 0;border-top:1px solid var(--studio-border);font-size:13px}.sales-message{margin:0;padding:8px 10px;border-radius:8px;background:var(--studio-bg);white-space:pre-wrap;overflow-wrap:anywhere}
+.sales-pipeline{display:grid;gap:12px;min-width:0}.sales-today h2{display:flex;align-items:center;gap:8px;margin:0;font-size:15px}.sales-today ol{margin:6px 0 0;padding-left:20px;display:grid;gap:4px}.sales-today .studio-text-button{min-height:32px;padding:0}
+.sales-board{display:grid;grid-template-columns:repeat(7,minmax(180px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
+.sales-column{border:1px solid var(--studio-border);border-radius:10px;padding:10px;background:var(--studio-surface,var(--studio-bg));min-width:0}.sales-column h3{display:flex;align-items:center;justify-content:space-between;margin:0 0 8px;font-size:13px}
+.sales-column ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}.sales-column li button{display:grid;gap:2px;width:100%;text-align:left;padding:8px;border:1px solid var(--studio-border);border-radius:8px;background:var(--studio-bg);color:var(--studio-ink);font:inherit;font-size:13px;cursor:pointer;min-height:44px}
+.sales-column-won{border-color:#86efac}.sales-column-lost{opacity:.85}
+@media (max-width:640px){.sales-board{grid-template-columns:1fr;overflow-x:visible}.sales-stage-row>*{flex:1 1 100%}.sales-stage-row button{width:100%;justify-content:center}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .sales-badge.is-ok{background:#14532d;color:#dcfce7;border-color:#166534}:root:not([data-theme="light"]) .sales-badge.is-warn{background:#7c2d12;color:#ffedd5;border-color:#9a3412}}
+:root[data-theme="dark"] .sales-badge.is-ok{background:#14532d;color:#dcfce7;border-color:#166534}:root[data-theme="dark"] .sales-badge.is-warn{background:#7c2d12;color:#ffedd5;border-color:#9a3412}
+
+/* Sales assistant: advanced sources, triggers and learning */
+.sources-section{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--studio-border);min-width:0}.sources-section h3{display:flex;align-items:center;gap:8px;margin:0;font-size:14px}
+.sources-result{display:grid;gap:8px;padding:10px;border:1px solid var(--studio-border);border-radius:8px}.sources-result p{margin:0}
+.sources-snippet{display:grid;gap:6px;min-width:0}.sources-snippet code{display:block;padding:8px 10px;border-radius:8px;background:var(--studio-bg);font-size:12px;overflow-x:auto;white-space:nowrap}
+.sources-visitors{list-style:none;margin:0;padding:0;display:grid;gap:8px}.sources-visitors li{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--studio-border);border-radius:8px;font-size:13px;min-width:0}.sources-visitors li>div{min-width:0;overflow-wrap:anywhere}
+.sources-panel input[type=password],.people-tools input{min-height:40px;border:1px solid var(--studio-border);border-radius:var(--rz-r-control,8px);background:var(--studio-bg);color:var(--studio-ink);padding:0 10px;font:inherit;font-size:14px;min-width:0;max-width:100%}
+.people-tools{margin:6px 0}
+.prospect-triggers{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}.prospect-triggers li{padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;background:var(--studio-bg);border:1px dashed var(--studio-accent);color:var(--studio-ink)}
+.sales-learning h2{display:flex;align-items:center;gap:8px;margin:0;font-size:15px}.sales-learning ul{margin:6px 0 0;padding-left:20px;display:grid;gap:4px;font-size:13px}
+.booking-weekdays{display:flex;flex-wrap:wrap;gap:8px 14px;border:0;padding:0;margin:0}.booking-weekdays legend{font-size:12px;font-weight:600;color:var(--studio-muted);margin-bottom:6px}.booking-weekdays label.design-toggle{display:flex;align-items:center;gap:6px;font-size:13px}
+.sources-visitors li.is-cancelled{opacity:.6}

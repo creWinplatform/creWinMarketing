@@ -36,6 +36,8 @@ import { readDueMessagingSources } from '@/lib/platform/messaging-sources';
 import { deliverWhatsAppBatches } from '@/lib/platform/whatsapp';
 import { readDueInboxAccounts } from '@/lib/platform/social-inbox';
 import { syncDueLinkResults } from '@/lib/platform/link-tracking';
+import { deliverDueOutreach, outreachReady, pruneProspectOptOutTokens, pruneStaleProspects } from '@/lib/platform/prospect-outreach';
+import { pruneVisitorCompanies } from '@/lib/platform/prospect-sources';
 import { deliverNextAlertEmail } from '@/lib/platform/team-alerts';
 import { deliverDuePushes } from '@/lib/platform/web-push';
 export const dynamic = 'force-dynamic',
@@ -61,7 +63,7 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   // missing Crewin agent or backend is simply skipped.
   void cachedAllData().catch(() => {}); void cachedBreakdown().catch(() => {});
   const pruned = { ...await pruneProductEvents(db), attribution: await pruneAttribution(db) };
-  const expiredEmailTokens = await pruneEmailTokens(db);
+  const expiredEmailTokens = await pruneEmailTokens(db) + (await outreachReady(db) ? await pruneProspectOptOutTokens(db) + await pruneVisitorCompanies(db) : 0);
   const scheduledMeasurements = await scheduleMeasurements(db, credentialEncryptionKey());
   const identity=new PlatformIdentity(db,credentialEncryptionKey());
   await identity.prune();
@@ -117,6 +119,10 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const inboxReads=Date.now()-startedAt<20000?await readDueInboxAccounts(db,credentialEncryptionKey()).catch(()=>0):0;
   // Tagged-link results are read from GA4 once a day per project, as the person who chose the property.
   const linkResults=Date.now()-startedAt<20000?await syncDueLinkResults(db,credentialEncryptionKey()).catch(()=>0):0;
+  // Approved sales email sequences: the next due email, a few per tick, within business hours and the daily limit.
+  const salesEmails=Date.now()-startedAt<20000&&await outreachReady(db)?await deliverDueOutreach(db,credentialEncryptionKey()).catch(()=>0):0;
+  // The data-keeping rule of the sales assistant (projects that chose one).
+  const staleProspects=Date.now()-startedAt<20000&&await outreachReady(db)?await pruneStaleProspects(db).catch(()=>0):0;
   // Opted-in members hear about new deadline-sensitive records by email; one subscriber is looked at per tick.
   const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
   // The Monday summary for members who opted in, one per tick.
@@ -146,5 +152,5 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const webMentions=Date.now()-startedAt<20000?await readDueWebMentions(db).catch(()=>0):0;
   // Ad image and video figures: one plan per tick, once a day, for the comparison and the fatigue warning.
   const creativeStats=Date.now()-startedAt<20000?await refreshDueCreativeStats(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, adAutoPaused, webMentions, creativeStats, weeklySummary, weeklyPack, competitorSites };
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, salesEmails, staleProspects, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, adAutoPaused, webMentions, creativeStats, weeklySummary, weeklyPack, competitorSites };
 }

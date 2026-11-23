@@ -6,6 +6,7 @@ import { isLegacyUnsubscribe, processLegacyUnsubscribe } from '@/lib/legacy-unsu
 import { readBoundedBodyBytes } from '@/lib/platform/request-json';
 import { MarketingStoreError } from '@/lib/platform/marketing-store';
 import { queueIysUnsubscribe } from '@/lib/platform/email-recipients';
+import { isProspectUnsubscribe, processProspectUnsubscribe } from '@/lib/platform/prospect-outreach';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 const privateHeaders={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
 
@@ -45,6 +46,8 @@ export async function POST(request: NextRequest) {
         if(form.get('List-Unsubscribe')!=='One-Click')return NextResponse.json({error:INVALID_LINK},{status:400,headers:privateHeaders});
       }
       const db=platformDatabase();
+      // Sales assistant emails carry their own links (lib/platform/prospect-outreach.ts).
+      if(isProspectUnsubscribe(token))return NextResponse.json(await processProspectUnsubscribe(db,token,action==='inspect',credentialEncryptionKey()),{headers:privateHeaders});
       return NextResponse.json(await processRyzevoUnsubscribe(db,token,action==='inspect',async item=>{await queueIysUnsubscribe(db,item.scope,credentialEncryptionKey(),item.sourceId,item.entityKey,item.emailKey);}),{headers:privateHeaders});
     }
 

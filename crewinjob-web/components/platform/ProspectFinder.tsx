@@ -70,9 +70,14 @@ export function ProspectInsightBlock({ tr, id, insight, canWrite, busy, post }: 
     </div>
     {insight.signals && <ul className="prospect-signals" aria-label={t('Sitede görülenler', 'Seen on the site')}>{insight.signals.filter(item => item.present !== null).map(item => <li key={item.key} className={item.present ? 'is-yes' : 'is-no'} title={item.evidence || undefined}>{item.present ? '✓' : '✗'} {SIGNALS[item.key].label[idx]}</li>)}</ul>}
     {insight.scannedAt && <p className="coach-muted">{t(`Site taraması: ${day(insight.scannedAt)}`, `Site scan: ${day(insight.scannedAt)}`)}</p>}
+    {(insight.triggers.hiring || insight.triggers.newBusiness || insight.triggers.siteChangedAt) && <ul className="prospect-triggers" aria-label={t('Fırsat anları', 'Moments to act')}>
+      {insight.triggers.hiring && <li>{t('İşe alım yapıyor', 'Hiring')}</li>}
+      {insight.triggers.newBusiness && <li>{t('Yeni işletme olabilir (az yorum)', 'Maybe a new business (few reviews)')}</li>}
+      {insight.triggers.siteChangedAt && <li>{t(`Site değişti (${day(insight.triggers.siteChangedAt)})`, `Site changed (${day(insight.triggers.siteChangedAt)})`)}</li>}
+    </ul>}
     {insight.contacts.length > 0 && <ul className="prospect-contacts">{insight.contacts.map(item => <li key={item.id}>
       {item.kind === 'email' ? <Mail size={13} aria-hidden="true" /> : <Phone size={13} aria-hidden="true" />}<span className="prospect-contact-value">{item.value}</span>
-      <small className="coach-muted">{item.source === 'site' ? t('firmanın sitesi', 'company site') : item.source === 'maps' ? 'Google' : 'OSM'}</small>
+      <small className="coach-muted">{({ site: t('firmanın sitesi', 'company site'), maps: 'Google', osm: 'OSM', import: t('yüklenen liste', 'uploaded list'), hunter: 'Hunter', guess: t('tahmini, doğrulanmadı', 'guessed, not verified') } as Record<string, string>)[item.source]}{item.person ? t(' · kişi', ' · person') : ''}{item.confidence ? ` · ${item.confidence}/100` : ''}{item.note ? ` · ${item.note}` : ''}</small>
       <button type="button" className="studio-text-button" aria-label={t(`${item.value} kopyala`, `Copy ${item.value}`)} onClick={() => void copyValue(item.value, item.id)}>{copied === item.id ? <Check size={13} /> : <Copy size={13} />}</button>
       {canWrite && <button type="button" className="studio-text-button" aria-label={t(`${item.value} kaldır`, `Remove ${item.value}`)} disabled={Boolean(busy)} onClick={() => void post(`contact-${item.id}`, { action: 'remove-contact', contactId: item.id })}><Trash2 size={13} /></button>}
     </li>)}</ul>}

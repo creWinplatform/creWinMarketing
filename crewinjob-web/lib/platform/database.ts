@@ -1836,6 +1836,121 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     );
     INSERT INTO platform_migrations(version,applied_at) VALUES(82,datetime('now'));
   `))();
+  // Sales assistant, reaching out: approved email sequences sent from the project's own sender (one row per company,
+  // one row per sent step), the sales pipeline, a history of touches for the figures, and the team's sales settings.
+  // Only new tables (db:upgrade).
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=83').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_prospect_outreach (
+      id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL UNIQUE REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      contact_id TEXT, email_key TEXT, masked_email TEXT, language TEXT NOT NULL CHECK(language IN ('tr','en')),
+      steps_json TEXT NOT NULL, channels_json TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('ai','template','human')),
+      state TEXT NOT NULL CHECK(state IN ('draft','active','finished','replied','stopped','bounced','failed')),
+      digest TEXT, approved_by TEXT, approved_at TEXT, encrypted_link TEXT,
+      sent_steps INTEGER NOT NULL CHECK(sent_steps >= 0 AND sent_steps <= 3), next_due_at TEXT, last_sent_at TEXT, lease_until TEXT,
+      wait_reason TEXT, stop_reason TEXT, reply_kind TEXT, reply_summary TEXT, reply_draft TEXT, reply_at TEXT, remind_at TEXT,
+      revision INTEGER NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_outreach_due ON platform_prospect_outreach(state,next_due_at);
+    CREATE INDEX platform_prospect_outreach_scope ON platform_prospect_outreach(organization_id,project_id);
+    CREATE TABLE platform_prospect_outreach_sends (
+      id TEXT PRIMARY KEY, outreach_id TEXT NOT NULL REFERENCES platform_prospect_outreach(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      step INTEGER NOT NULL CHECK(step >= 0 AND step <= 2),
+      state TEXT NOT NULL CHECK(state IN ('reserved','accepted','delivered','bounced','complained','uncertain','rejected')),
+      provider_message_id TEXT, created_at TEXT NOT NULL, submitted_at TEXT, updated_at TEXT NOT NULL,
+      UNIQUE(outreach_id,step)
+    );
+    CREATE INDEX platform_prospect_outreach_sends_recent ON platform_prospect_outreach_sends(organization_id,project_id,submitted_at);
+    CREATE TABLE platform_prospect_pipeline (
+      prospect_id TEXT PRIMARY KEY REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      stage TEXT NOT NULL CHECK(stage IN ('new','contacted','replied','meeting','proposal','won','lost')),
+      value_minor INTEGER, currency TEXT NOT NULL, lost_reason TEXT NOT NULL, assigned_to TEXT, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_pipeline_stage ON platform_prospect_pipeline(organization_id,project_id,stage);
+    CREATE TABLE platform_prospect_events (
+      id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      kind TEXT NOT NULL, detail_json TEXT NOT NULL, actor_id TEXT, created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_events_recent ON platform_prospect_events(organization_id,project_id,created_at);
+    CREATE TABLE platform_outreach_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, from_name TEXT NOT NULL, signature TEXT NOT NULL, calendar_url TEXT NOT NULL,
+      follow_up_days TEXT NOT NULL, dmarc_state TEXT, dmarc_checked_at TEXT, paused_reason TEXT, paused_at TEXT, updated_by TEXT, updated_at TEXT,
+      privacy_url TEXT NOT NULL DEFAULT '', retention_months INTEGER NOT NULL DEFAULT 0 CHECK(retention_months IN (0,3,6,12)), org_wide INTEGER NOT NULL DEFAULT 1 CHECK(org_wide IN (0,1)),
+      assign_mode TEXT NOT NULL DEFAULT 'manual' CHECK(assign_mode IN ('manual','round_robin','by_sector')), assign_rules TEXT NOT NULL DEFAULT '[]', assign_cursor INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_prospect_optout_tokens (
+      token_hash TEXT PRIMARY KEY CHECK(length(token_hash) = 64), organization_id TEXT NOT NULL, project_id TEXT NOT NULL, prospect_id TEXT NOT NULL,
+      host TEXT NOT NULL, email_key TEXT NOT NULL, masked_email TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_prospect_suppressions (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, host TEXT NOT NULL, reason TEXT NOT NULL, created_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,host),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_prospect_extra_contacts (
+      id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('email','phone')), value TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('import','hunter','guess')),
+      recipient_type TEXT NOT NULL CHECK(recipient_type IN ('company','person')), confidence INTEGER, note TEXT NOT NULL, found_at TEXT NOT NULL,
+      UNIQUE(prospect_id,kind,value)
+    );
+    CREATE INDEX platform_prospect_extra_contacts_scope ON platform_prospect_extra_contacts(organization_id,project_id);
+    CREATE TABLE platform_prospect_source_terms (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('list','visitors')), terms_version TEXT NOT NULL,
+      accepted_by TEXT NOT NULL, accepted_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,kind),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_prospect_imports (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, rows_count INTEGER NOT NULL, added INTEGER NOT NULL, skipped INTEGER NOT NULL,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_prospect_provider_keys (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, provider TEXT NOT NULL CHECK(provider IN ('hunter')), encrypted_key TEXT NOT NULL, masked TEXT NOT NULL,
+      added_by TEXT NOT NULL, added_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,provider),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_visitor_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, site_key TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+      allowed_host TEXT NOT NULL, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_visitor_companies (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, company_key TEXT NOT NULL, name TEXT NOT NULL, domain TEXT NOT NULL, kind TEXT NOT NULL,
+      visits INTEGER NOT NULL CHECK(visits >= 0), pages_json TEXT NOT NULL, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,company_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_booking_settings (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, booking_key TEXT NOT NULL UNIQUE, enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+      title TEXT NOT NULL, duration_min INTEGER NOT NULL CHECK(duration_min IN (15,30,45,60)), weekdays TEXT NOT NULL, start_hour INTEGER NOT NULL, end_hour INTEGER NOT NULL,
+      notice_hours INTEGER NOT NULL, horizon_days INTEGER NOT NULL, owner_id TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_bookings (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL,
+      encrypted_contact TEXT NOT NULL, email_domain TEXT NOT NULL, prospect_id TEXT, state TEXT NOT NULL CHECK(state IN ('booked','cancelled')),
+      task_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_bookings_time ON platform_bookings(organization_id,project_id,starts_at);
+    CREATE TABLE platform_prospect_proposals (
+      id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL UNIQUE REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      content_json TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('ai','template','human')), token_hash TEXT NOT NULL UNIQUE CHECK(length(token_hash) = 64),
+      views INTEGER NOT NULL CHECK(views >= 0), last_viewed_at TEXT, expires_at TEXT, revoked_at TEXT, shared_at TEXT, revision INTEGER NOT NULL,
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_migrations(version,applied_at) VALUES(83,datetime('now'));
+  `))();
   return db;
 }
 

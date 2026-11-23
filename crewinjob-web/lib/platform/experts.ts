@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Db } from '../db/client';
 import { mapSeries } from '../db/async-array';
 import type { MarketingScope } from './marketing-store';
+import { recordAgencyCustomer } from './prospect-outreach';
 import { MarketingStoreError } from './errors';
 import { PlatformRepository } from './repository';
 import {
@@ -195,6 +196,9 @@ export class Experts {
     if (raw.decision === 'accept') {
       if (!await running(this.db, ...this.args())) throw new MarketingStoreError('Ajans paketi etkin değilken yeni iş kabul edilemez.', 409);
       await this.move(row, ['sent'], { state: 'accepted', decided_by: this.scope.subject, decided_at: at });
+      // Agency mode: the client becomes a won customer in the agency's own sales pipeline (best effort).
+      const client = await this.db.prepare('SELECT name,website FROM platform_projects WHERE id=? AND organization_id=?').get(row.project_id, row.organization_id) as { name: string; website: string } | undefined;
+      if (client) await recordAgencyCustomer(this.db, { organizationId: this.scope.organizationId, projectId: this.scope.projectId }, { company: client.name, website: client.website, service: row.service, actor: this.scope.subject }).catch(() => undefined);
     } else if (raw.decision === 'decline') await this.move(row, ['sent'], { state: 'declined', decided_by: this.scope.subject, decided_at: at, notes_json: await this.note(row, { by: 'partner', kind: 'decline', text: line(raw.note, 500).slice(0, 500), at }) });
     else throw new MarketingStoreError('Geçersiz karar.');
     await audit(this.db, this.scope.subject, ...this.args(), raw.decision === 'accept' ? 'experts.request.accept' : 'experts.request.decline');
