@@ -314,3 +314,16 @@ html { font-family:'Manrope Variable',Manrope,'Segoe UI',sans-serif; }
 @media(max-width:359px) { .workspace-main { padding:22px 15px 30px; }.workspace-topbar { padding:10px 11px; gap:5px; }.workspace-breadcrumb { max-width:90px; }.workspace-header-actions { gap:2px; }.launch-hero { min-height:470px; }.launch-hero h1 { font-size:46px; }.launch-hero-copy { font-size:15px; }.launch-hero-actions { gap:15px; }.launch-hero-actions .launch-button { font-size:11px; }.launch-section-heading h2 { font-size:24px; } }
 @media(max-width:639px) { .launch-hero { background:#fcfcfd; }.launch-hero-art { object-fit:contain; object-position:center bottom; }.launch-hero-index { color:#252a32; }.launch-hero-access { color:#46515f; } }
 @media(prefers-reduced-motion:no-preference) { .launch-hero-content { animation:product-arrive .6s ease both; } @keyframes product-arrive { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } } }
+/* Two-level section navigation (components/platform/GroupedTabs.tsx) */
+.grouped-tabs{display:grid;gap:10px;margin-bottom:22px;min-width:0}
+.grouped-tabs-groups{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:2px 0 4px}
+.grouped-tabs-groups::-webkit-scrollbar{display:none}
+.grouped-tabs-groups button{display:inline-flex;align-items:center;gap:8px;flex:none;min-height:40px;padding:0 14px;border:1px solid var(--studio-border);border-radius:999px;background:var(--studio-surface);color:var(--studio-muted);font-size:13px;font-weight:600;white-space:nowrap}
+.grouped-tabs-groups button:hover{color:var(--studio-ink)}
+.grouped-tabs-groups button[aria-current]{background:var(--studio-ink);border-color:var(--studio-ink);color:var(--studio-bg)}
+.grouped-tabs-hint{margin:0;font-size:13px;line-height:1.5;color:var(--studio-muted);max-width:70ch}
+.grouped-tabs .grouped-tabs-items{margin-bottom:0;gap:20px;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}
+.grouped-tabs .grouped-tabs-items::-webkit-scrollbar{display:none}
+.grouped-tabs .grouped-tabs-items button{white-space:nowrap;flex:none}
+/* Page heading actions keep their label on one line */
+.studio-page-heading .overview-header-actions :is(.studio-primary,.studio-secondary){white-space:nowrap;flex:none}

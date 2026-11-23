@@ -407,3 +407,10 @@
 .sales-learning h2{display:flex;align-items:center;gap:8px;margin:0;font-size:15px}.sales-learning ul{margin:6px 0 0;padding-left:20px;display:grid;gap:4px;font-size:13px}
 .booking-weekdays{display:flex;flex-wrap:wrap;gap:8px 14px;border:0;padding:0;margin:0}.booking-weekdays legend{font-size:12px;font-weight:600;color:var(--studio-muted);margin-bottom:6px}.booking-weekdays label.design-toggle{display:flex;align-items:center;gap:6px;font-size:13px}
 .sources-visitors li.is-cancelled{opacity:.6}
+
+/* Sales assistant: parts of the page, short terms, signals behind a summary */
+.prospect-sections{margin-bottom:4px}
+.finder-terms-text summary,.prospect-signal-details summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--studio-accent);min-height:32px;display:flex;align-items:center}
+.finder-terms-text p{margin:6px 0 0;font-size:13px;line-height:1.6;color:var(--studio-muted)}
+.prospect-signal-details[open] summary{margin-bottom:6px}
+.studio-empty .studio-secondary{margin:0 auto 10px}

@@ -20,7 +20,7 @@ const STOP_LABELS: Record<string, [string, string]> = { cancelled: ['ekip durdur
 const waNumber = (value: string) => { const digits = value.replace(/\D/g, ''); return value.startsWith('+') ? digits : digits.length === 11 && digits.startsWith('0') ? `90${digits.slice(1)}` : digits.length === 10 && digits.startsWith('5') ? `90${digits}` : digits; };
 
 // Readiness for sales emails and the team's sending settings.
-export function SalesSetupPanel({ tr, data, busy, post }: { tr: boolean; data: SalesSnapshot; busy: string; post: SalesPost }) {
+export function SalesSetupPanel({ tr, data, busy, post, open = false }: { tr: boolean; data: SalesSnapshot; busy: string; post: SalesPost; open?: boolean }) {
   const t = (a: string, b: string) => tr ? a : b, r = data.readiness;
   const formOf = (value: SalesSnapshot['settings']) => ({ fromName: value.fromName, signature: value.signature, calendarUrl: value.calendarUrl, first: value.followUpDays[0], second: value.followUpDays[1], privacyUrl: value.privacyUrl, retentionMonths: value.retentionMonths, orgWide: value.orgWide, assignMode: value.assignMode, assignRules: value.assignRules });
   const [form, setForm] = useState(() => formOf(data.settings)), [ack, setAck] = useState(false), [copiedNotice, setCopiedNotice] = useState(false);
@@ -37,7 +37,7 @@ export function SalesSetupPanel({ tr, data, busy, post }: { tr: boolean; data: S
     [r.iys === 'not_required' || r.iys === 'ready', iysText],
   ];
   const missing = checks.filter(([ok]) => !ok).length + (r.paused ? 1 : 0);
-  return <details className="studio-band sales-setup" open={Boolean(r.paused)}>
+  return <details className="studio-band sales-setup" open={open || Boolean(r.paused)}>
     <summary><Settings2 size={15} aria-hidden="true" /><strong>{t('Satış e-postası ayarları', 'Sales email settings')}</strong><span className={missing ? 'sales-badge is-warn' : 'sales-badge is-ok'}>{missing ? t(`${missing} eksik`, `${missing} to do`) : t('Hazır', 'Ready')}</span></summary>
     <div className="sales-setup-body">
       {r.paused && <div className="sales-paused" role="alert"><AlertTriangle size={16} aria-hidden="true" /><div><strong>{t('Satış e-postaları durduruldu.', 'Sales emails are paused.')}</strong> {r.paused.reason === 'complaints' ? t('Alıcılar spam bildirdi.', 'Recipients reported spam.') : t('Çok sayıda e-posta geri döndü.', 'Too many emails bounced.')} {t('Adres listesini ve metinleri gözden geçirin; bağlantı yöneticisi devam ettirebilir.', 'Review the addresses and the texts; a connection manager can resume.')}

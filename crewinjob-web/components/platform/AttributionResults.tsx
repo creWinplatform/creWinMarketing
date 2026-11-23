@@ -33,7 +33,7 @@ export default function AttributionResults({ lang }: { lang: Locale }) {
   const setup = [
     { done: data.setup.activeSources > 0, label: tr ? 'Ürün olaylarınızı imzalı webhook ile gönderin' : 'Send your product events through a signed webhook', href: '/?tab=project&settings=data' },
     { done: data.setup.touches > 0, label: tr ? 'Sitenize kod parçasını ekleyin ve kayıt olayında kaynak etiketini gönderin' : 'Add the snippet to your site and send the source tag with your signup event', href: '/?tab=project&settings=data' },
-    { done: data.setup.stagesMapped, label: tr ? 'Hedef aşamalarını ürün olaylarına bağlayın (aşağıda, Otomatik ölçümler)' : 'Map goal stages to product events (below, Automatic measurements)', href: '/?tab=analytics' },
+    { done: data.setup.stagesMapped, label: tr ? 'Hedef aşamalarını ürün olaylarına bağlayın (Hedef ölçümleri → Otomatik ölçümler)' : 'Map goal stages to product events (Goal measurements → Automatic measurements)', href: '/?tab=analytics&analyticsView=measurements' },
   ];
   const ready = data.setup.touches > 0 && data.stages.length > 0, coverage = data.coverage;
   return <section className="studio-band attribution-results" aria-labelledby="attribution-title" aria-busy={loading}>

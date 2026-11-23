@@ -199,7 +199,7 @@ export async function approvedCoachContext(db:Db,scope:Pick<MarketingScope,'orga
 const TOOL_TAB:Record<CoachTool,ModuleId>={library:'library',campaigns:'campaigns',seo:'seo',calendar:'calendar',project:'project',connections:'project',analytics:'analytics',ads:'campaigns',whatsapp:'campaigns',prospects:'campaigns'};
 const TOOL_PERMISSION:Record<CoachTool,WorkspacePermission>={library:'content.write',campaigns:'content.write',seo:'content.write',calendar:'content.write',project:'connections.manage',connections:'connections.manage',analytics:'read',ads:'content.write',whatsapp:'content.write',prospects:'content.write'};
 // WhatsApp and ad accounts are connected in their own Campaign hub views, not under Project settings.
-const OWN_VIEW:Partial<Record<CoachChannel|CoachTool,string>>={whatsapp:'/?tab=campaigns&campaignView=whatsapp',ads:'/?tab=campaigns&campaignView=ads',prospects:'/?tab=campaigns&campaignView=prospects'};
+const OWN_VIEW:Partial<Record<CoachChannel|CoachTool,string>>={analytics:'/?tab=analytics&analyticsView=measurements',whatsapp:'/?tab=campaigns&campaignView=whatsapp',ads:'/?tab=campaigns&campaignView=ads',prospects:'/?tab=campaigns&campaignView=prospects'};
 const AD_PROVIDERS=['meta_ads','google_ads','linkedin_ads'];
 const GUIDE:Partial<Record<CoachChannel,string>>={linkedin:'linkedin_company',instagram:'instagram',facebook:'facebook',twitter:'twitter'};
 // The Crewin workspace opens its own tabs: social accounts are connected in Social media, email and WhatsApp in WA & Telegram,

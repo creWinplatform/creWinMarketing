@@ -35,7 +35,11 @@ export default function ProjectReports({
     [value, setValue] = useState(''),
     [date, setDate] = useState(new Date().toISOString().slice(0, 10)),
     [note, setNote] = useState(''),
+    // Four parts instead of one long page (Ryzevo projects); the Crewin workspace keeps its measurements page.
+    [section, setSection] = useState<'report' | 'results' | 'measurements' | 'budget'>('report'),
     canWrite = workspace.permissions?.includes('content.write');
+  const standard = workspace.project.productPack === 'standard', part = (name: typeof section) => !standard || section === name;
+  useEffect(() => { const value = new URLSearchParams(window.location.search).get('analyticsView'); if (value === 'results' || value === 'measurements' || value === 'budget') setSection(value); }, []);
   const load = () =>
     projectRequest<OperationsSummary>('/api/platform/operations')
       .then(setData)
@@ -95,14 +99,14 @@ export default function ProjectReports({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {mode === 'manual' && <a
+          {part('measurements') && mode === 'manual' && <a
             className="studio-secondary"
             href="/api/platform/operations?resource=export"
           >
             <Download size={16} />
             {tr ? 'CSV dışa aktar' : 'Export CSV'}
           </a>}
-          {mode === 'manual' && canWrite && (
+          {part('measurements') && mode === 'manual' && canWrite && (
             <button
               className="studio-primary"
               disabled={!goal}
@@ -114,9 +118,14 @@ export default function ProjectReports({
           )}
         </div>
       </header>
-      {workspace.project.productPack === 'standard' && <MonthlyReportPanel lang={lang} />}
-      {workspace.project.productPack === 'standard' && <AttributionResults lang={lang} />}
-      {workspace.project.productPack === 'standard' && <CoachLearning workspace={workspace} lang={lang} />}
+      {standard && <nav className="studio-settings-tabs grouped-tabs-items" aria-label={tr ? 'Rapor bölümleri' : 'Report sections'}>
+        {([['report', tr ? 'Aylık rapor' : 'Monthly report'], ['results', tr ? 'Ne işe yaradı' : 'What worked'], ['measurements', tr ? 'Hedef ölçümleri' : 'Goal measurements'], ['budget', tr ? 'Bütçe ve kullanım' : 'Budget & usage']] as [typeof section, string][])
+          .map(([id, label]) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => { setSection(id); const url = new URL(window.location.href); url.searchParams.set('analyticsView', id); window.history.replaceState({}, '', url); }}>{label}</button>)}
+      </nav>}
+      {standard && section === 'report' && <MonthlyReportPanel lang={lang} />}
+      {standard && section === 'results' && <AttributionResults lang={lang} />}
+      {standard && section === 'results' && <CoachLearning workspace={workspace} lang={lang} />}
+      {part('measurements') && <>
       <div className="product-data-modes" role="tablist" aria-label={tr ? 'Ölçüm kaynağı' : 'Measurement source'} onKeyDown={event => { if (['ArrowLeft','ArrowRight'].includes(event.key)) { event.preventDefault(); const next = mode === 'automatic' ? 'manual' : 'automatic'; setMode(next); (event.currentTarget.querySelectorAll<HTMLButtonElement>('button')[next === 'automatic' ? 0 : 1]).focus(); } }}>
         <button role="tab" aria-selected={mode === 'automatic'} onClick={() => setMode('automatic')}>{tr ? 'Otomatik ölçümler' : 'Automatic measurements'}</button>
         <button role="tab" aria-selected={mode === 'manual'} onClick={() => setMode('manual')}>{tr ? 'Manuel kayıtlar' : 'Manual entries'}</button>
@@ -374,8 +383,9 @@ export default function ProjectReports({
         )}
       </section>
       </>}
-      {workspace.project.productPack === 'standard' && <BudgetPlanner lang={lang} />}
-      {data && (
+      </>}
+      {standard && section === 'budget' && <BudgetPlanner lang={lang} />}
+      {part('budget') && data && (
         <section className="studio-band mt-6">
           <div className="studio-section-title">
             <h2>{tr ? 'Kullanım & plan' : 'Usage & plan'}</h2>

@@ -4,6 +4,7 @@ import { lazyTab } from '@/components/lazy-tab';
 import { Building2, Plug, UsersRound, ArrowUpRight, Database, Gauge, Palette, Activity, ShieldCheck, Rocket, Shapes, Handshake } from 'lucide-react';
 import type { Locale, WorkspaceContext } from '@/lib/platform/catalog';
 import { localeTag } from '@/lib/i18n/shared';
+import GroupedTabs, { type TabItem } from './GroupedTabs';
 import TeamAdministration from './TeamAdministration';
 import ProjectConnections from './ProjectConnections';
 import ProjectProfileEditor from './ProjectProfileEditor';
@@ -96,83 +97,25 @@ export default function ProjectSettings({
           <ArrowUpRight size={15} />
         </a>
       </header>
-      <nav
-        className="studio-settings-tabs"
-        aria-label={tr ? 'Ayar bölümleri' : 'Settings sections'}
-      >
-        {[
-          {
-            id: 'profile',
-            Icon: Building2,
-            label: tr ? 'Ürün & hedefler' : 'Product & goals',
-            visible: true,
-          },
-          {
-            id: 'connections',
-            Icon: Plug,
-            label: tr ? 'Bağlantılar' : 'Connections',
-            visible: canConnections,
-          },
-          {
-            id: 'data',
-            Icon: Database,
-            label: tr ? 'Ürün verisi' : 'Product data',
-            visible: dataOpen,
-          },
-          {
-            id:'brand',Icon:Palette,label:tr?'Marka dili & rakipler':'Brand voice & competitors',
-            visible:brandOpen,
-          },
-          {
-            id:'brandkit',Icon:Shapes,label:tr?'Marka kiti':'Brand kit',
-            visible:brandOpen,
-          },
-          {
-            id:'golive',Icon:Rocket,label:tr?'Canlıya geçiş':'Go-live',
-            visible:goLiveOpen,
-          },
-          {
-            id:'iys',Icon:ShieldCheck,label:tr?'Gönderim izinleri (İYS)':'Sending consents (IYS)',
-            visible:iysOpen,
-          },
-          {
-            id:'plan',Icon:Gauge,label:tr?'Plan & kullanım':'Plan & usage',
-            visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
-          },
-          {
-            id:'experts',Icon:Handshake,label:tr?'Uzman iste':'Ask an expert',
-            visible:workspace.accessMode==='platform_account'&&project.productPack==='standard',
-          },
-          {
-            id: 'operations',
-            Icon: Activity,
-            label: tr ? 'Operasyon' : 'Operations',
-            visible: Boolean(canOperate),
-          },
-          {
-            id: 'team',
-            Icon: UsersRound,
-            label: tr ? 'Ekip & erişim' : 'Team & access',
-            visible: canTeam || workspace.accessMode === 'platform_account',
-          },
-        ]
-          .filter((item) => item.visible)
-          .map(({ id, Icon, label }) => (
-            <button
-              key={id}
-              aria-current={section === id ? 'page' : undefined}
-              onClick={() => {
-                setSection(id);
-                const url = new URL(window.location.href);
-                url.searchParams.set('settings', id);
-                window.history.replaceState({}, '', url);
-              }}
-            >
-              <Icon size={16} />
-              {label}
-            </button>
-          ))}
-      </nav>
+      {(() => {
+        // The sections in five plain groups; a section the member cannot open is left out, and so is an empty group.
+        const show = (id: string) => ({ profile: true, connections: canConnections, data: dataOpen, brand: brandOpen, brandkit: brandOpen, golive: goLiveOpen, iys: iysOpen,
+          plan: workspace.accessMode === 'platform_account' && project.productPack === 'standard', experts: workspace.accessMode === 'platform_account' && project.productPack === 'standard',
+          operations: Boolean(canOperate), team: canTeam || workspace.accessMode === 'platform_account' } as Record<string, boolean>)[id];
+        const item = (id: string, Icon: TabItem<string>['Icon'], label: string) => show(id) ? [{ id, Icon, label }] : [];
+        return <GroupedTabs name="settings" label={tr ? 'Ayar bölümleri' : 'Settings sections'} value={section} onChange={id => { setSection(id); const url = new URL(window.location.href); url.searchParams.set('settings', id); window.history.replaceState({}, '', url); }} groups={[
+          { id: 'project', Icon: Building2, label: tr ? 'Ürün ve marka' : 'Product & brand', hint: tr ? 'Ürününüzü, hedeflerinizi, marka dilinizi ve logo-renklerinizi tanımlayın; AI taslakları ve tasarımlar buradan beslenir.' : 'Describe your product, goals, brand voice, logo and colours; AI drafts and designs use them.',
+            items: [...item('profile', Building2, tr ? 'Ürün & hedefler' : 'Product & goals'), ...item('brand', Palette, tr ? 'Marka dili & rakipler' : 'Brand voice & competitors'), ...item('brandkit', Shapes, tr ? 'Marka kiti' : 'Brand kit')] },
+          { id: 'connections', Icon: Plug, label: tr ? 'Bağlantılar ve izinler' : 'Connections & consent', hint: tr ? 'Sosyal hesaplar, Google, e-posta ve ürün verisi bağlantıları; Türkiye’deki alıcılar için İYS izinleri.' : 'Social accounts, Google, email and product data connections; İYS consents for recipients in Turkey.',
+            items: [...item('connections', Plug, tr ? 'Hesap bağlantıları' : 'Account connections'), ...item('data', Database, tr ? 'Ürün verisi' : 'Product data'), ...item('iys', ShieldCheck, tr ? 'Gönderim izinleri (İYS)' : 'Sending consents (IYS)')] },
+          { id: 'team', Icon: UsersRound, label: tr ? 'Ekip ve plan' : 'Team & plan', hint: tr ? 'Ekip arkadaşlarını rolleriyle davet edin; planınızı, kullanımınızı ve ödemeyi yönetin.' : 'Invite teammates with their roles; manage your plan, usage and payment.',
+            items: [...item('team', UsersRound, tr ? 'Ekip & erişim' : 'Team & access'), ...item('plan', Gauge, tr ? 'Plan & kullanım' : 'Plan & usage')] },
+          { id: 'golive', Icon: Rocket, label: tr ? 'Kurulum' : 'Setup', hint: tr ? 'Gerçek gönderim ve yayından önce eksikleri tek listede görün.' : 'See what is missing before real sending and publishing, in one list.',
+            items: [...item('golive', Rocket, tr ? 'Canlıya geçiş' : 'Go-live'), ...item('operations', Activity, tr ? 'Operasyon' : 'Operations')] },
+          { id: 'experts', Icon: Handshake, label: tr ? 'Uzman iste' : 'Ask an expert', hint: tr ? 'Tasarım, reklam veya içerik için ajans ve uzmanlardan iş isteyin.' : 'Ask agencies and experts for design, ads or content work.',
+            items: item('experts', Handshake, tr ? 'Uzman iste' : 'Ask an expert') },
+        ]} />;
+      })()}
       {section === 'profile' && (
         <div className="space-y-7 mt-6">
           <dl className="studio-project-profile">
