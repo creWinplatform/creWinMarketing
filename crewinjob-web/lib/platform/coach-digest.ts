@@ -14,6 +14,7 @@ import { ryzevoFeature } from './ryzevo-features';
 
 type Lang='tr'|'en';
 type Configuration=NonNullable<ReturnType<typeof identityEmailConfiguration>>;
+import { outreachReady, salesWeek } from './prospect-outreach';
 export type DigestMail={to:string;subject:string;text:string};
 export type DigestDelivery=(mail:DigestMail,configuration:Configuration)=>Promise<void>;
 type SesClient={send(command:SendEmailCommand,options:{abortSignal:AbortSignal}):Promise<{MessageId?:string}>;destroy():void};
@@ -29,7 +30,7 @@ export async function deliverCoachDigest(mail:DigestMail,configuration:Configura
 }
 const SOURCES:Record<string,[string,string]>={manual:['manuel kayıt','manual record'],ga4:['Google Analytics','Google Analytics'],search_console:['Search Console','Search Console'],product_webhook:['ürün olayları','product events']};
 // Plain-text summary built only from the stored review facts; the same honesty rules as the screen.
-export function digestMessage(facts:CoachReviewFacts,adjustments:CoachAdjustment[],lang:Lang,project:{name:string;timezone:string},origin:string,assigned:{title:string;dueOn:string|null;overdue:boolean}[]=[]){
+export function digestMessage(facts:CoachReviewFacts,adjustments:CoachAdjustment[],lang:Lang,project:{name:string;timezone:string},origin:string,assigned:{title:string;dueOn:string|null;overdue:boolean}[]=[],sales:{goal:number;touches:number;replies:number;meetings:number}|null=null){
   const tr=lang==='tr',locale=tr?'tr-TR':'en-GB',n=(value:number)=>value.toLocaleString(locale),date=(value:string)=>new Date(value).toLocaleDateString(locale,{day:'numeric',month:'short',timeZone:project.timezone});
   const period=`${date(facts.from)} – ${date(facts.to)}`,lines:string[]=[];
   lines.push(tr?`${project.name} · haftalık özet · ${period}`:`${project.name} · weekly review · ${period}`,'');
@@ -37,6 +38,7 @@ export function digestMessage(facts:CoachReviewFacts,adjustments:CoachAdjustment
   lines.push(`- ${tr?`Koç eylemleri: ${n(facts.actions.done)} tamamlandı, ${n(facts.actions.skipped)} atlandı, ${n(facts.actions.open)} açık.`:`Coach actions: ${n(facts.actions.done)} done, ${n(facts.actions.skipped)} skipped, ${n(facts.actions.open)} open.`}`);
   lines.push(`- ${facts.content.drafts?(tr?`${n(facts.content.drafts)} içerik taslağı kaydedildi.`:`${n(facts.content.drafts)} content draft(s) saved.`):(tr?'Yeni içerik taslağı kaydedilmedi.':'No new content draft was saved.')}`);
   lines.push(`- ${facts.content.publications?(tr?`${n(facts.content.publications)} sosyal yayın sağlayıcı tarafından kabul edildi (erişim veya etkileşim değildir).`:`${n(facts.content.publications)} social publication(s) accepted by the provider (not reach or engagement).`):(tr?'Kabul edilen sosyal yayın yok.':'No social publication was accepted.')}`);
+  if(sales)lines.push(`- ${tr?`Satış: bu hafta ${n(sales.touches)}/${n(sales.goal)} temas, ${n(sales.replies)} yanıt, ${n(sales.meetings)} görüşme.`:`Sales: ${n(sales.touches)}/${n(sales.goal)} touches this week, ${n(sales.replies)} replies, ${n(sales.meetings)} meetings.`}`);
   lines.push('',tr?'Ölçümler':'Measurements');
   if(facts.measurements.length)for(const item of facts.measurements)lines.push(`- ${item.goal[lang]} · ${item.stage[lang]}: ${n(item.latest)} (${date(item.latestAt)})${item.previous!==null?(tr?`, önceki ${n(item.previous)} (${date(item.previousAt!)})`:`, previous ${n(item.previous)} (${date(item.previousAt!)})`):''} · ${SOURCES[item.source]?.[tr?0:1]||item.source}`);
   else lines.push(`- ${tr?'Bu dönemde ölçüm kaydedilmedi. Veri yok, sıfır demek değildir.':'No measurement was recorded in this period. No data is not zero.'}`);
@@ -95,6 +97,8 @@ export class CoachDigest{
 // the provider call (never retried) and records sent or uncertain.
 export async function deliverNextCoachDigest(db:Db,deliver:DigestDelivery=deliverCoachDigest,configuration=digestConfiguration()){
   if(!configuration)return false;
+  // Asked before the transaction: on SQL Server a missing table inside one would end it.
+  const salesReady=await outreachReady(db).catch(()=>false);
   const claimed=await db.transaction(async ()=>{
     const row=await db.prepare("SELECT d.id,d.organization_id,d.project_id,d.review_id,d.user_id FROM platform_coach_digest_deliveries d WHERE d.state='queued' ORDER BY d.created_at,d.rowid LIMIT 1").get() as {id:string;organization_id:string;project_id:string;review_id:string;user_id:string}|undefined;
     if(!row)return null;
@@ -106,7 +110,9 @@ export async function deliverNextCoachDigest(db:Db,deliver:DigestDelivery=delive
     if(!workspace||!ryzevoFeature(workspace.project.productPack,'coach'))return await skip('membership');if(!subscription)return await skip('unsubscribed');if(!email)return await skip('email');if(!review)return await skip('review');
     await db.prepare("UPDATE platform_coach_digest_deliveries SET state='submitted',updated_at=? WHERE id=? AND state='queued'").run(now,row.id);
     const assigned=(await new CoachAssignments(db,{subject:row.user_id,organizationId:row.organization_id,projectId:row.project_id}).read()).mine;
-    return {id:row.id,mail:{to:email,...digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),subscription.language,workspace.project,configuration.origin,assigned)}};
+    let sales:{goal:number;touches:number;replies:number;meetings:number}|null=null;
+    try{if(salesReady){const week=await salesWeek(db,{organizationId:row.organization_id,projectId:row.project_id},workspace.project.timezone);sales=week.active?week:null;}}catch{sales=null;}
+    return {id:row.id,mail:{to:email,...digestMessage(JSON.parse(review.facts_json),JSON.parse(review.adjustments_json),subscription.language,workspace.project,configuration.origin,assigned,sales)}};
   });
   if(!claimed||claimed==='skipped')return Boolean(claimed);
   let state:'sent'|'uncertain'='sent';try{await deliver(claimed.mail,configuration);}catch{state='uncertain';}

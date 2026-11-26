@@ -41,13 +41,13 @@ export function BookingPanel({ tr }: { tr: boolean }) {
   </details>;
 }
 
-const empty: ProposalContent = { title: '', summary: '', needs: [], solution: '', scope: [], timeline: '', price: '', nextStep: '' };
+const empty: ProposalContent = { title: '', summary: '', needs: [], solution: '', scope: [], successMetrics: [], timeline: '', price: '', nextStep: '' };
 // A proposal for one company: drafted with AI or the template, edited, then shared through a link.
 export function ProposalBlock({ tr, id, canWrite, aiConfigured }: { tr: boolean; id: string; canWrite: boolean; aiConfigured: boolean }) {
   const t = (a: string, b: string) => tr ? a : b;
   const [open, setOpen] = useState(false), [data, setData] = useState<ProposalView | null | undefined>(undefined), [form, setForm] = useState<ProposalContent>(empty), [price, setPrice] = useState(''), [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [link, setLink] = useState(''), [copied, setCopied] = useState(false);
-  const apply = (value: ProposalView | null) => { setData(value); if (value) { setForm(value.content); setPrice(value.content.price); } };
+  const apply = (value: ProposalView | null) => { setData(value); if (value) { setForm({ ...value.content, successMetrics: value.content.successMetrics || [] }); setPrice(value.content.price); } };
   useEffect(() => { if (open && data === undefined) post<{ proposal: ProposalView | null }>({ action: 'proposal', id }).then(value => apply(value.proposal)).catch(() => setData(null)); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (key: string, body: Record<string, unknown>) => { if (busy) return null; setBusy(key); setError(''); try { const value = await post<{ proposal: ProposalView | null; url?: string }>(body); apply(value.proposal); return value; } catch (reason) { setError(reason instanceof Error ? reason.message : t('İstek tamamlanamadı.', 'Request failed.')); return null; } finally { setBusy(''); } };
   const lines = (value: string) => value.split('\n').map(item => item.trim()).filter(Boolean).slice(0, PROPOSAL_LIMITS.items);
@@ -67,6 +67,7 @@ export function ProposalBlock({ tr, id, canWrite, aiConfigured }: { tr: boolean;
       <label>{t('İhtiyaçlar (her satıra bir madde)', 'Needs (one per line)')}<textarea rows={3} value={form.needs.join('\n')} disabled={!canWrite} onChange={event => setForm({ ...form, needs: lines(event.target.value) })} /></label>
       <label>{t('Önerimiz', 'Our proposal')}<textarea rows={4} value={form.solution} disabled={!canWrite} onChange={event => setForm({ ...form, solution: event.target.value })} /></label>
       <label>{t('Kapsam (her satıra bir madde)', 'Scope (one per line)')}<textarea rows={3} value={form.scope.join('\n')} disabled={!canWrite} onChange={event => setForm({ ...form, scope: lines(event.target.value) })} /></label>
+      <label>{t('Başarı ölçütleri (müşteriyle önceden anlaşın; her satıra bir tane)', 'Success metrics (agree them with the customer first; one per line)')}<textarea rows={2} value={form.successMetrics.join('\n')} disabled={!canWrite} onChange={event => setForm({ ...form, successMetrics: lines(event.target.value) })} /></label>
       <div className="prospect-form-row"><label>{t('Zaman planı', 'Timeline')}<input maxLength={400} value={form.timeline} disabled={!canWrite} onChange={event => setForm({ ...form, timeline: event.target.value })} /></label>
         <label>{t('Fiyat', 'Price')}<input maxLength={PROPOSAL_LIMITS.price} value={price} disabled={!canWrite} onChange={event => setPrice(event.target.value)} /></label></div>
       <label>{t('Sonraki adım', 'Next step')}<input maxLength={400} value={form.nextStep} disabled={!canWrite} onChange={event => setForm({ ...form, nextStep: event.target.value })} /></label>

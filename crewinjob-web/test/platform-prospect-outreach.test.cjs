@@ -153,3 +153,43 @@ test('AI drafts and reply sorting keep to the rules; a "no" blocks the address a
   await assert.rejects(sales.stage({id:other,stage:'nope'}),e=>e.status===400);
   assert.deepEqual(plain(await f.sales(f.other).read()).outreach,{},'another project sees nothing');
 }));
+
+test('short emails with one question, 1–4 follow-ups, qualifying, a clear yes or no, and the week in numbers',()=>withSales(async f=>{
+  process.env.PLATFORM_PROSPECT_EMAIL_ENABLED='1';process.env.PLATFORM_GEMINI_API_KEY='qa';process.env.PLATFORM_GEMINI_MODEL='qa';
+  const {salesWeek}=load('prospect-outreach.ts'),id=await f.prospect('Gülüş Diş','https://gulus.example'),sales=f.sales();
+  // Follow-ups: one to four, each 1–21 days after the previous email; the weekly goal.
+  await assert.rejects(sales.saveSettings({followUpDays:[]}),e=>e.status===400);
+  await assert.rejects(sales.saveSettings({followUpDays:[3,7,9,11,13]}),e=>e.status===400);
+  await assert.rejects(sales.saveSettings({followUpDays:[30]}),e=>e.status===400);
+  await assert.rejects(sales.saveSettings({followUpDays:[3],weeklyGoal:0}),e=>e.status===400);
+  let snap=plain(await sales.saveSettings({followUpDays:[2,3,4,5],weeklyGoal:10}));assert.deepEqual(snap.settings.followUpDays,[2,3,4,5]);assert.equal(snap.settings.weeklyGoal,10);
+  snap=plain(await sales.draft({id,mode:'template'}));let steps=snap.outreach[id].steps;assert.equal(steps.length,5,'a first email and four follow-ups');
+  assert.ok(steps[0].body.split(/\s+/).length<=75,'the template stays near 75 words');assert.equal((steps[0].body.match(/\?/g)||[]).length,1,'one question at the end');
+  // The AI is asked for 75 words, one question and as many follow-ups as chosen.
+  await sales.saveSettings({followUpDays:[3,7,10]});
+  snap=plain(await sales.draft({id},async prompt=>{assert.match(prompt,/at most 75 words/);assert.match(prompt,/exactly one clear question/);assert.equal((prompt.match(/"\.\.\."/g)||[]).length>=3,true);
+    return JSON.stringify({subject:'Kısa not',body:'Merhaba, sitenizde online randevu yolu görmedik. Analiz: {{analiz}} Bu hafta 15 dakika konuşabilir miyiz?',followUps:['Merhaba, analizi gördünüz mü?','Doğru kişi kim olur?','Son kez yazıyorum.'],linkedin:'Merhaba, bağlantı kuralım mı?',whatsapp:'Merhaba, kısa bir analiz hazırladık.'});}));
+  assert.equal(snap.outreach[id].steps.length,4);
+  await assert.rejects(sales.save({id,expectedRevision:snap.outreach[id].revision,steps:[{subject:'x',body:`${'kelime '.repeat(95)} {{analiz}}?`},...snap.outreach[id].steps.slice(1)]}),e=>e.status===400,'the hard limit');
+  snap=plain(await sales.approve({id,expectedRevision:snap.outreach[id].revision,acknowledged:true},'https://ryzevo.example'));
+  // A reply that wants one missing feature is almost a pass: follow-ups stop and the gap is noted.
+  snap=plain(await sales.reply({id,kind:'feature_gap',text:''}));assert.equal(snap.outreach[id].state,'replied');assert.equal(snap.pipeline[id].stage,'replied');
+  snap=plain(await sales.reply({id,text:'Takvim entegrasyonu olsa alırdık.'},async prompt=>{assert.match(prompt,/feature_gap/);return JSON.stringify({kind:'feature_gap',summary:'Takvim entegrasyonu istiyor',draft:'Not aldık, teşekkürler.'});}));
+  assert.equal(snap.pipeline[id].featureGap,'Takvim entegrasyonu istiyor');
+  // Qualifying: problem, budget, who signs, the next step and its date.
+  await assert.rejects(sales.qualify({id,problem:'yes',budget:'yes',signer:'ali@gulus.example'}),e=>e.status===400,'no addresses in notes');
+  await assert.rejects(sales.qualify({id,nextStepAt:'2020-01-01'}),e=>e.status===400);
+  snap=plain(await sales.qualify({id,problem:'yes',budget:'unknown',signer:'Genel müdür',nextStep:'Demo ve karar',nextStepAt:new Date(Date.now()+5*86400000).toISOString(),clearFeatureGap:true}));
+  assert.deepEqual({...snap.pipeline[id].qualification,nextStepAt:Boolean(snap.pipeline[id].qualification.nextStepAt)},{problem:'yes',budget:'unknown',signer:'Genel müdür',nextStep:'Demo ve karar',nextStepAt:true});assert.equal(snap.pipeline[id].featureGap,'');
+  // 14 days without movement: a clear yes or no is due, unless a next step date is still ahead.
+  f.db.prepare('UPDATE platform_prospect_pipeline SET stage_changed_at=? WHERE prospect_id=?').run(new Date(Date.now()-20*86400000).toISOString(),id);
+  assert.equal(plain(await sales.read()).pipeline[id].stale,false,'the next step date is ahead');
+  f.db.prepare('UPDATE platform_prospect_pipeline SET next_step_at=? WHERE prospect_id=?').run(new Date(Date.now()-86400000).toISOString(),id);
+  snap=plain(await sales.read());assert.equal(snap.pipeline[id].stale,true);
+  const attention=plain(await salesAttention(f.db,f.scope));assert.equal(attention.stale.length,1);assert.equal(attention.nextSteps.length,1);
+  // The week: one first email this week, one reply, against a goal of 10; the first-100 counter.
+  const week=plain(await salesWeek(f.db,f.scope,'Europe/Istanbul'));
+  assert.equal(week.goal,10);assert.equal(week.touches,1);assert.equal(week.replies,2);assert.equal(week.firstHundred,1);assert.equal(week.emails,1);assert.equal(week.emailReplies,1);assert.equal(week.active,true);
+  assert.deepEqual(plain(await sales.week()),plain(await salesWeek(f.db,f.scope,'Europe/Istanbul')));
+  const month=plain(await salesMonth(f.db,f.scope,new Date(Date.now()-86400000).toISOString(),new Date(Date.now()+86400000).toISOString()));assert.equal(month.waiting,1);
+}));

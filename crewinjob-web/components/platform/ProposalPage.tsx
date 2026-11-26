@@ -26,6 +26,7 @@ export default function ProposalPage({ lang }: { lang: 'tr' | 'en' }) {
       {c.needs.length > 0 && <><h2>{t('İhtiyaçlar', 'Needs')}</h2>{list(c.needs)}</>}
       <h2>{t('Önerimiz', 'Our proposal')}</h2><p className="proposal-text">{c.solution}</p>
       {c.scope.length > 0 && <><h2>{t('Kapsam', 'Scope')}</h2>{list(c.scope)}</>}
+      {c.successMetrics?.length > 0 && <><h2>{t('Başarı ölçütleri', 'Success metrics')}</h2>{list(c.successMetrics)}</>}
       {c.timeline && <><h2>{t('Zaman planı', 'Timeline')}</h2><p className="proposal-text">{c.timeline}</p></>}
       {c.price && <><h2>{t('Fiyat', 'Price')}</h2><p className="proposal-price">{c.price}</p></>}
       {c.nextStep && <><h2>{t('Sonraki adım', 'Next step')}</h2><p className="proposal-text">{c.nextStep}</p></>}

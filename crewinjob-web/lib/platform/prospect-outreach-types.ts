@@ -6,8 +6,10 @@ type Pair = [string, string];
 
 // Sending grows slowly (warm-up) and stops by itself when too many messages bounce or are reported as spam.
 export const OUTREACH_LIMITS = {
-  startPerDay: 10, stepPerDay: 5, maxPerDay: 50, followUps: 2, followUpDays: [3, 7] as readonly [number, number],
-  subject: 80, firstWords: 150, followWords: 90, channelChars: 600, linkedinChars: 300, signature: 300,
+  startPerDay: 10, stepPerDay: 5, maxPerDay: 50, followUps: 4, followUpDays: [3, 7] as readonly number[],
+  // Short emails get answered: aim for 75 words with one question at the end (follow-ups 50); the hard limits leave
+  // a little room for the team's own edits.
+  subject: 80, firstWords: 90, followWords: 60, firstTarget: 75, followTarget: 50, channelChars: 600, linkedinChars: 300, signature: 300,
   draftsPerDay: 40, repliesPerDay: 60, remindDays: 90, autoReplyDays: 7, channelRemindDays: 5,
   pauseWindowDays: 14, minSendsForRate: 20, bounceRate: 0.05, bouncesWhenFew: 3, complaints: 2,
   windowStart: 9, windowEnd: 18,
@@ -22,11 +24,13 @@ export const STAGE_LABELS: Record<PipelineStage, Pair> = {
   proposal: ['Teklif', 'Proposal'], won: ['Kazanıldı', 'Won'], lost: ['Kaybedildi', 'Lost'],
 };
 
-export type ReplyClass = 'interested' | 'not_now' | 'not_interested' | 'wrong_person' | 'auto_reply';
+export type ReplyClass = 'interested' | 'not_now' | 'not_interested' | 'feature_gap' | 'wrong_person' | 'auto_reply';
 export const REPLY_CLASSES: Record<ReplyClass, { label: Pair; effect: Pair }> = {
   interested: { label: ['İlgileniyor', 'Interested'], effect: ['Takipler durdu; görüşme için Takvim’e iş eklendi.', 'Follow-ups stopped; a meeting task was added to the Calendar.'] },
   not_now: { label: ['Şimdi değil', 'Not now'], effect: ['Takipler durdu; 3 ay sonra hatırlatılacak.', 'Follow-ups stopped; you will be reminded in 3 months.'] },
   not_interested: { label: ['İstemiyor', 'Not interested'], effect: ['Adres engellendi ve bir daha yazılmaz; İYS’ye ret bildirilir.', 'The address is blocked and never written to again; the opt-out goes to İYS.'] },
+  // Y Combinator: “it’s just missing this one feature” is almost a pass.
+  feature_gap: { label: ['Tek bir özellik eksik', 'Just one feature missing'], effect: ['Neredeyse ret sayılır: takipler durdu, eksik özellik hunide not edildi. Gerçekten yapılacaksa haber verin, yoksa kapatın.', 'Almost a pass: follow-ups stopped and the missing feature is noted in the pipeline. Tell them if you will really build it; otherwise close it.'] },
   wrong_person: { label: ['Yanlış kişi', 'Wrong person'], effect: ['Bu adrese takip gitmez; firmaya başka bir adresten ulaşabilirsiniz.', 'No follow-up goes to this address; reach the company through another one.'] },
   auto_reply: { label: ['Otomatik yanıt', 'Automatic reply'], effect: ['Sıradaki takip bir hafta ertelendi.', 'The next follow-up was moved by a week.'] },
 };
@@ -53,10 +57,14 @@ export type OutreachView = {
   reply: { kind: ReplyClass; summary: string; draft: string; at: string } | null; remindAt: string | null;
   sends: OutreachSend[]; revision: number; updatedAt: string;
 };
-export type PipelineEntry = { stage: PipelineStage; valueMinor: number | null; currency: string; lostReason: string; assignedTo: string | null; updatedAt: string };
-export type ChannelTouch = { channel: 'linkedin' | 'whatsapp' | 'phone'; at: string };
-export type OutreachSettings = { fromName: string; signature: string; calendarUrl: string; followUpDays: [number, number]; updatedAt: string | null;
-  privacyUrl: string; retentionMonths: number; orgWide: boolean; assignMode: 'manual' | 'round_robin' | 'by_sector'; assignRules: { sector: string; userId: string }[]; bookingUrl: string | null };
+// Qualifying (Y Combinator: check the problem, the budget and who signs; get to a yes or a no fast).
+export type Qualification = { problem: 'yes' | 'no' | 'unknown'; budget: 'yes' | 'no' | 'unknown'; signer: string; nextStep: string; nextStepAt: string | null };
+export const STALE_DAYS = 14;
+export type PipelineEntry = { stage: PipelineStage; valueMinor: number | null; currency: string; lostReason: string; assignedTo: string | null; updatedAt: string;
+  qualification: Qualification; featureGap: string; stageSince: string; stale: boolean };
+export type ChannelTouch = { channel: 'linkedin' | 'whatsapp' | 'phone' | 'network'; at: string };
+export type OutreachSettings = { fromName: string; signature: string; calendarUrl: string; followUpDays: number[]; updatedAt: string | null;
+  privacyUrl: string; retentionMonths: number; weeklyGoal: number; orgWide: boolean; assignMode: 'manual' | 'round_robin' | 'by_sector'; assignRules: { sector: string; userId: string }[]; bookingUrl: string | null };
 export type OutreachReadiness = {
   switchOn: boolean; senderReady: boolean; domain: string | null; publicOrigin: boolean;
   dmarc: { state: 'ok' | 'missing' | 'unknown'; checkedAt: string | null };
@@ -66,11 +74,17 @@ export type OutreachReadiness = {
 };
 // What the team's own history says: replies by sector, by the site signal the email was built on, and by who wrote it.
 export type LearningRow = { key: string; sends: number; replies: number; interested: number };
-export type SalesLearning = { sends: number; replies: number; interested: number; won: number; sectors: LearningRow[]; signals: LearningRow[]; sources: LearningRow[] };
+// channels: first touches by way in (email, warm introduction, LinkedIn, WhatsApp, phone) and how many moved on.
+export type SalesLearning = { sends: number; replies: number; interested: number; won: number; sectors: LearningRow[]; signals: LearningRow[]; sources: LearningRow[]; channels: LearningRow[] };
 export const LEARNING_MIN_SENDS = 5;
+// The week in numbers (Y Combinator: it is a numbers game; 2–3 replies per 100 emails is a fine place to start).
+export type SalesWeek = { weekStart: string; goal: number; touches: number; replies: number; meetings: number; firstHundred: number; emails: number; emailReplies: number; active: boolean };
+export const FIRST_HUNDRED = 100;
 export type SalesSnapshot = {
   outreach: Record<string, OutreachView>; pipeline: Record<string, PipelineEntry>; touches: Record<string, ChannelTouch[]>;
-  settings: OutreachSettings; readiness: OutreachReadiness; stages: Record<PipelineStage, number>; learning: SalesLearning;
+  settings: OutreachSettings; readiness: OutreachReadiness; stages: Record<PipelineStage, number>; learning: SalesLearning; week: SalesWeek;
   members: { id: string; username: string }[];
+  // Who the team already knows at each company (first name and initial, how many people).
+  network: Record<string, { count: number; first: string; position: string }>;
   aiConfigured: boolean; canWrite: boolean; canApprove: boolean; canManage: boolean;
 };

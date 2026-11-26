@@ -7,6 +7,7 @@ import CoachWeeklyReview from './CoachWeeklyReview';
 import CoachRefresh from './CoachRefresh';
 import CoachMyWork from './CoachMyWork';
 import TeamAlerts from './TeamAlerts';
+import { SalesWeekCard } from './ProspectOutreach';
 import ProjectApprovals from './ProjectApprovals';
 import { NextStepCard, useGuidedStage } from './GuidedStart';
 import { JobGuideHighlights, JobGuidePanel } from './JobGuide';
@@ -81,6 +82,7 @@ export default function ProjectOverview({ workspace, lang, onNavigate }: { works
           <div>
             {workspace.project.productPack === 'standard' && <TeamAlerts lang={lang}/>}
             {workspace.project.productPack === 'standard' && <ProjectApprovals lang={lang}/>}
+            {workspace.project.productPack === 'standard' && <SalesWeekCard tr={tr}/>}
             <GrowthCoach key={coachKey} workspace={workspace} lang={lang} onChange={load} guided={guided}/>
             {!setup && <>
             <CoachWeeklyReview workspace={workspace} lang={lang} onChange={() => { load(); setCoachKey(value => value + 1); }}/>

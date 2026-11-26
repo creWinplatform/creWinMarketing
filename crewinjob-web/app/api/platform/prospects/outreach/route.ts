@@ -11,7 +11,7 @@ export const maxDuration = 60;
 // WhatsApp touches a person sends from their own account.
 const handle = coachRoute(async (scope, request: NextRequest) => {
   const outreach = new ProspectOutreach(platformDatabase(), scope, credentialEncryptionKey());
-  if (request.method === 'GET') return await outreach.read();
+  if (request.method === 'GET') return request.nextUrl.searchParams.get('view') === 'week' ? await outreach.week() : await outreach.read();
   const raw = await coachBody(request);
   switch (raw.action) {
     case 'draft': return await outreach.draft(raw, raw.mode === 'template' ? undefined : coachGemini(3000));
@@ -23,6 +23,7 @@ const handle = coachRoute(async (scope, request: NextRequest) => {
     case 'stage': return await outreach.stage(raw);
     case 'touch': return await outreach.touch(raw);
     case 'assign': return await outreach.assign(raw);
+    case 'qualify': return await outreach.qualify(raw);
     case 'settings': return await outreach.saveSettings(raw);
     case 'check-domain': return await outreach.checkDomain();
     case 'resume': return await outreach.resume(raw);

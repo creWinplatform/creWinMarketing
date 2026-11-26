@@ -1889,6 +1889,27 @@ CREATE TABLE [platform_music_tracks] (
   CONSTRAINT [ck_platform_music_tracks_3] CHECK (LEN([sha256]) = 64),
   CONSTRAINT [ck_platform_music_tracks_4] CHECK ([active] IN (0,1))
 );
+CREATE TABLE [platform_network_contacts] (
+  [id] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [organization_id] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [project_id] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [contact_key] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [encrypted_person] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [company] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [company_key] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [position] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [connected_on] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2,
+  [state] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [asked_at] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2,
+  [prospect_id] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2,
+  [imported_by] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [imported_at] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [updated_at] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [rowid] BIGINT IDENTITY(1,1) NOT NULL,
+  CONSTRAINT [pk_platform_network_contacts] PRIMARY KEY NONCLUSTERED ([id]),
+  CONSTRAINT [ck_platform_network_contacts_1] CHECK (LEN([contact_key]) = 64),
+  CONSTRAINT [ck_platform_network_contacts_2] CHECK ([state] IN ('new','asked','helped','not_relevant'))
+);
 CREATE TABLE [platform_oauth_requests] (
   [state_hash] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
   [organization_id] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
@@ -1937,11 +1958,13 @@ CREATE TABLE [platform_outreach_settings] (
   [assign_mode] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL DEFAULT 'manual',
   [assign_rules] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL DEFAULT '[]',
   [assign_cursor] BIGINT NOT NULL DEFAULT 0,
+  [weekly_goal] BIGINT NOT NULL DEFAULT 25,
   [rowid] BIGINT IDENTITY(1,1) NOT NULL,
   CONSTRAINT [pk_platform_outreach_settings] PRIMARY KEY NONCLUSTERED ([organization_id], [project_id]),
   CONSTRAINT [ck_platform_outreach_settings_1] CHECK ([retention_months] IN (0,3,6,12)),
   CONSTRAINT [ck_platform_outreach_settings_2] CHECK ([org_wide] IN (0,1)),
-  CONSTRAINT [ck_platform_outreach_settings_3] CHECK ([assign_mode] IN ('manual','round_robin','by_sector'))
+  CONSTRAINT [ck_platform_outreach_settings_3] CHECK ([assign_mode] IN ('manual','round_robin','by_sector')),
+  CONSTRAINT [ck_platform_outreach_settings_4] CHECK ([weekly_goal] >= 1 AND [weekly_goal] <= 500)
 );
 CREATE TABLE [platform_partner_profiles] (
   [project_id] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
@@ -2222,7 +2245,7 @@ CREATE TABLE [platform_prospect_outreach] (
   CONSTRAINT [ck_platform_prospect_outreach_1] CHECK ([language] IN ('tr','en')),
   CONSTRAINT [ck_platform_prospect_outreach_2] CHECK ([source] IN ('ai','template','human')),
   CONSTRAINT [ck_platform_prospect_outreach_3] CHECK ([state] IN ('draft','active','finished','replied','stopped','bounced','failed')),
-  CONSTRAINT [ck_platform_prospect_outreach_4] CHECK ([sent_steps] >= 0 AND [sent_steps] <= 3)
+  CONSTRAINT [ck_platform_prospect_outreach_4] CHECK ([sent_steps] >= 0 AND [sent_steps] <= 5)
 );
 CREATE TABLE [platform_prospect_outreach_sends] (
   [id] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
@@ -2237,7 +2260,7 @@ CREATE TABLE [platform_prospect_outreach_sends] (
   [updated_at] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
   [rowid] BIGINT IDENTITY(1,1) NOT NULL,
   CONSTRAINT [pk_platform_prospect_outreach_sends] PRIMARY KEY NONCLUSTERED ([id]),
-  CONSTRAINT [ck_platform_prospect_outreach_sends_1] CHECK ([step] >= 0 AND [step] <= 2),
+  CONSTRAINT [ck_platform_prospect_outreach_sends_1] CHECK ([step] >= 0 AND [step] <= 4),
   CONSTRAINT [ck_platform_prospect_outreach_sends_2] CHECK ([state] IN ('reserved','accepted','delivered','bounced','complained','uncertain','rejected'))
 );
 CREATE TABLE [platform_prospect_pipeline] (
@@ -2251,9 +2274,18 @@ CREATE TABLE [platform_prospect_pipeline] (
   [assigned_to] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2,
   [updated_by] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
   [updated_at] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL,
+  [qual_problem] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL DEFAULT 'unknown',
+  [qual_budget] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL DEFAULT 'unknown',
+  [qual_signer] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL DEFAULT '',
+  [next_step] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL DEFAULT '',
+  [next_step_at] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2,
+  [stage_changed_at] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2,
+  [feature_gap] NVARCHAR(MAX) COLLATE Latin1_General_100_BIN2 NOT NULL DEFAULT '',
   [rowid] BIGINT IDENTITY(1,1) NOT NULL,
   CONSTRAINT [pk_platform_prospect_pipeline] PRIMARY KEY NONCLUSTERED ([prospect_id]),
-  CONSTRAINT [ck_platform_prospect_pipeline_1] CHECK ([stage] IN ('new','contacted','replied','meeting','proposal','won','lost'))
+  CONSTRAINT [ck_platform_prospect_pipeline_1] CHECK ([stage] IN ('new','contacted','replied','meeting','proposal','won','lost')),
+  CONSTRAINT [ck_platform_prospect_pipeline_2] CHECK ([qual_problem] IN ('yes','no','unknown')),
+  CONSTRAINT [ck_platform_prospect_pipeline_3] CHECK ([qual_budget] IN ('yes','no','unknown'))
 );
 CREATE TABLE [platform_prospect_proposals] (
   [id] NVARCHAR(170) COLLATE Latin1_General_100_BIN2 NOT NULL,
@@ -3045,6 +3077,8 @@ CREATE NONCLUSTERED INDEX [platform_mobile_message_due] ON [platform_mobile_mess
 CREATE NONCLUSTERED INDEX [platform_mobile_review_order] ON [platform_mobile_reviews] ([app_id], [reviewed_at]);
 CREATE UNIQUE NONCLUSTERED INDEX [uq_platform_mobile_reviews_app_id_store_provider_id] ON [platform_mobile_reviews] ([app_id], [store], [provider_id]);
 CREATE UNIQUE NONCLUSTERED INDEX [uq_platform_monthly_reports_organization_id_project_id_month] ON [platform_monthly_reports] ([organization_id], [project_id], [month]);
+CREATE NONCLUSTERED INDEX [platform_network_contacts_company] ON [platform_network_contacts] ([organization_id], [project_id], [company_key]);
+CREATE UNIQUE NONCLUSTERED INDEX [uq_platform_network_contacts_organization_id_project_id_contact_key] ON [platform_network_contacts] ([organization_id], [project_id], [contact_key]);
 CREATE NONCLUSTERED INDEX [platform_product_receipt_age] ON [platform_product_event_receipts] ([received_at]);
 CREATE UNIQUE NONCLUSTERED INDEX [platform_mobile_event_identity] ON [platform_product_events] ([connection_id], [event_id], [organization_id], [project_id]);
 CREATE NONCLUSTERED INDEX [platform_product_event_age] ON [platform_product_events] ([received_at]);
@@ -3260,6 +3294,7 @@ ALTER TABLE [platform_mobile_store_snapshots] ADD CONSTRAINT [fk_platform_mobile
 ALTER TABLE [platform_monthly_reports] ADD CONSTRAINT [fk_platform_monthly_reports_0] FOREIGN KEY ([project_id], [organization_id]) REFERENCES [platform_projects] ([id], [organization_id]);
 ALTER TABLE [platform_monthly_reports] ADD CONSTRAINT [fk_platform_monthly_reports_1] FOREIGN KEY ([updated_by]) REFERENCES [platform_users] ([id]);
 ALTER TABLE [platform_monthly_reports] ADD CONSTRAINT [fk_platform_monthly_reports_2] FOREIGN KEY ([approved_by]) REFERENCES [platform_users] ([id]);
+ALTER TABLE [platform_network_contacts] ADD CONSTRAINT [fk_platform_network_contacts_0] FOREIGN KEY ([project_id], [organization_id]) REFERENCES [platform_projects] ([id], [organization_id]);
 ALTER TABLE [platform_oauth_requests] ADD CONSTRAINT [fk_platform_oauth_requests_0] FOREIGN KEY ([project_id], [organization_id]) REFERENCES [platform_projects] ([id], [organization_id]);
 ALTER TABLE [platform_oauth_requests] ADD CONSTRAINT [fk_platform_oauth_requests_1] FOREIGN KEY ([actor_id]) REFERENCES [platform_users] ([id]);
 ALTER TABLE [platform_outreach_settings] ADD CONSTRAINT [fk_platform_outreach_settings_0] FOREIGN KEY ([project_id], [organization_id]) REFERENCES [platform_projects] ([id], [organization_id]);

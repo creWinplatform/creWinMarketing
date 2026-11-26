@@ -214,6 +214,27 @@ async function resetDatabase() {
       return `won ${month.won}, imported ${imported.added}, visits ${visits}, booking and proposal ok, pruned ${removed}`;
     } finally { if (saved === undefined) delete process.env.PLATFORM_PUBLIC_ORIGIN; else process.env.PLATFORM_PUBLIC_ORIGIN = saved; }
   });
+  await step('sales assistant: follow-ups, qualifying, the week and warm introductions', async () => {
+    const { ProjectProspects } = load('prospects.ts'), { ProspectOutreach, salesAttention, salesWeek } = load('prospect-outreach.ts'), { ProspectNetwork } = load('prospect-network.ts');
+    const { ProspectSources } = load('prospect-sources.ts'), { SOURCE_TERMS_VERSION } = load('prospect-sources-types.ts');
+    const prospects = new ProjectProspects(db, scope), now = new Date().toISOString();
+    const id = (await prospects.add({ company: 'Ağ Smoke Klinik', website: 'https://ag-smoke.example' })).prospects.find(item => item.company === 'Ağ Smoke Klinik').id;
+    await db.prepare("UPDATE platform_prospects SET state='approved',check_status='ok',reason='Güçlü uyum',source_url='https://ag-smoke.example' WHERE id=?").run(id);
+    const outreach = new ProspectOutreach(db, scope, KEY);
+    await outreach.saveSettings({ followUpDays: [2, 3, 4, 5], weeklyGoal: 12 });
+    await outreach.qualify({ id, problem: 'yes', budget: 'no', signer: 'Genel müdür', nextStep: 'Demo', nextStepAt: new Date(Date.now() + 3 * 86400000).toISOString() });
+    await outreach.stage({ id, stage: 'meeting' });
+    const attention = await salesAttention(db, scope), week = await salesWeek(db, scope, 'Europe/Istanbul');
+    await new ProspectSources(db, scope, KEY).acceptTerms({ kind: 'list', accepted: true, version: SOURCE_TERMS_VERSION });
+    const network = new ProspectNetwork(db, scope, KEY), csv = 'Notes:\n\nFirst Name,Last Name,URL,Email Address,Company,Position,Connected On\nAyşe,Kaya,https://www.linkedin.com/in/ak,,Ağ Smoke Klinik Ltd. Şti.,Genel Müdür,01 Jan 2024\nCan,Ak,,,Başka Firma,Uzman,01 Jan 2024\n';
+    const first = await network.importCsv({ csv, part: 0 }), again = await network.importCsv({ csv, part: 1 });
+    const snap = await network.read(), contact = snap.matches[0]?.contact;
+    await network.mark({ contactId: contact.id, state: 'asked', prospectId: id });
+    const read = await outreach.read();
+    await network.clear(); await prospects.remove({ id });
+    if (first.added !== 2 || again.updated !== 2 || snap.matches.length !== 1 || snap.companies.length !== 1 || read.pipeline[id].qualification.signer !== 'Genel müdür' || read.settings.followUpDays.length !== 4 || week.goal !== 12 || !read.network[id] || attention.stale.length !== 0) throw new Error('sales follow-up mismatch');
+    return `4 follow-ups, qualified, week goal ${week.goal}, ${first.added} connections, 1 warm match`;
+  });
   await step('growth coach read', async () => { const { GrowthCoach } = load('coach.ts'); const coach = await new GrowthCoach(db, scope).read(); return `revision ${coach.revision}`; });
   await step('job guide', async () => { const { jobGuide } = load('job-guide.ts'); const view = await jobGuide(db, scope); return `${view.jobs.length} jobs`; });
   await step('team alerts', async () => { const { teamAlerts } = load('team-alerts.ts'); return `${(await teamAlerts(db, scope)).length} alerts`; });

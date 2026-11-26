@@ -13,7 +13,8 @@ export const BOOKING_NOTICE: Pair = [
   'Your name, email address, company and note are passed only to the business you are booking with, to plan this meeting and contact you. See the business’s privacy notice for details.',
 ];
 
-export type ProposalContent = { title: string; summary: string; needs: string[]; solution: string; scope: string[]; timeline: string; price: string; nextStep: string };
+// successMetrics: agreed with the customer before a trial or start (Y Combinator: agree the success metrics first).
+export type ProposalContent = { title: string; summary: string; needs: string[]; solution: string; scope: string[]; successMetrics: string[]; timeline: string; price: string; nextStep: string };
 export const PROPOSAL_LIMITS = { title: 120, text: 1200, item: 240, items: 8, price: 200, days: 60, perDay: 30 } as const;
 export type ProposalView = { content: ProposalContent; source: 'ai' | 'template' | 'human'; shared: { active: boolean; views: number; lastViewedAt: string | null; expiresAt: string } | null; revision: number; updatedAt: string };
 export type PublicProposal = { language: 'tr' | 'en'; company: string; content: ProposalContent; createdAt: string; sender: { name: string; website: string; primary: string; accent: string; logo: string | null }; booking: string | null };

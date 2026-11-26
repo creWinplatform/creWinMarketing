@@ -138,9 +138,9 @@ export async function bookMeeting(db: Db, key: string, raw: Json, credentialKey:
 type ProposalRow = { id: string; prospect_id: string; content_json: string; source: ProposalView['source']; token_hash: string; views: number; last_viewed_at: string | null; expires_at: string | null; revoked_at: string | null; shared_at: string | null; revision: number; created_at: string; updated_at: string };
 function readContent(raw: unknown, price: string): ProposalContent {
   const value = coachObject(raw), list = (items: unknown) => (Array.isArray(items) ? items : []).map(item => line(item, PROPOSAL_LIMITS.item)).filter(Boolean).slice(0, PROPOSAL_LIMITS.items);
-  const content = { title: line(value.title, PROPOSAL_LIMITS.title), summary: block(value.summary, PROPOSAL_LIMITS.text), needs: list(value.needs), solution: block(value.solution, PROPOSAL_LIMITS.text), scope: list(value.scope), timeline: block(value.timeline, 400), price: line(price, PROPOSAL_LIMITS.price), nextStep: block(value.nextStep, 400) };
+  const content = { title: line(value.title, PROPOSAL_LIMITS.title), summary: block(value.summary, PROPOSAL_LIMITS.text), needs: list(value.needs), solution: block(value.solution, PROPOSAL_LIMITS.text), scope: list(value.scope), successMetrics: list(value.successMetrics), timeline: block(value.timeline, 400), price: line(price, PROPOSAL_LIMITS.price), nextStep: block(value.nextStep, 400) };
   if (!content.title || !content.summary || !content.solution) throw new MarketingStoreError('Teklifte başlık, özet ve çözüm bölümleri gerekli.');
-  const all = [content.title, content.summary, content.solution, content.timeline, content.nextStep, ...content.needs, ...content.scope].join('\n');
+  const all = [content.title, content.summary, content.solution, content.timeline, content.nextStep, ...content.needs, ...content.scope, ...content.successMetrics].join('\n');
   if (URLS.test(all) || PERSONAL.test(all) || COACH_BANNED.test(all)) throw new MarketingStoreError('Teklif metninde bağlantı, adres, telefon, yüzde veya garanti olmamalı; fiyatı yalnız Fiyat alanına yazın.');
   return content;
 }
@@ -178,12 +178,12 @@ export class ProspectProposals extends Scoped {
       summary: tr ? `${project.name} olarak ${prospect.company} ile görüşmemizde konuştuğumuz konular için bu teklifi hazırladık.` : `At ${project.name} we prepared this proposal for the topics we discussed with ${prospect.company}.`,
       needs: findings.length ? findings : [tr ? 'Görüşmede konuşulan ihtiyaçları buraya yazın.' : 'Write the needs discussed in the meeting here.'],
       solution: line(context.positioning, 600) || (tr ? 'Önerdiğimiz çözümü buraya yazın.' : 'Describe the proposed solution here.'),
-      scope: [tr ? 'Kapsamdaki işleri madde madde yazın.' : 'List the work in scope.'], timeline: tr ? 'Başlangıçtan itibaren …' : 'From the start …', price, nextStep: tr ? 'Onayınızla birlikte başlangıç görüşmesini planlayalım.' : 'With your approval, let’s plan the kick-off.' });
+      scope: [tr ? 'Kapsamdaki işleri madde madde yazın.' : 'List the work in scope.'], successMetrics: [tr ? 'Birlikte anlaştığınız ölçütü yazın (ör. ayda 20 online randevu).' : 'Write the measure you agreed on together (e.g. 20 online bookings a month).'], timeline: tr ? 'Başlangıçtan itibaren …' : 'From the start …', price, nextStep: tr ? 'Onayınızla birlikte başlangıç görüşmesini planlayalım.' : 'With your approval, let’s plan the kick-off.' });
     if (!generator || raw.mode === 'template') return await this.store(prospect.id, template(), 'template');
-    const prompt = `Write a short, honest B2B proposal draft in ${tr ? 'Turkish' : 'English'} from a small business to a company. Use ONLY the facts below; do not invent results, numbers, percentages, prices, dates, names, guarantees or links. Keep it plain and specific. "needs" and "scope" are short bullet lines (at most 6 each).
+    const prompt = `Write a short, honest B2B proposal draft in ${tr ? 'Turkish' : 'English'} from a small business to a company. Use ONLY the facts below; do not invent results, numbers, percentages, prices, dates, names, guarantees or links. Keep it plain and specific. "needs", "scope" and "successMetrics" are short bullet lines (at most 6 each); successMetrics are measurable outcomes the customer would check, only from the notes and findings, never invented numbers.
 Our side: ${JSON.stringify({ name: project.name, positioning: line(context.positioning, 400), offer: line(context.offer, 300), idealCustomer: line(context.icp?.summary, 300) })}
 Their side: ${JSON.stringify({ company: prospect.company, sector: prospect.sector, observedOnTheirSite: findings, notesFromTheTeam: line(raw.notes, 600) })}
-Return JSON only: {"title":"...","summary":"...","needs":["..."],"solution":"...","scope":["..."],"timeline":"...","nextStep":"..."}`;
+Return JSON only: {"title":"...","summary":"...","needs":["..."],"solution":"...","scope":["..."],"successMetrics":["..."],"timeline":"...","nextStep":"..."}`;
     return await runCoachAi(this.db, this.scope, generator, prompt, output => { try { return readContent(parseCoachJson(output), price); } catch { throw new MarketingStoreError('AI teklif taslağı kurallara uymadı. Şablonla başlayıp kendiniz düzenleyebilirsiniz.', 422); } },
       async content => { const current = await this.row(prospect.id), now = new Date().toISOString();
         if (current) await this.db.prepare("UPDATE platform_prospect_proposals SET content_json=?,source='ai',revision=revision+1,updated_at=? WHERE id=?").run(JSON.stringify(content), now, current.id);

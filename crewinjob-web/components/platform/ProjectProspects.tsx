@@ -13,6 +13,7 @@ import { ProspectSalesBlock, SalesPipeline, SalesSetupPanel } from './ProspectOu
 import type { SourcesSnapshot } from '@/lib/platform/prospect-sources-types';
 import { ProspectPeopleTools, ProspectSourcesPanel } from './ProspectSources';
 import { BookingPanel } from './ProspectWorkflow';
+import ProspectNetworkPanel from './ProspectNetwork';
 import { onTabKeys } from './tab-keys';
 
 const STATES:Record<ProspectState,[string,string]>={candidate:['Aday','Candidate'],approved:['Onaylı','Approved'],rejected:['Reddedildi','Rejected']};
@@ -24,7 +25,7 @@ export default function ProjectProspects({lang}:{lang:Locale}){
   const tr=lang==='tr',idx=tr?0:1,locale=localeTag(lang);
   const [data,setData]=useState<ProspectsSnapshot|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(''),[filter,setFilter]=useState<ProspectState|'pipeline'>('candidate');
   // Three parts instead of one long page: the companies, finding new ones, and the sales settings.
-  const [section,setSection]=useState<'list'|'find'|'settings'|null>(null);
+  const [section,setSection]=useState<'list'|'find'|'network'|'settings'|null>(null);
   const [form,setForm]=useState({company:'',website:'',sector:'',country:'',contactRole:'',reason:''}),[adding,setAdding]=useState(false),[edit,setEdit]=useState<Edit|null>(null);
   // Sales assistant (search, scan, score, contacts, mini analysis); absent until the database has its tables.
   const [finder,setFinder]=useState<FinderSnapshot|null>(null);
@@ -63,7 +64,7 @@ export default function ProjectProspects({lang}:{lang:Locale}){
   const card=(item:ProspectView)=><li key={item.id} id={`prospect-${item.id}`} className="studio-draft-row">
     <div className="studio-draft-top"><div>
       <span className={`coach-state ${item.state==='approved'?'done':''}`}>{STATES[item.state][idx]}</span>{item.sector&&<span className="coach-muted"> · {item.sector}</span>}{item.country&&<span className="coach-muted"> · {item.country}</span>}
-      <h2 className="mt-2">{item.company}</h2><a className="prospect-link" href={item.website} target="_blank" rel="noreferrer"><Globe size={13}/>{item.website.replace(/^https?:\/\//,'')}</a>
+      <h2 className="mt-2">{item.company}</h2>{sales?.network?.[item.id]&&<button type="button" className="network-badge" onClick={()=>setSection('network')}>{tr?`Tanıdığın var: ${sales.network[item.id].first}${sales.network[item.id].position?` (${sales.network[item.id].position})`:''}${sales.network[item.id].count>1?` +${sales.network[item.id].count-1}`:''}`:`You know someone: ${sales.network[item.id].first}${sales.network[item.id].count>1?` +${sales.network[item.id].count-1}`:''}`}</button>}<a className="prospect-link" href={item.website} target="_blank" rel="noreferrer"><Globe size={13}/>{item.website.replace(/^https?:\/\//,'')}</a>
     </div>
     {data.canWrite&&<div className="coach-action-buttons">
       {item.state!=='rejected'&&(finder?<button type="button" className="studio-text-button" disabled={Boolean(busy)||data.checksLeft<1} onClick={()=>void finderPost(`scan-${item.id}`,{action:'scan',id:item.id},tr?'Site tarandı: sinyaller ve yayımlanan iletişim adresleri güncellendi.':'Site scanned: signals and published contact addresses updated.')}><Globe size={14}/>{item.check.status==='not_checked'?(tr?'Siteyi tara':'Scan the site'):(tr?'Yeniden tara':'Scan again')}</button>
@@ -101,12 +102,13 @@ export default function ProjectProspects({lang}:{lang:Locale}){
       {data.canWrite&&!adding&&<div className="overview-header-actions"><button type="button" className="studio-primary" title={tr?'Firma ekle':'Add a company'} onClick={()=>{setSection('list');setAdding(true);}}><Plus size={15}/>{tr?'Firma ekle':'Add a company'}</button></div>}
     </header>
     <nav className="studio-settings-tabs grouped-tabs-items prospect-sections" aria-label={tr?'Satış asistanı bölümleri':'Sales assistant sections'}>
-      {([['list',tr?`Firmalar (${data.prospects.length})`:`Companies (${data.prospects.length})`],...(finder?[['find',tr?'Firma bul':'Find companies']]:[]),...(sales?[['settings',tr?'Satış ayarları':'Sales settings']]:[])] as [typeof current,string][]).map(([id,label])=><button key={id} type="button" aria-current={current===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}
+      {([['list',tr?`Firmalar (${data.prospects.length})`:`Companies (${data.prospects.length})`],...(finder?[['find',tr?'Firma bul':'Find companies']]:[]),...(sales?[['network',tr?'Tanıdıklar':'Connections']]:[]),...(sales?[['settings',tr?'Satış ayarları':'Sales settings']]:[])] as [typeof current,string][]).map(([id,label])=><button key={id} type="button" aria-current={current===id?'page':undefined} onClick={()=>setSection(id)}>{label}</button>)}
     </nav>
     {error&&<p className="studio-error" role="alert"><Msg text={error}/></p>}
     {notice&&<p className="coach-note" role="status">{notice}</p>}
     {current==='find'&&finder&&<ProspectFinderPanel tr={tr} data={finder} busy={busy} post={finderPost}/>}
     {current==='find'&&finder&&sources&&<ProspectSourcesPanel tr={tr} data={sources} busy={busy} post={sourcesPost} finderPost={finderPost} mapsReady={finder.mapsConfigured&&Boolean(finder.termsAccepted)&&!finder.maps.blocked}/>}
+    {current==='network'&&sales&&<ProspectNetworkPanel tr={tr} onChanged={load}/>}
     {current==='settings'&&sales&&<SalesSetupPanel tr={tr} data={sales} busy={busy} post={salesPost} open/>}
     {current==='settings'&&sales&&<BookingPanel tr={tr}/>}
     {current==='list'&&<>

@@ -111,6 +111,7 @@ const ENCRYPTED_COLUMNS = [
   { since: 83, table: 'platform_prospect_outreach', column: 'encrypted_link', resource: row => `outreach-link:${row.id}` },
   { since: 83, table: 'platform_prospect_provider_keys', column: 'encrypted_key', resource: () => 'prospect-hunter' },
   { since: 83, table: 'platform_bookings', column: 'encrypted_contact', resource: row => `booking:${row.id}` },
+  { since: 83, table: 'platform_network_contacts', column: 'encrypted_person', resource: row => `network:${row.id}` },
 ];
 // Both spellings mark an encrypted field: encrypted_<name> (older tables) and <name>_encrypted (WhatsApp, inbox).
 const isEncryptedColumn = column => column.startsWith('encrypted_') || column.endsWith('_encrypted');
