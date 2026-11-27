@@ -3,6 +3,7 @@ import { useState, type ChangeEvent } from 'react';
 import { Building2, Check, Copy, FileUp, KeyRound, Loader2, Radar, Search, Sparkles, Trash2, UserSearch, Users } from 'lucide-react';
 import { SIGNALS, type SignalKey, type SignalWish } from '@/lib/platform/prospect-finder-types';
 import { SOURCE_LIMITS, SOURCE_TERMS, SOURCE_TERMS_VERSION, type SourceKind, type SourcesSnapshot } from '@/lib/platform/prospect-sources-types';
+import type { PeopleResult, PersonCandidate } from '@/lib/platform/prospect-people';
 
 export type SourcesPost = <T>(key: string, body: Record<string, unknown>, message?: string) => Promise<T | null>;
 type Lookalike = { examples: number; sector: string; city: string; signals: Partial<Record<SignalKey, SignalWish>> };
@@ -55,7 +56,7 @@ export function ProspectSourcesPanel({ tr, data, busy, post, finderPost, mapsRea
       </section>
 
       <section className="sources-section" aria-labelledby="src-hunter"><h3 id="src-hunter"><KeyRound size={14} aria-hidden="true" />{t('Kişi adresleri: kendi Hunter hesabınız', 'Person addresses: your own Hunter account')}</h3>
-        <p className="coach-muted">{t('Aramalar sizin Hunter kredinizi kullanır; bulunan kişi adresleri firmanın kartına “Hunter” etiketiyle eklenir. Kartta ayrıca sitede adı geçen bir kişi için “ad.soyad@” tahmini yapılabilir.', 'Searches use your own Hunter credits; person addresses found are added to the company card labelled “Hunter”. On the card you can also guess “first.last@” for a person named on the site.')}</p>
+        <p className="coach-muted">{t('Aramalar sizin Hunter kredinizi kullanır; bulunan kişi adresleri firmanın kartına “Hunter” etiketiyle eklenir. Hunter olmadan da kartta “Karar vericiyi bul” firmanın sitesindeki kurucu veya müdürü ve tanıdıklarınızı bulur; adres, firmanın adres düzeniyle (Hunter sonucu varsa ondan öğrenilir) önerilir.', 'Searches use your own Hunter credits; person addresses found are added to the company card labelled “Hunter”. Without Hunter, “Find the decision maker” on the card finds the founder or manager named on the company’s site and the people you know there; the address follows the company’s pattern (learned from a Hunter result when there is one).')}</p>
         {!data.terms.list ? <p className="coach-muted">{t('Önce yukarıdaki liste sorumluluk metni kabul edilmeli.', 'The list responsibility text above must be accepted first.')}</p>
           : data.hunter.configured ? <p>{t('Anahtar', 'Key')}: <code>{data.hunter.masked}</code> · {t(`bugün ${data.hunter.usedToday}/${SOURCE_LIMITS.hunterPerDay} arama`, `${data.hunter.usedToday}/${SOURCE_LIMITS.hunterPerDay} searches today`)}
             {data.canManage && <button type="button" className="studio-text-button finder-inline" disabled={Boolean(busy)} onClick={() => void post('hunter-remove', { action: 'hunter-remove' }, t('Hunter anahtarı kaldırıldı.', 'Hunter key removed.'))}><Trash2 size={13} />{t('Kaldır', 'Remove')}</button>}</p>
@@ -82,15 +83,38 @@ export function ProspectSourcesPanel({ tr, data, busy, post, finderPost, mapsRea
 }
 
 // On a company card: find person addresses in the team's Hunter account, or guess them from a name on the site.
-export function ProspectPeopleTools({ tr, id, data, busy, post }: { tr: boolean; id: string; data: SourcesSnapshot; busy: string; post: SourcesPost }) {
-  const t = (a: string, b: string) => tr ? a : b, [open, setOpen] = useState(false), [name, setName] = useState({ first: '', last: '' });
-  if (!data.terms.list || !data.canWrite) return null;
-  return <div className="sales-inline people-tools">
-    {data.hunter.configured && <button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={() => void post<{ found: number }>(`hunter-${id}`, { action: 'hunter', id }).then(value => value)}>{busy === `hunter-${id}` ? <Loader2 size={14} className="animate-spin" /> : <UserSearch size={14} />}{t('Hunter’da kişi ara', 'Find people on Hunter')}</button>}
-    <button type="button" className="studio-text-button" aria-expanded={open} onClick={() => setOpen(!open)}><UserSearch size={14} />{t('Ad soyaddan adres tahmin et', 'Guess an address from a name')}</button>
+const ORIGIN_LABELS: Record<PersonCandidate['origin'], [string, string]> = { site: ['Firmanın sitesinde', 'On the company’s site'], network: ['Tanıdığınız', 'In your network'], hunter: ['Hunter', 'Hunter'] };
+const EMAIL_KIND: Record<PersonCandidate['emailKind'], [string, string]> = { found: ['bulunan adres', 'found address'], pattern: ['firmanın adres düzeniyle', 'the company’s address pattern'], guess: ['tahmini, doğrulanmadı', 'guessed, not verified'] };
+// Person addresses on a company card: find the decision maker (the company's own site, the team's connections, the
+// team's Hunter results) and write to them; or the team's Hunter search, or a guess from a name the team knows.
+export function ProspectPeopleTools({ tr, id, data, busy, post, onPicked }: { tr: boolean; id: string; data: SourcesSnapshot; busy: string; post: SourcesPost; onPicked?: (contactId: string) => void }) {
+  const t = (a: string, b: string) => tr ? a : b, idx = tr ? 0 : 1, [open, setOpen] = useState(false), [name, setName] = useState({ first: '', last: '' }), [found, setFound] = useState<PeopleResult | null>(null);
+  if (!data.canWrite) return null;
+  if (!data.terms.list) return <p className="coach-muted people-hint"><UserSearch size={13} aria-hidden="true" /> {t('Karar vericiyi (ör. kurucu, genel müdür) bulup ona yazmak için proje sahibinin kişi verisi sorumluluk metnini kabul etmesi gerekir: Firma bul → Gelişmiş kaynaklar.', 'To find the decision maker (e.g. the founder or managing director) and write to them, the project owner must accept the person data responsibility text: Find companies → Advanced sources.')}</p>;
+  const pick = (person: PersonCandidate) => void post<{ contactId: string | null }>(`pick-${id}`, { action: 'pick-person', id, name: person.name, position: person.position, origin: person.origin }, t(`${person.name} için iş adresi eklendi; satış e-postasının alıcısı yapıldı.`, `A work address for ${person.name} was added and made the sales email recipient.`))
+    .then(value => { if (value?.contactId) { onPicked?.(value.contactId); setFound(null); } });
+  return <div className="people-tools">
+    <div className="sales-inline">
+      <button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={() => void post<PeopleResult>(`people-${id}`, { action: 'people', id }).then(value => { if (value) setFound(value); })}>{busy === `people-${id}` ? <Loader2 size={14} className="animate-spin" /> : <UserSearch size={14} />}{t('Karar vericiyi bul', 'Find the decision maker')}</button>
+      {data.hunter.configured && <button type="button" className="studio-text-button" disabled={Boolean(busy)} onClick={() => void post<{ found: number }>(`hunter-${id}`, { action: 'hunter', id })}>{busy === `hunter-${id}` ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}{t('Hunter’da kişi ara', 'Find people on Hunter')}</button>}
+      <button type="button" className="studio-text-button" aria-expanded={open} onClick={() => setOpen(!open)}>{t('Adını bildiğim kişi', 'Someone I know by name')}</button>
+    </div>
+    {found && <div className="people-results" role="region" aria-label={t('Karar verici adayları', 'Decision maker candidates')}>
+      {found.mail === 'none' && <p className="sales-reminder">{t(`${found.domain} alan adı e-posta almıyor (MX kaydı yok); bu firmaya e-posta yerine telefon veya LinkedIn deneyin.`, `${found.domain} does not receive email (no MX record); try the phone or LinkedIn instead.`)}</p>}
+      {found.candidates.length ? <ul className="people-list">{found.candidates.map(person => <li key={person.key}>
+        <div><strong>{person.name}</strong>{person.position && <span className="coach-muted"> · {person.position}</span>}
+          <div className="people-meta"><span className="finder-chip">{ORIGIN_LABELS[person.origin][idx]}</span>{person.decisionMaker && <span className="finder-chip is-strong">{t('Karar verici', 'Decision maker')}</span>}
+            {person.sourceUrl && person.origin === 'site' && <a className="coach-muted" href={person.sourceUrl} target="_blank" rel="noreferrer">{t('kaynak sayfa', 'source page')}</a>}</div>
+          {person.email && <p className="coach-muted">{person.email} · {EMAIL_KIND[person.emailKind][idx]}</p>}</div>
+        <button type="button" className="studio-text-button" disabled={Boolean(busy) || found.mail === 'none' || !person.email} onClick={() => person.contactId ? onPicked?.(person.contactId) : pick(person)}><Check size={14} />{t('Bu kişiye yaz', 'Write to this person')}</button>
+      </li>)}</ul>
+        : <p className="coach-muted">{t(`Firmanın sitesinde ${found.pagesRead} sayfa okundu ama ad ve unvan birlikte geçmiyor; tanıdıklarınızda da bu firmadan kimse yok. LinkedIn bağlantılarınızı yükleyin veya adını bildiğiniz kişiyi girin.`, `${found.pagesRead} page(s) of the company’s site were read but no name appears with a title, and nobody in your connections works there. Upload your LinkedIn connections or enter someone you know by name.`)}</p>}
+      <p className="coach-muted">{found.pattern ? t(`Firmanın adres düzeni: ${found.pattern}@${found.domain}.`, `The company’s address pattern: ${found.pattern}@${found.domain}.`) : t(`Firmanın adres düzeni bilinmiyor; en yaygın düzen (ad.soyad@${found.domain}) kullanılır ve doğrulanmaz. Geri dönerse gönderim durur.`, `The company’s address pattern is unknown; the most common one (first.last@${found.domain}) is used and not verified. A bounce stops the sending.`)} {t('Kişinin iş adresine giden ilk e-postaya adresin nereden alındığı ve aydınlatma metni bağlantısı eklenir; kişi tek tıkla çıkabilir.', 'The first email to a person’s work address says where the address came from and links your privacy notice; they can opt out with one click.')}</p>
+      <button type="button" className="studio-text-button" onClick={() => setFound(null)}>{t('Kapat', 'Close')}</button>
+    </div>}
     {open && <form className="sales-inline" onSubmit={event => { event.preventDefault(); void post(`guess-${id}`, { action: 'guess', id, firstName: name.first, lastName: name.last }, t('Tahmini adresler eklendi; doğrulanmadılar.', 'Guessed addresses added; they are not verified.')).then(value => { if (value) { setOpen(false); setName({ first: '', last: '' }); } }); }}>
       <input aria-label={t('Ad', 'First name')} placeholder={t('Ad', 'First name')} maxLength={40} value={name.first} onChange={event => setName({ ...name, first: event.target.value })} />
       <input aria-label={t('Soyad', 'Last name')} placeholder={t('Soyad', 'Last name')} maxLength={60} value={name.last} onChange={event => setName({ ...name, last: event.target.value })} />
-      <button type="submit" className="studio-secondary" disabled={Boolean(busy) || name.first.trim().length < 2 || name.last.trim().length < 2}><Check size={14} />{t('Tahmin et', 'Guess')}</button></form>}
+      <button type="submit" className="studio-secondary" disabled={Boolean(busy) || name.first.trim().length < 2 || name.last.trim().length < 2}><Check size={14} />{t('Adres tahmin et', 'Guess the address')}</button></form>}
   </div>;
 }

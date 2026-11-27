@@ -74,7 +74,7 @@ test('mobile growth is listed only for projects that need it, and stays enabled 
 test('sales assistant jobs follow the records: companies found, approved, emailed, meetings, proposals and won',coachRun(async f=>{
   const ids=['find_customers','sales_outreach','sales_close'],now=new Date().toISOString(),args=[f.a.organizationId,f.a.projectId];
   let view=await jobGuide(f.db,f.scope);
-  assert.deepEqual(states(job(view,'find_customers')),[['network','todo'],['signals','todo'],['search','todo'],['scan','todo'],['approve','todo']]);
+  assert.deepEqual(states(job(view,'find_customers')),[['segments','todo'],['network','todo'],['signals','todo'],['search','todo'],['scan','todo'],['approve','todo']]);
   assert.equal(job(view,'sales_outreach').steps.find(step=>step.id==='send').state,'blocked','sending waits for the server switch');
   // A searched, scanned and approved company.
   f.db.prepare("INSERT INTO platform_prospect_settings(organization_id,project_id,signals_json,updated_by,updated_at) VALUES(?,?,'{}',?,?)").run(...args,f.scope.subject,now);
@@ -82,9 +82,13 @@ test('sales assistant jobs follow the records: companies found, approved, emaile
   f.db.prepare("INSERT INTO platform_prospects(id,organization_id,project_id,company,website,state,created_by,created_at,updated_at) VALUES('p1',?,?,'Firma','https://firma.example','approved',?,?,?)").run(...args,f.scope.subject,now,now);
   f.db.prepare("INSERT INTO platform_prospect_insights(prospect_id,organization_id,project_id,source,city,address,category,signals_json,scanned_at,updated_at) VALUES('p1',?,?,'osm','','','','[]',?,?)").run(...args,now,now);
   f.db.prepare("INSERT INTO platform_prospect_pipeline(prospect_id,organization_id,project_id,stage,currency,lost_reason,updated_by,updated_at) VALUES('p1',?,?,'won','','',?,?)").run(...args,f.scope.subject,now);
+  f.db.prepare("INSERT INTO platform_prospect_segments(id,organization_id,project_id,name,reason,fit,keyword,signals_json,state,source,created_by,created_at,updated_at) VALUES('g1',?,?,'Klinikler','',60,'klinik','[]','active','human',?,?,?)").run(...args,f.scope.subject,now,now);
   f.db.prepare("INSERT INTO platform_network_contacts(id,organization_id,project_id,contact_key,encrypted_person,company,company_key,position,state,imported_by,imported_at,updated_at) VALUES('n1',?,?,?,'x','Firma','firma','Müdür','new',?,?,?)").run(...args,'a'.repeat(64),f.scope.subject,now,now);
   view=await jobGuide(f.db,f.scope);
   assert.equal(job(view,'find_customers').complete,true);assert.equal(job(view,'sales_outreach').steps[0].state,'done');
+  assert.equal(job(view,'sales_outreach').steps.find(step=>step.id==='domain').state,'todo','a separate sales domain is suggested until it is verified');
+  f.db.prepare("INSERT INTO platform_outreach_domains(organization_id,project_id,domain,from_local,reply_to,state,dkim_json,added_by,added_at,updated_at) VALUES(?,?,'firma-mail.example','satis','info@firma.example','verified','[]',?,?,?)").run(...args,f.scope.subject,now,now);
+  assert.equal(job(await jobGuide(f.db,f.scope),'sales_outreach').steps.find(step=>step.id==='domain').state,'done');
   assert.deepEqual(states(job(view,'sales_close')).map(([id,state])=>id+':'+state),['booking:todo','reply:done','meeting:done','proposal:todo','won:done']);
   // A member who wants leads sees the sales jobs first.
   f.db.prepare('INSERT INTO platform_compass_preferences(user_id,organization_id,project_id,preferences_json,revision,created_at,updated_at) VALUES(?,?,?,?,1,?,?)').run(f.scope.subject,...args,JSON.stringify({intent:'leads'}),now,now);

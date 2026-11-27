@@ -20,6 +20,8 @@ const handle = coachRoute(async (scope, request: NextRequest) => {
     case 'hunter-remove': return await sources.removeHunterKey();
     case 'hunter': return await sources.hunter(raw);
     case 'guess': return await sources.guess(raw);
+    case 'people': return await sources.people(raw);
+    case 'pick-person': return await sources.pickPerson(raw);
     case 'remove-contact': return await sources.removeExtra(raw);
     case 'visitors': return await sources.setVisitors(raw);
     case 'add-visitor': return await sources.addVisitor(raw);

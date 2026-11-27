@@ -1,6 +1,6 @@
 'use client';
-import { useState, type FormEvent } from 'react';
-import { Check, Copy, Gauge, Link2, Loader2, Mail, MapPin, Phone, Radar, Search, SlidersHorizontal, Star, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Check, Copy, Gauge, Link2, Loader2, Mail, MapPin, Phone, Radar, Search, SlidersHorizontal, Star, Trash2, Users, X } from 'lucide-react';
 import { FINDER_SECTORS, FINDER_TERMS, FINDER_TERMS_VERSION, SIGNALS, SIGNAL_KEYS, type FinderSnapshot, type ProspectInsight, type SignalKey, type SignalWish } from '@/lib/platform/prospect-finder-types';
 
 export type FinderPost = <T>(key: string, body: Record<string, unknown>, message?: string) => Promise<T | null>;
@@ -8,9 +8,13 @@ const copy = async (value: string) => { try { await navigator.clipboard.writeTex
 
 // Search for companies (Google Maps through the data provider, or OpenStreetMap), the owner's acceptance of the
 // provider terms, and which signals mean an opportunity for what this team sells.
-export function ProspectFinderPanel({ tr, data, busy, post }: { tr: boolean; data: FinderSnapshot; busy: string; post: FinderPost }) {
+// preset: a customer group's search (its sector phrase); the companies found go under that group.
+export type FinderPreset = { segmentId: string; name: string; sector: string; nonce: number };
+export function ProspectFinderPanel({ tr, data, busy, post, preset = null, onClearPreset }: { tr: boolean; data: FinderSnapshot; busy: string; post: FinderPost; preset?: FinderPreset | null; onClearPreset?: () => void }) {
   const t = (a: string, b: string) => tr ? a : b, idx = tr ? 0 : 1;
   const [form, setForm] = useState({ city: '', sector: '', source: data.mapsConfigured ? 'maps' : 'osm' as 'maps' | 'osm' }), [terms, setTerms] = useState(false), [open, setOpen] = useState<'' | 'settings'>('');
+  const city = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!preset) return; setForm(current => ({ ...current, sector: preset.sector })); city.current?.closest('section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => city.current?.focus(), 250); }, [preset?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
   const [wishes, setWishes] = useState<Partial<Record<SignalKey, SignalWish>>>(data.settings.signals);
   const needsTerms = form.source === 'maps' && !data.termsAccepted, mapsBlocked = form.source === 'maps' && Boolean(data.maps.blocked);
   const quotaText = data.maps.blocked === 'inactive' ? t('Google Haritalar araması etkin bir plan gerektirir.', 'Google Maps search needs an active plan.')
@@ -18,7 +22,7 @@ export function ProspectFinderPanel({ tr, data, busy, post }: { tr: boolean; dat
     : data.maps.blocked === 'user' ? t('Bugünkü kişisel Google Haritalar hakkınız doldu.', 'Your personal Google Maps allowance for today is used up.')
     : data.maps.blocked === 'platform' ? t('Google Haritalar araması şu an geçici olarak kapalı.', 'Google Maps search is paused for now.') : '';
   const search = (event: FormEvent) => { event.preventDefault(); const sector = FINDER_SECTORS.find(item => item.tr === form.sector || item.en === form.sector);
-    void post('discover', { action: 'discover', city: form.city, sector: form.sector, sectorId: sector?.id || '', source: form.source }); };
+    void post('discover', { action: 'discover', city: form.city, sector: form.sector, sectorId: sector?.id || '', source: form.source, segmentId: preset?.segmentId || undefined }); };
   return <section className="studio-band finder-panel" aria-labelledby="finder-title">
     <div className="finder-head"><h2 id="finder-title"><Radar size={16} aria-hidden="true" />{t('Firma bul', 'Find companies')}</h2>
       <button type="button" className="studio-text-button" aria-expanded={open === 'settings'} onClick={() => setOpen(open === 'settings' ? '' : 'settings')}><SlidersHorizontal size={14} />{t('Teklifime göre sinyaller', 'Signals for my offer')}</button></div>
@@ -30,8 +34,10 @@ export function ProspectFinderPanel({ tr, data, busy, post }: { tr: boolean; dat
       {data.canWrite && <button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={() => void post('settings', { action: 'settings', signals: Object.fromEntries(Object.entries(wishes).filter(([, value]) => value)) }, t('Sinyal tercihleri kaydedildi; puanlar güncellendi.', 'Signal choices saved; scores updated.'))}><Check size={14} />{t('Kaydet', 'Save')}</button>}
     </div>}
     {data.canWrite ? <form className="finder-form" onSubmit={search}>
+      {preset && <p className="finder-preset"><Users size={14} aria-hidden="true" />{t('Bu arama şu müşteri grubu için', 'This search is for the customer group')}: <strong>{preset.name}</strong>
+        {onClearPreset && <button type="button" className="studio-text-button" aria-label={t('Grubu kaldır', 'Remove the group')} onClick={onClearPreset}><X size={13} /></button>}</p>}
       <div className="finder-row">
-        <label>{t('Şehir veya ilçe', 'City or district')}<input required minLength={2} maxLength={80} value={form.city} placeholder={t('Ör. Kadıköy, İstanbul', 'E.g. Kadıköy, Istanbul')} onChange={event => setForm({ ...form, city: event.target.value })} /></label>
+        <label>{t('Şehir veya ilçe', 'City or district')}<input ref={city} required minLength={2} maxLength={80} value={form.city} placeholder={t('Ör. Kadıköy, İstanbul', 'E.g. Kadıköy, Istanbul')} onChange={event => setForm({ ...form, city: event.target.value })} /></label>
         <label>{t('Sektör', 'Sector')}<input required minLength={2} maxLength={80} list="finder-sectors" value={form.sector} placeholder={t('Ör. Diş kliniği', 'E.g. Dental clinic')} onChange={event => setForm({ ...form, sector: event.target.value })} />
           <datalist id="finder-sectors">{FINDER_SECTORS.map(item => <option key={item.id} value={item[tr ? 'tr' : 'en']} />)}</datalist></label>
         <label>{t('Kaynak', 'Source')}<select value={form.source} onChange={event => setForm({ ...form, source: event.target.value as 'maps' | 'osm' })}>

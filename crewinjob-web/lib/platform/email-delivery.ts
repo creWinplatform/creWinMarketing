@@ -8,7 +8,9 @@ import {connectPinnedSmtp,smtpTransportOptions} from './email-connection';
 import {resolvePublicAddress} from '../site-audit';
 import {emailAddress} from './email-safety';
 
-export type PilotMail={from:{name:string;address:string};to:string;subject:string;text:string;html:string;messageId:string;date:string;headers:Record<string,string>};
+// salesDomainFrom: sales emails from the project's separate, SES-verified sales domain (lib/platform/outreach-domain.ts);
+// the From address and the envelope sender are then that address instead of the SMTP account's own.
+export type PilotMail={from:{name:string;address:string};to:string;subject:string;text:string;html:string;messageId:string;date:string;headers:Record<string,string>;salesDomainFrom?:string};
 export type DeliveryResult={state:'accepted'|'rejected'|'uncertain'|'blocked';providerMessageId:string|null};
 export type PilotDelivery=(smtp:SmtpConfiguration,password:string,mail:PilotMail,beforeSubmit:() => boolean | Promise<boolean>)=>Promise<DeliveryResult>;
 type Transport={sendMail(message:Mail.Options):Promise<{accepted?:unknown[];rejected?:unknown[];response?:string}>;close():void};
@@ -18,14 +20,15 @@ export async function submitSmtpPilot(raw:SmtpConfiguration,password:string,mail
   const expiresAt=Date.now()+18000;
   try{
     const settings=normalizeSmtpConfiguration(raw);
-    if(emailAddress(mail.to)!==mail.to||emailAddress(mail.from.address)!==settings.fromEmail.toLowerCase()||typeof password!=='string'||!password||/[\r\n\x00]/.test(password))throw new Error('Invalid message.');
+    const {salesDomainFrom,...message}=mail,sender=salesDomainFrom?emailAddress(salesDomainFrom):settings.fromEmail.toLowerCase();
+    if(!sender||emailAddress(mail.to)!==mail.to||emailAddress(mail.from.address)!==sender||typeof password!=='string'||!password||/[\r\n\x00]/.test(password))throw new Error('Invalid message.');
     const deadline=new Promise<never>((_,reject)=>{timer=setTimeout(()=>{expired=true;socket?.destroy();transport?.close();reject(new Error('deadline'));},18000);});
     return await Promise.race([(async():Promise<DeliveryResult>=>{
       const address=await resolve(new URL(`https://${settings.host}/`));if(expired||Date.now()>=expiresAt)throw new Error('deadline');socket=await connect(address.address,settings.port);if(expired||Date.now()>=expiresAt){socket.destroy();throw new Error('deadline');}transport=create(smtpTransportOptions(settings,address.address,socket,password));
       if(!(await beforeSubmit()))return {state:'blocked',providerMessageId:null};
       submitted=true;
       if(expired||Date.now()>=expiresAt)throw new Error('deadline');
-      const result=await transport.sendMail({...mail,date:new Date(mail.date),envelope:{from:settings.fromEmail,to:[mail.to]},disableFileAccess:true,disableUrlAccess:true,attachDataUrls:false});
+      const result=await transport.sendMail({...message,date:new Date(mail.date),envelope:{from:salesDomainFrom?sender:settings.fromEmail,to:[mail.to]},disableFileAccess:true,disableUrlAccess:true,attachDataUrls:false});
       if(result.accepted?.length!==1||result.accepted[0]!==mail.to||result.rejected?.length)return {state:'uncertain',providerMessageId:null};
       const messageId=/^250\s+Ok\s+([A-Za-z0-9_-]{1,200})\s*$/i.exec(result.response||'')?.[1]||null;
       return {state:'accepted',providerMessageId:messageId};

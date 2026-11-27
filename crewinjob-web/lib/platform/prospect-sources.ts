@@ -2,13 +2,15 @@ import type { Db } from '../db/client';
 import 'server-only';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
+import { resolveMx } from 'node:dns/promises';
 import { PlatformRepository } from './repository';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { PROSPECT_LIMITS } from './prospect-types';
-import { ROLE_ADDRESS, siteOrigin } from './prospect-finder';
+import { ROLE_ADDRESS, readSite, siteOrigin, type SiteReader } from './prospect-finder';
 import { ProjectProspects } from './prospects';
-import { suppressedHosts } from './prospect-contacts';
+import { DECISION, sameCompany, suppressedHosts } from './prospect-contacts';
+import { PEOPLE_LIMITS, extractPeople, inferPattern, patternAddress, splitName, teamPageLinks, PATTERNS, type PeopleResult, type PersonCandidate } from './prospect-people';
 import { PERSONAL_MAIL, SOURCE_LIMITS as LIMITS, SOURCE_TERMS_VERSION, type ExtraContact, type SourceKind, type SourcesSnapshot, type VisitorCompany } from './prospect-sources-types';
 
 // Advanced sources for the sales assistant. Each one is the project's own decision: the owner accepts its
@@ -17,6 +19,12 @@ type Json = Record<string, unknown>;
 type Need = 'read' | 'content.write' | 'connections.manage' | 'billing.manage';
 export type SourceHttp = (url: string, headers: Record<string, string>) => Promise<{ status: number; text: string }>;
 export type VisitLookup = (ip: string) => Promise<{ name: string; domain: string; kind: string } | null>;
+// Whether the company's domain receives email at all (MX records); 'unknown' when DNS does not answer in time.
+export type MxCheck = (domain: string) => Promise<'ok' | 'none' | 'unknown'>;
+const mxCheck: MxCheck = async domain => {
+  try { const records = await Promise.race([resolveMx(domain), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))]); return records.length ? 'ok' : 'none'; }
+  catch (error) { return /ENOTFOUND|ENODATA/.test(String((error as { code?: string })?.code || '')) ? 'none' : 'unknown'; }
+};
 const DAY = 86400000;
 const sourceHttp: SourceHttp = async (url, headers) => { const response = await fetch(url, { headers: { Accept: 'application/json', 'User-Agent': 'Ryzevo/1.0 (+https://ryzevo.com)', ...headers }, signal: AbortSignal.timeout(15000) }); return { status: response.status, text: (await response.text()).slice(0, 1_000_000) }; };
 const clean = (value: unknown, max: number) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
@@ -59,7 +67,7 @@ export function guessAddresses(first: string, last: string, domain: string) {
 
 export class ProspectSources {
   private repo: PlatformRepository;
-  constructor(private db: Db, private scope: MarketingScope, private key: string, private http: SourceHttp = sourceHttp) { this.repo = new PlatformRepository(db); }
+  constructor(private db: Db, private scope: MarketingScope, private key: string, private http: SourceHttp = sourceHttp, private site: SiteReader = readSite, private mx: MxCheck = mxCheck) { this.repo = new PlatformRepository(db); }
   private args() { return [this.scope.organizationId, this.scope.projectId] as const; }
   private can(need: Need) { return this.repo.can(this.scope.subject, ...this.args(), need); }
   private async authorize(need: Need = 'read') {
@@ -204,6 +212,65 @@ export class ProspectSources {
       await this.audit('prospect.sources.guess');
     });
     return { added, snapshot: await this.read() };
+  }
+  // ---- The decision maker: who the company's own site names with a title, whom the team knows there, and the team's
+  // own Hunter results; the likely work address follows the company's own pattern. Names are shown, not stored, until
+  // the team picks one person to write to.
+  private async knownPeople(prospectId: string) {
+    return await this.db.prepare("SELECT id,value,source,note FROM platform_prospect_extra_contacts WHERE prospect_id=? AND kind='email' AND recipient_type='person'").all(prospectId) as { id: string; value: string; source: string; note: string }[];
+  }
+  async people(raw: Json): Promise<PeopleResult> {
+    await this.authorize('content.write'); await this.requireTerms('list');
+    const prospect = await this.prospect(raw.id), domain = host(prospect.website);
+    if (!domain) throw new MarketingStoreError('Firmanın web sitesi okunamadı.', 409);
+    await this.usage('prospect_people', PEOPLE_LIMITS.perDay, 'Bugünkü karar verici arama sınırına ulaşıldı. Yarın tekrar deneyin.');
+    const known = await this.knownPeople(prospect.id), pattern = inferPattern(known, domain), candidates: PersonCandidate[] = [];
+    const address = (name: string) => { const { first, last } = splitName(name); return patternAddress(first, last, domain, pattern ?? 0); };
+    const existing = (email: string | null) => known.find(item => item.value === email) || null;
+    const push = (item: Omit<PersonCandidate, 'key' | 'email' | 'emailKind' | 'contactId'>, email: string | null = null) => {
+      const key = item.name.toLocaleLowerCase('tr'); if (candidates.some(other => other.key === key)) return;
+      const value = email || address(item.name), stored = existing(value);
+      candidates.push({ ...item, key, email: value, emailKind: email || stored?.source === 'hunter' ? 'found' : pattern !== null ? 'pattern' : 'guess', contactId: stored?.id || null });
+    };
+    // The team's own Hunter results (already addresses).
+    for (const item of known.filter(row => row.source === 'hunter')) { const [name, position = ''] = item.note.split(' · '); if (name && name.includes(' ')) push({ name, position, decisionMaker: DECISION.test(position), origin: 'hunter', sourceUrl: null }, item.value); }
+    // The team's LinkedIn connections at this company.
+    try {
+      const rows = await this.db.prepare('SELECT id,encrypted_person,company_key,position FROM platform_network_contacts WHERE organization_id=? AND project_id=?').all(...this.args()) as { id: string; encrypted_person: string; company_key: string; position: string }[];
+      for (const row of rows.filter(item => sameCompany(item.company_key, prospect)).slice(0, 10)) {
+        const person = decryptCredentials<{ firstName: string; lastName: string; url?: string }>(row.encrypted_person, this.key, ...this.args(), `network:${row.id}`);
+        push({ name: `${person.firstName} ${person.lastName}`.trim(), position: row.position, decisionMaker: DECISION.test(row.position), origin: 'network', sourceUrl: person.url || null });
+      }
+    } catch { /* no connections yet */ }
+    // Names the company's own site gives with a title: the home page and up to two about or team pages.
+    let pagesRead = 0;
+    try {
+      const home = await this.site(prospect.website); pagesRead++;
+      const pages = [{ url: home.finalUrl, html: home.html }];
+      for (const url of teamPageLinks(home.html, home.finalUrl)) { try { const page = await this.site(url); pages.push({ url: page.finalUrl, html: page.html }); pagesRead++; } catch { /* skip */ } }
+      for (const page of pages) for (const person of extractPeople(page.html, page.url)) push({ name: person.name, position: person.position, decisionMaker: DECISION.test(person.position), origin: 'site', sourceUrl: person.sourceUrl });
+    } catch { /* the site could not be read */ }
+    candidates.sort((a, b) => Number(b.decisionMaker) - Number(a.decisionMaker) || Number(b.emailKind === 'found') - Number(a.emailKind === 'found'));
+    await this.audit('prospect.sources.people');
+    return { candidates: candidates.slice(0, 12), domain, mail: await this.mx(domain), pattern: pattern === null ? null : PATTERNS[pattern], pagesRead };
+  }
+  // The team picks one person: their likely work address is added (marked as a guess unless Hunter found it).
+  async pickPerson(raw: Json) {
+    await this.authorize('content.write'); await this.requireTerms('list');
+    const prospect = await this.prospect(raw.id), domain = host(prospect.website), name = clean(raw.name, 80), position = clean(raw.position, 80);
+    const origin = raw.origin === 'network' ? 'network' : raw.origin === 'site' ? 'site' : raw.origin === 'hunter' ? 'hunter' : null;
+    if (!origin || !/^[\p{L}'’.-]+(?:\s+[\p{L}'’.-]+){1,3}$/u.test(name)) throw new MarketingStoreError('Kişinin adını ve soyadını seçin.');
+    const known = await this.knownPeople(prospect.id), { first, last } = splitName(name);
+    if (origin === 'hunter') { const found = known.find(item => item.source === 'hunter' && item.note.split(' · ')[0] === name); if (!found) throw new MarketingStoreError('Bu kişi Hunter sonuçlarında yok.', 404); return { contactId: found.id, snapshot: await this.read() }; }
+    const value = patternAddress(first, last, domain, inferPattern(known, domain) ?? 0);
+    if (!value || !EMAIL.test(value)) throw new MarketingStoreError('Bu ad için bir iş adresi çıkarılamadı.');
+    if (await this.mx(domain) === 'none') throw new MarketingStoreError('Firmanın alan adı e-posta almıyor (MX kaydı yok).', 409);
+    await this.usage('prospect_guess', LIMITS.guessesPerDay, 'Bugünkü tahmin sınırına ulaşıldı.');
+    const note = [name, position, origin === 'site' ? 'site' : 'tanıdık'].filter(Boolean).join(' · ');
+    await this.addExtra(prospect.id, { kind: 'email', value, source: 'guess', person: true, confidence: null, note });
+    const row = await this.db.prepare("SELECT id FROM platform_prospect_extra_contacts WHERE prospect_id=? AND kind='email' AND value=?").get(prospect.id, value) as { id: string } | undefined;
+    await this.audit('prospect.sources.people.pick');
+    return { contactId: row?.id || null, snapshot: await this.read() };
   }
   async removeExtra(raw: Json) {
     await this.authorize('content.write');

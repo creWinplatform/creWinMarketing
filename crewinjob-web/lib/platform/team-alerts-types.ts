@@ -12,7 +12,7 @@ export type TeamAlert = {
   // Ad spend warnings: the plans' names (team-only alerts).
   plans?: string[];
   // Sales assistant: what is waiting (counts only).
-  sales?: { viewed: number; reminders: number; touches: number; bookings?: number; stale?: number; nextSteps?: number; paused: boolean };
+  sales?: { viewed: number; reminders: number; touches: number; bookings?: number; stale?: number; nextSteps?: number; followUps?: number; inbound?: number; paused: boolean };
   // Underlying records; a new one makes the alert new for the email.
   keys: string[];
 };

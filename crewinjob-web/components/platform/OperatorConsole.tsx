@@ -6,6 +6,7 @@ import type { FunnelSnapshot, FunnelStep, ProbeResult, ReadinessGroup, Readiness
 import { localeTag } from '@/lib/i18n/shared';
 import Msg from '@/components/Msg';
 import ServerSetupGuide from './ServerSetupGuide';
+import ManagedOperatorPanel from './ManagedOperator';
 
 const GROUPS: Record<ReadinessGroup, [string, string]> = { core: ['Temel ve güvenlik', 'Core and security'], email: ['E-posta', 'Email'], social: ['Sosyal medya', 'Social media'], messaging: ['Mesajlaşma', 'Messaging'], ads: ['Reklam', 'Ads'], ai: ['AI', 'AI'], billing: ['Ödeme', 'Billing'] };
 const STATES: Record<ReadinessState, [string, string]> = { ready: ['Hazır', 'Ready'], warning: ['Dikkat', 'Attention'], missing: ['Eksik', 'Missing'], off: ['Kapalı', 'Off'] };
@@ -77,5 +78,6 @@ export default function OperatorConsole({ lang }: { lang: Locale }) {
         </li>; })}</ol>}
       <p className="operator-summary"><span className="operator-state ready">{tr ? `Süren deneme: ${funnel.trials.active}` : `Active trials: ${funnel.trials.active}`}</span><span className="operator-state off">{tr ? `Biten deneme: ${funnel.trials.ended}` : `Ended trials: ${funnel.trials.ended}`}</span><span className="operator-state warning">{tr ? `Pilot: ${funnel.trials.pilot}` : `Pilot: ${funnel.trials.pilot}`}</span></p>
     </div>}
+    <ManagedOperatorPanel tr={tr} />
   </section>;
 }

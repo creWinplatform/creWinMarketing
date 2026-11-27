@@ -7,13 +7,16 @@ import { localeTag } from '@/lib/i18n/shared';
 import type { ProspectState, ProspectsSnapshot, ProspectView } from '@/lib/platform/prospect-types';
 import Msg from '@/components/Msg';
 import type { FinderSnapshot } from '@/lib/platform/prospect-finder-types';
-import { ProspectFinderPanel, ProspectInsightBlock } from './ProspectFinder';
+import { ProspectFinderPanel, ProspectInsightBlock, type FinderPreset } from './ProspectFinder';
+import type { SegmentsSnapshot } from '@/lib/platform/prospect-segments-types';
+import { SegmentChip, SegmentsPanel } from './ProspectSegments';
 import type { SalesSnapshot } from '@/lib/platform/prospect-outreach-types';
 import { ProspectSalesBlock, SalesPipeline, SalesSetupPanel } from './ProspectOutreach';
 import type { SourcesSnapshot } from '@/lib/platform/prospect-sources-types';
 import { ProspectPeopleTools, ProspectSourcesPanel } from './ProspectSources';
 import { BookingPanel } from './ProspectWorkflow';
 import ProspectNetworkPanel from './ProspectNetwork';
+import ManagedSendingPanel from './ManagedSending';
 import { onTabKeys } from './tab-keys';
 
 const STATES:Record<ProspectState,[string,string]>={candidate:['Aday','Candidate'],approved:['Onaylı','Approved'],rejected:['Reddedildi','Rejected']};
@@ -31,13 +34,17 @@ export default function ProjectProspects({lang}:{lang:Locale}){
   const [finder,setFinder]=useState<FinderSnapshot|null>(null);
   // Reaching out and the pipeline; absent until the database has its tables (schema 83).
   const [sales,setSales]=useState<SalesSnapshot|null>(null),[sources,setSources]=useState<SourcesSnapshot|null>(null);
-  const load=useCallback(()=>{projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(reason=>setError(reason.message));projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>setFinder(null));projectRequest<SalesSnapshot>('/api/platform/prospects/outreach').then(setSales).catch(()=>setSales(null));projectRequest<SourcesSnapshot>('/api/platform/prospects/sources').then(setSources).catch(()=>setSources(null));},[]);
+  // Customer groups (schema 84), the group a search is made for, and the person picked as a company's recipient.
+  const [segments,setSegments]=useState<SegmentsSnapshot|null>(null),[preset,setPreset]=useState<FinderPreset|null>(null),[picked,setPicked]=useState<Record<string,string>>({});
+  const loadSegments=useCallback(()=>{projectRequest<SegmentsSnapshot>('/api/platform/prospects/segments').then(setSegments).catch(()=>setSegments(null));},[]);
+  const load=useCallback(()=>{projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(reason=>setError(reason.message));projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>setFinder(null));projectRequest<SalesSnapshot>('/api/platform/prospects/outreach').then(setSales).catch(()=>setSales(null));projectRequest<SourcesSnapshot>('/api/platform/prospects/sources').then(setSources).catch(()=>setSources(null));loadSegments();},[loadSegments]);
   useEffect(()=>{load();},[load]);
   const finderPost=async<T,>(key:string,body:Record<string,unknown>,message?:string):Promise<T|null>=>{if(busy)return null;setBusy(key);setError('');setNotice('');
     try{const value=await projectRequest<Record<string,unknown>>('/api/platform/prospects/finder',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(65000)});const snapshot=('snapshot' in value?value.snapshot:value) as FinderSnapshot;setFinder(snapshot);
       if(body.action==='discover'){const found=Number(value.found),added=Number(value.added),without=Number(value.withoutWebsite);setNotice(tr?`${found} işletme bulundu; ${added} yeni firma aday listesine eklendi${without?`, ${without} işletmenin web sitesi yok`:''}.`:`${found} businesses found; ${added} new companies added as candidates${without?`, ${without} have no website`:''}.`);setFilter('candidate');setSection('list');}
       else if(message)setNotice(message);
       if(['discover','scan','remove-contact'].includes(String(body.action)))projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(()=>undefined);
+      if(body.action==='discover'){loadSegments();setPreset(null);}
       return value as T;}
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));return null;}finally{setBusy('');}};
   const salesPost=async<T,>(key:string,body:Record<string,unknown>,message?:string):Promise<T|null>=>{if(busy)return null;setBusy(key);setError('');setNotice('');
@@ -45,12 +52,18 @@ export default function ProjectProspects({lang}:{lang:Locale}){
       if(body.action==='approve')projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>undefined);return value as T;}
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));projectRequest<SalesSnapshot>('/api/platform/prospects/outreach').then(setSales).catch(()=>undefined);return null;}finally{setBusy('');}};
   const sourcesPost=async<T,>(key:string,body:Record<string,unknown>,message?:string):Promise<T|null>=>{if(busy)return null;setBusy(key);setError('');setNotice('');
-    try{const value=await projectRequest<Record<string,unknown>>('/api/platform/prospects/sources',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(65000)});setSources(('snapshot' in value?value.snapshot:value) as SourcesSnapshot);
+    try{const value=await projectRequest<Record<string,unknown>>('/api/platform/prospects/sources',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(65000)});const snapshot='snapshot' in value?value.snapshot:'terms' in value?value:null;if(snapshot)setSources(snapshot as SourcesSnapshot);
       if(body.action==='import')setNotice(tr?`${Number(value.added)} firma eklendi, ${Number(value.skipped)} satır atlandı (sitesiz, tekrar eden veya bir daha yazılmaması istenen).${value.more?' İlk 200 satır alındı.':''}`:`${Number(value.added)} companies added, ${Number(value.skipped)} rows skipped (no site, duplicates or asked not to be contacted).${value.more?' The first 200 rows were taken.':''}`);
       else if(body.action==='hunter')setNotice(tr?`${Number(value.found)} yeni adres bulundu.`:`${Number(value.found)} new address(es) found.`);else if(message)setNotice(message);
-      if(['import','hunter','guess','add-visitor','remove-contact'].includes(String(body.action))){projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(()=>undefined);projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>undefined);}
+      if(['import','hunter','guess','add-visitor','remove-contact','pick-person'].includes(String(body.action))){projectRequest<ProspectsSnapshot>('/api/platform/prospects').then(setData).catch(()=>undefined);projectRequest<FinderSnapshot>('/api/platform/prospects/finder').then(setFinder).catch(()=>undefined);}
       return value as T;}
     catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));return null;}finally{setBusy('');}};
+  const segmentsPost=async<T,>(key:string,body:Record<string,unknown>,message?:string):Promise<T|null>=>{if(busy)return null;setBusy(key);setError('');setNotice('');
+    try{const value=await projectRequest<SegmentsSnapshot>('/api/platform/prospects/segments',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(65000)});setSegments(value);if(message)setNotice(message);return value as T;}
+    catch(reason){setError(reason instanceof Error?reason.message:(tr?'İstek tamamlanamadı.':'Request failed.'));return null;}finally{setBusy('');}};
+  // A picked decision maker becomes the recipient: of the draft if there is one, else of the next draft.
+  const pickRecipient=(id:string,contactId:string)=>{setPicked(current=>({...current,[id]:contactId}));const draft=sales?.outreach[id];
+    if(draft?.state==='draft'&&draft.contactId&&draft.contactId!==contactId)void projectRequest<SalesSnapshot>('/api/platform/prospects/outreach',{method:'POST',body:JSON.stringify({action:'recipient',id,contactId})}).then(setSales).catch(reason=>setError(reason instanceof Error?reason.message:''));};
   const open=(id:string)=>{setSection('list');setFilter('approved');setTimeout(()=>document.getElementById(`prospect-${id}`)?.scrollIntoView({behavior:'smooth',block:'start'}),60);};
   const post=async(key:string,body:object,message?:string)=>{if(busy)return false;setBusy(key);setError('');setNotice('');
     try{const value=await projectRequest<Record<string,unknown>>('/api/platform/prospects',{method:'POST',body:JSON.stringify(body),signal:AbortSignal.timeout(45000)});setData(('snapshot' in value?value.snapshot:value) as ProspectsSnapshot);if(message)setNotice(message);return true;}
@@ -64,7 +77,7 @@ export default function ProjectProspects({lang}:{lang:Locale}){
   const card=(item:ProspectView)=><li key={item.id} id={`prospect-${item.id}`} className="studio-draft-row">
     <div className="studio-draft-top"><div>
       <span className={`coach-state ${item.state==='approved'?'done':''}`}>{STATES[item.state][idx]}</span>{item.sector&&<span className="coach-muted"> · {item.sector}</span>}{item.country&&<span className="coach-muted"> · {item.country}</span>}
-      <h2 className="mt-2">{item.company}</h2>{sales?.network?.[item.id]&&<button type="button" className="network-badge" onClick={()=>setSection('network')}>{tr?`Tanıdığın var: ${sales.network[item.id].first}${sales.network[item.id].position?` (${sales.network[item.id].position})`:''}${sales.network[item.id].count>1?` +${sales.network[item.id].count-1}`:''}`:`You know someone: ${sales.network[item.id].first}${sales.network[item.id].count>1?` +${sales.network[item.id].count-1}`:''}`}</button>}<a className="prospect-link" href={item.website} target="_blank" rel="noreferrer"><Globe size={13}/>{item.website.replace(/^https?:\/\//,'')}</a>
+      <h2 className="mt-2">{item.company}</h2>{segments&&segments.segments.length>0&&<SegmentChip tr={tr} prospectId={item.id} segments={segments.segments} current={segments.members[item.id]||null} canWrite={segments.canWrite} busy={busy} post={segmentsPost}/>}{sales?.network?.[item.id]&&<button type="button" className="network-badge" onClick={()=>setSection('network')}>{tr?`Tanıdığın var: ${sales.network[item.id].first}${sales.network[item.id].position?` (${sales.network[item.id].position})`:''}${sales.network[item.id].count>1?` +${sales.network[item.id].count-1}`:''}`:`You know someone: ${sales.network[item.id].first}${sales.network[item.id].count>1?` +${sales.network[item.id].count-1}`:''}`}</button>}<a className="prospect-link" href={item.website} target="_blank" rel="noreferrer"><Globe size={13}/>{item.website.replace(/^https?:\/\//,'')}</a>
     </div>
     {data.canWrite&&<div className="coach-action-buttons">
       {item.state!=='rejected'&&(finder?<button type="button" className="studio-text-button" disabled={Boolean(busy)||data.checksLeft<1} onClick={()=>void finderPost(`scan-${item.id}`,{action:'scan',id:item.id},tr?'Site tarandı: sinyaller ve yayımlanan iletişim adresleri güncellendi.':'Site scanned: signals and published contact addresses updated.')}><Globe size={14}/>{item.check.status==='not_checked'?(tr?'Siteyi tara':'Scan the site'):(tr?'Yeniden tara':'Scan again')}</button>
@@ -75,8 +88,8 @@ export default function ProjectProspects({lang}:{lang:Locale}){
     {item.check.status==='ok'?<div className="prospect-evidence"><p><strong>{tr?'Kanıt: ':'Evidence: '}</strong>“{item.check.evidence||item.check.pageTitle||'—'}”</p><p className="coach-muted">{tr?'Kaynak':'Source'}: <a href={item.check.sourceUrl!} target="_blank" rel="noreferrer">{item.check.sourceUrl}</a> · {tr?'kontrol':'checked'} {date(item.check.checkedAt!)}</p></div>
       :item.check.status==='unreachable'?<p className="coach-muted">{tr?`Web sitesi okunamadı (${date(item.check.checkedAt!)}). Kanıt olmadan onaylanamaz.`:`The website couldn’t be read (${date(item.check.checkedAt!)}). It can’t be approved without evidence.`}</p>:<p className="coach-muted">{tr?'Henüz kontrol edilmedi.':'Not checked yet.'}</p>}
     {finder?.insights[item.id]&&<ProspectInsightBlock tr={tr} id={item.id} insight={finder.insights[item.id]} canWrite={data.canWrite} busy={busy} post={finderPost}/>}
-    {sources&&item.state!=='rejected'&&<ProspectPeopleTools tr={tr} id={item.id} data={sources} busy={busy} post={sourcesPost}/>}
-    {sales&&item.state==='approved'&&<ProspectSalesBlock tr={tr} prospect={{id:item.id,company:item.company,contactRole:item.contactRole}} contacts={finder?.insights[item.id]?.contacts||[]} sales={sales} busy={busy} post={salesPost}/>}
+    {sources&&item.state!=='rejected'&&<ProspectPeopleTools tr={tr} id={item.id} data={sources} busy={busy} post={sourcesPost} onPicked={contactId=>pickRecipient(item.id,contactId)}/>}
+    {sales&&item.state==='approved'&&<ProspectSalesBlock tr={tr} prospect={{id:item.id,company:item.company,contactRole:item.contactRole}} contacts={finder?.insights[item.id]?.contacts||[]} sales={sales} busy={busy} post={salesPost} preferredContactId={picked[item.id]}/>}
     {edit?.id===item.id?<form className="prospect-form" onSubmit={event=>void save(event)}>
       <label>{tr?'Uygunluk gerekçesi':'Why they fit'}<textarea rows={3} maxLength={600} value={edit.reason} onChange={event=>setEdit({...edit,reason:event.target.value})}/></label>
       <label>{tr?'Önerilen temas rolü (kişi adı değil)':'Suggested contact role (not a name)'}<input maxLength={80} value={edit.contactRole} onChange={event=>setEdit({...edit,contactRole:event.target.value})}/></label>
@@ -106,9 +119,11 @@ export default function ProjectProspects({lang}:{lang:Locale}){
     </nav>
     {error&&<p className="studio-error" role="alert"><Msg text={error}/></p>}
     {notice&&<p className="coach-note" role="status">{notice}</p>}
-    {current==='find'&&finder&&<ProspectFinderPanel tr={tr} data={finder} busy={busy} post={finderPost}/>}
+    {current==='find'&&segments&&<SegmentsPanel tr={tr} data={segments} busy={busy} post={segmentsPost} onSearch={segment=>setPreset({segmentId:segment.id,name:segment.name,sector:segment.keyword,nonce:Date.now()})}/>}
+    {current==='find'&&finder&&<ProspectFinderPanel tr={tr} data={finder} busy={busy} post={finderPost} preset={preset} onClearPreset={()=>setPreset(null)}/>}
     {current==='find'&&finder&&sources&&<ProspectSourcesPanel tr={tr} data={sources} busy={busy} post={sourcesPost} finderPost={finderPost} mapsReady={finder.mapsConfigured&&Boolean(finder.termsAccepted)&&!finder.maps.blocked}/>}
     {current==='network'&&sales&&<ProspectNetworkPanel tr={tr} onChanged={load}/>}
+    {current==='settings'&&sales&&<ManagedSendingPanel tr={tr}/>}
     {current==='settings'&&sales&&<SalesSetupPanel tr={tr} data={sales} busy={busy} post={salesPost} open/>}
     {current==='settings'&&sales&&<BookingPanel tr={tr}/>}
     {current==='list'&&<>

@@ -6,6 +6,7 @@ import { PlatformRepository } from './repository';
 import { projectFeatures } from './entitlements';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { extraContacts, suppressedHosts } from './prospect-contacts';
+import { joinSegment, segmentExists } from './prospect-segments';
 import {
   FINDER_LIMITS, FINDER_SECTORS, MAPS_QUOTA, type MapsQuota, FINDER_TERMS_VERSION, SIGNALS, SIGNAL_KEYS,
   type FinderSearch, type FinderSettings, type FinderSnapshot, type ProspectAnalysis, type ProspectContact, type ProspectInsight, type ProspectScore, type Signal, type SignalKey, type SignalWish,
@@ -284,6 +285,8 @@ export class ProspectFinder {
     const city = clean(raw.city, 80), sectorText = clean(raw.sector, 80), source = raw.source === 'osm' ? 'osm' : 'maps';
     if (city.length < 2 || sectorText.length < 2) throw new MarketingStoreError('Şehir veya ilçe ile sektörü yazın.');
     if (await this.used('prospect_search') >= FINDER_LIMITS.searchesPerDay) throw new MarketingStoreError('Bugünkü firma arama hakkınız doldu. Yarın tekrar deneyin.', 429);
+    // A search made for a customer group puts the companies it finds under that group.
+    const segmentId = await segmentExists(this.db, this.args2(), raw.segmentId) ? String(raw.segmentId) : null;
     const sectorId = FINDER_SECTORS.find(item => item.id === raw.sectorId || item.tr.toLocaleLowerCase('tr') === sectorText.toLocaleLowerCase('tr') || item.en.toLowerCase() === sectorText.toLowerCase())?.id || '';
     if (source === 'maps') {
       if (!dataForSeoConfigured()) throw new MarketingStoreError('Google Haritalar araması bu sunucuda henüz yapılandırılmadı. OpenStreetMap ile arayabilirsiniz.', 503);
@@ -318,7 +321,7 @@ export class ProspectFinder {
     const suppressed = await suppressedHosts(this.db, this.args2());
     const added = await this.db.transaction(async () => {
       const existing = await this.db.prepare('SELECT website FROM platform_prospects WHERE organization_id=? AND project_id=?').all(...this.args()) as { website: string }[];
-      const seen = new Set(existing.map(row => host(row.website))); let room = Math.max(0, 200 - existing.length), count = 0;
+      const seen = new Set(existing.map(row => host(row.website))); let room = Math.max(0, 200 - existing.length), count = 0; const ids: string[] = [];
       for (const item of withSite) {
         if (count >= FINDER_LIMITS.perSearch || room <= 0) break;
         const key = host(item.origin); if (!key || seen.has(key) || suppressed.has(key)) continue; seen.add(key);
@@ -328,8 +331,9 @@ export class ProspectFinder {
         // A business phone or a role address the listing itself publishes.
         if (/^\+?[\d\s()-]{10,20}$/.test(item.phone)) await this.contact(id, 'phone', item.phone.replace(/[^\d+]/g, ''), source, null, now);
         const email = item.email.toLowerCase(); if (/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) && ROLE.test(email.split('@')[0])) await this.contact(id, 'email', email, source, null, now);
-        count++; room--;
+        count++; room--; ids.push(id);
       }
+      if (segmentId) await joinSegment(this.db, this.args2(), segmentId, ids);
       await this.db.prepare("INSERT INTO platform_prospect_searches(id,organization_id,project_id,source,city,sector,found,added,without_website,status,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,'done',?,?)").run(searchId, ...this.args(), source, city, sectorText, listings.length, count, withoutWebsite, this.scope.subject, now);
       await this.audit(`prospect.finder.discover:${source}`);
       return count;
@@ -351,7 +355,7 @@ export class ProspectFinder {
     let extra: { finalUrl: string; html: string } | null = null;
     const link = page ? contactPage(page.html, page.finalUrl) : null;
     if (link) { try { extra = await this.site(link); if (host(extra.finalUrl) !== host(prospect.website)) extra = null; } catch { extra = null; } }
-    const now = new Date().toISOString(), history = await prospectDetailsReady(this.db) === 'sales';
+    const now = new Date().toISOString(), history = ['sales', 'segments'].includes(String(await prospectDetailsReady(this.db)));
     await this.db.transaction(async () => {
       await this.count('prospect_check');
       if (!page) { await this.db.prepare("UPDATE platform_prospects SET check_status='unreachable',checked_at=?,revision=revision+1,updated_at=? WHERE id=?").run(now, now, prospect.id); await this.audit('prospect.scan'); return; }
@@ -467,15 +471,17 @@ export async function openProspectAnalysis(db: Db, token: string, preview = fals
 }
 // Whether the sales assistant tables exist (db:upgrade adds them). Asked outside a transaction: on SQL Server a
 // missing table inside one would end the whole transaction.
-// 'sales' when the outreach tables (schema 83) exist too.
-export async function prospectDetailsReady(db: Db): Promise<false | 'finder' | 'sales'> {
+// 'sales' when the outreach tables (schema 83) exist too, 'segments' when the customer groups (schema 84) do as well.
+export async function prospectDetailsReady(db: Db): Promise<false | 'finder' | 'sales' | 'segments'> {
   try { await db.prepare('SELECT COUNT(*) AS n FROM platform_prospect_insights WHERE 1=0').get(); } catch { return false; }
-  try { await db.prepare('SELECT COUNT(*) AS n FROM platform_prospect_outreach WHERE 1=0').get(); return 'sales'; } catch { return 'finder'; }
+  try { await db.prepare('SELECT COUNT(*) AS n FROM platform_prospect_outreach WHERE 1=0').get(); } catch { return 'finder'; }
+  try { await db.prepare('SELECT COUNT(*) AS n FROM platform_prospect_segment_members WHERE 1=0').get(); return 'segments'; } catch { return 'sales'; }
 }
 // Dependent rows of a prospect, removed before the prospect itself. The touch history (no names, no addresses) stays
 // for the team's figures; blocked addresses stay blocked.
-export async function removeProspectDetails(db: Db, prospectId: string, level: 'finder' | 'sales' = 'finder') {
-  if (level === 'sales') {
+export async function removeProspectDetails(db: Db, prospectId: string, level: 'finder' | 'sales' | 'segments' = 'finder') {
+  if (level === 'segments') await db.prepare('DELETE FROM platform_prospect_segment_members WHERE prospect_id=?').run(prospectId);
+  if (level === 'sales' || level === 'segments') {
     await db.prepare('DELETE FROM platform_prospect_outreach_sends WHERE outreach_id IN (SELECT id FROM platform_prospect_outreach WHERE prospect_id=?)').run(prospectId);
     for (const table of ['platform_prospect_outreach', 'platform_prospect_pipeline', 'platform_prospect_extra_contacts', 'platform_prospect_proposals']) await db.prepare(`DELETE FROM ${table} WHERE prospect_id=?`).run(prospectId);
   }

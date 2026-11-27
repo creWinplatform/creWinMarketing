@@ -39,6 +39,8 @@ export async function middleware(req: NextRequest) {
   if (/^\/api\/platform\/product-events\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
   if (/^\/api\/platform\/mobile-hooks\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
   if (/^\/api\/platform\/email-feedback\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
+  // Managed sales service: provider events and received replies (each request proves itself: SNS signature or HMAC).
+  if (pathname === '/api/mail/managed/ses' || pathname === '/api/mail/inbound') return NextResponse.next();
   // Meta's WhatsApp webhook; the route verifies the app-secret signature (X-Hub-Signature-256) itself.
   if (/^\/api\/platform\/whatsapp\/hooks\/[a-f0-9]{32}$/.test(pathname)) return NextResponse.next();
   // Meta's Page/Instagram inbox webhook; the route verifies the app-secret signature (X-Hub-Signature-256) itself.

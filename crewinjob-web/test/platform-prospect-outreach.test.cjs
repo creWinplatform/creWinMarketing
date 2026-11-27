@@ -193,3 +193,80 @@ test('short emails with one question, 1–4 follow-ups, qualifying, a clear yes 
   assert.deepEqual(plain(await sales.week()),plain(await salesWeek(f.db,f.scope,'Europe/Istanbul')));
   const month=plain(await salesMonth(f.db,f.scope,new Date(Date.now()-86400000).toISOString(),new Date(Date.now()+86400000).toISOString()));assert.equal(month.waiting,1);
 }));
+
+test('a separate sales domain: added to SES, checked, then sales emails go from it with replies to the real address and their own warm-up',()=>withSales(async f=>{
+  process.env.PLATFORM_PROSPECT_EMAIL_ENABLED='1';
+  const {OutreachDomain}=load('outreach-domain.ts'),created=[];
+  let state={exists:true,verified:false,dkimStatus:'PENDING',tokens:['a'.repeat(32),'b'.repeat(32),'c'.repeat(32)]},dmarc=[];
+  const api={create:async(keys,domain)=>{created.push([keys.region,keys.accessKeyId,domain]);return state;},get:async()=>state};
+  const domain=(scope=f.scope)=>new OutreachDomain(f.db,scope,KEY,api,async()=>dmarc);
+  await assert.rejects(domain().save({domain:'example.com',fromLocal:'ayse',replyTo:'hello@example.com'}),e=>e.status===400,'not the main domain');
+  await assert.rejects(domain().save({domain:'mail.example.com',fromLocal:'ayse',replyTo:'hello@example.com'}),e=>e.status===400,'nor a subdomain of it');
+  await assert.rejects(domain().save({domain:'example-mail.com',fromLocal:'ayse',replyTo:'x@example-mail.com'}),e=>e.status===400,'replies go to the real mailbox');
+  const viewer=await f.repo.addMember(f.a.userId,f.a.organizationId,f.a.projectId,{username:'domain-viewer',password:'fixture-password-123',role:'viewer'});
+  await assert.rejects(domain({...f.scope,subject:viewer.id}).save({domain:'example-mail.com',fromLocal:'ayse',replyTo:'hello@example.com'}),e=>e.status===403);
+  let out=plain(await domain().save({domain:'https://www.Example-Mail.com/',fromLocal:'ayse',replyTo:'hello@example.com'}));
+  assert.equal(out.added,true);assert.deepEqual(created,[[region,accessKeyId,'example-mail.com']]);
+  assert.equal(out.view.records.length,4);assert.equal(out.view.records[0].name,`${'a'.repeat(32)}._domainkey.example-mail.com`);assert.equal(out.view.records[3].value,'v=DMARC1; p=none;');assert.equal(out.view.state,'pending');
+  // Not ready yet: approval is refused and the readiness says so.
+  const id=await f.prospect('Gülüş Diş','https://gulus.example'),sales=f.sales();
+  const draft=plain(await sales.draft({id,mode:'template'})).outreach[id];
+  await assert.rejects(sales.approve({id,expectedRevision:draft.revision,acknowledged:true},'https://ryzevo.example'),e=>e.status===409&&/alan ad/.test(e.message));
+  state={...state,verified:true,dkimStatus:'SUCCESS'};
+  out=plain(await domain().check());assert.equal(out.view.state,'pending','DMARC still missing');assert.equal(out.view.proof.dmarc,false);
+  dmarc=[['v=DMARC1; p=none;']];out=plain(await domain().check());assert.equal(out.view.state,'verified');
+  let snap=plain(await sales.read());assert.deepEqual(snap.readiness.salesDomain,{domain:'example-mail.com',ready:true});assert.equal(snap.domain.fromAddress,'ayse@example-mail.com');assert.equal(snap.readiness.dailyLimit,10,'its own warm-up');
+  await sales.approve({id,expectedRevision:draft.revision,acknowledged:true},'https://ryzevo.example');
+  assert.equal(f.mails.length,1);const mail=f.mails[0];
+  assert.equal(mail.from.address,'ayse@example-mail.com');assert.equal(mail.salesDomainFrom,'ayse@example-mail.com');assert.equal(mail.headers['Reply-To'],'hello@example.com');assert.match(mail.messageId,/@example-mail\.com>$/);
+  assert.ok(f.db.prepare('SELECT first_send_at FROM platform_outreach_domains').get().first_send_at,'the warm-up starts with this domain');
+  // The SMTP layer accepts the sales domain only when it is named explicitly.
+  const {submitSmtpPilot}=load('email-delivery.ts'),smtp={host:`email-smtp.${region}.amazonaws.com`,port:587,user:accessKeyId,fromEmail:'hello@example.com',fromName:'Fixture'};
+  assert.equal((await submitSmtpPilot(smtp,'x',{...mail,salesDomainFrom:undefined},async()=>true)).state,'blocked','another From without the explicit sales domain');
+  // A running sequence never moves to another domain by itself: removing the sales domain pauses sending for review.
+  const {salesAttention}=load('prospect-outreach.ts');
+  f.db.prepare("UPDATE platform_prospect_outreach SET next_due_at=? WHERE prospect_id=?").run(new Date(Date.now()+3600000).toISOString(),id);
+  assert.deepEqual(plain(await salesAttention(f.db,f.scope)).followUps.map(item=>item.prospect_id),[id],'the team is told before a follow-up goes');
+  out=plain(await domain().remove());assert.equal(out.view.configured,false);
+  snap=plain(await sales.read());assert.equal(snap.readiness.salesDomain,null);assert.equal(snap.readiness.paused.reason,'sender_changed');
+  assert.equal(await sales.deliver(snap.outreach[id].id),'skipped','not due yet');
+  snap=plain(await sales.resume({acknowledged:true}));assert.equal(snap.readiness.paused,null);
+}));
+
+test('safety: the first spam report pauses sending, and capacity grows only with clean sending days',()=>withSales(async f=>{
+  process.env.PLATFORM_PROSPECT_EMAIL_ENABLED='1';
+  const id=await f.prospect('Gülüş Diş','https://gulus.example'),sales=f.sales();
+  const draft=plain(await sales.draft({id,mode:'template'})).outreach[id];
+  let snap=plain(await sales.approve({id,expectedRevision:draft.revision,acknowledged:true},'https://ryzevo.example'));
+  assert.deepEqual(snap.readiness.capacity,{stage:'starting',activeDays:0});assert.equal(snap.readiness.dailyLimit,10);
+  // Three earlier days that really sent: 10 + 3 × 5.
+  const row=snap.outreach[id],insert=(daysAgo,state)=>{const at=new Date(Date.now()-daysAgo*86400000).toISOString();f.db.prepare("INSERT INTO platform_prospect_outreach_sends(id,outreach_id,organization_id,project_id,step,state,provider_message_id,created_at,submitted_at,updated_at) VALUES(?,?,?,?,?,?,NULL,?,?,?)").run(`osend_${randomUUID()}`,row.id,f.a.organizationId,f.a.projectId,daysAgo,state,at,at,at);};
+  f.db.prepare('UPDATE platform_prospect_outreach_sends SET submitted_at=? WHERE outreach_id=?').run(new Date(Date.now()-5*86400000).toISOString(),row.id);
+  insert(2,'delivered');insert(3,'delivered');
+  snap=plain(await sales.read());assert.deepEqual(snap.readiness.capacity,{stage:'growing',activeDays:3});assert.equal(snap.readiness.dailyLimit,25);
+  assert.deepEqual(snap.readiness.health,{days:14,sends:3,bounces:0,complaints:0});
+  // The first spam report: the sequence stops, the address is blocked and all sending pauses; capacity is held.
+  const send=f.db.prepare('SELECT id,provider_message_id FROM platform_prospect_outreach_sends WHERE outreach_id=? AND step=0').get(row.id);
+  await f.feedback(row.id,send.id,'Complaint','info@gulus.example',send.provider_message_id);
+  snap=plain(await sales.read());assert.equal(snap.readiness.paused.reason,'complaints');assert.equal(snap.outreach[id].stopReason,'complained');
+  f.db.prepare('UPDATE platform_prospect_outreach_sends SET submitted_at=? WHERE id=?').run(new Date(Date.now()-86400000*4).toISOString(),send.id);
+  snap=plain(await sales.read());assert.equal(snap.readiness.capacity.stage,'held');assert.equal(snap.readiness.dailyLimit,12);assert.equal(snap.readiness.health.complaints,1);
+}));
+
+test('a person’s work address: the privacy link is required, the first email says where the address came from, and a ready answer carries the booking link',()=>withSales(async f=>{
+  process.env.PLATFORM_PROSPECT_EMAIL_ENABLED='1';
+  const id=await f.prospect('Gülüş Diş','https://gulus.example'),sales=f.sales(),now=new Date().toISOString();
+  f.db.prepare("INSERT INTO platform_prospect_extra_contacts(id,prospect_id,organization_id,project_id,kind,value,source,recipient_type,confidence,note,found_at) VALUES('px1',?,?,?,'email','ayse.kaya@gulus.example','guess','person',NULL,'Ayşe Kaya · Kurucu · site',?)").run(id,f.a.organizationId,f.a.projectId,now);
+  let draft=plain(await sales.draft({id,mode:'template'})).outreach[id];assert.notEqual(draft.contactId,'px1','the role address by default');
+  draft=plain(await sales.recipient({id,contactId:'px1'})).outreach[id];assert.equal(draft.contactId,'px1','the picked decision maker');
+  await assert.rejects(sales.recipient({id,contactId:'nope'}),e=>e.status===404);
+  await assert.rejects(sales.approve({id,expectedRevision:draft.revision,acknowledged:true,confirmPerson:true},'https://ryzevo.example'),e=>e.status===409&&/aydınlatma/.test(e.message));
+  await sales.saveSettings({privacyUrl:'https://example.com/kvkk',calendarUrl:'https://cal.example/ryzevo'});
+  await assert.rejects(sales.approve({id,expectedRevision:draft.revision,acknowledged:true},'https://ryzevo.example'),e=>e.status===409,'a separate statement for a person');
+  await sales.approve({id,expectedRevision:draft.revision,acknowledged:true,confirmPerson:true},'https://ryzevo.example');
+  assert.equal(f.mails.length,1);assert.equal(f.mails[0].to,'ayse.kaya@gulus.example');
+  assert.match(f.mails[0].text,/(İş adresinize firmanızın web sitesindeki veya ortak bağlantılarımızdaki ad ve unvan bilgisinden ulaştık|We reached your work address through the name and title)/);assert.match(f.mails[0].text,/https:\/\/example\.com\/kvkk/);
+  // Without AI, an interested reply still gets a ready answer with the booking link.
+  const snap=plain(await sales.reply({id,kind:'interested'}));assert.match(snap.outreach[id].reply.draft,/https:\/\/cal\.example\/ryzevo/);
+  const {replyTemplate}=load('prospect-outreach.ts');assert.equal(replyTemplate('auto_reply',true,''),'');assert.match(replyTemplate('wrong_person',true,''),/kişinin adını/);
+}));

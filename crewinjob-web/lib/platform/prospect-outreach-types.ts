@@ -1,3 +1,4 @@
+import type { OutreachDomainView } from './outreach-domain-types';
 // Sales assistant, part 3: reaching approved companies and following them through a simple sales pipeline. An email
 // sequence (a first email and at most two follow-ups) is written from the company's own site findings, approved by a
 // person and sent from the project's own verified sender; LinkedIn and WhatsApp messages are prepared for a person to
@@ -11,7 +12,12 @@ export const OUTREACH_LIMITS = {
   // a little room for the team's own edits.
   subject: 80, firstWords: 90, followWords: 60, firstTarget: 75, followTarget: 50, channelChars: 600, linkedinChars: 300, signature: 300,
   draftsPerDay: 40, repliesPerDay: 60, remindDays: 90, autoReplyDays: 7, channelRemindDays: 5,
-  pauseWindowDays: 14, minSendsForRate: 20, bounceRate: 0.05, bouncesWhenFew: 3, complaints: 2,
+  // Safety: the first spam report pauses everything for a person to review; rates are read over a window and only
+  // with enough emails (one report among 50 emails is already 2%).
+  pauseWindowDays: 14, minSendsForRate: 20, bounceRate: 0.05, bouncesWhenFew: 3, complaints: 1,
+  // Capacity grows with observed results, not with the calendar: only days that really sent count, and a week with a
+  // spam report or more than 2% bounces holds the limit at half.
+  healthDays: 7, healthBounceRate: 0.02, healthBouncesWhenFew: 2,
   windowStart: 9, windowEnd: 18,
 } as const;
 // The token the email text carries for the mini analysis link; replaced by the real link when the email goes out.
@@ -38,12 +44,15 @@ export const REPLY_CLASSES: Record<ReplyClass, { label: Pair; effect: Pair }> = 
 export type OutreachStep = { subject: string; body: string };
 export type OutreachState = 'draft' | 'active' | 'finished' | 'replied' | 'stopped' | 'bounced' | 'failed';
 export type OutreachStopReason = 'cancelled' | 'replied' | 'unsubscribed' | 'blocked' | 'bounced' | 'complained' | 'uncertain' | 'rejected' | 'stage' | 'removed';
-export type OutreachWait = null | 'switch_off' | 'sender_not_ready' | 'iys' | 'paused' | 'daily_limit' | 'window' | 'no_origin';
+export type OutreachWait = null | 'switch_off' | 'sender_not_ready' | 'sales_domain' | 'privacy' | 'credits' | 'iys' | 'paused' | 'daily_limit' | 'window' | 'no_origin';
 export const WAIT_LABELS: Record<Exclude<OutreachWait, null>, Pair> = {
   switch_off: ['Satış e-postası gönderimi bu sunucuda kapalı.', 'Sales email sending is off on this server.'],
   sender_not_ready: ['Gönderen (SES) hazır değil: alan adı, DKIM ve geri bildirim doğrulanmalı.', 'The sender (SES) is not ready: domain, DKIM and feedback must be verified.'],
+  sales_domain: ['Satış alan adının kontrolleri (DKIM, DMARC) henüz tamam değil.', 'The sales domain checks (DKIM, DMARC) are not complete yet.'],
+  privacy: ['Kişi adresine yazmak için aydınlatma metni bağlantısı gerekli (Satış ayarları → Uyumluluk).', 'Writing to a person’s address needs the privacy notice link (Sales settings → Compliance).'],
+  credits: ['Yönetimli gönderim krediniz bitti; kredi eklenince devam eder.', 'Your managed sending credits are used up; it continues when credits are added.'],
   iys: ['İYS kontrolü bekleniyor.', 'Waiting for the İYS check.'],
-  paused: ['Gönderim, geri dönen veya şikâyet edilen e-postalar yüzünden durduruldu.', 'Sending was paused because of bounced or reported emails.'],
+  paused: ['Gönderim durduruldu (geri dönen veya şikâyet edilen e-posta ya da gönderen değişikliği); bir bağlantı yöneticisi kontrol edip devam ettirmeli.', 'Sending is paused (bounced or reported emails, or a sender change); a connection manager must review and resume.'],
   daily_limit: ['Bugünkü gönderim sınırı doldu; ilk uygun saatte gider.', 'Today’s sending limit is reached; it goes at the next opening.'],
   window: ['Mesai saatinde (hafta içi 09–18) gönderilecek.', 'It goes during business hours (weekdays 9–18).'],
   no_origin: ['Ret bağlantısı için genel adres (PLATFORM_PUBLIC_ORIGIN) eksik.', 'The public address for the opt-out link (PLATFORM_PUBLIC_ORIGIN) is missing.'],
@@ -69,8 +78,15 @@ export type OutreachReadiness = {
   switchOn: boolean; senderReady: boolean; domain: string | null; publicOrigin: boolean;
   dmarc: { state: 'ok' | 'missing' | 'unknown'; checkedAt: string | null };
   iys: 'not_required' | 'ready' | 'needs_exemption' | 'not_connected' | 'scope_missing';
-  paused: { reason: 'bounces' | 'complaints'; at: string } | null;
+  paused: { reason: 'bounces' | 'complaints' | 'sender_changed'; at: string } | null;
   dailyLimit: number; sentToday: number;
+  // What the limit rests on: days that really sent, and the last weeks' results with their sample size.
+  capacity: { stage: 'starting' | 'growing' | 'held' | 'max'; activeDays: number };
+  health: { days: number; sends: number; bounces: number; complaints: number };
+  // The separate sales domain, when one is set: sales emails go only from it, with its own warm-up.
+  salesDomain: { domain: string; ready: boolean } | null;
+  // The managed sales service, for a pilot project (it then sends only through it).
+  managed: { waiting: null | 'not_pilot' | 'suspended' | 'switch_off' | 'no_provider' | 'no_domain' | 'not_verified' | 'not_approved' | 'no_credits'; balance: number } | null;
 };
 // What the team's own history says: replies by sector, by the site signal the email was built on, and by who wrote it.
 export type LearningRow = { key: string; sends: number; replies: number; interested: number };
@@ -84,6 +100,10 @@ export type SalesSnapshot = {
   outreach: Record<string, OutreachView>; pipeline: Record<string, PipelineEntry>; touches: Record<string, ChannelTouch[]>;
   settings: OutreachSettings; readiness: OutreachReadiness; stages: Record<PipelineStage, number>; learning: SalesLearning; week: SalesWeek;
   members: { id: string; username: string }[];
+  // The separate sales sending domain (null before schema 84).
+  domain: OutreachDomainView | null;
+  // Replies that came back to the sequences' reply addresses (managed service), newest first, for writers only.
+  inbound: Record<string, { id: string; from: string; subject: string; text: string; kind: string | null; matched: 'address' | 'domain' | 'other'; receivedAt: string }[]>;
   // Who the team already knows at each company (first name and initial, how many people).
   network: Record<string, { count: number; first: string; position: string }>;
   aiConfigured: boolean; canWrite: boolean; canApprove: boolean; canManage: boolean;

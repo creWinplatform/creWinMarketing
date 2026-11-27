@@ -1963,6 +1963,69 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_network_contacts_company ON platform_network_contacts(organization_id,project_id,company_key);
     INSERT INTO platform_migrations(version,applied_at) VALUES(83,datetime('now'));
   `))();
+  // Sales assistant: a separate sales sending domain (so cold email never risks the main domain's reputation), and the
+  // customer groups (segments) the team sells to, with the companies found for each. Only new tables (db:upgrade).
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=84').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_outreach_domains (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, domain TEXT NOT NULL, from_local TEXT NOT NULL, reply_to TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('pending','verified','failed')), dkim_json TEXT NOT NULL, proof_json TEXT, checked_at TEXT, first_send_at TEXT,
+      added_by TEXT NOT NULL, added_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_prospect_segments (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, name TEXT NOT NULL, reason TEXT NOT NULL,
+      fit INTEGER NOT NULL CHECK(fit >= 0 AND fit <= 100), keyword TEXT NOT NULL, signals_json TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('active','paused')), source TEXT NOT NULL CHECK(source IN ('ai','template','human')),
+      created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_segments_scope ON platform_prospect_segments(organization_id,project_id);
+    CREATE TABLE platform_prospect_segment_members (
+      prospect_id TEXT PRIMARY KEY REFERENCES platform_prospects(id), segment_id TEXT NOT NULL REFERENCES platform_prospect_segments(id),
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, added_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_prospect_segment_members_segment ON platform_prospect_segment_members(segment_id);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(84,datetime('now'));
+  `))();
+  // Managed sales service: the pilot companies Ryzevo sends for, the sending domains it manages (one customer each),
+  // the prepaid sending credit ledger, and replies that come back to the sequences' reply addresses (kept encrypted for
+  // a short time). Only new tables (db:upgrade).
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=85').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_managed_pilots (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('active','suspended')),
+      company_name TEXT NOT NULL, daily_cap INTEGER NOT NULL CHECK(daily_cap >= 1 AND daily_cap <= 50), note TEXT NOT NULL, suspended_reason TEXT NOT NULL,
+      verified_by TEXT NOT NULL, verified_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE TABLE platform_managed_domains (
+      id TEXT PRIMARY KEY, domain TEXT NOT NULL UNIQUE, state TEXT NOT NULL CHECK(state IN ('available','assigned','released')),
+      organization_id TEXT, project_id TEXT, registrant TEXT NOT NULL CHECK(registrant IN ('customer','ryzevo')), renews_on TEXT,
+      from_local TEXT NOT NULL, from_name TEXT NOT NULL, verified INTEGER NOT NULL CHECK(verified IN (0,1)), checked_at TEXT,
+      approved_by TEXT, approved_at TEXT, assigned_at TEXT, released_at TEXT, note TEXT NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX platform_managed_domains_project ON platform_managed_domains(organization_id,project_id,state);
+    CREATE TABLE platform_sending_credits (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK(kind IN ('grant','purchase','debit','refund','adjust')), amount INTEGER NOT NULL, send_id TEXT, note TEXT NOT NULL,
+      actor TEXT NOT NULL, created_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_sending_credits_scope ON platform_sending_credits(organization_id,project_id,created_at);
+    CREATE INDEX platform_sending_credits_send ON platform_sending_credits(send_id);
+    CREATE TABLE platform_outreach_inbound (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, outreach_id TEXT NOT NULL, prospect_id TEXT NOT NULL,
+      message_key TEXT NOT NULL UNIQUE CHECK(length(message_key) = 64), masked_from TEXT NOT NULL, matched TEXT NOT NULL CHECK(matched IN ('address','domain','other')),
+      kind TEXT, state TEXT NOT NULL CHECK(state IN ('new','processed','forwarded','failed')), encrypted_message TEXT NOT NULL,
+      received_at TEXT NOT NULL, processed_at TEXT, expires_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_outreach_inbound_scope ON platform_outreach_inbound(organization_id,project_id,received_at);
+    CREATE INDEX platform_outreach_inbound_state ON platform_outreach_inbound(state,received_at);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(85,datetime('now'));
+  `))();
   return db;
 }
 

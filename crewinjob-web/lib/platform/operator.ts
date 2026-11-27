@@ -63,6 +63,7 @@ export async function operatorReadiness(db: Db): Promise<ReadinessSnapshot> {
     // Email
     toggle('email-send', 'email', 'PLATFORM_EMAIL_PILOT_SEND_ENABLED', l('Gerçek e-posta gönderimi', 'Real email sending'), l('Açık; onaylı pilotlar müşterinin kendi SES hesabından gider.', 'On; approved pilots go out from the customer’s own SES account.'), l('Kapalı; yalnız prova yapılır.', 'Off; rehearsal only.')),
     toggle('prospect-email', 'email', 'PLATFORM_PROSPECT_EMAIL_ENABLED', l('Satış asistanı e-postaları', 'Sales assistant emails'), l('Açık; onaylı satış e-postası sıraları müşterinin kendi SES hesabından gider.', 'On; approved sales email sequences go out from the customer’s own SES account.'), l('Kapalı; taslak hazırlanır ama gönderilmez.', 'Off; drafts are written but nothing is sent.')),
+    toggle('managed-email', 'email', 'PLATFORM_MANAGED_SENDING_ENABLED', l('Yönetimli satış gönderimi (pilot)', 'Managed sales sending (pilot)'), l('Açık; pilot şirketlerin e-postaları yönetimli sağlayıcıdan gider.', 'On; pilot companies’ emails go through the managed provider.'), l('Kapalı; pilot şirketler gönderim yapmaz.', 'Off; pilot companies do not send.')),
     item('ses-feedback', 'email', process.env.SES_SNS_TOPIC_ARN ? 'ready' : 'missing',
       l('Geri dönen ve şikâyet bildirimleri (Crewin)', 'Bounce and complaint notices (Crewin)'), l('Eski Crewin paneli için SES → SNS konusu; şikâyet edenler listeden çıkarılır.', 'SES → SNS topic for the legacy Crewin panel; complainers are removed from lists.'), ['SES_SNS_TOPIC_ARN']),
     // Social

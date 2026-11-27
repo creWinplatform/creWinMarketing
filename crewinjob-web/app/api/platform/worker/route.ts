@@ -37,6 +37,8 @@ import { deliverWhatsAppBatches } from '@/lib/platform/whatsapp';
 import { readDueInboxAccounts } from '@/lib/platform/social-inbox';
 import { syncDueLinkResults } from '@/lib/platform/link-tracking';
 import { deliverDueOutreach, outreachReady, pruneProspectOptOutTokens, pruneStaleProspects } from '@/lib/platform/prospect-outreach';
+import { processInboundReplies, pruneInboundReplies } from '@/lib/platform/outreach-inbound';
+import { managedReady } from '@/lib/platform/managed-sending';
 import { pruneVisitorCompanies } from '@/lib/platform/prospect-sources';
 import { deliverNextAlertEmail } from '@/lib/platform/team-alerts';
 import { deliverDuePushes } from '@/lib/platform/web-push';
@@ -123,6 +125,8 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const salesEmails=Date.now()-startedAt<20000&&await outreachReady(db)?await deliverDueOutreach(db,credentialEncryptionKey()).catch(()=>0):0;
   // The data-keeping rule of the sales assistant (projects that chose one).
   const staleProspects=Date.now()-startedAt<20000&&await outreachReady(db)?await pruneStaleProspects(db).catch(()=>0):0;
+  // Managed sales service: replies sorted (AI when set up) and passed on to the company; kept 30 days.
+  const inboundReplies=Date.now()-startedAt<20000&&await managedReady(db)?await processInboundReplies(db,credentialEncryptionKey(),coachGemini(1500)).catch(()=>0)+await pruneInboundReplies(db):0;
   // Opted-in members hear about new deadline-sensitive records by email; one subscriber is looked at per tick.
   const alertEmail=Date.now()-startedAt<25000?await deliverNextAlertEmail(db).catch(()=>false):false;
   // The Monday summary for members who opted in, one per tick.
@@ -152,5 +156,5 @@ async function runTick(db: ReturnType<typeof platformDatabase>) {
   const webMentions=Date.now()-startedAt<20000?await readDueWebMentions(db).catch(()=>0):0;
   // Ad image and video figures: one plan per tick, once a day, for the comparison and the fatigue warning.
   const creativeStats=Date.now()-startedAt<20000?await refreshDueCreativeStats(db,credentialEncryptionKey()).catch(()=>0):0;
-  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, salesEmails, staleProspects, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, adAutoPaused, webMentions, creativeStats, weeklySummary, weeklyPack, competitorSites };
+  return { checked, failed, pruned, expiredEmailTokens, scheduledMeasurements, identityEmail, coachDigest, contractEmail, seoPages, seoSchedules, aiVisibility, automations, messagingReads, whatsappBatches, inboxReads, linkResults, salesEmails, staleProspects, inboundReplies, alertEmail, pushes, iysOutbox, iysChanges, crewinIysEmail, keywordRanks, competitors, storeReviews, adSpend, adAutoPaused, webMentions, creativeStats, weeklySummary, weeklyPack, competitorSites };
 }

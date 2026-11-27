@@ -235,6 +235,46 @@ async function resetDatabase() {
     if (first.added !== 2 || again.updated !== 2 || snap.matches.length !== 1 || snap.companies.length !== 1 || read.pipeline[id].qualification.signer !== 'Genel müdür' || read.settings.followUpDays.length !== 4 || week.goal !== 12 || !read.network[id] || attention.stale.length !== 0) throw new Error('sales follow-up mismatch');
     return `4 follow-ups, qualified, week goal ${week.goal}, ${first.added} connections, 1 warm match`;
   });
+  await step('sales assistant: customer groups, their results and the sales domain view', async () => {
+    const { ProjectProspects } = load('prospects.ts'), { ProspectSegments } = load('prospect-segments.ts'), { OutreachDomain } = load('outreach-domain.ts');
+    const prospects = new ProjectProspects(db, scope), segments = new ProspectSegments(db, scope);
+    const id = (await prospects.add({ company: 'Grup Smoke Klinik', website: 'https://grup-smoke.example' })).prospects.find(item => item.company === 'Grup Smoke Klinik').id;
+    const saved = await segments.save({ name: 'Online randevusu olmayan klinikler', keyword: 'diş kliniği', fit: 70, signals: ['online_booking'] });
+    const group = saved.segments.find(item => item.name === 'Online randevusu olmayan klinikler');
+    await segments.assign({ prospectId: id, segmentId: group.id });
+    await db.prepare('INSERT INTO platform_prospect_events(id,prospect_id,organization_id,project_id,kind,detail_json,actor_id,created_at) VALUES(?,?,?,?,?,?,?,?)').run(`pevent_smoke_${Date.now()}`, id, scope.organizationId, scope.projectId, 'email_sent', JSON.stringify({ step: 0, segment: group.id }), scope.subject, new Date().toISOString());
+    const read = await segments.read(), row = read.segments.find(item => item.id === group.id), view = await new OutreachDomain(db, scope, KEY).view();
+    await prospects.remove({ id }); const after = (await segments.remove({ id: group.id })).segments.length;
+    if (row.prospects !== 1 || row.sends !== 1 || row.advice !== 'early' || read.members[id] !== group.id || view.configured !== false || after !== read.segments.length - 1) throw new Error('segments mismatch');
+    return `1 group, ${row.prospects} company, ${row.sends} first touch, advice ${row.advice}; sales domain not set`;
+  });
+  await step('managed sales service: pilot, domain, approval, credits and a reply', async () => {
+    const { ManagedOperator, ManagedSending, managedSender } = load('managed-sending.ts'), { receiveInboundReply, pruneInboundReplies } = load('outreach-inbound.ts');
+    const { ProjectProspects } = load('prospects.ts'), { ProspectOutreach } = load('prospect-outreach.ts');
+    const test = { id: 'test', send: async (_mail, before) => (await before() ? { state: 'accepted', providerMessageId: 'm-smoke' } : { state: 'blocked', providerMessageId: null }), checkDomain: async () => ({ verified: true, detail: 'ok' }) };
+    const switchWas = process.env.PLATFORM_MANAGED_SENDING_ENABLED; process.env.PLATFORM_MANAGED_SENDING_ENABLED = '1';
+    const project = { organizationId: scope.organizationId, projectId: scope.projectId }, operator = new ManagedOperator(db, 'legacy-admin', test), domainName = `smoke-${Date.now()}.example`;
+    await operator.savePilot({ ...project, companyName: 'Smoke A.Ş.', dailyCap: 10, verified: true });
+    await operator.addDomain({ domain: domainName, fromLocal: 'satis', fromName: 'Smoke', registrant: 'customer' });
+    const domainId = (await operator.read()).domains.find(item => item.domain === domainName).id;
+    await operator.assignDomain({ ...project, domainId }); await operator.checkDomain({ domainId }); await operator.grant({ ...project, amount: 5, note: 'smoke' });
+    const customer = new ManagedSending(db, scope, KEY, test), terms = (await customer.read()).terms.version;
+    const approved = await customer.approve({ domainId, accepted: true, version: terms });
+    // A reply to a sequence written directly (no provider call), then kept encrypted and pruned.
+    const prospects = new ProjectProspects(db, scope), id = (await prospects.add({ company: 'Yanıt Smoke', website: 'https://yanit-smoke.example' })).prospects.find(item => item.company === 'Yanıt Smoke').id;
+    const now = new Date().toISOString(), outreachId = `outreach_${require('node:crypto').randomUUID()}`;
+    await db.prepare("INSERT INTO platform_prospect_outreach(id,prospect_id,organization_id,project_id,contact_id,email_key,masked_email,language,steps_json,channels_json,source,state,digest,approved_by,approved_at,encrypted_link,sent_steps,next_due_at,last_sent_at,lease_until,wait_reason,stop_reason,reply_kind,reply_summary,reply_draft,reply_at,remind_at,revision,created_by,created_at,updated_at) VALUES(?,?,?,?,NULL,NULL,NULL,'tr','[]','{}','template','active',NULL,?,?,NULL,1,?,?,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,1,?,?,?)").run(outreachId, id, scope.organizationId, scope.projectId, scope.subject, now, now, now, scope.subject, now, now);
+    const { replyAddress } = load('sending-providers.ts');
+    const reply = await receiveInboundReply(db, KEY, { to: [replyAddress(KEY, outreachId, domainName)], from: 'info@yanit-smoke.example', subject: 'Ynt', text: 'Görüşelim.', headers: {}, messageId: `<smoke-${Date.now()}@yanit-smoke.example>` });
+    const state = (await new ProspectOutreach(db, scope, KEY).read()).outreach[id].state, sender = await managedSender(db, project, test);
+    await db.prepare('UPDATE platform_outreach_inbound SET expires_at=? WHERE outreach_id=?').run(new Date(Date.now() - 1000).toISOString(), outreachId);
+    const pruned = await pruneInboundReplies(db);
+    await operator.releaseDomain({ domainId }); await operator.setPilotState({ ...project, state: 'suspended', reason: 'smoke done' });
+    await db.prepare('DELETE FROM platform_prospect_outreach WHERE id=?').run(outreachId); await prospects.remove({ id });
+    if (switchWas === undefined) delete process.env.PLATFORM_MANAGED_SENDING_ENABLED; else process.env.PLATFORM_MANAGED_SENDING_ENABLED = switchWas;
+    if (!approved.ready || !reply.matched || state !== 'replied' || !sender.ready || sender.balance !== 5 || pruned !== 1) throw new Error('managed mismatch');
+    return `pilot ready, 5 credits, reply matched and kept until pruned`;
+  });
   await step('growth coach read', async () => { const { GrowthCoach } = load('coach.ts'); const coach = await new GrowthCoach(db, scope).read(); return `revision ${coach.revision}`; });
   await step('job guide', async () => { const { jobGuide } = load('job-guide.ts'); const view = await jobGuide(db, scope); return `${view.jobs.length} jobs`; });
   await step('team alerts', async () => { const { teamAlerts } = load('team-alerts.ts'); return `${(await teamAlerts(db, scope)).length} alerts`; });

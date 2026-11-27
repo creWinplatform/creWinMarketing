@@ -4,18 +4,20 @@ import { MarketingStoreError } from '@/lib/platform/errors';
 import { panelOrigin } from '@/lib/platform/request-origin';
 import { credentialEncryptionKey } from '@/lib/platform/credential-key';
 import { ProspectOutreach } from '@/lib/platform/prospect-outreach';
+import { OutreachDomain } from '@/lib/platform/outreach-domain';
 import { coachBody, coachGemini, coachRoute } from '../../coach/shared';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 // Sales assistant, reaching out: email sequences (draft, approval, sending), replies, the pipeline and LinkedIn /
 // WhatsApp touches a person sends from their own account.
 const handle = coachRoute(async (scope, request: NextRequest) => {
-  const outreach = new ProspectOutreach(platformDatabase(), scope, credentialEncryptionKey());
+  const outreach = new ProspectOutreach(platformDatabase(), scope, credentialEncryptionKey()), domain = () => new OutreachDomain(platformDatabase(), scope, credentialEncryptionKey());
   if (request.method === 'GET') return request.nextUrl.searchParams.get('view') === 'week' ? await outreach.week() : await outreach.read();
   const raw = await coachBody(request);
   switch (raw.action) {
     case 'draft': return await outreach.draft(raw, raw.mode === 'template' ? undefined : coachGemini(3000));
     case 'save': return await outreach.save(raw);
+    case 'recipient': return await outreach.recipient(raw);
     case 'approve': return await outreach.approve(raw, panelOrigin(request));
     case 'cancel': return await outreach.cancel(raw);
     case 'reply': return await outreach.reply(raw, coachGemini(1500));
@@ -27,6 +29,10 @@ const handle = coachRoute(async (scope, request: NextRequest) => {
     case 'settings': return await outreach.saveSettings(raw);
     case 'check-domain': return await outreach.checkDomain();
     case 'resume': return await outreach.resume(raw);
+    // The separate sales sending domain (Sales settings → Sales domain).
+    case 'domain-save': await domain().save(raw); return await outreach.read();
+    case 'domain-check': await domain().check(); return await outreach.read();
+    case 'domain-remove': await domain().remove(); return await outreach.read();
   }
   throw new MarketingStoreError('Geçersiz satış asistanı işlemi.');
 });

@@ -205,7 +205,23 @@ if(process.argv.includes('--prospects')){
     db.prepare("INSERT INTO platform_prospect_outreach_sends(id,outreach_id,organization_id,project_id,step,state,provider_message_id,created_at,submitted_at,updated_at) VALUES(?,?,?,?,0,'delivered','qa',?,?,?)").run('osend_qa',out,scope.organizationId,scope.projectId,sent,sent,sent);
     db.prepare("INSERT INTO platform_prospect_pipeline(prospect_id,organization_id,project_id,stage,value_minor,currency,lost_reason,assigned_to,updated_by,updated_at) VALUES(?,?,?,'contacted',NULL,'','',NULL,?,?)").run(bagdat,scope.organizationId,scope.projectId,scope.subject,sent);
     await sales.touch({id:bagdat,channel:'linkedin'});
-    console.log('Sales QA: two approved companies, a draft and a sequence in progress; nothing is sent.');}}
+    // Customer groups (schema 84): two groups, the companies under the first one, and its first touch.
+    const {ProspectSegments}=load('prospect-segments.ts'),groups=new ProspectSegments(db,scope);
+    let made=await groups.save({name:'Online randevusu olmayan ortodonti klinikleri',reason:'Randevuları telefonla alıyorlar; online randevu ve hatırlatma doğrudan iş kazandırır.',keyword:'ortodonti kliniği',fit:78,signals:['online_booking','whatsapp']});
+    made=await groups.save({name:'Bloğu olmayan diş klinikleri',reason:'Aramalarda görünürlükleri sınırlı; içerik ve yerel SEO ihtiyacı var.',keyword:'diş kliniği',fit:55,signals:['blog']});
+    for(const id of [first,bagdat])await groups.assign({prospectId:id,segmentId:made.segments[0].id});
+    // Managed sales service (schema 85) with the sandbox provider, which never transmits: the project is a pilot with
+    // a domain set aside for it (waiting for the owner's approval), credits, and one reply that came back.
+    process.env.PLATFORM_MANAGED_SENDING_ENABLED='1';process.env.PLATFORM_MANAGED_PROVIDER='sandbox';process.env.PLATFORM_MANAGED_PRICE_USD='0.04';
+    const {ManagedOperator}=load('managed-sending.ts'),{sandboxProvider,replyAddress}=load('sending-providers.ts'),{receiveInboundReply}=load('outreach-inbound.ts');
+    const operator=new ManagedOperator(db,'legacy-admin',sandboxProvider),project={organizationId:scope.organizationId,projectId:scope.projectId};
+    await operator.savePilot({...project,companyName:'Örnek Proje Yazılım A.Ş.',dailyCap:20,verified:true,note:'QA'});
+    await operator.addDomain({domain:'ornekproje-mail.com',fromLocal:'ayse',fromName:'Ayşe · Örnek Proje',registrant:'customer',renewsOn:'2027-11-27'});
+    await operator.addDomain({domain:'ornekproje-hq.com',fromLocal:'satis',fromName:'Örnek Proje',registrant:'ryzevo'});
+    const managedDomain=(await operator.read()).domains.find(item=>item.domain==='ornekproje-mail.com').id;
+    await operator.assignDomain({...project,domainId:managedDomain});await operator.checkDomain({domainId:managedDomain});await operator.grant({...project,amount:500,note:'QA'});
+    await receiveInboundReply(db,encryptionKey,{to:[replyAddress(encryptionKey,out,'ornekproje-mail.com')],from:'info@bagdat-qa.example',subject:'Ynt: Bağdat Ortodonti için kısa bir not',text:'Merhaba, analizi inceledik. Gelecek hafta kısa bir görüşme yapabiliriz; fiyatlandırmanızı da paylaşır mısınız?',headers:{},messageId:'<qa-reply@bagdat-qa.example>'});
+    console.log('Sales QA: two approved companies, a draft, a sequence in progress and two customer groups; nothing is sent.');}}
 if(process.argv.includes('--experts')){
   // Expert requests QA (with --portfolio --agency): the fixture project is a listed partner with one new request from
   // Deniz Mobilya; a second disposable agency ("Mavi Stüdyo") is listed too and has delivered a file to the fixture.
