@@ -7,7 +7,7 @@ export const iysEnabled = () => process.env.NEXT_PUBLIC_IYS_ENABLED === '1';
 export const IYS_CHANNELS = ['EPOSTA', 'MESAJ'] as const;
 export type IysChannel = typeof IYS_CHANNELS[number];
 // ARAMA (phone calls) is kept and reported like the others but is not offered on the İYS screens: only the voice
-// features (commercial call consents from the booking form, schema 86) use it.
+// features (commercial call consents from the booking form, schema 87) use it.
 export const IYS_ALL_CHANNELS = [...IYS_CHANNELS, 'ARAMA'] as const;
 export type IysAnyChannel = typeof IYS_ALL_CHANNELS[number];
 export type IysStatus = 'ONAY' | 'RET';

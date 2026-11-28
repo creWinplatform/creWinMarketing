@@ -160,14 +160,18 @@ async function rebuildSqlite(folder, manifest, file) {
     const tables = handle.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => row.name);
     if (manifest.tables.some(t => !tables.includes(t.name))) fail('schema_mismatch');
     // A backup taken before an additive upgrade (the database at 78 while this code is at 79, as before db:upgrade):
-    // the tables added since are dropped from the rebuild. A table that changed its columns still fails below.
+    // the tables added since are dropped from the rebuild. Columns added since (db:upgrade adds them with their default,
+    // as migration 86 does) may be absent from such a backup when they are nullable or have a default; any other
+    // difference in a table's columns still fails below.
     const added = tables.filter(name => !manifest.tables.some(t => t.name === name));
     if (added.length && manifest.schemaVersion === current) fail('schema_mismatch');
     handle.pragma('foreign_keys = OFF');
     for (const name of added) handle.exec(`DROP TABLE "${name}"`);
     const hashes = {};
     for (const entry of manifest.tables) {
-      const sqliteColumns = handle.prepare(`PRAGMA table_info("${entry.name}")`).all().map(c => c.name);
+      const columnInfo = handle.prepare(`PRAGMA table_info("${entry.name}")`).all();
+      const sqliteColumns = columnInfo.map(c => c.name);
+      const optional = manifest.schemaVersion < current ? new Set(columnInfo.filter(c => !c.pk && (!c.notnull || c.dflt_value != null)).map(c => c.name)) : new Set();
       let header = null, insert = null, count = 0;
       handle.exec('BEGIN');
       try {
@@ -177,7 +181,7 @@ async function rebuildSqlite(folder, manifest, file) {
             header = item.header;
             const names = header.columns.map(([name]) => name);
             if (header.table !== entry.name || header.columns.some(([name, type]) => !TYPES.has(type) || (name !== SYNTHETIC && !sqliteColumns.includes(name))) ||
-                sqliteColumns.some(name => !names.includes(name))) fail('schema_mismatch');
+                sqliteColumns.some(name => !names.includes(name) && !optional.has(name))) fail('schema_mismatch');
             insert = handle.prepare(`INSERT INTO "${entry.name}" (${names.map(n => `"${n}"`).join(', ')}) VALUES (${names.map(() => '?').join(', ')})`);
             continue;
           }

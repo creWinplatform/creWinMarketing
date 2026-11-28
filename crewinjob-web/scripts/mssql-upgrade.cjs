@@ -1,6 +1,7 @@
-// Brings an existing SQL Server platform database up to lib/db/mssql-schema.sql when the new schema versions only add
-// tables, indexes and foreign keys (as migration 79 does), and replaces the CHECK constraints a schema version widened
-// (CHECK_CHANGES below). Columns added to an existing table are refused — those need their own script.
+// Brings an existing SQL Server platform database up to lib/db/mssql-schema.sql: new tables, indexes and foreign keys
+// (as migration 79 does), columns added to an existing table (ALTER TABLE ADD with the schema file's type and default,
+// plus that table's missing CHECK constraints), and the CHECK constraints a later migration changed (CHECK_CHANGES:
+// dropped and added again from the schema file). Anything else (a changed column type, a dropped column) needs its own script.
 //   node scripts/mssql-upgrade.cjs            show the plan, change nothing
 //   node scripts/mssql-upgrade.cjs --apply    apply it in one transaction and record the schema versions
 // On a server that is not local, --apply needs a verified SQL Server backup of this database from the last 24 hours
@@ -17,9 +18,6 @@ const option = name => { const i = args.indexOf(name); return i >= 0 ? args[i + 
 const apply = args.includes('--apply');
 const schemaText = fs.readFileSync(path.join(__dirname, '..', 'lib', 'db', 'mssql-schema.sql'), 'utf8').replace(/\r\n/g, '\n');
 const schemaVersion = Number((schemaText.match(/schema version (\d+)/) || [])[1]);
-// CHECK constraints a schema version changed on existing tables: dropped and added again with the schema file's
-// definition when the database is upgraded across that version. 86: İYS tables also accept channel ARAMA (phone calls).
-const CHECK_CHANGES = { 86: ['ck_platform_iys_recipients_1', 'ck_platform_iys_outbox_1'] };
 const statements = schemaText.split(/;\s*\n/).map(s => s.replace(/^--.*$/gm, '').trim()).filter(Boolean);
 
 // Tables, their columns, indexes and foreign keys as the schema file defines them.
@@ -28,15 +26,22 @@ function schemaObjects() {
   for (const statement of statements) {
     let m;
     if ((m = /^CREATE TABLE \[(\w+)\] \(([\s\S]*)\)$/.exec(statement))) {
-      const columns = m[2].split('\n').map(line => /^\s*\[(\w+)\] /.exec(line)?.[1]).filter(Boolean);
-      tables.set(m[1], { statement, columns });
+      const lines = m[2].split('\n').map(line => line.trim().replace(/,$/, ''));
+      const definitions = new Map(lines.map(line => [/^\[(\w+)\] /.exec(line)?.[1], line]).filter(([name]) => name));
+      const checks = new Map(lines.map(line => /^CONSTRAINT \[(\w+)\] CHECK (\(.*\))$/.exec(line)).filter(Boolean).map(c => [c[1], c[2]]));
+      tables.set(m[1], { statement, columns: [...definitions.keys()], definitions, checks });
     } else if ((m = /^CREATE (?:UNIQUE )?NONCLUSTERED INDEX \[([^\]]+)\] ON \[(\w+)\]/.exec(statement))) indexes.push({ name: m[1], table: m[2], statement });
     else if ((m = /^ALTER TABLE \[(\w+)\] ADD CONSTRAINT \[(\w+)\] FOREIGN KEY/.exec(statement))) foreignKeys.push({ name: m[2], table: m[1], statement });
   }
-  const checks = new Map();
-  for (const [table, { statement }] of tables) for (const m of statement.matchAll(/CONSTRAINT \[(ck_\w+)\] (CHECK \(.*\)),?$/gm)) checks.set(m[1], { table, check: m[2] });
-  return { tables, indexes, foreignKeys, checks };
+  return { tables, indexes, foreignKeys };
 }
+
+// CHECK constraints whose condition a migration changed, by the schema version that changed them. The generated names
+// (ck_<table>_<n>) number a table's CHECKs in order, and an added column's CHECK comes last, so earlier names stay put.
+const CHECK_CHANGES = {
+  86: ['ck_platform_prospect_outreach_4', 'ck_platform_prospect_outreach_sends_1'], // up to five emails in a sequence
+  87: ['ck_platform_iys_recipients_1', 'ck_platform_iys_outbox_1'], // İYS phone calls (channel ARAMA)
+};
 
 (async () => {
   const connection = connectionString();
@@ -57,20 +62,35 @@ function schemaObjects() {
       (columns.get(r.t) || columns.set(r.t, new Set()).get(r.t)).add(r.c);
     const missingColumns = [];
     for (const [name, table] of want.tables) if (existing.has(name)) for (const column of table.columns) if (!columns.get(name)?.has(column)) missingColumns.push(`${name}.${column}`);
-    if (missingColumns.length) throw new Error(`Columns missing on existing tables (not handled here): ${missingColumns.join(', ')}`);
+    const checkNames = new Set((await query('SELECT name FROM sys.check_constraints')).map(r => r.name));
+    const columnSteps = [], checkSteps = [];
+    for (const item of missingColumns) {
+      const [table, column] = item.split('.'), definition = want.tables.get(table).definitions.get(column);
+      if (/\bIDENTITY\b/.test(definition) || (/\bNOT NULL\b/.test(definition) && !/\bDEFAULT\b/.test(definition)))
+        throw new Error(`Column ${item} cannot be added to existing rows (not handled here).`);
+      columnSteps.push({ what: `column ${item}`, statement: `ALTER TABLE [${table}] ADD ${definition}` });
+    }
+    const changed = new Set(Object.entries(CHECK_CHANGES).filter(([version]) => Number(version) > current).flatMap(([, names]) => names));
+    for (const name of changed) {
+      const table = [...want.tables].find(([, t]) => t.checks.has(name))?.[0];
+      if (!table) throw new Error(`CHECK constraint ${name} is not in the schema file.`);
+      if (!existing.has(table)) continue; // comes with the new table
+      const drop = checkNames.has(name) ? `ALTER TABLE [${table}] DROP CONSTRAINT [${name}]; ` : '';
+      checkSteps.push({ what: `check ${name} on ${table} (replaced)`, statement: `${drop}ALTER TABLE [${table}] ADD CONSTRAINT [${name}] CHECK ${want.tables.get(table).checks.get(name)}` });
+    }
+    for (const table of new Set(missingColumns.map(item => item.split('.')[0])))
+      for (const [name, condition] of want.tables.get(table).checks)
+        if (!checkNames.has(name) && !changed.has(name)) checkSteps.push({ what: `check ${name} on ${table}`, statement: `ALTER TABLE [${table}] ADD CONSTRAINT [${name}] CHECK ${condition}` });
     const indexNames = new Set((await query('SELECT name FROM sys.indexes WHERE name IS NOT NULL')).map(r => r.name));
     const fkNames = new Set((await query('SELECT name FROM sys.foreign_keys')).map(r => r.name));
     const plan = [
+      ...columnSteps,
+      ...checkSteps,
       ...[...want.tables].filter(([name]) => !existing.has(name)).map(([name, t]) => ({ what: `table ${name}`, statement: t.statement })),
       ...want.indexes.filter(i => !indexNames.has(i.name)).map(i => ({ what: `index ${i.name} on ${i.table}`, statement: i.statement })),
       ...want.foreignKeys.filter(k => !fkNames.has(k.name)).map(k => ({ what: `foreign key ${k.name}`, statement: k.statement })),
     ];
     const versions = Array.from({ length: schemaVersion - current }, (_, i) => current + i + 1);
-    for (const version of versions) for (const name of CHECK_CHANGES[version] || []) {
-      const item = want.checks.get(name);
-      if (!item) throw new Error(`Schema ${version} changes ${name}, which the schema file does not define.`);
-      if (existing.has(item.table)) plan.push({ what: `check ${name} on ${item.table} (schema ${version})`, statement: `ALTER TABLE [${item.table}] DROP CONSTRAINT IF EXISTS [${name}]; ALTER TABLE [${item.table}] ADD CONSTRAINT [${name}] ${item.check}` });
-    }
     if (!plan.length && !versions.length) { console.log('Up to date; nothing to do.'); return; }
     for (const step of plan) console.log(`  + ${step.what}`);
     if (versions.length) console.log(`  + record schema version(s) ${versions.join(', ')}`);

@@ -57,7 +57,7 @@ test('SQL Server backup: one file per table, verified offline with the encrypted
   const f = await fixture(t);
   const { result, folder } = f.backup();
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /SQL Server .*schema 86, 199 tables, .*authenticated/);
+  assert.match(result.stdout, /SQL Server .*schema 87, 199 tables, .*authenticated/);
   const manifest = manifestAt(folder);
   assert.equal(manifest.formatVersion, 3); assert.equal(manifest.provider, 'mssql'); assert.equal(manifest.keySource, 'file');
   assert.match(manifest.keyProof, /^[a-f0-9]{64}$/);
@@ -88,7 +88,7 @@ test('SQL Server backup: one file per table, verified offline with the encrypted
   const monitored = f.run('scripts/platform-monitor.mjs', [], { PLATFORM_DRILL_PATH: path.join(f.directory, 'no-drills') });
   const status = JSON.parse(monitored.stdout);
   assert.equal(status.provider, 'mssql');
-  assert.deepEqual(status.database, { status: 'readable', schemaVersion: 86 });
+  assert.deepEqual(status.database, { status: 'readable', schemaVersion: 87 });
   assert.equal(status.queue.status, 'checked');
   assert.equal(status.backup.status, 'verified', JSON.stringify(status.alerts));
   assert.ok(!status.alerts.some(item => /database|backup/.test(item.code)), JSON.stringify(status.alerts));
@@ -121,8 +121,8 @@ test('phase 4 tools: db:upgrade adds the missing tables in one step; the live gu
   const f = await fixture(t), sql = require('mssql');
   // The fixture database plays RDS as it is live today, at schema 81: without the sales assistant tables of schemas 82, 83, 84 and 85.
   const pool = await new sql.ConnectionPool(f.target).connect();
-  try { await pool.request().batch('DROP TABLE platform_outreach_inbound; DROP TABLE platform_sending_credits; DROP TABLE platform_managed_domains; DROP TABLE platform_managed_pilots; DROP TABLE platform_prospect_segment_members; DROP TABLE platform_prospect_segments; DROP TABLE platform_outreach_domains; DROP TABLE platform_network_contacts; DROP TABLE platform_prospect_proposals; DROP TABLE platform_bookings; DROP TABLE platform_booking_settings; DROP TABLE platform_visitor_companies; DROP TABLE platform_visitor_settings; DROP TABLE platform_prospect_provider_keys; DROP TABLE platform_prospect_imports; DROP TABLE platform_prospect_source_terms; DROP TABLE platform_prospect_extra_contacts; DROP TABLE platform_prospect_suppressions; DROP TABLE platform_prospect_optout_tokens; DROP TABLE platform_outreach_settings; DROP TABLE platform_prospect_events; DROP TABLE platform_prospect_pipeline; DROP TABLE platform_prospect_outreach_sends; DROP TABLE platform_prospect_outreach; DROP TABLE platform_maps_cache; DROP TABLE platform_provider_usage; DROP TABLE platform_prospect_consents; DROP TABLE platform_prospect_settings; DROP TABLE platform_prospect_searches; DROP TABLE platform_prospect_reports; DROP TABLE platform_prospect_contacts; DROP TABLE platform_prospect_insights; DELETE FROM platform_migrations WHERE version IN (82, 83, 84, 85, 86);'); } finally { await pool.close(); }
-  // The backup taken before db:upgrade (database at 81, code at 85) still verifies offline.
+  try { await pool.request().batch('DROP TABLE platform_outreach_inbound; DROP TABLE platform_sending_credits; DROP TABLE platform_managed_domains; DROP TABLE platform_managed_pilots; DROP TABLE platform_prospect_segment_members; DROP TABLE platform_prospect_segments; DROP TABLE platform_outreach_domains; DROP TABLE platform_network_contacts; DROP TABLE platform_prospect_proposals; DROP TABLE platform_bookings; DROP TABLE platform_booking_settings; DROP TABLE platform_visitor_companies; DROP TABLE platform_visitor_settings; DROP TABLE platform_prospect_provider_keys; DROP TABLE platform_prospect_imports; DROP TABLE platform_prospect_source_terms; DROP TABLE platform_prospect_extra_contacts; DROP TABLE platform_prospect_suppressions; DROP TABLE platform_prospect_optout_tokens; DROP TABLE platform_outreach_settings; DROP TABLE platform_prospect_events; DROP TABLE platform_prospect_pipeline; DROP TABLE platform_prospect_outreach_sends; DROP TABLE platform_prospect_outreach; DROP TABLE platform_maps_cache; DROP TABLE platform_provider_usage; DROP TABLE platform_prospect_consents; DROP TABLE platform_prospect_settings; DROP TABLE platform_prospect_searches; DROP TABLE platform_prospect_reports; DROP TABLE platform_prospect_contacts; DROP TABLE platform_prospect_insights; DELETE FROM platform_migrations WHERE version IN (82, 83, 84, 85, 86, 87);'); } finally { await pool.close(); }
+  // The backup taken before db:upgrade (database at 81, code at 87) still verifies offline.
   const before = f.backup();
   assert.equal(before.result.status, 0, before.result.stderr);
   assert.match(before.result.stdout, /schema 81, 167 tables/);
@@ -131,12 +131,12 @@ test('phase 4 tools: db:upgrade adds the missing tables in one step; the live gu
   assert.equal(JSON.parse(verified80.stdout).schemaVersion, 81);
   const plan = f.run('scripts/mssql-upgrade.cjs');
   assert.equal(plan.status, 0, plan.stderr);
-  assert.match(plan.stdout, /Schema: database 81, code 86[\s\S]*record schema version\(s\) 82, 83, 84, 85, 86[\s\S]*Plan only/);
-  // Schema 86 widens the İYS channel checks (ARAMA) on tables that already exist.
-  for (const check of ['ck_platform_iys_recipients_1 on platform_iys_recipients', 'ck_platform_iys_outbox_1 on platform_iys_outbox']) assert.match(plan.stdout, new RegExp(`\\+ check ${check} \\(schema 86\\)`), check);
+  assert.match(plan.stdout, /Schema: database 81, code 87[\s\S]*record schema version\(s\) 82, 83, 84, 85, 86, 87[\s\S]*Plan only/);
+  // Schema 87 widens the İYS channel checks (ARAMA) on tables that already exist.
+  for (const check of ['ck_platform_iys_recipients_1 on platform_iys_recipients', 'ck_platform_iys_outbox_1 on platform_iys_outbox']) assert.match(plan.stdout, new RegExp(`\\+ check ${check} \\(replaced\\)`), check);
   for (const table of ['platform_booking_settings', 'platform_bookings', 'platform_maps_cache', 'platform_network_contacts', 'platform_outreach_settings', 'platform_prospect_consents', 'platform_prospect_contacts', 'platform_prospect_events', 'platform_prospect_extra_contacts', 'platform_prospect_imports', 'platform_prospect_insights', 'platform_prospect_optout_tokens', 'platform_prospect_outreach', 'platform_prospect_outreach_sends', 'platform_prospect_pipeline', 'platform_prospect_proposals', 'platform_prospect_provider_keys', 'platform_prospect_reports', 'platform_prospect_searches', 'platform_prospect_settings', 'platform_prospect_source_terms', 'platform_prospect_suppressions', 'platform_provider_usage', 'platform_visitor_companies', 'platform_visitor_settings']) assert.match(plan.stdout, new RegExp(`\\+ table ${table}\\b`), table);
   const applied = f.run('scripts/mssql-upgrade.cjs', ['--apply']);
-  assert.equal(applied.status, 0, applied.stderr); assert.match(applied.stdout, /Applied \d+ change\(s\); schema 86/);
+  assert.equal(applied.status, 0, applied.stderr); assert.match(applied.stdout, /Applied \d+ change\(s\); schema 87/);
   assert.match(f.run('scripts/mssql-upgrade.cjs').stdout, /Up to date/);
 
   // The guard: a verified SQL Server backup of this database from the last 24 hours, nothing else.
@@ -147,7 +147,7 @@ test('phase 4 tools: db:upgrade adds the missing tables in one step; the live gu
   const saved = process.env.PLATFORM_BACKUP_PATH; process.env.PLATFORM_BACKUP_PATH = f.backups;
   try {
     const ok = await requireFreshBackup({ connection: own });
-    assert.equal(ok.schemaVersion, 86);
+    assert.equal(ok.schemaVersion, 87);
     await assert.rejects(requireFreshBackup({ connection: own, now: Date.now() + 25 * 3600000 }), /older than 24 hours/);
     await assert.rejects(requireFreshBackup({ connection: withDatabase(connection, 'master') }), /not .*master/);
   } finally { if (saved === undefined) delete process.env.PLATFORM_BACKUP_PATH; else process.env.PLATFORM_BACKUP_PATH = saved; }

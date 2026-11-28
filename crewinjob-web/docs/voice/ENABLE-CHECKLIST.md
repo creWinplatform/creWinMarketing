@@ -51,12 +51,12 @@ sunucu reddeder (klonlama için sesin sahibinin rıza kanıtı ve ayrı hukuki o
 
 ## Ryzevo'ya özel açık işler
 
-- [x] **İYS ARAMA kanalı (şema 86).** İYS kayıt ve gönderim tabloları artık `ARAMA` kanalını da kabul ediyor
-      (`lib/platform/database.ts` migration 86; SQL Server için `npm run db:upgrade` iki CHECK kısıtını değiştirir,
+- [x] **İYS ARAMA kanalı (şema 87).** İYS kayıt ve gönderim tabloları artık `ARAMA` kanalını da kabul ediyor
+      (`lib/platform/database.ts` migration 87; SQL Server için `npm run db:upgrade` iki CHECK kısıtını değiştirir,
       `scripts/mssql-upgrade.cjs` → `CHECK_CHANGES`). Randevu formundaki ticari arama onayı (+90 numaralar) İYS kuyruğuna
       `ARAMA / ONAY / HS_WEB` olarak girer ve 3 iş günü içinde gönderilir; ticari arama ancak İYS'de güncel ONAY varken
       yapılabilir. İYS ekranları yine yalnız e-posta ve WhatsApp kanallarını gösterir.
-      **Yayın:** şema 86 hiçbir veritabanına uygulanmadı; canlıda 82–85 ile birlikte `db:upgrade` (önce yedek) gerekir.
+      **Yayın:** şema 87 hiçbir veritabanına uygulanmadı; canlıda 82–86 ile birlikte `db:upgrade` (önce yedek) gerekir.
 - [ ] **Ticari arama onayının geri çekilmesi.** Randevu sayfasında arama onaylarını geri alma ekranı yok; kişi
       İYS üzerinden (RET) veya işletmeye başvurarak geri alabilir (İYS değişiklik akışı RET'i çeker ve aramayı durdurur).
       Panelde bir "aramayı durdur" işlemi entegrasyonla eklenmeli (`withdrawVoiceConsent` + İYS RET kuyruğu).
@@ -89,7 +89,7 @@ sunucu reddeder (klonlama için sesin sahibinin rıza kanıtı ve ayrı hukuki o
 | Sürümlü metinler, ajan açılış cümleleri | `lib/platform/voice-consent-texts.ts` |
 | Onay kaydı (append-only), `canUseVoice`, `hasCallConsent` | `lib/platform/voice-consent.ts` |
 | Giden arama kapısı `assertOutboundCallAllowed` | `lib/platform/voice-calls.ts` (+ `iysCallGate` in `lib/platform/iys.ts`) |
-| İYS ARAMA (şema 86) | `lib/platform/database.ts`, `lib/db/mssql-schema.sql`, `scripts/mssql-upgrade.cjs`, `lib/platform/iys-types.ts` |
+| İYS ARAMA (şema 87) | `lib/platform/database.ts`, `lib/db/mssql-schema.sql`, `scripts/mssql-upgrade.cjs`, `lib/platform/iys-types.ts` |
 | Mikrofon ve CSP | `next.config.mjs` |
 | Randevu sayfası onayları | `lib/platform/voice-booking.ts`, `app/api/booking/route.ts`, `components/platform/BookingPage.tsx`, `components/platform/VoiceAssistantConsent.tsx`, `app/randevu/page.tsx` |
 | Gizlilik eki ve alt işleyen satırı | `lib/platform/voice-legal.ts`, `app/legal/privacy/page.tsx` |

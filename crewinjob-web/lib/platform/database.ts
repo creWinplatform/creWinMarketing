@@ -1846,7 +1846,7 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
       steps_json TEXT NOT NULL, channels_json TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('ai','template','human')),
       state TEXT NOT NULL CHECK(state IN ('draft','active','finished','replied','stopped','bounced','failed')),
       digest TEXT, approved_by TEXT, approved_at TEXT, encrypted_link TEXT,
-      sent_steps INTEGER NOT NULL CHECK(sent_steps >= 0 AND sent_steps <= 5), next_due_at TEXT, last_sent_at TEXT, lease_until TEXT,
+      sent_steps INTEGER NOT NULL CHECK(sent_steps >= 0 AND sent_steps <= 3), next_due_at TEXT, last_sent_at TEXT, lease_until TEXT,
       wait_reason TEXT, stop_reason TEXT, reply_kind TEXT, reply_summary TEXT, reply_draft TEXT, reply_at TEXT, remind_at TEXT,
       revision INTEGER NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
       FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
@@ -1855,7 +1855,7 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_prospect_outreach_scope ON platform_prospect_outreach(organization_id,project_id);
     CREATE TABLE platform_prospect_outreach_sends (
       id TEXT PRIMARY KEY, outreach_id TEXT NOT NULL REFERENCES platform_prospect_outreach(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
-      step INTEGER NOT NULL CHECK(step >= 0 AND step <= 4),
+      step INTEGER NOT NULL CHECK(step >= 0 AND step <= 2),
       state TEXT NOT NULL CHECK(state IN ('reserved','accepted','delivered','bounced','complained','uncertain','rejected')),
       provider_message_id TEXT, created_at TEXT NOT NULL, submitted_at TEXT, updated_at TEXT NOT NULL,
       UNIQUE(outreach_id,step)
@@ -1865,8 +1865,6 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
       prospect_id TEXT PRIMARY KEY REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
       stage TEXT NOT NULL CHECK(stage IN ('new','contacted','replied','meeting','proposal','won','lost')),
       value_minor INTEGER, currency TEXT NOT NULL, lost_reason TEXT NOT NULL, assigned_to TEXT, updated_by TEXT NOT NULL, updated_at TEXT NOT NULL,
-      qual_problem TEXT NOT NULL DEFAULT 'unknown' CHECK(qual_problem IN ('yes','no','unknown')), qual_budget TEXT NOT NULL DEFAULT 'unknown' CHECK(qual_budget IN ('yes','no','unknown')),
-      qual_signer TEXT NOT NULL DEFAULT '', next_step TEXT NOT NULL DEFAULT '', next_step_at TEXT, stage_changed_at TEXT, feature_gap TEXT NOT NULL DEFAULT '',
       FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
     );
     CREATE INDEX platform_prospect_pipeline_stage ON platform_prospect_pipeline(organization_id,project_id,stage);
@@ -1881,7 +1879,6 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
       follow_up_days TEXT NOT NULL, dmarc_state TEXT, dmarc_checked_at TEXT, paused_reason TEXT, paused_at TEXT, updated_by TEXT, updated_at TEXT,
       privacy_url TEXT NOT NULL DEFAULT '', retention_months INTEGER NOT NULL DEFAULT 0 CHECK(retention_months IN (0,3,6,12)), org_wide INTEGER NOT NULL DEFAULT 1 CHECK(org_wide IN (0,1)),
       assign_mode TEXT NOT NULL DEFAULT 'manual' CHECK(assign_mode IN ('manual','round_robin','by_sector')), assign_rules TEXT NOT NULL DEFAULT '[]', assign_cursor INTEGER NOT NULL DEFAULT 0,
-      weekly_goal INTEGER NOT NULL DEFAULT 25 CHECK(weekly_goal >= 1 AND weekly_goal <= 500),
       PRIMARY KEY(organization_id,project_id),
       FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
     );
@@ -1952,15 +1949,6 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
       created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
       FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
     );
-    CREATE TABLE platform_network_contacts (
-      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, contact_key TEXT NOT NULL CHECK(length(contact_key) = 64), encrypted_person TEXT NOT NULL,
-      company TEXT NOT NULL, company_key TEXT NOT NULL, position TEXT NOT NULL, connected_on TEXT,
-      state TEXT NOT NULL CHECK(state IN ('new','asked','helped','not_relevant')), asked_at TEXT, prospect_id TEXT,
-      imported_by TEXT NOT NULL, imported_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-      UNIQUE(organization_id,project_id,contact_key),
-      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
-    );
-    CREATE INDEX platform_network_contacts_company ON platform_network_contacts(organization_id,project_id,company_key);
     INSERT INTO platform_migrations(version,applied_at) VALUES(83,datetime('now'));
   `))();
   // Sales assistant: a separate sales sending domain (so cold email never risks the main domain's reputation), and the
@@ -2026,11 +2014,69 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
     CREATE INDEX platform_outreach_inbound_state ON platform_outreach_inbound(state,received_at);
     INSERT INTO platform_migrations(version,applied_at) VALUES(85,datetime('now'));
   `))();
-  // İYS phone calls (channel ARAMA) for the voice features: the recipient register and the outbox also accept ARAMA, so
+  // Sales assistant follow-up to 83 (which had shipped before these were added): sequences of up to five emails,
+  // qualifying and the next step on the pipeline, the weekly goal, and the team's own network contacts. The two widened
+  // step limits rebuild their tables. The sends point at the sequences, so the rebuild runs with foreign keys off (the
+  // SQLite procedure for changing a table) and checks both tables before it commits.
+  // db:upgrade adds the columns and replaces the two CHECK constraints on SQL Server.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=86').get()){
+   db.pragma('foreign_keys = OFF');
+   try{db.transaction(()=>{db.exec(`
+    CREATE TABLE platform_prospect_outreach_v86 (
+      id TEXT PRIMARY KEY, prospect_id TEXT NOT NULL UNIQUE REFERENCES platform_prospects(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      contact_id TEXT, email_key TEXT, masked_email TEXT, language TEXT NOT NULL CHECK(language IN ('tr','en')),
+      steps_json TEXT NOT NULL, channels_json TEXT NOT NULL, source TEXT NOT NULL CHECK(source IN ('ai','template','human')),
+      state TEXT NOT NULL CHECK(state IN ('draft','active','finished','replied','stopped','bounced','failed')),
+      digest TEXT, approved_by TEXT, approved_at TEXT, encrypted_link TEXT,
+      sent_steps INTEGER NOT NULL CHECK(sent_steps >= 0 AND sent_steps <= 5), next_due_at TEXT, last_sent_at TEXT, lease_until TEXT,
+      wait_reason TEXT, stop_reason TEXT, reply_kind TEXT, reply_summary TEXT, reply_draft TEXT, reply_at TEXT, remind_at TEXT,
+      revision INTEGER NOT NULL, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_prospect_outreach_v86 SELECT * FROM platform_prospect_outreach;
+    DROP TABLE platform_prospect_outreach;
+    ALTER TABLE platform_prospect_outreach_v86 RENAME TO platform_prospect_outreach;
+    CREATE INDEX platform_prospect_outreach_due ON platform_prospect_outreach(state,next_due_at);
+    CREATE INDEX platform_prospect_outreach_scope ON platform_prospect_outreach(organization_id,project_id);
+    CREATE TABLE platform_prospect_outreach_sends_v86 (
+      id TEXT PRIMARY KEY, outreach_id TEXT NOT NULL REFERENCES platform_prospect_outreach(id), organization_id TEXT NOT NULL, project_id TEXT NOT NULL,
+      step INTEGER NOT NULL CHECK(step >= 0 AND step <= 4),
+      state TEXT NOT NULL CHECK(state IN ('reserved','accepted','delivered','bounced','complained','uncertain','rejected')),
+      provider_message_id TEXT, created_at TEXT NOT NULL, submitted_at TEXT, updated_at TEXT NOT NULL,
+      UNIQUE(outreach_id,step)
+    );
+    INSERT INTO platform_prospect_outreach_sends_v86 SELECT * FROM platform_prospect_outreach_sends;
+    DROP TABLE platform_prospect_outreach_sends;
+    ALTER TABLE platform_prospect_outreach_sends_v86 RENAME TO platform_prospect_outreach_sends;
+    CREATE INDEX platform_prospect_outreach_sends_recent ON platform_prospect_outreach_sends(organization_id,project_id,submitted_at);
+    ALTER TABLE platform_prospect_pipeline ADD COLUMN qual_problem TEXT NOT NULL DEFAULT 'unknown' CHECK(qual_problem IN ('yes','no','unknown'));
+    ALTER TABLE platform_prospect_pipeline ADD COLUMN qual_budget TEXT NOT NULL DEFAULT 'unknown' CHECK(qual_budget IN ('yes','no','unknown'));
+    ALTER TABLE platform_prospect_pipeline ADD COLUMN qual_signer TEXT NOT NULL DEFAULT '';
+    ALTER TABLE platform_prospect_pipeline ADD COLUMN next_step TEXT NOT NULL DEFAULT '';
+    ALTER TABLE platform_prospect_pipeline ADD COLUMN next_step_at TEXT;
+    ALTER TABLE platform_prospect_pipeline ADD COLUMN stage_changed_at TEXT;
+    ALTER TABLE platform_prospect_pipeline ADD COLUMN feature_gap TEXT NOT NULL DEFAULT '';
+    ALTER TABLE platform_outreach_settings ADD COLUMN weekly_goal INTEGER NOT NULL DEFAULT 25 CHECK(weekly_goal >= 1 AND weekly_goal <= 500);
+    CREATE TABLE platform_network_contacts (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, contact_key TEXT NOT NULL CHECK(length(contact_key) = 64), encrypted_person TEXT NOT NULL,
+      company TEXT NOT NULL, company_key TEXT NOT NULL, position TEXT NOT NULL, connected_on TEXT,
+      state TEXT NOT NULL CHECK(state IN ('new','asked','helped','not_relevant')), asked_at TEXT, prospect_id TEXT,
+      imported_by TEXT NOT NULL, imported_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(organization_id,project_id,contact_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    CREATE INDEX platform_network_contacts_company ON platform_network_contacts(organization_id,project_id,company_key);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(86,datetime('now'));
+   `);
+    for(const table of ['platform_prospect_outreach','platform_prospect_outreach_sends'])
+      if(db.prepare(`PRAGMA foreign_key_check(${table})`).all().length)throw new Error(`Migration 86 would leave broken references in ${table}.`);
+   })();}finally{db.pragma('foreign_keys = ON');}
+  }
+  // Schema 87 — İYS phone calls (channel ARAMA) for the voice features: the recipient register and the outbox also accept ARAMA, so
   // a commercial call consent from the booking form can be reported to İYS and its status checked before a call. Same
   // columns, same rows; only the channel check widens. On SQL Server db:upgrade replaces the two channel checks.
-  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=86').get())db.transaction(()=>db.exec(`
-    CREATE TABLE platform_iys_recipients_v86 (
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=87').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_iys_recipients_v87 (
       organization_id TEXT NOT NULL, project_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('EPOSTA','MESAJ','ARAMA')),
       recipient_key TEXT NOT NULL CHECK(length(recipient_key)=64), encrypted_recipient TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('ONAY','RET')), consent_date TEXT, source TEXT,
@@ -2038,11 +2084,11 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
       PRIMARY KEY(organization_id,project_id,channel,recipient_key),
       FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
     );
-    INSERT INTO platform_iys_recipients_v86(organization_id,project_id,channel,recipient_key,encrypted_recipient,status,consent_date,source,origin,checked_at)
+    INSERT INTO platform_iys_recipients_v87(organization_id,project_id,channel,recipient_key,encrypted_recipient,status,consent_date,source,origin,checked_at)
       SELECT organization_id,project_id,channel,recipient_key,encrypted_recipient,status,consent_date,source,origin,checked_at FROM platform_iys_recipients;
     DROP TABLE platform_iys_recipients;
-    ALTER TABLE platform_iys_recipients_v86 RENAME TO platform_iys_recipients;
-    CREATE TABLE platform_iys_outbox_v86 (
+    ALTER TABLE platform_iys_recipients_v87 RENAME TO platform_iys_recipients;
+    CREATE TABLE platform_iys_outbox_v87 (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('EPOSTA','MESAJ','ARAMA')),
       recipient_key TEXT NOT NULL CHECK(length(recipient_key)=64), encrypted_recipient TEXT, masked TEXT NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('ONAY','RET')), source TEXT NOT NULL, consent_date TEXT NOT NULL, due_at TEXT NOT NULL,
@@ -2050,13 +2096,13 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
       last_error TEXT, transaction_id TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, recipient_type TEXT NOT NULL DEFAULT 'BIREYSEL' CHECK(recipient_type IN ('BIREYSEL','TACIR')),
       FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
     );
-    INSERT INTO platform_iys_outbox_v86(id,organization_id,project_id,channel,recipient_key,encrypted_recipient,masked,status,source,consent_date,due_at,state,attempts,last_error,transaction_id,created_by,created_at,updated_at,recipient_type)
+    INSERT INTO platform_iys_outbox_v87(id,organization_id,project_id,channel,recipient_key,encrypted_recipient,masked,status,source,consent_date,due_at,state,attempts,last_error,transaction_id,created_by,created_at,updated_at,recipient_type)
       SELECT id,organization_id,project_id,channel,recipient_key,encrypted_recipient,masked,status,source,consent_date,due_at,state,attempts,last_error,transaction_id,created_by,created_at,updated_at,recipient_type FROM platform_iys_outbox;
     DROP TABLE platform_iys_outbox;
-    ALTER TABLE platform_iys_outbox_v86 RENAME TO platform_iys_outbox;
+    ALTER TABLE platform_iys_outbox_v87 RENAME TO platform_iys_outbox;
     CREATE INDEX platform_iys_outbox_due ON platform_iys_outbox(state,due_at);
     CREATE INDEX platform_iys_outbox_recipient ON platform_iys_outbox(organization_id,project_id,channel,recipient_key);
-    INSERT INTO platform_migrations(version,applied_at) VALUES(86,datetime('now'));
+    INSERT INTO platform_migrations(version,applied_at) VALUES(87,datetime('now'));
   `))();
   return db;
 }

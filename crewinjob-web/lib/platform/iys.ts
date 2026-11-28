@@ -60,7 +60,7 @@ export async function iysGate(db: Db, scope: Scope, channel: IysChannel, key: st
 }
 // Commercial phone calls (İYS channel ARAMA; used only by the voice gate in voice-calls.ts). Stricter than iysGate: a
 // call needs İYS switched on, a "Turkey" declaration, a connection and a fresh ONAY for the number. No duty is ever
-// assumed. ARAMA consents come from the booking form (queued for İYS, schema 86) and from İYS's own register (query, change feed).
+// assumed. ARAMA consents come from the booking form (queued for İYS, schema 87) and from İYS's own register (query, change feed).
 export async function iysCallGate(db: Db, scope: Scope, key: string, phone: string): Promise<IysGateReason | 'iys_off' | null> {
   if (!iysEnabled()) return 'iys_off';
   const row = await settings(db, scope);

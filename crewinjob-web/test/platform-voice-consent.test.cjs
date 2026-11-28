@@ -241,7 +241,7 @@ test('on: the booking page may use the microphone and reach ElevenLabs in its re
   }finally{off();delete process.env.VOICE_PROVIDER_REGION;}
 });
 
-test('schema 86: the İYS register and outbox take channel ARAMA and keep their rows when the migration runs',coachRun(async f=>{
+test('schema 87: the İYS register and outbox take channel ARAMA and keep their rows when the migration runs',coachRun(async f=>{
   const now=new Date().toISOString(),key='a'.repeat(64);
   f.db.prepare("INSERT INTO platform_iys_recipients VALUES(?,?,'MESAJ',?,'x','ONAY',NULL,NULL,'query',?)").run(f.scope.organizationId,f.scope.projectId,key,now);
   f.db.prepare("INSERT INTO platform_iys_recipients VALUES(?,?,'ARAMA',?,'x','RET',NULL,NULL,'pull',?)").run(f.scope.organizationId,f.scope.projectId,key,now);
@@ -250,7 +250,7 @@ test('schema 86: the İYS register and outbox take channel ARAMA and keep their 
   const file=path.join(dir,'schema86.sqlite');await f.db.backup(file);
   const db=openPlatformDatabase(file);
   try{
-    assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,86);
+    assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,87);
     assert.deepEqual(db.prepare('SELECT channel,status FROM platform_iys_recipients ORDER BY channel').all().map(row=>row.channel+':'+row.status),['ARAMA:RET','MESAJ:ONAY']);
     assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='index' AND name IN ('platform_iys_outbox_due','platform_iys_outbox_recipient')").get().n,2);
     assert.equal(db.pragma('foreign_key_check').length,0);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');
