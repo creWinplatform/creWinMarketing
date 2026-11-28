@@ -372,8 +372,15 @@ The live Crewin JSON files are on the live server, so the copy runs there. The s
   5. Rollback: remove the switch. Writes made while it was on stay only in the tables.
 
 - **`npm run db:upgrade` (`scripts/mssql-upgrade.cjs`).** It brings an existing database up to
-  `lib/db/mssql-schema.sql` when the new versions only add tables, indexes and foreign keys.
-  - It refuses columns that are missing on existing tables.
+  `lib/db/mssql-schema.sql`.
+  - It adds new tables, indexes and foreign keys.
+  - It adds columns that are missing on existing tables (`ALTER TABLE … ADD` with the schema file's type and default,
+    then that table's missing CHECK constraints). A column that is `NOT NULL` without a default is refused.
+  - It replaces the CHECK constraints a later migration changed, listed in `CHECK_CHANGES` by schema version
+    (drop, then add again from the schema file). Migration 86 uses this for the five-email limits.
+  - Anything else (a changed column type, a dropped column) is not handled and needs its own script.
+  - A backup taken before the upgrade still verifies: tables added since are dropped from the rebuild, and columns
+    added since may be absent when they are nullable or have a default.
   - Without `--apply` it changes nothing.
   - With `--apply` it works in one transaction and records the versions (`IDENTITY_INSERT`, since
     `platform_migrations.version` is an identity column).
