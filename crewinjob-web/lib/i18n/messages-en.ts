@@ -1952,4 +1952,5 @@ export const MESSAGES_EN: Record<string, string> = {
   "Telefon numarasını ülke koduyla, uluslararası biçimde girin (ör. +905321234567).": "Enter the phone number in international format with the country code (e.g. +905321234567).",
   "Bu işletmenin web sitesi yok; kanıtı Google Haritalar kaydıdır.": "This business has no website; its evidence is the Google Maps listing.",
   "Bu işletmenin web sitesi yok; uygunluk gerekçesini siz yazın.": "This business has no website; write the reason it fits yourself.",
+  "Bu onay metni henüz hukukça onaylanmadı.": "This consent text has not been approved by legal yet.",
 };

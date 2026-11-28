@@ -73,6 +73,8 @@ export async function recordVoiceConsent(input: {
   if (!(VOICE_CONSENT_TYPES as readonly string[]).includes(input.type)) throw new MarketingStoreError('Geçersiz onay türü.');
   const text = VOICE_TEXTS[input.textVersion];
   if (!text || text.type !== input.type) throw new MarketingStoreError('Onay metni sürümü bu onay türüne ait değil.');
+  // A draft text (not approved by legal) is never shown, so no consent can name it.
+  if (text.draft) throw new MarketingStoreError('Bu onay metni henüz hukukça onaylanmadı.');
   if (input.lang !== 'tr' && input.lang !== 'en') throw new MarketingStoreError('Geçersiz dil.');
   if (!(VOICE_CONSENT_SOURCES as readonly string[]).includes(input.source)) throw new MarketingStoreError('Geçersiz onay kaynağı.');
   if (!validSubject(input.subject) || !input.tenant?.organizationId || !input.tenant?.projectId) throw new MarketingStoreError('Onay kime ait, belirlenemedi.');
@@ -98,7 +100,7 @@ async function latest(file: string, match: (record: VoiceConsentRecord) => boole
   for (const record of records) if (record && match(record)) found = record;
   return found;
 }
-const valid = (record: VoiceConsentRecord | null): boolean => Boolean(record?.granted && VOICE_TEXTS[record.textVersion]?.type === record.type);
+const valid = (record: VoiceConsentRecord | null): boolean => Boolean(record?.granted && VOICE_TEXTS[record.textVersion]?.type === record.type && !VOICE_TEXTS[record.textVersion]?.draft);
 
 /** The current decision of a person for one type, or null when there is none. */
 export async function latestVoiceConsent(tenant: VoiceTenant, subject: VoiceSubject, type: VoiceConsentType, file = VOICE_CONSENT_FILE) {

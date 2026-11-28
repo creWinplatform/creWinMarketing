@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     if (input.action === 'book') {
       const calls = voice ? bookingCallConsents(input) : null, booked = await bookMeeting(db, key, input, credentialEncryptionKey());
       // The booking stands even if the call consent cannot be written; the page then says it was not saved.
-      if (calls) try { await recordBookingCallConsents(db, key, typeof input.email === 'string' ? input.email.trim().toLowerCase() : '', input.lang, calls); }
+      if (calls) try { await recordBookingCallConsents(db, key, typeof input.email === 'string' ? input.email.trim().toLowerCase() : '', input.lang, calls, credentialEncryptionKey()); }
       catch { return NextResponse.json({ ...booked, callConsentSaved: false }, { headers }); }
       return NextResponse.json(booked, { headers });
     }

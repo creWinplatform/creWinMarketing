@@ -12,7 +12,10 @@
 // Reverts schema 81: web mentions, the licensed music library and Google search ad content.
 // Reverts schema 84: the sales sending domain and the customer groups.
 // Reverts schema 85: the managed sales service.
-exports.removeManagedSchema=db=>db.exec("DROP TABLE platform_outreach_inbound; DROP TABLE platform_sending_credits; DROP TABLE platform_managed_domains; DROP TABLE platform_managed_pilots; DELETE FROM platform_migrations WHERE version=85;");
+// Reverts schema 86 (İYS ARAMA channel checks): forgetting the version is enough; migration 86 rebuilds the two tables
+// again with the wider check, with or without it.
+exports.removeIysCallSchema=db=>db.exec("DELETE FROM platform_migrations WHERE version=86;");
+exports.removeManagedSchema=db=>{exports.removeIysCallSchema(db);db.exec("DROP TABLE platform_outreach_inbound; DROP TABLE platform_sending_credits; DROP TABLE platform_managed_domains; DROP TABLE platform_managed_pilots; DELETE FROM platform_migrations WHERE version=85;");};
 exports.removeSegmentsSchema=db=>{exports.removeManagedSchema(db);db.exec("DROP TABLE platform_prospect_segment_members; DROP TABLE platform_prospect_segments; DROP TABLE platform_outreach_domains; DELETE FROM platform_migrations WHERE version=84;");};
 // Reverts schema 83: sales outreach, the pipeline, touch history, sales settings, opt-out links and the never-contact list.
 exports.removeOutreachSchema=db=>{exports.removeSegmentsSchema(db);db.exec("DROP TABLE platform_network_contacts; DROP TABLE platform_prospect_proposals; DROP TABLE platform_bookings; DROP TABLE platform_booking_settings; DROP TABLE platform_visitor_companies; DROP TABLE platform_visitor_settings; DROP TABLE platform_prospect_provider_keys; DROP TABLE platform_prospect_imports; DROP TABLE platform_prospect_source_terms; DROP TABLE platform_prospect_extra_contacts; DROP TABLE platform_prospect_suppressions; DROP TABLE platform_prospect_optout_tokens; DROP TABLE platform_outreach_settings; DROP TABLE platform_prospect_events; DROP TABLE platform_prospect_pipeline; DROP TABLE platform_prospect_outreach_sends; DROP TABLE platform_prospect_outreach; DELETE FROM platform_migrations WHERE version=83;");};

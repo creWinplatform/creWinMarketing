@@ -34,34 +34,39 @@ sunucu reddeder (klonlama için sesin sahibinin rıza kanıtı ve ayrı hukuki o
 - [ ] **KVKK standart sözleşmesi** (yurt dışı aktarım, KVKK m.9) ElevenLabs ile imzalandı ve imzadan sonra **5 iş günü
       içinde Kurum'a bildirildi.** Sesli asistan cevapları için kullanılacak LLM sağlayıcısı ve telefon altyapısı (ör.
       Twilio) için de aynısı.
-- [ ] **Avukat metinleri onayladı:** `lib/platform/voice-consent-texts.ts` içindeki tüm metinler, ve gizlilik
-      sayfasındaki ElevenLabs alt işleyen satırı (`lib/platform/voice-legal.ts` → `voiceSubprocessor`, hukukça
-      verilmedi, onay bekliyor).
+- [ ] **Avukat metinleri onayladı:** `lib/platform/voice-consent-texts.ts` içindeki tüm metinler; gizlilik
+      sayfasındaki ElevenLabs ve Twilio alt işleyen satırları (`lib/platform/voice-legal.ts` → `voiceSubprocessors`,
+      ekip yazdı); İngilizce taslaklar (`call-en-1.0`, `iys-call-en-1.0`, `privacy-voice-en-1.0`,
+      `VOICE_AGENT_OPENING_DRAFTS.en`, ekip yazdı, `draft: true`). Onaylanan taslaktan `draft` kaldırılır ve
+      `CURRENT_VOICE_TEXTS` / `VOICE_AGENT_OPENING` ona çevrilir; o zamana kadar ekranda gösterilmez ve onay olarak
+      kaydedilemez.
 - [ ] **VERBİS güncellendi** (yeni veri kategorisi: ses kaydı ve dökümü; yeni alıcı grubu ve yurt dışı aktarım).
-- [ ] **Mikrofon izinleri ve CSP güncellendi:** bugün `Permissions-Policy` başlığı yok ve CSP yalnız
-      `frame-ancestors`, `object-src`, `base-uri` içeriyor. Entegrasyonla birlikte `microphone=(self)` ve ElevenLabs'in
-      kullanılacak adresleri için `connect-src` (gerekiyorsa `media-src`) eklenmeli. Testteki başlık beklentisi o zaman
-      bilerek güncellenir.
+- [x] **Mikrofon izinleri ve CSP:** bayrak açıkken (build sırasında) yalnız `/randevu` sayfasına
+      `Permissions-Policy: microphone=(self)` ve `connect-src 'self' https://<host> wss://<host>` eklenir (`next.config.mjs`;
+      host bölgeye göre `api.elevenlabs.io` veya `api.eu.residency.elevenlabs.io`). Bayrak kapalıyken başlıklar aynen
+      kalır. **Entegrasyonda doğrulanacak:** ElevenLabs'in sesli asistan için kullandığı adresler (WebSocket / WebRTC)
+      bu listeyle örtüşüyor mu; panelde de ses kullanılacaksa ilgili sayfalara aynı kural eklenmeli.
 - [ ] **ElevenLabs anahtarı yalnızca sunucuda:** `NEXT_PUBLIC_` ile başlayan bir değişkende veya istemci kodunda asla
       olmamalı; tarayıcı yalnız sunucunun ürettiği kısa ömürlü oturum belirteçlerini (signed URL / token) görmeli.
 
 ## Ryzevo'ya özel açık işler
 
-- [ ] **İYS ARAMA kanalı.** Ticari arama onayı (`iys-call-tr-1.0`, randevu formunda isteğe bağlı) metinde "İYS'ye
-      kaydedilir" diyor, ama İYS tabloları bugün yalnız `EPOSTA` ve `MESAJ` kabul ediyor (`platform_iys_recipients`,
-      `platform_iys_outbox`, `platform_iys_merchants` CHECK kısıtları). Bayrağı açmadan önce: ARAMA kanalı için şema
-      değişikliği (proje migration düzeniyle, `db:upgrade`), onayın 3 iş günü içinde İYS'ye bildirilmesi
-      (`voice-booking.ts` içindeki TODO) ve İYS'den ARAMA durumunun çekilmesi. O zamana kadar
-      `assertOutboundCallAllowed(…, 'commercial')` her ticari aramayı reddeder; ya bu kutu gizlenmeli ya da bildirim
-      tamamlanmalı.
-- [ ] **İngilizce metinler.** `call-tr-1.0`, `iys-call-tr-1.0`, `privacy-voice-tr-1.0` ve asistan açılış cümlesinin
-      İngilizcesi yok; İngilizce sayfalar Türkçe onaylı metni gösteriyor (`TODO: hukuk onaylı çeviri`). Hukuk onaylı
-      çeviri gelince yeni sürüm olarak eklenmeli (ör. `call-en-1.0`), eskisi silinmez.
-- [ ] **Aydınlatma eki boşlukları:** `[süre]` (metinlerin saklama süresi), `[LLM sağlayıcı]`, `[Twilio]` (telefon
-      altyapısı) henüz belli değil; gizlilik sayfasında işaretli yer tutucu olarak görünüyorlar. `[iletişim]`,
-      `lib/platform/sales-terms.ts` → `SALES_SELLER.email` doldurulunca dolar.
-- [ ] **"Ayarlar'dan geri alabilirsiniz" ifadesi.** Randevu sayfası ziyaretçilerinin bir Ayarlar ekranı yok; geri alma
-      düğmesi ("Onayımı geri al") asistan kutusunun içinde. Avukat metni buna göre onaylamalı veya metin değişmeli.
+- [x] **İYS ARAMA kanalı (şema 86).** İYS kayıt ve gönderim tabloları artık `ARAMA` kanalını da kabul ediyor
+      (`lib/platform/database.ts` migration 86; SQL Server için `npm run db:upgrade` iki CHECK kısıtını değiştirir,
+      `scripts/mssql-upgrade.cjs` → `CHECK_CHANGES`). Randevu formundaki ticari arama onayı (+90 numaralar) İYS kuyruğuna
+      `ARAMA / ONAY / HS_WEB` olarak girer ve 3 iş günü içinde gönderilir; ticari arama ancak İYS'de güncel ONAY varken
+      yapılabilir. İYS ekranları yine yalnız e-posta ve WhatsApp kanallarını gösterir.
+      **Yayın:** şema 86 hiçbir veritabanına uygulanmadı; canlıda 82–85 ile birlikte `db:upgrade` (önce yedek) gerekir.
+- [ ] **Ticari arama onayının geri çekilmesi.** Randevu sayfasında arama onaylarını geri alma ekranı yok; kişi
+      İYS üzerinden (RET) veya işletmeye başvurarak geri alabilir (İYS değişiklik akışı RET'i çeker ve aramayı durdurur).
+      Panelde bir "aramayı durdur" işlemi entegrasyonla eklenmeli (`withdrawVoiceConsent` + İYS RET kuyruğu).
+- [ ] **İngilizce metinler.** Taslaklar hazır (`draft: true`), avukat onayı bekliyor. Onaya kadar İngilizce sayfalar
+      Türkçe onaylı metni gösterir (`TODO: hukuk onaylı çeviri`).
+- [ ] **Aydınlatma eki:** `[LLM sağlayıcı]` = Google (Gemini) ve `[Twilio]` = Twilio dolduruldu. `[süre]` (metinlerin
+      saklama süresi) hâlâ açık; `[iletişim]`, `lib/platform/sales-terms.ts` → `SALES_SELLER.email` doldurulunca dolar
+      (`SALES_SELLER`'ın diğer alanları da boş).
+- [x] **"Ayarlar'dan geri alabilirsiniz" ifadesi.** Asistan kutusunda bir **Ayarlar** bölümü var; onay oradan geri
+      alınır. Avukat bunun metindeki "Ayarlar" için yeterli olduğunu teyit etmeli.
 - [ ] **DPA / kullanım koşulları sayfası yok.** ElevenLabs alt işleyen satırı şimdilik gizlilik sayfasının "Aktarım"
       listesine (bayrak açıkken) eklendi. Ayrı bir DPA sayfası yazılırsa oraya da taşınmalı.
 - [ ] **Telefon numarası saklama biçimi.** Arama onayları numarayı WhatsApp onay deseninde olduğu gibi tek yönlü anahtar
@@ -84,6 +89,8 @@ sunucu reddeder (klonlama için sesin sahibinin rıza kanıtı ve ayrı hukuki o
 | Sürümlü metinler, ajan açılış cümleleri | `lib/platform/voice-consent-texts.ts` |
 | Onay kaydı (append-only), `canUseVoice`, `hasCallConsent` | `lib/platform/voice-consent.ts` |
 | Giden arama kapısı `assertOutboundCallAllowed` | `lib/platform/voice-calls.ts` (+ `iysCallGate` in `lib/platform/iys.ts`) |
+| İYS ARAMA (şema 86) | `lib/platform/database.ts`, `lib/db/mssql-schema.sql`, `scripts/mssql-upgrade.cjs`, `lib/platform/iys-types.ts` |
+| Mikrofon ve CSP | `next.config.mjs` |
 | Randevu sayfası onayları | `lib/platform/voice-booking.ts`, `app/api/booking/route.ts`, `components/platform/BookingPage.tsx`, `components/platform/VoiceAssistantConsent.tsx`, `app/randevu/page.tsx` |
 | Gizlilik eki ve alt işleyen satırı | `lib/platform/voice-legal.ts`, `app/legal/privacy/page.tsx` |
 | Plan hakları | `lib/platform/plan-catalog.ts`, `components/platform/PlanCatalog.tsx` |

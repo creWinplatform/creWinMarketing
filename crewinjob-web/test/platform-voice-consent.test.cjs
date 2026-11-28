@@ -16,11 +16,19 @@ const texts=load('voice-consent-texts.ts');
 const {recordVoiceConsent,withdrawVoiceConsent,canUseVoice,hasCallConsent,latestVoiceConsent}=load('voice-consent.ts');
 const {assertOutboundCallAllowed}=load('voice-calls.ts');
 const {bookingVoiceAction,bookingCallConsents,recordBookingCallConsents}=load('voice-booking.ts');
-const {voicePrivacyAddendum,voiceSubprocessor}=load('voice-legal.ts');
+const {voicePrivacyAddendum,voiceSubprocessors}=load('voice-legal.ts');
 const {PLAN_CATALOG,VOICE_PLAN_RIGHTS,visibleVoicePlanRights}=load('plan-catalog.ts');
 const {BrandKits,normalizeBrandKit}=load('brand-kit.ts');
 const {ProspectBooking}=load('prospect-workflow.ts');
-const {ProjectIys}=load('iys.ts');
+const {ProjectIys,deliverIysOutbox}=load('iys.ts');
+const {openPlatformDatabase}=load('database.ts');
+const KEY='56'.repeat(32);
+// A stand-in for İYS (no network): login, brand check and consent upload.
+const fakeIys=()=>{const uploads=[];return {uploads,transport:async request=>{const url=new URL(request.url),body=request.body?JSON.parse(request.body):null;
+  if(url.pathname==='/oauth2/token')return {status:200,body:{access_token:'fake-token',expires_in:7200}};
+  if(url.pathname==='/sps/123456/brands')return {status:200,body:[{brandCode:'654321'}]};
+  if(url.pathname==='/sps/123456/brands/654321/consents'){uploads.push(body);return {status:200,body:{transactionId:'tx-'+uploads.length}};}
+  return {status:404,body:{}};}};};
 
 const plain=value=>JSON.parse(JSON.stringify(value));
 const on=()=>{process.env.VOICE_FEATURES_ENABLED='1';process.env.NEXT_PUBLIC_VOICE_FEATURES_ENABLED='1';};
@@ -57,7 +65,7 @@ test('off: no consent is written, every gate says no and every voice screen help
   for(const purpose of ['informational','commercial'])await assert.rejects(assertOutboundCallAllowed(TENANT,PHONE,purpose,{...DEPS(f),file}),error=>error.reason==='voice_off'&&error.status===403);
   await assert.rejects(bookingVoiceAction(f.db,{key:await bookingKey(f),action:'voice_consent',visitor:VISITOR.id,consent:true},file),error=>error.status===404);
   assert.equal(voicePrivacyAddendum(false,'US','tr','kvkk@example.com'),null,'the privacy notice keeps today’s text');
-  assert.equal(voiceSubprocessor(false,'US','tr'),null);assert.equal(voiceSubprocessor(false,'US','en'),null);
+  assert.deepEqual(plain(voiceSubprocessors(false,'US','tr')),[]);assert.deepEqual(plain(voiceSubprocessors(false,'US','en')),[]);
   for(const plan of PLAN_CATALOG){
     assert.equal(visibleVoicePlanRights(plan.id,false),null,plan.id);
     for(const field of ['voiceoverMinutes','agentMinutes','outboundCalls'])assert.equal(field in plan,false,'the plan catalog itself is unchanged');
@@ -125,7 +133,7 @@ test('on: the booking page records the assistant consent and the call consents; 
     assert.equal(bookingCallConsents({}),null,'no box ticked, no phone needed');
     assert.throws(()=>bookingCallConsents({callConsent:true,phone:'0555'}),/ülke koduyla/);
     const calls=plain(bookingCallConsents({callConsent:true,iysCallConsent:true,phone:'+90 555 000 00 11'}));assert.deepEqual(calls,{phone:PHONE,informational:true,commercial:true});
-    await recordBookingCallConsents(f.db,key,'ayse@gulus.example','tr',calls,file);
+    assert.equal(await recordBookingCallConsents(f.db,key,'ayse@gulus.example','tr',calls,KEY,file),'not_required','İYS off: nothing queued');
     const written=lines(file).slice(1);
     assert.deepEqual(written.map(item=>[item.type,item.textVersion,item.source,item.subjectKind,item.phoneHint]),[['call_informational','call-tr-1.0','form','lead','+90•••11'],['call_commercial','iys-call-tr-1.0','form','lead','+90•••11']]);
     assert.doesNotMatch(fs.readFileSync(file,'utf8'),/5550000011|ayse@/,'no full number or email');
@@ -202,7 +210,66 @@ test('privacy notice when on: the addendum names Ryzevo and the region and leave
   assert.equal(value.version,'privacy-voice-tr-1.0');
   assert.match(text,/^Sesli özellikler\. Ryzevo üzerinde sesli özellikleri kullanırsanız/);
   assert.match(text,/sesli asistan hizmetinin sunulması amacıyla/);assert.match(text,/ElevenLabs \(ABD\)/);assert.match(text,/haklarınız için: kvkk@example\.com\.$/);
-  assert.deepEqual(value.parts.filter(part=>part.placeholder).map(part=>part.placeholder),['süre','LLM sağlayıcı','Twilio']);
+  assert.match(text,/Sesli asistan cevapları için Google \(Gemini\), telefon görüşmeleri için Twilio kullanılır\./);
+  assert.deepEqual(value.parts.filter(part=>part.placeholder).map(part=>part.placeholder),['süre'],'only the retention period is still open');
+  assert.deepEqual(plain(voicePrivacyAddendum(true,'US','tr','')).parts.filter(part=>part.placeholder).map(part=>part.placeholder),['süre','iletişim']);
   assert.equal(plain(voicePrivacyAddendum(true,'EU','en','')).untranslated,true);
-  assert.match(voiceSubprocessor(true,'EU','tr'),/ElevenLabs \(AB\)/);assert.match(voiceSubprocessor(true,'US','en'),/ElevenLabs \(the United States\)/);
+  const tr=plain(voiceSubprocessors(true,'EU','tr')),en=plain(voiceSubprocessors(true,'US','en'));
+  assert.match(tr[0],/ElevenLabs \(AB\)/);assert.match(tr[1],/^Telefon görüşmeleri: Twilio \(ABD\)/);assert.match(en[0],/ElevenLabs \(the United States\)/);assert.match(en[1],/^Phone calls: Twilio/);
 });
+
+test('draft English texts exist for legal review but are never shown or recorded',async()=>{
+  for(const version of ['call-en-1.0','iys-call-en-1.0','privacy-voice-en-1.0'])assert.equal(texts.VOICE_TEXTS[version].draft,true,version);
+  for(const [type,byLang] of Object.entries(texts.CURRENT_VOICE_TEXTS))for(const version of Object.values(byLang))assert.ok(!texts.VOICE_TEXTS[version].draft,type+' shows no draft');
+  assert.match(texts.VOICE_AGENT_OPENING_DRAFTS.en,/AI assistant/);assert.equal(texts.VOICE_AGENT_OPENING.en,texts.VOICE_AGENT_OPENING.tr,'the screen still uses the approved Turkish line');
+  on();const file=fresh();
+  try{
+    await assert.rejects(recordVoiceConsent({tenant:TENANT,subject:{kind:'lead',id:'ayse@gulus.example'},type:'call_informational',textVersion:'call-en-1.0',lang:'en',granted:true,source:'form',phone:PHONE},file),/hukukça onaylanmadı/);
+    assert.equal(lines(file).length,0);
+  }finally{off();}
+});
+
+test('on: the booking page may use the microphone and reach ElevenLabs in its region; other pages keep today’s headers',async()=>{
+  const config=(await import(pathToFileURL(path.join(__dirname,'..','next.config.mjs')).href)).default;
+  on();
+  try{
+    let rules=await config.headers();
+    assert.equal(rules.length,2);assert.equal(rules[0].headers.find(item=>item.key==='Content-Security-Policy').value,"frame-ancestors 'self'; object-src 'none'; base-uri 'self'");
+    assert.deepEqual(rules[1],{source:'/randevu',headers:[{key:'Permissions-Policy',value:'microphone=(self)'},{key:'Content-Security-Policy',value:"frame-ancestors 'self'; object-src 'none'; base-uri 'self'; connect-src 'self' https://api.elevenlabs.io wss://api.elevenlabs.io"}]});
+    process.env.VOICE_PROVIDER_REGION='EU';rules=await config.headers();
+    assert.match(rules[1].headers[1].value,/connect-src 'self' https:\/\/api\.eu\.residency\.elevenlabs\.io wss:\/\/api\.eu\.residency\.elevenlabs\.io$/);
+  }finally{off();delete process.env.VOICE_PROVIDER_REGION;}
+});
+
+test('schema 86: the İYS register and outbox take channel ARAMA and keep their rows when the migration runs',coachRun(async f=>{
+  const now=new Date().toISOString(),key='a'.repeat(64);
+  f.db.prepare("INSERT INTO platform_iys_recipients VALUES(?,?,'MESAJ',?,'x','ONAY',NULL,NULL,'query',?)").run(f.scope.organizationId,f.scope.projectId,key,now);
+  f.db.prepare("INSERT INTO platform_iys_recipients VALUES(?,?,'ARAMA',?,'x','RET',NULL,NULL,'pull',?)").run(f.scope.organizationId,f.scope.projectId,key,now);
+  assert.throws(()=>f.db.prepare("INSERT INTO platform_iys_recipients VALUES(?,?,'SMS',?,'x','ONAY',NULL,NULL,'query',?)").run(f.scope.organizationId,f.scope.projectId,key,now),/CHECK/);
+  require('./schema-fixture.cjs').removeIysCallSchema(f.db);
+  const file=path.join(dir,'schema86.sqlite');await f.db.backup(file);
+  const db=openPlatformDatabase(file);
+  try{
+    assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,86);
+    assert.deepEqual(db.prepare('SELECT channel,status FROM platform_iys_recipients ORDER BY channel').all().map(row=>row.channel+':'+row.status),['ARAMA:RET','MESAJ:ONAY']);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE type='index' AND name IN ('platform_iys_outbox_due','platform_iys_outbox_recipient')").get().n,2);
+    assert.equal(db.pragma('foreign_key_check').length,0);assert.equal(db.pragma('integrity_check',{simple:true}),'ok');
+  }finally{db.close();}
+}));
+
+test('on: a commercial call consent from the booking form goes to İYS (ARAMA) and, once İYS holds it, allows the call',coachRun(async f=>{
+  on();process.env.NEXT_PUBLIC_IYS_ENABLED='1';const file=fresh();
+  try{
+    const key=await bookingKey(f),tenant={organizationId:f.scope.organizationId,projectId:f.scope.projectId},fake=fakeIys(),iys=new ProjectIys(f.db,f.scope,KEY,fake.transport);
+    await iys.declare({scope:'tr'});await iys.connect({username:'qa-api-user',password:'fixture-password',iysCode:'123456',brandCode:'654321',environment:'sandbox'});
+    await assert.rejects(assertOutboundCallAllowed(tenant,PHONE,'commercial',{...DEPS(f),file}),error=>error.reason==='iys_no_consent');
+    assert.equal(await recordBookingCallConsents(f.db,key,'ayse@gulus.example','tr',{phone:PHONE,informational:false,commercial:true},KEY,file),'queued');
+    const row=f.db.prepare('SELECT channel,status,source,state,masked FROM platform_iys_outbox').get();
+    assert.deepEqual({...row},{channel:'ARAMA',status:'ONAY',source:'HS_WEB',state:'queued',masked:'+90•••11'});
+    assert.equal((await iys.view()).statuses.ARAMA,undefined,'the İYS screen keeps its two channels');
+    assert.deepEqual(plain(await deliverIysOutbox(f.db,KEY,fake.transport)),{sent:1,failed:0});
+    assert.equal(fake.uploads[0].type,'ARAMA');assert.equal(fake.uploads[0].recipient,PHONE);
+    await assertOutboundCallAllowed(tenant,PHONE,'commercial',{...DEPS(f),file});
+    assert.equal(await recordBookingCallConsents(f.db,key,'john@example.com','en',{phone:'+15550000011',informational:false,commercial:true},KEY,file),undefined,'a number outside Turkey is not sent to İYS');
+  }finally{off();delete process.env.NEXT_PUBLIC_IYS_ENABLED;}
+}));

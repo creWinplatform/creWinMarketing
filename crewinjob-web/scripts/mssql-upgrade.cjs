@@ -1,6 +1,6 @@
 // Brings an existing SQL Server platform database up to lib/db/mssql-schema.sql when the new schema versions only add
-// tables, indexes and foreign keys (as migration 79 does). Columns added to an existing table are refused — those need
-// their own script.
+// tables, indexes and foreign keys (as migration 79 does), and replaces the CHECK constraints a schema version widened
+// (CHECK_CHANGES below). Columns added to an existing table are refused — those need their own script.
 //   node scripts/mssql-upgrade.cjs            show the plan, change nothing
 //   node scripts/mssql-upgrade.cjs --apply    apply it in one transaction and record the schema versions
 // On a server that is not local, --apply needs a verified SQL Server backup of this database from the last 24 hours
@@ -17,6 +17,9 @@ const option = name => { const i = args.indexOf(name); return i >= 0 ? args[i + 
 const apply = args.includes('--apply');
 const schemaText = fs.readFileSync(path.join(__dirname, '..', 'lib', 'db', 'mssql-schema.sql'), 'utf8').replace(/\r\n/g, '\n');
 const schemaVersion = Number((schemaText.match(/schema version (\d+)/) || [])[1]);
+// CHECK constraints a schema version changed on existing tables: dropped and added again with the schema file's
+// definition when the database is upgraded across that version. 86: İYS tables also accept channel ARAMA (phone calls).
+const CHECK_CHANGES = { 86: ['ck_platform_iys_recipients_1', 'ck_platform_iys_outbox_1'] };
 const statements = schemaText.split(/;\s*\n/).map(s => s.replace(/^--.*$/gm, '').trim()).filter(Boolean);
 
 // Tables, their columns, indexes and foreign keys as the schema file defines them.
@@ -30,7 +33,9 @@ function schemaObjects() {
     } else if ((m = /^CREATE (?:UNIQUE )?NONCLUSTERED INDEX \[([^\]]+)\] ON \[(\w+)\]/.exec(statement))) indexes.push({ name: m[1], table: m[2], statement });
     else if ((m = /^ALTER TABLE \[(\w+)\] ADD CONSTRAINT \[(\w+)\] FOREIGN KEY/.exec(statement))) foreignKeys.push({ name: m[2], table: m[1], statement });
   }
-  return { tables, indexes, foreignKeys };
+  const checks = new Map();
+  for (const [table, { statement }] of tables) for (const m of statement.matchAll(/CONSTRAINT \[(ck_\w+)\] (CHECK \(.*\)),?$/gm)) checks.set(m[1], { table, check: m[2] });
+  return { tables, indexes, foreignKeys, checks };
 }
 
 (async () => {
@@ -61,6 +66,11 @@ function schemaObjects() {
       ...want.foreignKeys.filter(k => !fkNames.has(k.name)).map(k => ({ what: `foreign key ${k.name}`, statement: k.statement })),
     ];
     const versions = Array.from({ length: schemaVersion - current }, (_, i) => current + i + 1);
+    for (const version of versions) for (const name of CHECK_CHANGES[version] || []) {
+      const item = want.checks.get(name);
+      if (!item) throw new Error(`Schema ${version} changes ${name}, which the schema file does not define.`);
+      if (existing.has(item.table)) plan.push({ what: `check ${name} on ${item.table} (schema ${version})`, statement: `ALTER TABLE [${item.table}] DROP CONSTRAINT IF EXISTS [${name}]; ALTER TABLE [${item.table}] ADD CONSTRAINT [${name}] ${item.check}` });
+    }
     if (!plan.length && !versions.length) { console.log('Up to date; nothing to do.'); return; }
     for (const step of plan) console.log(`  + ${step.what}`);
     if (versions.length) console.log(`  + record schema version(s) ${versions.join(', ')}`);

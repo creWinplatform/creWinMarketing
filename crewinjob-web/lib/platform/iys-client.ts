@@ -1,12 +1,12 @@
 import 'server-only';
-import type { IysChannel, IysEnvironment, IysRecipientType, IysSource, IysStatus } from './iys-types';
+import type { IysAnyChannel, IysEnvironment, IysRecipientType, IysSource, IysStatus } from './iys-types';
 
 // A thin client for the İYS brand API. Paths follow İYS's published service-provider API (token, consents, status,
 // changes); check them against the current İYS documentation when the account is set up. Secrets never appear in errors.
 export const IYS_BASE: Record<IysEnvironment, string> = { production: 'https://api.iys.org.tr', sandbox: 'https://api.sandbox.iys.org.tr' };
 export type IysCredentials = { username: string; password: string; iysCode: string; brandCode: string; environment: IysEnvironment };
 export type IysTransport = (request: { method: 'GET' | 'POST'; url: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; body: unknown }>;
-export type IysConsent = { recipient: string; type: IysChannel; status: IysStatus; source: IysSource | string; consentDate: string; recipientType?: IysRecipientType };
+export type IysConsent = { recipient: string; type: IysAnyChannel; status: IysStatus; source: IysSource | string; consentDate: string; recipientType?: IysRecipientType };
 export class IysError extends Error {
   constructor(public code: 'auth' | 'brand' | 'rejected' | 'unavailable' | 'format', message: string) { super(message); }
 }
@@ -58,7 +58,7 @@ export class IysClient {
     throw new IysError('rejected', `İYS kaydı kabul etmedi (${code.slice(0, 40)}).`);
   }
   // The current consent of one recipient for one channel; null when İYS has none.
-  async status(recipient: string, type: IysChannel, recipientType: IysRecipientType = 'BIREYSEL'): Promise<{ status: IysStatus; consentDate: string | null; source: string | null } | null> {
+  async status(recipient: string, type: IysAnyChannel, recipientType: IysRecipientType = 'BIREYSEL'): Promise<{ status: IysStatus; consentDate: string | null; source: string | null } | null> {
     const response = await this.call('POST', this.brandPath('/consents/status'), { recipient, recipientType, type });
     if (response.status === 404) return null;
     const body = record(response.body), status = body.status;
@@ -73,6 +73,6 @@ export class IysClient {
     const body = record(response.body), list = Array.isArray(body.list) ? body.list : Array.isArray(response.body) ? response.body as unknown[] : [];
     const next = typeof body.after === 'string' || typeof body.after === 'number' ? String(body.after) : after;
     return { next, list: list.map(record).filter(item => typeof item.recipient === 'string' && (item.status === 'ONAY' || item.status === 'RET') && (item.type === 'EPOSTA' || item.type === 'MESAJ'))
-      .map(item => ({ recipient: item.recipient as string, type: item.type as IysChannel, status: item.status as IysStatus, consentDate: typeof item.consentDate === 'string' ? item.consentDate : null })) };
+      .map(item => ({ recipient: item.recipient as string, type: item.type as IysAnyChannel, status: item.status as IysStatus, consentDate: typeof item.consentDate === 'string' ? item.consentDate : null })) };
   }
 }

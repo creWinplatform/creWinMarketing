@@ -1,20 +1,21 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { Mic, Loader2 } from 'lucide-react';
+import { Mic, Loader2, Settings } from 'lucide-react';
 import { VOICE_AGENT_OPENING, currentVoiceText, fillVoiceText, voiceFills } from '@/lib/platform/voice-consent-texts';
 import type { VoiceRegion } from '@/lib/platform/voice-features';
 
 // The assistant notice on the booking page and the voice-processing consent asked before the first use. Rendered only
 // while voice features are on (BookingPage gets `voice` from the server page). The visitor is a random id made in this
 // browser tab (sessionStorage), not a device fingerprint; it ends with the tab. Consent and withdrawal are both kept
-// server side as new lines (lib/platform/voice-consent.ts).
+// server side as new lines (lib/platform/voice-consent.ts). The consent text says it can be withdrawn "in Settings":
+// the assistant's own Ayarlar / Settings section holds the withdrawal.
 const VISITOR_KEY = 'ryzevo_voice_visitor';
 const storedVisitor = () => { try { return sessionStorage.getItem(VISITOR_KEY) || ''; } catch { return ''; } };
 const newVisitor = () => { const id = crypto.randomUUID(); try { sessionStorage.setItem(VISITOR_KEY, id); } catch { /* private mode: this page only */ } return id; };
 
 export default function VoiceAssistantConsent({ lang, region, business, call }: { lang: 'tr' | 'en'; region: VoiceRegion; business: string; call: (body: Record<string, unknown>) => Promise<{ granted?: boolean }> }) {
   const tr = lang === 'tr', t = (a: string, b: string) => tr ? a : b;
-  const [visitor, setVisitor] = useState(''), [open, setOpen] = useState(false), [checked, setChecked] = useState(false), [granted, setGranted] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [visitor, setVisitor] = useState(''), [open, setOpen] = useState(false), [checked, setChecked] = useState(false), [granted, setGranted] = useState(false), [settings, setSettings] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const text = currentVoiceText('voice_assistant', lang), fills = voiceFills(region, { 'İşletme adı': business });
   useEffect(() => {
     const id = storedVisitor(); if (!id) return;
@@ -22,7 +23,7 @@ export default function VoiceAssistantConsent({ lang, region, business, call }: 
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const decide = async (action: 'voice_consent' | 'voice_withdraw') => {
     if (busy) return; setBusy(true); setError('');
-    try { const id = visitor || newVisitor(); setVisitor(id); const value = await call({ action, visitor: id, lang, consent: action === 'voice_consent' ? checked : undefined }); setGranted(Boolean(value.granted)); setOpen(false); setChecked(false); }
+    try { const id = visitor || newVisitor(); setVisitor(id); const value = await call({ action, visitor: id, lang, consent: action === 'voice_consent' ? checked : undefined }); setGranted(Boolean(value.granted)); setOpen(false); setChecked(false); setSettings(false); }
     catch (reason) { setError(reason instanceof Error && reason.message ? reason.message : t('Kaydedilemedi. Lütfen tekrar deneyin.', 'Could not be saved. Please try again.')); }
     finally { setBusy(false); }
   };
@@ -31,7 +32,12 @@ export default function VoiceAssistantConsent({ lang, region, business, call }: 
     <p>{fillVoiceText(VOICE_AGENT_OPENING[lang], fills)}</p>
     {granted ? <>
       <p className="analysis-note" role="status">{t('Sesli asistan için onayınız kayıtlı.', 'Your consent for the voice assistant is on record.')}</p>
-      <button type="button" className="booking-button" disabled={busy} onClick={() => void decide('voice_withdraw')}>{busy && <Loader2 size={16} className="animate-spin" />}{t('Onayımı geri al', 'Withdraw my consent')}</button>
+      <button type="button" className="booking-button" aria-expanded={settings} aria-controls="voice-assistant-settings" onClick={() => setSettings(value => !value)}><Settings size={16} aria-hidden="true" />{t('Ayarlar', 'Settings')}</button>
+      {settings && <div id="voice-assistant-settings" className="booking-form">
+        <h2>{t('Sesli asistan ayarları', 'Voice assistant settings')}</h2>
+        <p className="analysis-note">{t('Ses kaydınızın yazıya çevrilmesine verdiğiniz onayı istediğiniz zaman geri alabilirsiniz; yazarak devam edebilirsiniz.', 'You can withdraw your consent to transcribing your voice at any time and continue by typing.')}</p>
+        <button type="button" className="booking-button" disabled={busy} onClick={() => void decide('voice_withdraw')}>{busy && <Loader2 size={16} className="animate-spin" />}{t('Onayımı geri al', 'Withdraw my consent')}</button>
+      </div>}
     </> : open ? <div className="booking-form">
       <p>{fillVoiceText(text.body, fills)}</p>
       <label className="booking-consent"><input type="checkbox" checked={checked} onChange={event => setChecked(event.target.checked)} /><span>{text.checkbox}</span></label>

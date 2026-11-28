@@ -4,6 +4,7 @@ import type { Db } from '../db/client';
 import 'server-only';
 import { MarketingStoreError } from './errors';
 import { bookingTenant } from './prospect-workflow';
+import { queueIysConsent } from './iys';
 import { isVoiceEnabled } from './voice-features';
 import { CURRENT_VOICE_TEXTS, type VoiceLang } from './voice-consent-texts';
 import { normalizeVoicePhone, recordVoiceConsent, latestVoiceConsent, VOICE_CONSENT_FILE } from './voice-consent';
@@ -40,13 +41,15 @@ export function bookingCallConsents(input: Record<string, unknown>): BookingCall
   if (!phone) throw new MarketingStoreError('Aranmak için telefon numaranızı ülke koduyla yazın (ör. +905321234567).');
   return { phone, informational, commercial };
 }
-/** Records the call consents of a booking just made (one line each), for the person known by the booking email. */
-export async function recordBookingCallConsents(db: Db, key: unknown, email: string, lang: unknown, consents: BookingCallConsents, file = VOICE_CONSENT_FILE) {
+/** Records the call consents of a booking just made (one line each), for the person known by the booking email. A
+ *  commercial call consent of a Turkish number is also queued for İYS (channel ARAMA, source HS_WEB) when the business
+ *  declared İYS for Turkey; İYS then has it within three business days and assertOutboundCallAllowed checks it there. */
+export async function recordBookingCallConsents(db: Db, key: unknown, email: string, lang: unknown, consents: BookingCallConsents, credentialKey: string, file = VOICE_CONSENT_FILE) {
   if (!consents) return;
   const tenant = await tenantOf(db, key), language = langOf(lang, tenant.language), scope = { organizationId: tenant.organizationId, projectId: tenant.projectId };
   const base = { tenant: scope, subject: { kind: 'lead' as const, id: email }, lang: language, granted: true, source: 'form' as const, phone: consents.phone };
   if (consents.informational) await recordVoiceConsent({ ...base, type: 'call_informational', textVersion: CURRENT_VOICE_TEXTS.call_informational[language] }, file);
-  // TODO (voice integration): report this consent to İYS (channel ARAMA) within three business days; the İYS tables
-  // accept only EPOSTA and MESAJ today. Listed in docs/voice/ENABLE-CHECKLIST.md.
-  if (consents.commercial) await recordVoiceConsent({ ...base, type: 'call_commercial', textVersion: CURRENT_VOICE_TEXTS.call_commercial[language] }, file);
+  if (!consents.commercial) return;
+  const record = await recordVoiceConsent({ ...base, type: 'call_commercial', textVersion: CURRENT_VOICE_TEXTS.call_commercial[language] }, file);
+  if (/^\+90\d{10}$/.test(consents.phone)) return await queueIysConsent(db, scope, credentialKey, { channel: 'ARAMA', recipient: consents.phone, status: 'ONAY', source: 'HS_WEB', consentDate: record.at, actor: 'booking' });
 }

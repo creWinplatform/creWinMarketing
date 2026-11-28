@@ -8,7 +8,7 @@ import {
   PRIVACY_HOSTING_LOCATION, PRIVACY_RETENTION, PRIVACY_VERBIS, PRIVACY_VERSION, SALES_SELLER, privacyReady,
 } from '@/lib/platform/sales-terms';
 import { isVoiceEnabled, voiceRegion } from '@/lib/platform/voice-features';
-import { voicePrivacyAddendum, voiceSubprocessor } from '@/lib/platform/voice-legal';
+import { voicePrivacyAddendum, voiceSubprocessors } from '@/lib/platform/voice-legal';
 
 // KVKK (6698 sayılı Kanun) md. 10 ve Aydınlatma Yükümlülüğü Tebliği kapsamında aydınlatma metni.
 // TASLAK: veri sorumlusu bilgileri, barındırma yeri, saklama süreleri ve hukuki onay lib/platform/sales-terms.ts içinde
@@ -41,7 +41,7 @@ export default async function PrivacyPage({ searchParams }: Props) {
   const email = field(s.email, 'başvuru e-postası — doldurulacak', 'request email — to be completed');
   const retention = (value: string) => field(value, 'süre — hukuk incelemesi', 'period — legal review');
   // Voice features (off by default): an ElevenLabs line in Transfers and the voice addendum. Off, both are null.
-  const voiceOn = isVoiceEnabled(), voiceProcessor = voiceSubprocessor(voiceOn, voiceRegion(), lang), voiceAddendum = voicePrivacyAddendum(voiceOn, voiceRegion(), lang, s.email);
+  const voiceOn = isVoiceEnabled(), voiceProcessors = voiceSubprocessors(voiceOn, voiceRegion(), lang), voiceAddendum = voicePrivacyAddendum(voiceOn, voiceRegion(), lang, s.email);
 
   const toc = [
     { id: 'controller', title: ts('1. Veri sorumlusu', '1. Controller') },
@@ -135,7 +135,7 @@ export default async function PrivacyPage({ searchParams }: Props) {
           <li>{t('E-posta gönderimi: Amazon SES (hesap doğrulama, şifre kurtarma, onaylı kampanya ve haftalık özet e-postaları).', 'Email delivery: Amazon SES (account verification, password recovery, approved campaign and weekly review emails).')}</li>
           <li>{t('AI sağlayıcısı: Google (Gemini), AI özellikleri kullanıldığında.', 'AI provider: Google (Gemini), when AI features are used.')}</li>
           <li>{t('Bağladığınız platformlar: Google (Analytics, Search Console, Ads), LinkedIn, Meta (Facebook, Instagram, WhatsApp), X, Telegram; yalnızca sizin onayladığınız okuma, yayın ve gönderim işlemleri için.', 'Platforms you connect: Google (Analytics, Search Console, Ads), LinkedIn, Meta (Facebook, Instagram, WhatsApp), X, Telegram; only for the reading, publishing and sending you approve.')}</li>
-          {voiceProcessor && <li>{voiceProcessor}</li>}
+          {voiceProcessors.map(line => <li key={line}>{line}</li>)}
           <li>{t('Ödeme: PayTR Ödeme ve Elektronik Para Kuruluşu A.Ş.', 'Payments: PayTR Ödeme ve Elektronik Para Kuruluşu A.Ş.')}</li>
           <li>{t('Kanunen yetkili kamu kurum ve kuruluşları, talep halinde.', 'Public authorities legally entitled to request it, on request.')}</li>
         </ul>

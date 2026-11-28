@@ -111,7 +111,7 @@ export default function IysPanel({ lang, crewin = false }: { lang: Locale; crewi
         </li>)}</ul>}
       </div>}
       {view.attention.length > 0 && <div className="iys-attention"><h3>{tr ? 'İlgilenmeniz gerekenler' : 'Needs attention'}</h3><ul>{view.attention.map(item => <li key={item.id}>
-        <span className="coach-state">{item.channel === 'EPOSTA' ? (tr ? 'E-posta' : 'Email') : 'WhatsApp'} · {item.status === 'ONAY' ? (tr ? 'onay' : 'consent') : (tr ? 'ret' : 'opt-out')}</span>
+        <span className="coach-state">{item.channel === 'EPOSTA' ? (tr ? 'E-posta' : 'Email') : item.channel === 'ARAMA' ? (tr ? 'Telefon araması' : 'Phone call') : 'WhatsApp'} · {item.status === 'ONAY' ? (tr ? 'onay' : 'consent') : (tr ? 'ret' : 'opt-out')}</span>
         <span>{item.masked} · {tr ? 'son tarih' : 'deadline'} {time(item.dueAt)}</span>
         {item.error && <span className="studio-error"><Msg text={item.error} /></span>}
         {item.state === 'failed' && item.masked !== '—' && view.canManage && <button type="button" className="studio-text-button" disabled={busy} onClick={() => void act<IysView>({ action: 'retry', id: item.id }, () => tr ? 'Kayıt yeniden kuyruğa alındı.' : 'The record was queued again.')}>{tr ? 'Yeniden dene' : 'Retry'}</button>}

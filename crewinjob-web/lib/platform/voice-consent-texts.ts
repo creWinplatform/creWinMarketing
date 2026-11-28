@@ -2,7 +2,9 @@
 // Every text has a version. When a text changes, add a new version and point CURRENT_VOICE_TEXTS at it; never edit or
 // delete an old one: consent records name the version the person saw.
 // Where a language has no approved text yet, the screen shows the approved text of the other language and the entry is
-// marked "TODO: hukuk onaylı çeviri". Nothing here is machine-translated.
+// marked "TODO: hukuk onaylı çeviri".
+// Draft texts (draft: true) were written by the team, not by legal: they are never shown and never recorded
+// (recordVoiceConsent refuses them). Legal approves a draft by removing the flag and pointing CURRENT_VOICE_TEXTS at it.
 // Placeholders in square brackets are filled with fillVoiceText(); a placeholder without a value stays visible.
 import { VOICE_REGION_NAMES, type VoiceRegion } from './voice-features';
 
@@ -12,7 +14,7 @@ export type VoiceLang = 'tr' | 'en';
 export const VOICE_CONSENT_TYPES = ['voice_assistant', 'call_informational', 'call_commercial'] as const;
 export type VoiceConsentType = typeof VOICE_CONSENT_TYPES[number];
 
-export type VoiceText = { version: string; lang: VoiceLang; type: VoiceConsentType | 'privacy'; body: string; checkbox?: string };
+export type VoiceText = { version: string; lang: VoiceLang; type: VoiceConsentType | 'privacy'; body: string; checkbox?: string; draft?: true };
 
 export const VOICE_TEXTS: Readonly<Record<string, VoiceText>> = Object.freeze({
   'voice-tr-1.0': {
@@ -32,6 +34,19 @@ export const VOICE_TEXTS: Readonly<Record<string, VoiceText>> = Object.freeze({
   'iys-call-tr-1.0': {
     version: 'iys-call-tr-1.0', lang: 'tr', type: 'call_commercial', body: '',
     checkbox: "Kampanya ve fırsatlarla ilgili ticari arama almak istiyorum. (İYS'ye kaydedilir.)",
+  },
+  // ── TASLAK — hukuk onayı bekliyor; ekranda gösterilmez ve onay olarak kaydedilmez (DRAFT, awaiting legal approval) ──
+  'call-en-1.0': {
+    version: 'call-en-1.0', lang: 'en', type: 'call_informational', body: '', draft: true,
+    checkbox: 'I agree to be called by [Business name], by a member of staff or an AI assistant, about my appointment.',
+  },
+  'iys-call-en-1.0': {
+    version: 'iys-call-en-1.0', lang: 'en', type: 'call_commercial', body: '', draft: true,
+    checkbox: 'I would like to receive commercial calls about campaigns and offers. (This is registered with İYS.)',
+  },
+  'privacy-voice-en-1.0': {
+    version: 'privacy-voice-en-1.0', lang: 'en', type: 'privacy', draft: true,
+    body: 'Voice features. If you use voice features on [Product], your voice recording and its transcript are processed. This data is processed for [purpose] on the basis of your explicit consent. Voice recordings are transcribed by our data processor ElevenLabs ([region]) and deleted after processing. Transcripts are kept for [period]. [LLM provider] is used for voice assistant answers and [Twilio] for phone calls. These transfers rely on standard contracts signed and notified to the Authority under Article 9 of the KVKK. Your voice is not used for identification or emotion analysis. For your rights under Article 11 of the KVKK: [contact].',
   },
   'privacy-voice-tr-1.0': {
     version: 'privacy-voice-tr-1.0', lang: 'tr', type: 'privacy',
@@ -55,10 +70,18 @@ export const VOICE_AGENT_OPENING: Readonly<Record<VoiceLang, string>> = Object.f
   tr: "Merhaba, ben [İşletme adı]'nın yapay zekâ asistanıyım. Konuşmamız yazıya dökülür. İsterseniz sizi bir çalışana yönlendirebilirim.",
   en: "Merhaba, ben [İşletme adı]'nın yapay zekâ asistanıyım. Konuşmamız yazıya dökülür. İsterseniz sizi bir çalışana yönlendirebilirim.", // TODO: hukuk onaylı çeviri (EN)
 });
+// TASLAK — hukuk onayı bekliyor; kullanılmaz (DRAFT, awaiting legal approval; not used).
+export const VOICE_AGENT_OPENING_DRAFTS: Readonly<Partial<Record<VoiceLang, string>>> = Object.freeze({
+  en: "Hello, I'm [Business name]'s AI assistant. Our conversation is transcribed. If you like, I can put you through to a member of staff.",
+});
 
 // Ryzevo's fills: the feature is the assistant; the product and the purpose of the privacy addendum.
 export const VOICE_FEATURE_NAME: Record<VoiceLang, string> = { tr: 'asistan', en: 'assistant' };
-export const VOICE_PRIVACY_FILLS = { 'Ürün': 'Ryzevo', 'amaç': 'sesli asistan hizmetinin sunulması' } as const;
+// [LLM sağlayıcı] and [Twilio]: Google (Gemini) answers for the voice assistant and Twilio carries phone calls.
+export const VOICE_PRIVACY_FILLS = {
+  'Ürün': 'Ryzevo', 'amaç': 'sesli asistan hizmetinin sunulması', 'LLM sağlayıcı': 'Google (Gemini)', 'Twilio': 'Twilio',
+  Product: 'Ryzevo', purpose: 'providing the voice assistant service', 'LLM provider': 'Google (Gemini)',
+} as const;
 
 export type VoiceFills = Record<string, string | undefined>;
 /** The standard fills for a region and language: [özellik]/[feature] and [ülke]/[region]. */
