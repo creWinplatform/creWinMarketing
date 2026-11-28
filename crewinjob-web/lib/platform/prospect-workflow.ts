@@ -149,6 +149,8 @@ function readContent(raw: unknown, price: string): ProposalContent {
   if (URLS.test(all) || PERSONAL.test(all) || COACH_BANNED.test(all)) throw new MarketingStoreError('Teklif metninde bağlantı, adres, telefon, yüzde veya garanti olmamalı; fiyatı yalnız Fiyat alanına yazın.');
   return content;
 }
+// The template's "write it here" lines (both languages): a proposal that still holds one is not shared.
+const PROPOSAL_PLACEHOLDERS = ['Görüşmede konuşulan ihtiyaçları buraya yazın.', 'Write the needs discussed in the meeting here.', 'Önerdiğimiz çözümü buraya yazın.', 'Describe the proposed solution here.', 'Kapsamdaki işleri madde madde yazın.', 'List the work in scope.', 'Birlikte anlaştığınız ölçütü yazın'];
 export class ProspectProposals extends Scoped {
   private async prospect(id: unknown) {
     const row = typeof id === 'string' ? await this.db.prepare('SELECT id,company,website,sector,state FROM platform_prospects WHERE id=? AND organization_id=? AND project_id=?').get(id, ...this.args()) as { id: string; company: string; website: string; sector: string; state: string } | undefined : undefined;
@@ -178,7 +180,12 @@ export class ProspectProposals extends Scoped {
     const brief = await this.db.prepare('SELECT brief_json FROM platform_growth_coach WHERE organization_id=? AND project_id=? AND brief_json IS NOT NULL').get(...this.args()) as { brief_json: string } | undefined;
     const context = brief ? JSON.parse(brief.brief_json) as { positioning?: string; offer?: string; icp?: { summary?: string } } : {};
     const insight = await this.db.prepare('SELECT signals_json FROM platform_prospect_insights WHERE prospect_id=?').get(prospect.id) as { signals_json: string | null } | undefined;
-    const findings = insight?.signals_json ? (JSON.parse(insight.signals_json) as Signal[]).filter(item => item.present === false && item.key !== 'hiring').map(item => SIGNALS[item.key].no[tr ? 0 : 1]).slice(0, 5) : [];
+    // Needs: what the team marked as an opportunity for its offer first, then the basics every site needs (an online
+    // shop or a blog is not a need of every business).
+    const wishes = JSON.parse((await this.db.prepare('SELECT signals_json FROM platform_prospect_settings WHERE organization_id=? AND project_id=?').get(...this.args()) as { signals_json: string } | undefined)?.signals_json || '{}') as Record<string, string>;
+    const core = ['website', 'https', 'mobile', 'meta_description', 'google_tag'], signals = insight?.signals_json ? JSON.parse(insight.signals_json) as Signal[] : [];
+    const wished = signals.filter(item => item.present !== null && (wishes[item.key] === 'missing' ? item.present === false : wishes[item.key] === 'present' && item.present === true));
+    const findings = [...wished, ...signals.filter(item => item.present === false && core.includes(item.key) && !wished.includes(item))].map(item => SIGNALS[item.key][item.present ? 'yes' : 'no'][tr ? 0 : 1]).slice(0, 5);
     const template = (): ProposalContent => ({ title: tr ? `${prospect.company} için teklif` : `Proposal for ${prospect.company}`,
       summary: tr ? `${project.name} olarak ${prospect.company} ile görüşmemizde konuştuğumuz konular için bu teklifi hazırladık.` : `At ${project.name} we prepared this proposal for the topics we discussed with ${prospect.company}.`,
       needs: findings.length ? findings : [tr ? 'Görüşmede konuşulan ihtiyaçları buraya yazın.' : 'Write the needs discussed in the meeting here.'],
@@ -209,6 +216,8 @@ Return JSON only: {"title":"...","summary":"...","needs":["..."],"solution":"...
     await this.authorize('content.write');
     const prospect = await this.prospect(raw.id), current = await this.row(prospect.id);
     if (!current) throw new MarketingStoreError('Önce bir teklif taslağı hazırlayın.', 404);
+    // A draft still holding the template's "write it here" lines is never shown to the customer.
+    if (PROPOSAL_PLACEHOLDERS.some(text => current.content_json.includes(text))) throw new MarketingStoreError('Teklifte doldurulmamış şablon alanları var (ör. Önerimiz, Kapsam, Başarı ölçütleri). Düzenleyip kaydettikten sonra paylaşın.', 409);
     const token = randomBytes(32).toString('base64url'), now = new Date(), expires = new Date(now.getTime() + PROPOSAL_LIMITS.days * DAY).toISOString();
     await this.db.transaction(async () => {
       await this.db.prepare('UPDATE platform_prospect_proposals SET token_hash=?,views=0,last_viewed_at=NULL,expires_at=?,revoked_at=NULL,shared_at=?,updated_at=? WHERE id=?').run(sha(token), expires, now.toISOString(), now.toISOString(), current.id);

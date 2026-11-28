@@ -9,7 +9,7 @@ import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { PROSPECT_LIMITS } from './prospect-types';
 import { ROLE_ADDRESS, readSite, siteOrigin, type SiteReader } from './prospect-finder';
 import { ProjectProspects } from './prospects';
-import { DECISION, sameCompany, suppressedHosts } from './prospect-contacts';
+import { DECISION, fold as foldWords, sameCompany, suppressedHosts } from './prospect-contacts';
 import { PEOPLE_LIMITS, extractPeople, inferPattern, patternAddress, splitName, teamPageLinks, PATTERNS, type PeopleResult, type PersonCandidate } from './prospect-people';
 import { PERSONAL_MAIL, SOURCE_LIMITS as LIMITS, SOURCE_TERMS_VERSION, type ExtraContact, type SourceKind, type SourcesSnapshot, type VisitorCompany } from './prospect-sources-types';
 
@@ -248,7 +248,9 @@ export class ProspectSources {
       const home = await this.site(prospect.website); pagesRead++;
       const pages = [{ url: home.finalUrl, html: home.html }];
       for (const url of teamPageLinks(home.html, home.finalUrl)) { try { const page = await this.site(url); pages.push({ url: page.finalUrl, html: page.html }); pagesRead++; } catch { /* skip */ } }
-      for (const page of pages) for (const person of extractPeople(page.html, page.url)) push({ name: person.name, position: person.position, decisionMaker: DECISION.test(person.position), origin: 'site', sourceUrl: person.sourceUrl });
+      // A name that shares a word with the company's own name is the company, not a person ("Sanita Sağlık Grubu").
+      const companyWords = new Set(foldWords(prospect.company).split(/[^a-z]+/).filter(word => word.length >= 4));
+      for (const page of pages) for (const person of extractPeople(page.html, page.url)) if (!foldWords(person.name).split(/[^a-z]+/).some(word => companyWords.has(word))) push({ name: person.name, position: person.position, decisionMaker: DECISION.test(person.position), origin: 'site', sourceUrl: person.sourceUrl });
     } catch { /* the site could not be read */ }
     candidates.sort((a, b) => Number(b.decisionMaker) - Number(a.decisionMaker) || Number(b.emailKind === 'found') - Number(a.emailKind === 'found'));
     await this.audit('prospect.sources.people');

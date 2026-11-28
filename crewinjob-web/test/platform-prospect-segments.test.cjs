@@ -9,7 +9,7 @@ const KEY='79'.repeat(32);
 const approved=(f,id,company,website,sector='Diş kliniği')=>{const now=new Date().toISOString();f.db.prepare("INSERT INTO platform_prospects(id,organization_id,project_id,company,website,sector,reason,check_status,source_url,state,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,'Strong fit','ok',?,'approved',?,?,?)").run(id,f.a.organizationId,f.a.projectId,company,website,sector,website,f.scope.subject,now,now);};
 const HOME=`<html><head><script type="application/ld+json">{"@context":"https://schema.org","@type":"Dentist","name":"Gülüş","founder":{"@type":"Person","name":"Ayşe Yılmaz"}}</script></head>
 <body><nav><a href="/hakkimizda">Hakkımızda</a><a href="/hizmetler">Hizmetler</a><a href="https://other.example/ekip">Başka</a></nav><h1>Gülüş Diş Kliniği</h1><p>Genel Müdür</p><footer>© 2026</footer></body></html>`;
-const ABOUT=`<html><body><h2>Ekibimiz</h2><div class="card"><h3>Dt. Mehmet KARA</h3><p>Kurucu Diş Hekimi</p></div><div class="card"><h3>Zeynep Ak</h3><p>Asistan</p></div><p>Can Demir - Genel Müdür</p></body></html>`;
+const ABOUT=`<html><body><p>Gülüş Diş Kliniği - Kurucu</p><h2>Ekibimiz</h2><div class="card"><h3>Dt. Mehmet KARA</h3><p>Kurucu Diş Hekimi</p></div><div class="card"><h3>Zeynep Ak</h3><p>Asistan</p></div><p>Can Demir - Genel Müdür</p></body></html>`;
 
 test('names the company’s own pages give with a title; team pages on the same site; the company’s address pattern',()=>{
   assert.deepEqual(plain(teamPageLinks(HOME,'https://gulus.example/')),['https://gulus.example/hakkimizda'],'same site only, about pages only');
@@ -37,6 +37,7 @@ test('find the decision maker: the site, the team’s connections and Hunter; pi
   assert.equal(byName['Selin Öz'].origin,'network');assert.equal(byName['Selin Öz'].email,'selin.oz@gulus.example');assert.equal(byName['Selin Öz'].emailKind,'guess');
   assert.equal(byName['Mehmet Kara'].origin,'site');assert.equal(byName['Mehmet Kara'].decisionMaker,true);assert.equal(byName['Mehmet Kara'].sourceUrl,'https://gulus.example/hakkimizda');
   assert.equal(byName['Ayşe Yılmaz'].origin,'site');
+  assert.ok(!result.candidates.some(item=>/Gülüş/.test(item.name)),'the company’s own name is not a person');
   assert.ok(result.candidates.findIndex(item=>!item.decisionMaker)<0||result.candidates.findIndex(item=>!item.decisionMaker)>result.candidates.findIndex(item=>item.decisionMaker),'decision makers first');
   assert.equal(f.db.prepare("SELECT COUNT(*) n FROM platform_prospect_extra_contacts").get().n,0,'names are not stored until one is picked');
   // A Hunter result with a name teaches the company's pattern.

@@ -1953,4 +1953,5 @@ export const MESSAGES_EN: Record<string, string> = {
   "Bu işletmenin web sitesi yok; kanıtı Google Haritalar kaydıdır.": "This business has no website; its evidence is the Google Maps listing.",
   "Bu işletmenin web sitesi yok; uygunluk gerekçesini siz yazın.": "This business has no website; write the reason it fits yourself.",
   "Bu onay metni henüz hukukça onaylanmadı.": "This consent text has not been approved by legal yet.",
+  "Teklifte doldurulmamış şablon alanları var (ör. Önerimiz, Kapsam, Başarı ölçütleri). Düzenleyip kaydettikten sonra paylaşın.": "The proposal still has unfilled template fields (e.g. Our proposal, Scope, Success measures). Edit and save it before sharing.",
 };

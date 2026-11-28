@@ -42,6 +42,9 @@ test('the booking page: settings by an approver, a booking makes a task and move
 test('proposals: drafted from the brief and findings, edited, shared through a link that moves the stage',withOrigin(async f=>{
   const proposals=new ProspectProposals(f.db,f.scope),id=approved(f,'Moda','https://moda.example'),reserved=()=>f.db.prepare("SELECT COUNT(*) n FROM platform_usage_reservations WHERE status='reserved'").get().n;
   await assert.rejects(proposals.share({id},'https://ryzevo.example'),e=>e.status===404);
+  // The template's "write it here" lines are never shown to a customer.
+  const draftView=plain(await proposals.draft({id,mode:'template'})).proposal;assert.equal(draftView.source,'template');
+  await assert.rejects(proposals.share({id},'https://ryzevo.example'),e=>e.status===409&&/doldurulmamış/.test(e.message));
   await assert.rejects(proposals.draft({id,price:'20.000 TL'},async()=>JSON.stringify({title:'T',summary:'S',solution:'Bakın https://x.example',needs:[],scope:[]})),e=>e.status===422);assert.equal(reserved(),0);
   let view=plain(await proposals.draft({id,price:'20.000 TL + KDV',notes:'Online randevu istiyorlar'},async prompt=>{assert.ok(prompt.includes('Online randevu istiyorlar'));assert.ok(!prompt.includes('20.000'),'the price never goes to the AI');return JSON.stringify({title:'Online randevu kurulumu',summary:'Kısa özet.',needs:['Online randevu'],solution:'Kurulum ve eğitim.',scope:['Kurulum','Eğitim'],timeline:'2 hafta',nextStep:'Başlangıç görüşmesi'});})).proposal;
   assert.equal(view.source,'ai');assert.equal(view.content.price,'20.000 TL + KDV');
