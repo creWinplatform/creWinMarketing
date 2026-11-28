@@ -2072,6 +2072,38 @@ export function openPlatformDatabase(file = process.env.PLATFORM_DATABASE_PATH |
       if(db.prepare(`PRAGMA foreign_key_check(${table})`).all().length)throw new Error(`Migration 86 would leave broken references in ${table}.`);
    })();}finally{db.pragma('foreign_keys = ON');}
   }
+  // Schema 87 — İYS phone calls (channel ARAMA) for the voice features: the recipient register and the outbox also accept ARAMA, so
+  // a commercial call consent from the booking form can be reported to İYS and its status checked before a call. Same
+  // columns, same rows; only the channel check widens. On SQL Server db:upgrade replaces the two channel checks.
+  if(!db.prepare('SELECT 1 FROM platform_migrations WHERE version=87').get())db.transaction(()=>db.exec(`
+    CREATE TABLE platform_iys_recipients_v87 (
+      organization_id TEXT NOT NULL, project_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('EPOSTA','MESAJ','ARAMA')),
+      recipient_key TEXT NOT NULL CHECK(length(recipient_key)=64), encrypted_recipient TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ONAY','RET')), consent_date TEXT, source TEXT,
+      origin TEXT NOT NULL CHECK(origin IN ('query','pull','upload')), checked_at TEXT NOT NULL,
+      PRIMARY KEY(organization_id,project_id,channel,recipient_key),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_iys_recipients_v87(organization_id,project_id,channel,recipient_key,encrypted_recipient,status,consent_date,source,origin,checked_at)
+      SELECT organization_id,project_id,channel,recipient_key,encrypted_recipient,status,consent_date,source,origin,checked_at FROM platform_iys_recipients;
+    DROP TABLE platform_iys_recipients;
+    ALTER TABLE platform_iys_recipients_v87 RENAME TO platform_iys_recipients;
+    CREATE TABLE platform_iys_outbox_v87 (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL, project_id TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('EPOSTA','MESAJ','ARAMA')),
+      recipient_key TEXT NOT NULL CHECK(length(recipient_key)=64), encrypted_recipient TEXT, masked TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('ONAY','RET')), source TEXT NOT NULL, consent_date TEXT NOT NULL, due_at TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','sent','failed')), attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),
+      last_error TEXT, transaction_id TEXT, created_by TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, recipient_type TEXT NOT NULL DEFAULT 'BIREYSEL' CHECK(recipient_type IN ('BIREYSEL','TACIR')),
+      FOREIGN KEY(project_id,organization_id) REFERENCES platform_projects(id,organization_id)
+    );
+    INSERT INTO platform_iys_outbox_v87(id,organization_id,project_id,channel,recipient_key,encrypted_recipient,masked,status,source,consent_date,due_at,state,attempts,last_error,transaction_id,created_by,created_at,updated_at,recipient_type)
+      SELECT id,organization_id,project_id,channel,recipient_key,encrypted_recipient,masked,status,source,consent_date,due_at,state,attempts,last_error,transaction_id,created_by,created_at,updated_at,recipient_type FROM platform_iys_outbox;
+    DROP TABLE platform_iys_outbox;
+    ALTER TABLE platform_iys_outbox_v87 RENAME TO platform_iys_outbox;
+    CREATE INDEX platform_iys_outbox_due ON platform_iys_outbox(state,due_at);
+    CREATE INDEX platform_iys_outbox_recipient ON platform_iys_outbox(organization_id,project_id,channel,recipient_key);
+    INSERT INTO platform_migrations(version,applied_at) VALUES(87,datetime('now'));
+  `))();
   return db;
 }
 

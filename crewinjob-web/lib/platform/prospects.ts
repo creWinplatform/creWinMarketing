@@ -11,7 +11,7 @@ import { parseCoachJson, runCoachAi } from './coach-ai';
 import { prospectDetailsReady, removeProspectDetails } from './prospect-finder';
 import { suppressedHosts } from './prospect-contacts';
 import { autoAssignProspect } from './prospect-outreach';
-import { PROSPECT_LIMITS, type ProspectState, type ProspectView, type ProspectsSnapshot } from './prospect-types';
+import {isNoSite, PROSPECT_LIMITS, type ProspectState, type ProspectView, type ProspectsSnapshot } from './prospect-types';
 
 type Row={id:string;company:string;website:string;sector:string;country:string;reason:string;contact_role:string;check_status:'not_checked'|'ok'|'unreachable';source_url:string|null;page_title:string|null;page_summary:string|null;evidence:string|null;checked_at:string|null;reason_source:'human'|'ai'|null;state:ProspectState;decided_at:string|null;note:string;task_id:string|null;revision:number;created_at:string;updated_at:string};
 export type ProspectPage={finalUrl:string;title:string;description:string;headings:string[];text:string};
@@ -72,7 +72,7 @@ export class ProjectProspects{
   }
   // Fetches the company's own public page and stores what it shows, with the address and the time it was checked.
   async check(raw:Record<string,unknown>){
-    await this.authorize('content.write');const row=await this.row(raw.id);if(await this.checksToday()>=PROSPECT_LIMITS.checksPerDay)throw new MarketingStoreError('Günlük web sitesi kontrol sınırına ulaşıldı.',429);
+    await this.authorize('content.write');const row=await this.row(raw.id);if(isNoSite(row.website))throw new MarketingStoreError('Bu işletmenin web sitesi yok; kanıtı Google Haritalar kaydıdır.',409);if(await this.checksToday()>=PROSPECT_LIMITS.checksPerDay)throw new MarketingStoreError('Günlük web sitesi kontrol sınırına ulaşıldı.',429);
     let page:ProspectPage|null=null;try{page=await this.read_(row.website);if(new URL(page.finalUrl).hostname.replace(/^www\./,'')!==new URL(row.website).hostname.replace(/^www\./,''))page=null;}catch{page=null;}
     return await this.db.transaction(async ()=>{
       await this.authorize('content.write');const current=await this.row(row.id),now=new Date().toISOString();
@@ -86,7 +86,7 @@ export class ProjectProspects{
   // Optional AI fit reason. The quote must appear word for word on the fetched page; roles only, never names.
   async suggest(raw:Record<string,unknown>,generator?:CoachGenerator){
     await this.authorize('content.write');if(!generator)throw new MarketingStoreError('Bu platform için AI sağlayıcısı ve model henüz yapılandırılmadı.',503);
-    const row=await this.row(raw.id);if(row.check_status!=='ok')throw new MarketingStoreError('Önce firmanın web sitesini kontrol edin.',409);
+    const row=await this.row(raw.id);if(isNoSite(row.website))throw new MarketingStoreError('Bu işletmenin web sitesi yok; uygunluk gerekçesini siz yazın.',409);if(row.check_status!=='ok')throw new MarketingStoreError('Önce firmanın web sitesini kontrol edin.',409);
     let page:ProspectPage;try{page=await this.read_(row.website);}catch{throw new MarketingStoreError('Firmanın web sitesi şu anda okunamadı.',502);}
     const brief=await this.db.prepare('SELECT brief_json FROM platform_growth_coach WHERE organization_id=? AND project_id=? AND brief_json IS NOT NULL').get(...this.args()) as {brief_json:string}|undefined,project=(await this.repo.workspace(this.scope.subject,...this.args()))!.project;
     const icp=brief?JSON.parse(brief.brief_json) as {icp:{summary:string};positioning:string;language:'tr'|'en'}:null,lang=icp?.language||project.language||'tr';

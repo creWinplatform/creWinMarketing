@@ -2,7 +2,11 @@
 // browser renderer. Pure data, no server imports.
 export type BrandFont = 'manrope' | 'sans' | 'serif' | 'mono';
 export type BrandColors = { primary: string; accent: string; dark: string; light: string };
-export type BrandKitInput = { colors: BrandColors; font: BrandFont; handle: string; tagline: string };
+// Brand voice for AI voiceover (voice features, off by default; set only while they are on). Only a voice designed from a
+// description (kind 'designed') is supported. Voice cloning is NOT supported and this type cannot express it: cloning a
+// real person's voice needs proof of that person's consent and a separate legal approval, which Ryzevo does not have.
+export type BrandVoiceProfile = { kind: 'designed'; voiceId: string; label: string };
+export type BrandKitInput = { colors: BrandColors; font: BrandFont; handle: string; tagline: string; voiceProfile?: BrandVoiceProfile };
 export type BrandLogo = { data: string; mime: 'image/png' | 'image/jpeg' | 'image/webp' };
 export type BrandKit = BrandKitInput & {
   revision: number; logo: BrandLogo | null; updatedAt: string | null; canEdit: boolean;

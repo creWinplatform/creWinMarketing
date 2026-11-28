@@ -14,3 +14,17 @@ export type PlanCatalogEntry = typeof PLAN_CATALOG[number];
 export const AGENCY_PACKAGE = Object.freeze({ id: 'agency' as const, name: 'Agency', monthlyUsdMinor: 39900, projects: 10, plan: 'growth' as const });
 // A running trial tries the Growth tools with small allowances; pilot projects (set up with our team) get Growth's.
 export const TRIAL_FEATURES = Object.freeze({ mapsSearches: 5, mapsPerDay: 2, webQueries: 1, webFeeds: 0, adTools: true });
+// Voice rights (ElevenLabs, later), separate from the AI text units above: AI voiceover minutes, voice/phone agent
+// minutes and outbound calls a month. 0 in every plan for now. Kept out of PLAN_CATALOG so the catalog the screens and
+// the sales terms read stays exactly as it is; plan screens show these only with voice features on and a value above 0.
+export type VoicePlanRights = { voiceoverMinutes: number; agentMinutes: number; outboundCalls: number };
+export const VOICE_PLAN_RIGHTS: Readonly<Record<OfferedPlanId, Readonly<VoicePlanRights>>> = Object.freeze({
+  launch: Object.freeze({ voiceoverMinutes: 0, agentMinutes: 0, outboundCalls: 0 }),
+  growth: Object.freeze({ voiceoverMinutes: 0, agentMinutes: 0, outboundCalls: 0 }),
+  team: Object.freeze({ voiceoverMinutes: 0, agentMinutes: 0, outboundCalls: 0 }),
+});
+/** The voice rights a plan screen may show: null while voice features are off or the plan has none. */
+export function visibleVoicePlanRights(planId: OfferedPlanId, enabled: boolean): VoicePlanRights | null {
+  const rights = VOICE_PLAN_RIGHTS[planId];
+  return enabled && rights && (rights.voiceoverMinutes > 0 || rights.agentMinutes > 0 || rights.outboundCalls > 0) ? rights : null;
+}

@@ -98,6 +98,11 @@ export class ProspectBooking extends Scoped {
 }
 const bookingRow = async (db: Db, key: unknown) => typeof key === 'string' && /^rzb_[A-Za-z0-9_-]{24}$/.test(key) ? await db.prepare('SELECT b.*,p.name,p.website,p.timezone,s.language FROM platform_booking_settings b JOIN platform_projects p ON p.id=b.project_id AND p.organization_id=b.organization_id LEFT JOIN platform_project_settings s ON s.project_id=p.id AND s.organization_id=p.organization_id WHERE b.booking_key=? AND b.enabled=1').get(key) as (BookingRow & { name: string; website: string; timezone: string; language: string }) | undefined : undefined;
 const taken = async (db: Db, row: BookingRow) => new Set((await db.prepare("SELECT starts_at FROM platform_bookings WHERE organization_id=? AND project_id=? AND state='booked' AND starts_at>?").all(row.organization_id, row.project_id, new Date().toISOString()) as { starts_at: string }[]).map(item => item.starts_at));
+// The business behind an open booking page (voice consents are kept per business); null for a closed or unknown page.
+export async function bookingTenant(db: Db, key: unknown): Promise<{ organizationId: string; projectId: string; name: string; language: 'tr' | 'en' } | null> {
+  const row = await bookingRow(db, key);
+  return row ? { organizationId: row.organization_id, projectId: row.project_id, name: row.name, language: (row.language || 'tr') === 'en' ? 'en' : 'tr' } : null;
+}
 export async function publicBooking(db: Db, key: unknown): Promise<PublicBooking | null> {
   const row = await bookingRow(db, key); if (!row) return null;
   return { title: row.title, project: row.name, website: row.website, durationMin: Number(row.duration_min), timezone: row.timezone, slots: bookingSlots(settingsOf(row), row.timezone, await taken(db, row)), language: (row.language || 'tr') === 'en' ? 'en' : 'tr', ...await brand(db, row.organization_id, row.project_id) };

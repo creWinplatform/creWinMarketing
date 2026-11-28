@@ -43,7 +43,9 @@ export async function encodeVideo(scenes: Scenes, onProgress: (done: number, tot
 }
 
 export type TimelineScene = { kind: 'image'; image: CanvasImageSource; ms: number } | { kind: 'clip'; video: HTMLVideoElement; start: number; ms: number; caption: string; audio: AudioBuffer | null };
-export type TimelineAudio = { clipVolume: number; music: AudioBuffer | null; musicVolume: number };
+// aiVoiceover: the sound includes an AI-generated voiceover (voice features, later; nothing sets it yet). It is carried
+// into the export metadata so the person is reminded to turn on the AI content label when sharing.
+export type TimelineAudio = { clipVolume: number; music: AudioBuffer | null; musicVolume: number; aiVoiceover?: boolean };
 export type Timeline = { w: number; h: number; scenes: TimelineScene[]; audio?: TimelineAudio; overlay?: { font: string; logo: HTMLImageElement | null } };
 export const timelineMs = (timeline: { scenes: { ms: number }[] }) => timeline.scenes.reduce((sum, scene) => sum + scene.ms, 0);
 
@@ -139,7 +141,7 @@ async function encodeAudio(buffer: AudioBuffer): Promise<Mp4Audio | null> {
   return { sampleRate: 48000, channels: 2, asc, samples: chunks, bitrate: 128000 };
 }
 
-export async function encodeTimeline(timeline: Timeline, onProgress: (done: number, total: number) => void): Promise<{ bytes: Uint8Array; durationMs: number; hasAudio: boolean }> {
+export async function encodeTimeline(timeline: Timeline, onProgress: (done: number, total: number) => void): Promise<{ bytes: Uint8Array; durationMs: number; hasAudio: boolean; aiVoiceover?: true }> {
   const durationMs = timelineMs(timeline);
   if (!(durationMs > 0)) throw new Error('empty');
   const config = await videoConfig(timeline.w, timeline.h);
@@ -178,7 +180,7 @@ export async function encodeTimeline(timeline: Timeline, onProgress: (done: numb
   if (!avcC || !samples.length) throw new Error('encoder');
   if (samples.some((sample, i) => i > 0 && sample.ts <= samples[i - 1].ts)) throw new Error('reordered');
   const mixed = await mixAudio(timeline), audio = mixed ? await encodeAudio(mixed) : null;
-  return { bytes: writeMp4({ width: timeline.w, height: timeline.h, fps: VIDEO_FPS, avcC, samples, ...(audio ? { audio } : {}) }), durationMs, hasAudio: Boolean(audio) };
+  return { bytes: writeMp4({ width: timeline.w, height: timeline.h, fps: VIDEO_FPS, avcC, samples, ...(audio ? { audio } : {}) }), durationMs, hasAudio: Boolean(audio), ...(timeline.audio?.aiVoiceover ? { aiVoiceover: true as const } : {}) };
 }
 
 export async function sha256Hex(bytes: Uint8Array) {
@@ -186,7 +188,7 @@ export async function sha256Hex(bytes: Uint8Array) {
   return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 // Uploads in parts (each retried twice), then asks the server to check the whole file; returns the hosted address.
-export async function uploadVideo(bytes: Uint8Array, meta: { width: number; height: number; durationMs: number }, onProgress: (sent: number, total: number) => void) {
+export async function uploadVideo(bytes: Uint8Array, meta: { width: number; height: number; durationMs: number; aiVoiceover?: true }, onProgress: (sent: number, total: number) => void) {
   const server = async <T,>(work: () => Promise<T>) => { try { return await work(); } catch (reason) { throw new StudioError(reason instanceof Error && reason.message ? reason.message : 'Video yüklenemedi.'); } };
   const started = await server(async () => await projectRequest<{ id: string; parts: number; partBytes: number }>('/api/platform/media/videos', { method: 'POST', body: JSON.stringify({ bytes: bytes.length, sha256: await sha256Hex(bytes), ...meta }) }));
   for (let part = 0; part < started.parts; part++) {

@@ -7,4 +7,7 @@ export type ProspectView={
   check:{status:'not_checked'|'ok'|'unreachable';sourceUrl:string|null;pageTitle:string|null;summary:string|null;evidence:string|null;checkedAt:string|null};
   state:ProspectState;decidedAt:string|null;note:string;task:{id:string;status:string}|null;revision:number;createdAt:string;updatedAt:string;
 };
+// A business found on Google Maps without a website: kept by its listing (website "nosite:<listing>"), its evidence is
+// the Maps listing, and it is reached by phone or WhatsApp (never by a sales email, and never scanned).
+export const isNoSite=(website:string)=>website.startsWith('nosite:');
 export type ProspectsSnapshot={prospects:ProspectView[];counts:Record<ProspectState,number>;checksLeft:number;aiConfigured:boolean;canWrite:boolean;canApprove:boolean};

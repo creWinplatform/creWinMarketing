@@ -494,3 +494,4 @@
 .managed-sender p svg,.managed-panel summary svg,.sales-inbound p svg{display:inline-block;vertical-align:-2px;flex:none}
 .segment-card .coach-action-buttons .studio-secondary,.segment-form .coach-action-buttons .studio-secondary,.sales-domain .coach-action-buttons .studio-secondary,.segments-panel .finder-head .studio-secondary{flex:0 1 auto;justify-content:center}
 .segments-hint{margin:0;font-size:12px}
+.finder-nosite{margin:4px 0;font-size:13px}

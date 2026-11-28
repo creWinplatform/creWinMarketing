@@ -5,6 +5,8 @@ import type {Locale} from '@/lib/platform/catalog';
 import type {PlanUsage} from '@/lib/platform/plan-types';
 import {projectRequest} from '@/lib/platform/client';
 import Msg from '@/components/Msg';
+import {visibleVoicePlanRights} from '@/lib/platform/plan-catalog';
+import {isVoiceEnabled} from '@/lib/platform/voice-features';
 
 export default function PlanCatalog({data,lang,onSaved}:{data:PlanUsage;lang:Locale;onSaved:(data:PlanUsage)=>void}){
   const tr=lang==='tr', [busy,setBusy]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(false);
@@ -27,7 +29,9 @@ export default function PlanCatalog({data,lang,onSaved}:{data:PlanUsage;lang:Loc
         <ul>{[`${plan.seats} ${tr?'ekip üyesi':'team members'}`,`${plan.socialAccounts} ${tr?'sosyal hesap':'social accounts'}`,`${plan.ai} ${tr?'AI metin taslağı / ay':'AI text drafts / month'}`,`${plan.audits} ${tr?'tek URL denetimi / ay':'single-URL audits / month'}`,
           tr?`Satış asistanı: ayda ${plan.mapsSearches} Google Haritalar araması`:`Sales assistant: ${plan.mapsSearches} Google Maps searches / month`,
           tr?`Web takibi: ${plan.webQueries} arama ifadesi${plan.webFeeds?` + ${plan.webFeeds} RSS beslemesi`:''}`:`Web mentions: ${plan.webQueries} search term${plan.webQueries>1?'s':''}${plan.webFeeds?` + ${plan.webFeeds} RSS feeds`:''}`,
-          ...(plan.adTools?[tr?'Reklam araçları: arama reklamı içeriği, bütçe önerisi, otomatik duraklatma':'Ad tools: search ad content, budget suggestion, automatic pausing']:[])].map(text=><li key={text}><Check size={15}/>{text}</li>)}</ul>
+          ...(plan.adTools?[tr?'Reklam araçları: arama reklamı içeriği, bütçe önerisi, otomatik duraklatma':'Ad tools: search ad content, budget suggestion, automatic pausing']:[]),
+          // Voice rights: only with voice features on and a right above 0 (all plans have 0 for now).
+          ...((voice=>voice?[tr?`Sesli özellikler: ayda ${voice.voiceoverMinutes} dk seslendirme, ${voice.agentMinutes} dk sesli asistan, ${voice.outboundCalls} giden arama`:`Voice: ${voice.voiceoverMinutes} voiceover min, ${voice.agentMinutes} voice assistant min, ${voice.outboundCalls} outbound calls / month`]:[])(visibleVoicePlanRights(plan.id,isVoiceEnabled())))].map(text=><li key={text}><Check size={15}/>{text}</li>)}</ul>
         <button className={selected?'studio-secondary':'studio-primary'} disabled={Boolean(busy)||later||selected||!data.commercial.canManage} onClick={()=>select(plan.id)}>{busy===plan.id?(tr?'Kaydediliyor…':'Saving…'):later?(tr?'Henüz açılmadı':'Not available yet'):selected?(tr?'Tercih kaydedildi':'Preference saved'):(tr?'Tercihimi kaydet':'Save preference')}{!selected&&!later&&<ArrowRight size={15}/>}</button>
       </article>;
     })}</div>

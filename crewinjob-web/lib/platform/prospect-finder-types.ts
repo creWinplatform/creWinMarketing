@@ -2,10 +2,12 @@
 // company contact addresses and a shareable mini analysis. Pure data shared by the server and the browser.
 export const FINDER_LIMITS = { searchesPerDay: 10, perSearch: 30, reportDays: 60, phones: 3, emails: 5 } as const;
 
-export type SignalKey = 'https' | 'mobile' | 'online_booking' | 'whatsapp' | 'meta_pixel' | 'google_tag' | 'contact_form' | 'ecommerce' | 'blog' | 'meta_description' | 'social' | 'fresh' | 'hiring';
+export type SignalKey = 'website' | 'https' | 'mobile' | 'online_booking' | 'whatsapp' | 'meta_pixel' | 'google_tag' | 'contact_form' | 'ecommerce' | 'blog' | 'meta_description' | 'social' | 'fresh' | 'hiring';
 type Pair = [string, string];
 // label: the signal; yes/no: how the mini analysis words it when the site shows it or not (neutral, never a judgement).
 export const SIGNALS: Record<SignalKey, { label: Pair; yes: Pair; no: Pair }> = {
+  // Only businesses found without a website carry it (a web agency's best prospects).
+  website: { label: ['Web sitesi', 'Website'], yes: ['İşletmenin bir web sitesi var.', 'The business has a website.'], no: ['Google Haritalar kaydında web sitesi yok.', 'The Google Maps listing shows no website.'] },
   https: { label: ['Güvenli bağlantı (https)', 'Secure connection (https)'], yes: ['Site güvenli bağlantıyla (https) açılıyor.', 'The site opens over a secure connection (https).'], no: ['Site güvenli bağlantıyla (https) açılmıyor.', 'The site does not open over a secure connection (https).'] },
   mobile: { label: ['Mobil uyum etiketi', 'Mobile viewport tag'], yes: ['Sayfada mobil görünüm etiketi var.', 'The page has a mobile viewport tag.'], no: ['Sayfada mobil görünüm etiketi görmedik; telefonda küçük görünebilir.', 'We did not see a mobile viewport tag; the page may look small on phones.'] },
   online_booking: { label: ['Online randevu / rezervasyon', 'Online booking'], yes: ['Ana sayfada online randevu veya rezervasyon yolu var.', 'The home page offers online booking.'], no: ['Ana sayfada online randevu veya rezervasyon yolu görmedik.', 'We did not see a way to book online on the home page.'] },

@@ -33,7 +33,7 @@ test('schema 86 brings a shipped schema-83 database up to the sales follow-up wi
   shipped83(file);
   const db=openPlatformDatabase(file);
   try{
-    assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,86);
+    assert.equal(db.prepare('SELECT MAX(version) v FROM platform_migrations').get().v,87);
     assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(),[],'the sends still point at their sequence');
     assert.equal(db.prepare('SELECT sent_steps FROM platform_prospect_outreach WHERE id=?').get('out_1').sent_steps,3);
     assert.equal(db.prepare('SELECT outreach_id FROM platform_prospect_outreach_sends WHERE id=?').get('snd_1').outreach_id,'out_1');

@@ -6,6 +6,7 @@ import { StudioError, aacSupported, encodeTimeline, timelineMs, uploadVideo, vid
 import { projectRequest } from '@/lib/platform/client';
 import type { MusicTrack } from '@/lib/platform/music-library';
 import { saveFile } from './render';
+import { isVoiceEnabled } from '@/lib/platform/voice-features';
 
 type Clip = { id: string; name: string; url: string; video: HTMLVideoElement; duration: number; start: number; ms: number; caption: string; audio: AudioBuffer | null; thumb: string };
 const MAX_CLIPS = 6, MAX_TOTAL_MS = 90_000, BRAND_SCENE_MS = 2500;
@@ -41,7 +42,7 @@ export default function VideoClips({ lang, size, designs, designCount, sceneMs, 
     const buffer = await decodeAudio(await response.arrayBuffer()); if (!buffer) throw new StudioError(tr ? 'Parça okunamadı.' : 'The track could not be read.');
     setMusic({ name: `${track.title} — ${track.artist}`, buffer, license: track.license }); setRights(true); setResult(null);
   });
-  const [busy, setBusy] = useState(''), [progress, setProgress] = useState(''), [result, setResult] = useState<{ bytes: Uint8Array; url: string; durationMs: number; hasAudio: boolean } | null>(null), [aac, setAac] = useState(true);
+  const [busy, setBusy] = useState(''), [progress, setProgress] = useState(''), [result, setResult] = useState<{ bytes: Uint8Array; url: string; durationMs: number; hasAudio: boolean; aiVoiceover?: true } | null>(null), [aac, setAac] = useState(true);
   const clipsRef = useRef(clips); clipsRef.current = clips;
   useEffect(() => { void aacSupported().then(setAac); return () => { for (const clip of clipsRef.current) URL.revokeObjectURL(clip.url); }; }, []);
   useEffect(() => () => { if (result) URL.revokeObjectURL(result.url); }, [result]);
@@ -80,7 +81,7 @@ export default function VideoClips({ lang, size, designs, designCount, sceneMs, 
     setProgress(''); setResult({ ...value, url: URL.createObjectURL(new Blob([value.bytes as BlobPart], { type: 'video/mp4' })) });
   });
   const add = () => result && run('upload', async () => {
-    const value = await uploadVideo(result.bytes, { width: size.w, height: size.h, durationMs: result.durationMs }, (sent, total) => setProgress(tr ? `Yükleniyor: %${Math.round((sent / total) * 100)}` : `Uploading: ${Math.round((sent / total) * 100)}%`));
+    const value = await uploadVideo(result.bytes, { width: size.w, height: size.h, durationMs: result.durationMs, ...(result.aiVoiceover ? { aiVoiceover: true as const } : {}) }, (sent, total) => setProgress(tr ? `Yükleniyor: %${Math.round((sent / total) * 100)}` : `Uploading: ${Math.round((sent / total) * 100)}%`));
     setProgress(''); onUseVideo?.({ url: value.url });
   });
   const tooLong = totalMs > MAX_TOTAL_MS, needsRights = Boolean(music) && !music?.license && !rights, seconds = (ms: number) => Math.round(ms / 100) / 10;
@@ -130,6 +131,7 @@ export default function VideoClips({ lang, size, designs, designCount, sceneMs, 
       {result && <div className="video-result">
         <video src={result.url} controls playsInline className="video-result-player" aria-label={tr ? 'Hazırlanan video' : 'The video'} />
         <p className="studio-note">{seconds(result.durationMs)} sn · {Math.round(result.bytes.length / 1024 / 102.4) / 10} MB · {result.hasAudio ? (tr ? 'sesli' : 'with sound') : (tr ? 'sessiz' : 'silent')}</p>
+        {isVoiceEnabled() && result.aiVoiceover && <p className="studio-note" role="note">{tr ? 'Paylaşırken platformun yapay zekâ içeriği etiketini açın.' : 'When you share it, turn on the platform’s AI-generated content label.'}</p>}
         <div className="design-actions">
           {onUseVideo && <button type="button" className="studio-primary" disabled={Boolean(busy)} onClick={add}>{busy === 'upload' ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}{tr ? 'Taslağa ekle' : 'Add to the draft'}</button>}
           <button type="button" className="studio-secondary" disabled={Boolean(busy)} onClick={() => saveFile(result.bytes, `video-${size.w}x${size.h}.mp4`, 'video/mp4')}><Download size={15} />{tr ? 'MP4 indir' : 'Download MP4'}</button>

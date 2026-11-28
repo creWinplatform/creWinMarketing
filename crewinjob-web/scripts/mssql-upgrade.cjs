@@ -40,6 +40,7 @@ function schemaObjects() {
 // (ck_<table>_<n>) number a table's CHECKs in order, and an added column's CHECK comes last, so earlier names stay put.
 const CHECK_CHANGES = {
   86: ['ck_platform_prospect_outreach_4', 'ck_platform_prospect_outreach_sends_1'], // up to five emails in a sequence
+  87: ['ck_platform_iys_recipients_1', 'ck_platform_iys_outbox_1'], // İYS phone calls (channel ARAMA)
 };
 
 (async () => {

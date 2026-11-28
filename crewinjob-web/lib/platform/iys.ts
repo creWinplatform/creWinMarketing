@@ -8,11 +8,11 @@ import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { decryptCredentials, encryptCredentials } from './credential-envelope';
 import { emailAddress, emailIdentity, maskEmail } from './email-safety';
 import { IysClient, IysError, fetchTransport, type IysCredentials, type IysTransport } from './iys-client';
-import { IYS_CHANNELS, IYS_LIMITS as LIMITS, IYS_SOURCES, iysDate, iysDueAt, iysEnabled, type IysChannel, type IysGateReason, type IysRecipientType, type IysScope, type IysSource, type IysStatus, type IysView } from './iys-types';
+import { IYS_CHANNELS, IYS_LIMITS as LIMITS, IYS_SOURCES, iysDate, iysDueAt, iysEnabled, type IysAnyChannel, type IysChannel, type IysGateReason, type IysRecipientType, type IysScope, type IysSource, type IysStatus, type IysView } from './iys-types';
 
 type Scope = { organizationId: string; projectId: string };
 type Settings = { organization_id: string; project_id: string; scope: 'tr' | 'none' | null; declared_by: string | null; declared_at: string | null; connection_id: string | null; pull_state: 'idle' | 'ok' | 'failed'; pull_error: string | null; pulled_at: string | null; pull_cursor: string | null; next_pull_at: string | null; lease_until: string | null; merchant_exemption: number; merchant_by: string | null; merchant_at: string | null };
-type Outbox = { id: string; organization_id: string; project_id: string; channel: IysChannel; recipient_key: string; encrypted_recipient: string | null; status: IysStatus; source: string; consent_date: string; due_at: string; state: 'queued' | 'sent' | 'failed'; attempts: number; last_error: string | null; created_at: string; recipient_type: IysRecipientType };
+type Outbox = { id: string; organization_id: string; project_id: string; channel: IysAnyChannel; recipient_key: string; encrypted_recipient: string | null; status: IysStatus; source: string; consent_date: string; due_at: string; state: 'queued' | 'sent' | 'failed'; attempts: number; last_error: string | null; created_at: string; recipient_type: IysRecipientType };
 const HOUR = 3600000;
 const args = (scope: Scope) => [scope.organizationId, scope.projectId] as const;
 const E164 = /^\+[1-9]\d{7,14}$/;
@@ -22,18 +22,18 @@ const maskPhone = (phone: string) => `${phone.slice(0, 3)}•••${phone.slice
 // The same keys the email and WhatsApp stores use, so a status reached through İYS applies to the right recipient.
 export const iysEmailKey = (scope: Scope, key: string, email: string) => emailIdentity(scope, key, 'email', [email]);
 export const iysPhoneKey = (scope: Scope, key: string, phone: string) => createHmac('sha256', Buffer.from(key, 'hex')).update(`whatsapp:${scope.organizationId}:${scope.projectId}:${phone}`).digest('hex');
-const normalize = (channel: IysChannel, value: string) => channel === 'EPOSTA' ? emailAddress(value.trim().toLowerCase()) : (() => { const compact = value.replace(/[\s().-]/g, '').replace(/^00/, '+'); return E164.test(compact) ? compact : null; })();
-const recipientKey = (scope: Scope, key: string, channel: IysChannel, value: string) => channel === 'EPOSTA' ? iysEmailKey(scope, key, value) : iysPhoneKey(scope, key, value);
+const normalize = (channel: IysAnyChannel, value: string) => channel === 'EPOSTA' ? emailAddress(value.trim().toLowerCase()) : (() => { const compact = value.replace(/[\s().-]/g, '').replace(/^00/, '+'); return E164.test(compact) ? compact : null; })();
+const recipientKey = (scope: Scope, key: string, channel: IysAnyChannel, value: string) => channel === 'EPOSTA' ? iysEmailKey(scope, key, value) : iysPhoneKey(scope, key, value);
 const connection = async (db: Db, scope: Scope) => {
   const row = await settings(db, scope); if (!row?.connection_id) return null;
   return await db.prepare("SELECT id,encrypted_credentials,updated_at FROM platform_connections WHERE id=? AND organization_id=? AND project_id=? AND provider='iys' AND active=1").get(row.connection_id, ...args(scope)) as { id: string; encrypted_credentials: string; updated_at: string } | undefined || null;
 };
 // A recipient the team marked as a merchant, counted only while the project's exemption is on.
-const merchant = async (db: Db, scope: Scope, channel: IysChannel, id: string) => (await settings(db, scope))?.merchant_exemption
+const merchant = async (db: Db, scope: Scope, channel: IysAnyChannel, id: string) => (await settings(db, scope))?.merchant_exemption
   ? await db.prepare('SELECT checked_at FROM platform_iys_merchants WHERE organization_id=? AND project_id=? AND channel=? AND recipient_key=?').get(...args(scope), channel, id) as { checked_at: string | null } | undefined : undefined;
 const credentials = async (db: Db, scope: Scope, key: string) => { const row = await connection(db, scope); return row ? decryptCredentials<IysCredentials>(row.encrypted_credentials, key, ...args(scope), row.id) : null; };
 // Stores what İYS reported (or accepted) for one recipient and channel.
-async function remember(db: Db, scope: Scope, key: string, channel: IysChannel, recipient: string, status: IysStatus, origin: 'query' | 'pull' | 'upload', consentDate: string | null, source: string | null) {
+async function remember(db: Db, scope: Scope, key: string, channel: IysAnyChannel, recipient: string, status: IysStatus, origin: 'query' | 'pull' | 'upload', consentDate: string | null, source: string | null) {
   const id = recipientKey(scope, key, channel, recipient), now = new Date().toISOString();
   await db.prepare(`INSERT INTO platform_iys_recipients VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(organization_id,project_id,channel,recipient_key) DO UPDATE SET encrypted_recipient=excluded.encrypted_recipient,status=excluded.status,
     consent_date=excluded.consent_date,source=excluded.source,origin=excluded.origin,checked_at=excluded.checked_at`).run(...args(scope), channel, id, encryptCredentials({ recipient }, key, ...args(scope), `iys-recipient:${channel}:${id}`), status, consentDate, source, origin, now);
@@ -58,6 +58,20 @@ export async function iysGate(db: Db, scope: Scope, channel: IysChannel, key: st
   if (!status) return 'iys_no_consent';
   return recent(status.checked_at) || feed ? null : 'iys_stale';
 }
+// Commercial phone calls (İYS channel ARAMA; used only by the voice gate in voice-calls.ts). Stricter than iysGate: a
+// call needs İYS switched on, a "Turkey" declaration, a connection and a fresh ONAY for the number. No duty is ever
+// assumed. ARAMA consents come from the booking form (queued for İYS, schema 87) and from İYS's own register (query, change feed).
+export async function iysCallGate(db: Db, scope: Scope, key: string, phone: string): Promise<IysGateReason | 'iys_off' | null> {
+  if (!iysEnabled()) return 'iys_off';
+  const row = await settings(db, scope);
+  if (row?.scope !== 'tr') return 'iys_scope_missing';
+  if (!await connection(db, scope)) return 'iys_not_connected';
+  const status = await db.prepare("SELECT status,checked_at FROM platform_iys_recipients WHERE organization_id=? AND project_id=? AND channel='ARAMA' AND recipient_key=?").get(...args(scope), iysPhoneKey(scope, key, phone)) as { status: IysStatus; checked_at: string } | undefined;
+  if (!status) return 'iys_no_consent';
+  if (status.status === 'RET') return 'iys_rejected';
+  const feed = row.pull_state === 'ok' && Boolean(row.pulled_at) && Date.now() - Date.parse(row.pulled_at!) < LIMITS.freshHours * HOUR;
+  return Date.now() - Date.parse(status.checked_at) < LIMITS.freshHours * HOUR || feed ? null : 'iys_stale';
+}
 // Before a live send is queued: the project must have declared, and a "Turkey" project must be connected.
 export async function iysSendBlock(db: Db, scope: Scope) {
   if (!iysEnabled()) return null;
@@ -68,7 +82,7 @@ export async function iysSendBlock(db: Db, scope: Scope) {
 }
 // Queues a consent (ONAY) or an opt-out (RET) for İYS. Only for projects that declared Turkey. A consent older than three
 // business days cannot be reported any more: it is not queued (İYS should already hold it; query its status instead).
-export async function queueIysConsent(db: Db, scope: Scope, key: string, input: { channel: IysChannel; recipient: string | null; recipientKey?: string; status: IysStatus; source: IysSource | null; consentDate: string; actor: string }) {
+export async function queueIysConsent(db: Db, scope: Scope, key: string, input: { channel: IysAnyChannel; recipient: string | null; recipientKey?: string; status: IysStatus; source: IysSource | null; consentDate: string; actor: string }) {
   if (!iysEnabled()) return 'not_required' as const;
   const row = await settings(db, scope);
   if (row?.scope !== 'tr') return 'not_required' as const;
@@ -106,8 +120,8 @@ export class ProjectIys {
     const counts = async (state: string, extra = '') => (await this.db.prepare(`SELECT COUNT(*) n FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND state=?${extra}`).get(...args(this.scope), state) as { n: number }).n;
     const now = new Date().toISOString(), next = await this.db.prepare("SELECT MIN(due_at) at FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND state='queued'").get(...args(this.scope)) as { at: string | null };
     const statuses = { EPOSTA: { ONAY: 0, RET: 0 }, MESAJ: { ONAY: 0, RET: 0 } };
-    for (const item of await this.db.prepare('SELECT channel,status,COUNT(*) n FROM platform_iys_recipients WHERE organization_id=? AND project_id=? GROUP BY channel,status').all(...args(this.scope)) as { channel: IysChannel; status: IysStatus; n: number }[]) statuses[item.channel][item.status] = item.n;
-    const attention = (await this.db.prepare("SELECT id,channel,status,masked,due_at,state,last_error FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND (state='failed' OR state='queued' AND due_at<=?) ORDER BY due_at LIMIT 20").all(...args(this.scope), new Date(Date.now() + 24 * HOUR).toISOString()) as { id: string; channel: IysChannel; status: IysStatus; masked: string; due_at: string; state: 'queued' | 'failed'; last_error: string | null }[])
+    for (const item of await this.db.prepare('SELECT channel,status,COUNT(*) n FROM platform_iys_recipients WHERE organization_id=? AND project_id=? GROUP BY channel,status').all(...args(this.scope)) as { channel: IysAnyChannel; status: IysStatus; n: number }[]) if (item.channel !== 'ARAMA') statuses[item.channel][item.status] = item.n;
+    const attention = (await this.db.prepare("SELECT id,channel,status,masked,due_at,state,last_error FROM platform_iys_outbox WHERE organization_id=? AND project_id=? AND (state='failed' OR state='queued' AND due_at<=?) ORDER BY due_at LIMIT 20").all(...args(this.scope), new Date(Date.now() + 24 * HOUR).toISOString()) as { id: string; channel: IysAnyChannel; status: IysStatus; masked: string; due_at: string; state: 'queued' | 'failed'; last_error: string | null }[])
       .map(item => ({ id: item.id, channel: item.channel, status: item.status, masked: item.masked, dueAt: item.due_at, state: item.state, error: item.last_error }));
     const user = async (id: string | null | undefined) => id ? (await this.db.prepare('SELECT username FROM platform_users WHERE id=?').get(id) as { username: string } | undefined)?.username || null : null, declarer = await user(row?.declared_by);
     const listed = await this.can('connections.manage') || await this.can('recipients.manage');

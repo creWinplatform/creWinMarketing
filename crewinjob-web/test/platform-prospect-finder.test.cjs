@@ -66,6 +66,18 @@ test('Google Maps search needs the provider, the owner’s acceptance of the ter
   assert.equal(insight.source,'maps');assert.equal(insight.rating,4.8);assert.equal(insight.reviews,212);assert.equal(insight.city,'Kadıköy');
   assert.deepEqual(insight.contacts.map(item=>[item.kind,item.value,item.source]),[['phone','+902165551122','maps']]);
   assert.equal(snapshot.searchesLeft,9);assert.equal(snapshot.searches[0].added,1);
+  // The same search, this time with businesses without a website (from the 30-day cache: no paid request): they come
+  // in with the Maps listing as evidence, "no website" as their signal and their phone; never scanned or emailed.
+  const paid=h.calls.filter(call=>call.url.startsWith('https://api.dataforseo.com/')).length;
+  const withNoSite=await finder(f,h,editor).discover({city:'Kadıköy',sector:'Diş kliniği',source:'maps',includeNoSite:true});
+  assert.equal(withNoSite.added,2);assert.equal(withNoSite.addedNoSite,2,'no site and a social profile only');assert.equal(h.calls.filter(call=>call.url.startsWith('https://api.dataforseo.com/')).length,paid,'from the cache');
+  const noSite=(await new ProjectProspects(f.db,f.scope).read()).prospects.find(item=>item.company==='Sitesiz Diş');
+  assert.match(noSite.website,/^nosite:[a-f0-9]{32}$/);assert.equal(noSite.check.status,'ok');assert.equal(noSite.check.sourceUrl,'https://www.google.com/maps/place/?q=place_id:ChIJ2');assert.match(noSite.check.evidence,/Sitesiz Diş · Diş hekimi · Moda/);
+  const noSiteInsight=plain(await finder(f,h).read()).insights[noSite.id];assert.deepEqual(noSiteInsight.signals.map(item=>[item.key,item.present]),[['website',false]]);assert.deepEqual(noSiteInsight.contacts.map(item=>item.value),['+902165550000']);
+  await assert.rejects(finder(f,h).scan({id:noSite.id}),error=>error.status===409,'nothing to scan');
+  await assert.rejects(new ProjectProspects(f.db,f.scope).check({id:noSite.id}),error=>error.status===409);
+  assert.equal((await finder(f,h,editor).discover({city:'Kadıköy',sector:'Diş kliniği',source:'maps',includeNoSite:true})).added,0,'never twice');
+  for(const item of (await new ProjectProspects(f.db,f.scope).read()).prospects.filter(item=>item.website.startsWith('nosite:')))await new ProjectProspects(f.db,f.scope).remove({id:item.id});
   await assert.rejects(finder(f,http({mapsFail:true})).discover({city:'Moda',sector:'Diş kliniği',source:'maps'}),error=>error.status===502,'a new search (not cached) that fails at the provider');
   assert.equal(plain(await finder(f,h).read()).searches[0].status,'failed');
   const viewer=await f.member('viewer');await assert.rejects(finder(f,h,viewer).discover({city:'Kadıköy',sector:'Diş kliniği',source:'osm'}),error=>error.status===403);

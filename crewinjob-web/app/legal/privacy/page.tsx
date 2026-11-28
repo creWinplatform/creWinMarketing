@@ -7,6 +7,8 @@ import { INBOX_LIMITS } from '@/lib/platform/social-inbox-types';
 import {
   PRIVACY_HOSTING_LOCATION, PRIVACY_RETENTION, PRIVACY_VERBIS, PRIVACY_VERSION, SALES_SELLER, privacyReady,
 } from '@/lib/platform/sales-terms';
+import { isVoiceEnabled, voiceRegion } from '@/lib/platform/voice-features';
+import { voicePrivacyAddendum, voiceSubprocessors } from '@/lib/platform/voice-legal';
 
 // KVKK (6698 sayılı Kanun) md. 10 ve Aydınlatma Yükümlülüğü Tebliği kapsamında aydınlatma metni.
 // TASLAK: veri sorumlusu bilgileri, barındırma yeri, saklama süreleri ve hukuki onay lib/platform/sales-terms.ts içinde
@@ -38,6 +40,8 @@ export default async function PrivacyPage({ searchParams }: Props) {
   const controller = field(s.name, 'Veri sorumlusu unvanı — doldurulacak', 'Controller’s legal name — to be completed');
   const email = field(s.email, 'başvuru e-postası — doldurulacak', 'request email — to be completed');
   const retention = (value: string) => field(value, 'süre — hukuk incelemesi', 'period — legal review');
+  // Voice features (off by default): an ElevenLabs line in Transfers and the voice addendum. Off, both are null.
+  const voiceOn = isVoiceEnabled(), voiceProcessors = voiceSubprocessors(voiceOn, voiceRegion(), lang), voiceAddendum = voicePrivacyAddendum(voiceOn, voiceRegion(), lang, s.email);
 
   const toc = [
     { id: 'controller', title: ts('1. Veri sorumlusu', '1. Controller') },
@@ -48,6 +52,7 @@ export default async function PrivacyPage({ searchParams }: Props) {
     { id: 'retention', title: ts('6. Saklama ve güvenlik', '6. Retention and security') },
     { id: 'cookies', title: ts('7. Çerezler', '7. Cookies') },
     { id: 'rights', title: ts('8. Haklarınız ve başvuru', '8. Your rights') },
+    ...(voiceAddendum ? [{ id: 'voice', title: ts('Ek: Sesli özellikler', 'Annex: Voice features') }] : []),
   ];
 
   const rows: { what: [string, string]; purpose: [string, string]; how: [string, string] }[] = [
@@ -130,6 +135,7 @@ export default async function PrivacyPage({ searchParams }: Props) {
           <li>{t('E-posta gönderimi: Amazon SES (hesap doğrulama, şifre kurtarma, onaylı kampanya ve haftalık özet e-postaları).', 'Email delivery: Amazon SES (account verification, password recovery, approved campaign and weekly review emails).')}</li>
           <li>{t('AI sağlayıcısı: Google (Gemini), AI özellikleri kullanıldığında.', 'AI provider: Google (Gemini), when AI features are used.')}</li>
           <li>{t('Bağladığınız platformlar: Google (Analytics, Search Console, Ads), LinkedIn, Meta (Facebook, Instagram, WhatsApp), X, Telegram; yalnızca sizin onayladığınız okuma, yayın ve gönderim işlemleri için.', 'Platforms you connect: Google (Analytics, Search Console, Ads), LinkedIn, Meta (Facebook, Instagram, WhatsApp), X, Telegram; only for the reading, publishing and sending you approve.')}</li>
+          {voiceProcessors.map(line => <li key={line}>{line}</li>)}
           <li>{t('Ödeme: PayTR Ödeme ve Elektronik Para Kuruluşu A.Ş.', 'Payments: PayTR Ödeme ve Elektronik Para Kuruluşu A.Ş.')}</li>
           <li>{t('Kanunen yetkili kamu kurum ve kuruluşları, talep halinde.', 'Public authorities legally entitled to request it, on request.')}</li>
         </ul>
@@ -168,6 +174,13 @@ export default async function PrivacyPage({ searchParams }: Props) {
           <>You can send your request in writing to the address above, by registered electronic mail (KEP), or from the email address registered with us to {email}, in line with the Communiqué on the Procedures for Applications to the Controller. Requests are answered free of charge within 30 days at the latest; if handling it involves a separate cost, the tariff set by the Board may apply.</>)}</p>
         <p className="rd-small">{ts('Sürüm', 'Version')} {PRIVACY_VERSION}</p>
       </section>
+
+      {voiceAddendum && <section id="voice">
+        <h2>{t('Ek: Sesli özellikler', 'Annex: Voice features')}</h2>
+        {/* TODO: hukuk onaylı çeviri — the English page shows the approved Turkish text until a translation is approved. */}
+        <p lang="tr">{voiceAddendum.parts.map((part, index) => 'text' in part ? <span key={index}>{part.text}</span> : <span key={index}>{ph(part.placeholder + ' — doldurulacak', part.placeholder + ' — to be completed')}</span>)}</p>
+        <p className="rd-small">{ts('Sürüm', 'Version')} {voiceAddendum.version}</p>
+      </section>}
     </DocShell>
   );
 }

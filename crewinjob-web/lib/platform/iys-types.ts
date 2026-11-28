@@ -6,6 +6,10 @@
 export const iysEnabled = () => process.env.NEXT_PUBLIC_IYS_ENABLED === '1';
 export const IYS_CHANNELS = ['EPOSTA', 'MESAJ'] as const;
 export type IysChannel = typeof IYS_CHANNELS[number];
+// ARAMA (phone calls) is kept and reported like the others but is not offered on the İYS screens: only the voice
+// features (commercial call consents from the booking form, schema 87) use it.
+export const IYS_ALL_CHANNELS = [...IYS_CHANNELS, 'ARAMA'] as const;
+export type IysAnyChannel = typeof IYS_ALL_CHANNELS[number];
 export type IysStatus = 'ONAY' | 'RET';
 export type IysScope = 'tr' | 'none' | null;
 // BIREYSEL: individuals (prior consent needed). TACIR: merchants and tradespeople, who need no prior consent but can
@@ -30,7 +34,7 @@ export const IYS_REASON_LABELS: Record<IysGateReason, [string, string]> = {
 };
 export const IYS_LIMITS = { uploadBusinessDays: 3, freshHours: 24, pullMinutes: 30, attempts: 3, queryBatch: 50, outbox: 20000, perTick: 10, merchants: 2000, merchantsPerRequest: 100 } as const;
 export type IysMerchantView = { channel: IysChannel; key: string; masked: string; evidence: string; checkedAt: string | null; createdAt: string };
-export type IysOutboxItem = { id: string; channel: IysChannel; status: IysStatus; masked: string; dueAt: string; state: 'queued' | 'sent' | 'failed'; error: string | null };
+export type IysOutboxItem = { id: string; channel: IysAnyChannel; status: IysStatus; masked: string; dueAt: string; state: 'queued' | 'sent' | 'failed'; error: string | null };
 export type IysView = {
   scope: IysScope; declaredAt: string | null; declaredBy: string | null; canManage: boolean;
   connection: { environment: IysEnvironment; iysCode: string; brandCode: string; connectedAt: string } | null;
