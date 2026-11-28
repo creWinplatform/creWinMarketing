@@ -4,7 +4,8 @@ import type { MarketingScope } from './marketing-store';
 import { MarketingStoreError } from './errors';
 import { PlatformRepository } from './repository';
 import { ryzevoFeature } from './ryzevo-features';
-import { BRAND_FONTS, DEFAULT_BRAND_KIT, HEX_COLOR, LOGO_MAX_BYTES, type BrandFont, type BrandKit, type BrandKitInput, type BrandLogo } from './brand-kit-types';
+import { isVoiceEnabled } from './voice-features';
+import { BRAND_FONTS, DEFAULT_BRAND_KIT, HEX_COLOR, LOGO_MAX_BYTES, type BrandFont, type BrandKit, type BrandKitInput, type BrandLogo, type BrandVoiceProfile } from './brand-kit-types';
 
 type Row = { revision: number; kit_json: string; logo_data: string | null; logo_mime: BrandLogo['mime'] | null; updated_at: string };
 const MIMES: BrandLogo['mime'][] = ['image/png', 'image/jpeg', 'image/webp'];
@@ -24,7 +25,18 @@ export function normalizeBrandKit(raw: Record<string, unknown>): BrandKitInput {
     return value.toLowerCase();
   };
   if (!BRAND_FONTS.includes(raw.font as BrandFont)) throw new MarketingStoreError('Geçersiz yazı tipi.');
-  return { colors: { primary: color('primary'), accent: color('accent'), dark: color('dark'), light: color('light') }, font: raw.font as BrandFont, handle: text(raw.handle, 40), tagline: text(raw.tagline, 80) };
+  const kit: BrandKitInput = { colors: { primary: color('primary'), accent: color('accent'), dark: color('dark'), light: color('light') }, font: raw.font as BrandFont, handle: text(raw.handle, 40), tagline: text(raw.tagline, 80) };
+  // The brand voice is read only while voice features are on; otherwise the field is ignored and the kit is as before.
+  if (isVoiceEnabled() && raw.voiceProfile !== undefined && raw.voiceProfile !== null) kit.voiceProfile = normalizeVoiceProfile(raw.voiceProfile);
+  return kit;
+}
+// Only kind 'designed'. A cloned voice (or any other kind) is refused: cloning needs the voice owner's proven consent
+// and a separate legal approval, so it is not offered.
+export function normalizeVoiceProfile(raw: unknown): BrandVoiceProfile {
+  const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null;
+  if (!value || value.kind !== 'designed') throw new MarketingStoreError('Marka sesi yalnız tasarlanmış (designed) bir ses olabilir; ses klonlama desteklenmez.');
+  if (typeof value.voiceId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value.voiceId)) throw new MarketingStoreError('Geçersiz ses kimliği.');
+  return { kind: 'designed', voiceId: value.voiceId, label: text(value.label, 40) };
 }
 export function normalizeLogo(raw: unknown): BrandLogo | null {
   if (raw === null) return null;
@@ -52,7 +64,9 @@ export class BrandKits {
   private async view(row: Row | undefined): Promise<BrandKit> {
     let stored: Partial<BrandKitInput> = {};
     try { stored = row ? JSON.parse(row.kit_json) : {}; } catch { stored = {}; }
-    const kit = { ...DEFAULT_BRAND_KIT, ...stored, colors: { ...DEFAULT_BRAND_KIT.colors, ...(stored.colors || {}) } };
+    const { voiceProfile, ...rest } = stored;
+    // The brand voice is shown only while voice features are on.
+    const kit = { ...DEFAULT_BRAND_KIT, ...rest, colors: { ...DEFAULT_BRAND_KIT.colors, ...(stored.colors || {}) }, ...(isVoiceEnabled() && voiceProfile?.kind === 'designed' ? { voiceProfile } : {}) };
     return { ...kit, revision: row?.revision || 0, logo: row?.logo_data && row.logo_mime ? { data: row.logo_data, mime: row.logo_mime } : null, updatedAt: row?.updated_at || null,
       canEdit: await this.repo.can(this.scope.subject, ...this.args(), 'connections.manage') };
   }
@@ -65,6 +79,12 @@ export class BrandKits {
       await this.authorize('connections.manage');
       const row = await this.row(), now = new Date().toISOString();
       if (raw.expectedRevision !== (row?.revision || 0)) throw new MarketingStoreError('Marka kiti başka bir sekmede değişti. Yenileyip tekrar deneyin.', 409);
+      // A stored brand voice is kept unless voice features are on and the save sends null (remove) or a new one.
+      if (!kit.voiceProfile && !(isVoiceEnabled() && raw.voiceProfile === null)) {
+        let stored: Partial<BrandKitInput> = {};
+        try { stored = row ? JSON.parse(row.kit_json) : {}; } catch { stored = {}; }
+        if (stored.voiceProfile?.kind === 'designed') kit.voiceProfile = stored.voiceProfile;
+      }
       const logoData = logo === undefined ? row?.logo_data ?? null : logo?.data ?? null, logoMime = logo === undefined ? row?.logo_mime ?? null : logo?.mime ?? null;
       if (!row) await this.db.prepare('INSERT INTO platform_brand_kits(organization_id,project_id,revision,kit_json,logo_data,logo_mime,updated_by,updated_at) VALUES(?,?,1,?,?,?,?,?)').run(...this.args(), JSON.stringify(kit), logoData, logoMime, this.scope.subject, now);
       else await this.db.prepare('UPDATE platform_brand_kits SET revision=revision+1,kit_json=?,logo_data=?,logo_mime=?,updated_by=?,updated_at=? WHERE organization_id=? AND project_id=? AND revision=?').run(JSON.stringify(kit), logoData, logoMime, this.scope.subject, now, ...this.args(), row.revision);

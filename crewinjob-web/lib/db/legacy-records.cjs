@@ -290,6 +290,8 @@ const WEB_STORES = {
   'seo-work-items.json': { shape: 'array' }, 'social-tokens.json': { shape: 'object' }, 'oauth-state.json': { shape: 'object' },
   'email-suppressions.json': { shape: 'object' }, 'whatsapp-consents.json': { shape: 'object' }, 'crewin-iys-email.json': { shape: 'object' },
   'crewin-iys-email-pending.json': { shape: 'object' }, 'crewin-link-tags.json': { shape: 'array', key: 'tag', pretty: false },
+  // Voice consents of booking-page visitors (lib/platform/voice-consent.ts): append-only, one line per decision.
+  'voice-consents.jsonl': { shape: 'array', format: 'jsonl' },
   // data/activity-log-cleared-at.txt (a number) in file mode; { at } as a store.
   'activity-log-cleared-at.json': { shape: 'object' },
 };

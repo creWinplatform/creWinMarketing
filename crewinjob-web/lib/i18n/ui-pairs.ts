@@ -252,6 +252,7 @@ export const UI_PAIRS: Record<string, string> = {
   "Karar kaydedildi. Gönderim yapılmadı.": "Decision recorded. No message was sent.",
   "Kaydedilemedi; tekrar deneyin.": "Could not save; try again.",
   "Kaydedilemedi.": "Could not save.",
+  "Kaydedilemedi. Lütfen tekrar deneyin.": "Could not be saved. Please try again.",
   "Kaydedilemedi. Tekrar deneyin.": "Couldn't save. Try again.",
   "kaydı yok": "no record",
   "Kayıt": "Registrations",

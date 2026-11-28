@@ -58,6 +58,21 @@ export async function iysGate(db: Db, scope: Scope, channel: IysChannel, key: st
   if (!status) return 'iys_no_consent';
   return recent(status.checked_at) || feed ? null : 'iys_stale';
 }
+// Commercial phone calls (İYS channel ARAMA; used only by the voice gate in voice-calls.ts). Stricter than iysGate: a
+// call needs İYS switched on, a "Turkey" declaration, a connection and a fresh ONAY for the number. No duty is ever
+// assumed. The İYS tables accept only EPOSTA and MESAJ today, so no ARAMA consent can be on record and every commercial
+// call is refused until the voice integration adds the channel (docs/voice/ENABLE-CHECKLIST.md).
+export async function iysCallGate(db: Db, scope: Scope, key: string, phone: string): Promise<IysGateReason | 'iys_off' | null> {
+  if (!iysEnabled()) return 'iys_off';
+  const row = await settings(db, scope);
+  if (row?.scope !== 'tr') return 'iys_scope_missing';
+  if (!await connection(db, scope)) return 'iys_not_connected';
+  const status = await db.prepare("SELECT status,checked_at FROM platform_iys_recipients WHERE organization_id=? AND project_id=? AND channel='ARAMA' AND recipient_key=?").get(...args(scope), iysPhoneKey(scope, key, phone)) as { status: IysStatus; checked_at: string } | undefined;
+  if (!status) return 'iys_no_consent';
+  if (status.status === 'RET') return 'iys_rejected';
+  const feed = row.pull_state === 'ok' && Boolean(row.pulled_at) && Date.now() - Date.parse(row.pulled_at!) < LIMITS.freshHours * HOUR;
+  return Date.now() - Date.parse(status.checked_at) < LIMITS.freshHours * HOUR || feed ? null : 'iys_stale';
+}
 // Before a live send is queued: the project must have declared, and a "Turkey" project must be connected.
 export async function iysSendBlock(db: Db, scope: Scope) {
   if (!iysEnabled()) return null;
