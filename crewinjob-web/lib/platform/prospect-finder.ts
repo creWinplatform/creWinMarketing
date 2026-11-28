@@ -7,6 +7,7 @@ import { projectFeatures } from './entitlements';
 import { MarketingStoreError, type MarketingScope } from './marketing-store';
 import { extraContacts, suppressedHosts } from './prospect-contacts';
 import { joinSegment, segmentExists } from './prospect-segments';
+import { isNoSite } from './prospect-types';
 import {
   FINDER_LIMITS, FINDER_SECTORS, MAPS_QUOTA, type MapsQuota, FINDER_TERMS_VERSION, SIGNALS, SIGNAL_KEYS,
   type FinderSearch, type FinderSettings, type FinderSnapshot, type ProspectAnalysis, type ProspectContact, type ProspectInsight, type ProspectScore, type Signal, type SignalKey, type SignalWish,
@@ -285,6 +286,8 @@ export class ProspectFinder {
     const city = clean(raw.city, 80), sectorText = clean(raw.sector, 80), source = raw.source === 'osm' ? 'osm' : 'maps';
     if (city.length < 2 || sectorText.length < 2) throw new MarketingStoreError('Şehir veya ilçe ile sektörü yazın.');
     if (await this.used('prospect_search') >= FINDER_LIMITS.searchesPerDay) throw new MarketingStoreError('Bugünkü firma arama hakkınız doldu. Yarın tekrar deneyin.', 429);
+    // Businesses without a website (Google Maps only: OpenStreetMap lists only those with one) when the team asks.
+    const includeNoSite = raw.includeNoSite === true && source === 'maps';
     // A search made for a customer group puts the companies it finds under that group.
     const segmentId = await segmentExists(this.db, this.args2(), raw.segmentId) ? String(raw.segmentId) : null;
     const sectorId = FINDER_SECTORS.find(item => item.id === raw.sectorId || item.tr.toLocaleLowerCase('tr') === sectorText.toLocaleLowerCase('tr') || item.en.toLowerCase() === sectorText.toLowerCase())?.id || '';
@@ -321,7 +324,7 @@ export class ProspectFinder {
     const suppressed = await suppressedHosts(this.db, this.args2());
     const added = await this.db.transaction(async () => {
       const existing = await this.db.prepare('SELECT website FROM platform_prospects WHERE organization_id=? AND project_id=?').all(...this.args()) as { website: string }[];
-      const seen = new Set(existing.map(row => host(row.website))); let room = Math.max(0, 200 - existing.length), count = 0; const ids: string[] = [];
+      const seen = new Set(existing.map(row => host(row.website))), listed = new Set(existing.map(row => row.website)); let room = Math.max(0, 200 - existing.length), count = 0, noSite = 0; const ids: string[] = [];
       for (const item of withSite) {
         if (count >= FINDER_LIMITS.perSearch || room <= 0) break;
         const key = host(item.origin); if (!key || seen.has(key) || suppressed.has(key)) continue; seen.add(key);
@@ -333,12 +336,26 @@ export class ProspectFinder {
         const email = item.email.toLowerCase(); if (/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email) && ROLE.test(email.split('@')[0])) await this.contact(id, 'email', email, source, null, now);
         count++; room--; ids.push(id);
       }
+      // Without a website: the Maps listing is the evidence (already checked), "no website" is its only signal, and
+      // the phone it lists is how the team reaches it.
+      if (includeNoSite) for (const item of listings.filter(listing => !siteOrigin(listing.website) && listing.name && listing.ref)) {
+        if (count >= FINDER_LIMITS.perSearch || room <= 0) break;
+        const key = `nosite:${createHash('sha256').update(`maps:${item.ref}`).digest('hex').slice(0, 32)}`; if (listed.has(key)) continue; listed.add(key);
+        const id = `prospect_${randomUUID()}`, listing = /^ChIJ/.test(item.ref) ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(item.ref)}` : `https://maps.google.com/?cid=${encodeURIComponent(item.ref)}`;
+        const evidence = clean([item.name, item.category, item.address].filter(Boolean).join(' · '), 400);
+        await this.db.prepare("INSERT INTO platform_prospects(id,organization_id,project_id,company,website,sector,country,reason,contact_role,reason_source,check_status,source_url,page_title,page_summary,evidence,checked_at,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,'','',NULL,'ok',?,?,?,?,?,?,?,?)")
+          .run(id, ...this.args(), item.name, key, (item.category || sectorText).slice(0, 80), country, listing, item.name.slice(0, 200), language === 'tr' ? 'Google Haritalar kaydı; web sitesi yok.' : 'Google Maps listing; no website.', evidence, now, this.scope.subject, now, now);
+        await this.db.prepare('INSERT INTO platform_prospect_insights(prospect_id,organization_id,project_id,source,source_ref,city,address,category,rating,reviews,signals_json,scanned_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)')
+          .run(id, ...this.args(), source, item.ref, item.city, item.address, item.category, item.rating, item.reviews, JSON.stringify([{ key: 'website', present: false, evidence: '' }]), now, now);
+        if (/^\+?[\d\s()-]{10,20}$/.test(item.phone)) await this.contact(id, 'phone', item.phone.replace(/[^\d+]/g, ''), source, listing, now);
+        count++; room--; noSite++; ids.push(id);
+      }
       if (segmentId) await joinSegment(this.db, this.args2(), segmentId, ids);
       await this.db.prepare("INSERT INTO platform_prospect_searches(id,organization_id,project_id,source,city,sector,found,added,without_website,status,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,'done',?,?)").run(searchId, ...this.args(), source, city, sectorText, listings.length, count, withoutWebsite, this.scope.subject, now);
       await this.audit(`prospect.finder.discover:${source}`);
-      return count;
+      return { count, noSite };
     });
-    return { found: listings.length, added, withoutWebsite, snapshot: await this.read() };
+    return { found: listings.length, added: added.count, addedNoSite: added.noSite, withoutWebsite, snapshot: await this.read() };
   }
   private async contact(prospectId: string, kind: 'email' | 'phone', value: string, source: string, sourceUrl: string | null, now: string) {
     if (await this.db.prepare('SELECT 1 FROM platform_prospect_contacts WHERE prospect_id=? AND kind=? AND value=?').get(prospectId, kind, value)) return;
@@ -349,6 +366,7 @@ export class ProspectFinder {
   async scan(raw: Json) {
     await this.authorize('content.write');
     const prospect = await this.prospect(raw.id);
+    if (isNoSite(prospect.website)) throw new MarketingStoreError('Bu işletmenin web sitesi yok; kanıtı Google Haritalar kaydıdır.', 409);
     if ((await this.used('prospect_check')) >= 50) throw new MarketingStoreError('Günlük web sitesi kontrol sınırına ulaşıldı.', 429);
     let page: { finalUrl: string; html: string } | null = null;
     try { page = await this.site(prospect.website); if (host(page.finalUrl) !== host(prospect.website)) page = null; } catch { page = null; }

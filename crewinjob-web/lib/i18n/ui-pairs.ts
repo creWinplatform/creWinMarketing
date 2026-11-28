@@ -379,7 +379,6 @@ export const UI_PAIRS: Record<string, string> = {
   "Site kaydedilemedi.": "Site could not be saved.",
   "Site taraması tamamlanamadı.": "Site crawl could not be completed.",
   "Site taraması yükleniyor…": "Loading site scan…",
-  "Site tarandı: sinyaller ve yayımlanan iletişim adresleri güncellendi.": "Site scanned: signals and published contact addresses updated.",
   "Sitenizde fark ettiklerimiz ({0})": "What we noticed on your site ({0})",
   "Sitenizden okunan ton önerisi boş alanlara eklendi. Kontrol edip taslağı hazırlayın; kaydedene kadar hiçbir şey değişmez.": "The voice start read from your site was added to the empty fields. Check it and prepare the draft; nothing changes until you save.",
   "SiteSeo isteği tamamlanamadı.": "The SiteSeo request could not be completed.",

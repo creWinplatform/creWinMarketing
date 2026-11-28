@@ -22,6 +22,7 @@ import { networkByProspect, suppressedHosts } from './prospect-contacts';
 import { bookingUrlFor } from './prospect-workflow';
 import { OutreachDomain, markSalesDomainUsed, salesSender } from './outreach-domain';
 import { segmentOf } from './prospect-segments';
+import { isNoSite } from './prospect-types';
 import { debitCredit, managedSender, refundCredit } from './managed-sending';
 import { replyAddress, type SendingProvider } from './sending-providers';
 import { MANAGED_WAIT } from './managed-sending-types';
@@ -149,9 +150,10 @@ function readChannels(raw: Json) {
   return { linkedin, whatsapp };
 }
 // A neutral starter when no AI is configured: the company's own findings, the analysis link and a plain question.
-function templateTexts(company: string, findings: string[], language: 'tr' | 'en', positioning: string) {
+function templateTexts(company: string, findings: string[], language: 'tr' | 'en', positioning: string, noSite = false) {
   const tr = language === 'tr', points = findings.slice(0, 2).map(item => item.charAt(0).toLocaleLowerCase(tr ? 'tr' : 'en') + item.slice(1).replace(/\.$/, ''));
-  const seen = points.length ? (tr ? `Sitenize göz atarken birkaç küçük fırsat gördük: ${points.join('; ')}.` : `Looking at your site we noticed a few small openings: ${points.join('; ')}.`) : (tr ? 'Sitenize göz atıp birkaç not çıkardık.' : 'We looked at your site and made a few notes.');
+  const seen = noSite ? (tr ? 'İşletmenizi Google Haritalar’da gördük; bir web siteniz görünmüyor.' : 'We saw your business on Google Maps; we could not find a website for it.')
+    : points.length ? (tr ? `Sitenize göz atarken birkaç küçük fırsat gördük: ${points.join('; ')}.` : `Looking at your site we noticed a few small openings: ${points.join('; ')}.`) : (tr ? 'Sitenize göz atıp birkaç not çıkardık.' : 'We looked at your site and made a few notes.');
   const offer = positioning ? positioning.replace(/\s+/g, ' ').slice(0, 220) : '';
   return {
     steps: [
@@ -161,8 +163,8 @@ function templateTexts(company: string, findings: string[], language: 'tr' | 'en
       { subject: '', body: tr ? 'Merhaba,\n\nbu konu sizin için öncelik değilse sorun değil. Doğru kişi başka biriyse kimle konuşmam gerektiğini yazabilir misiniz?' : 'Hello,\n\nif this is not a priority for you, no problem. If someone else is the right person, could you tell me who?' },
       { subject: '', body: tr ? 'Merhaba,\n\nbu konuda son kez yazıyorum. Şu an uygun değilse sorun değil; ileride ihtiyaç olursa bu e-postayı yanıtlamanız yeterli.' : 'Hello,\n\nthis is my last note on this. If now is not the right time, no problem; just reply to this email whenever it becomes relevant.' },
     ],
-    linkedin: tr ? `Merhaba, ${company} sitesini incelerken birkaç küçük fırsat fark ettim. Uygun görürseniz bağlantı kurup kısa bir not paylaşmak isterim.` : `Hello, while looking at the ${company} website I noticed a few small openings. If you agree, I would like to connect and share a short note.`,
-    whatsapp: tr ? `Merhaba, ${company} sitesine göz atarken birkaç küçük fırsat gördük ve kısa bir analiz hazırladık. Size iletmemizi ister misiniz?` : `Hello, we looked at the ${company} website, noticed a few small openings and prepared a short analysis. Would you like us to send it to you?`,
+    linkedin: noSite ? (tr ? `Merhaba, ${company} işletmesini Google Haritalar’da gördüm. Uygun görürseniz bağlantı kurup kısa bir fikir paylaşmak isterim.` : `Hello, I came across ${company} on Google Maps. If you agree, I would like to connect and share a short idea.`) : tr ? `Merhaba, ${company} sitesini incelerken birkaç küçük fırsat fark ettim. Uygun görürseniz bağlantı kurup kısa bir not paylaşmak isterim.` : `Hello, while looking at the ${company} website I noticed a few small openings. If you agree, I would like to connect and share a short note.`,
+    whatsapp: noSite ? (tr ? `Merhaba, ${company} işletmenizi Google Haritalar’da gördük; bir web siteniz görünmüyor. Bu konuda kısa bir öneri iletmemizi ister misiniz?` : `Hello, we saw ${company} on Google Maps and could not find a website for it. Would you like us to send a short suggestion?`) : tr ? `Merhaba, ${company} sitesine göz atarken birkaç küçük fırsat gördük ve kısa bir analiz hazırladık. Size iletmemizi ister misiniz?` : `Hello, we looked at the ${company} website, noticed a few small openings and prepared a short analysis. Would you like us to send it to you?`,
   };
 }
 
@@ -343,7 +345,7 @@ export class ProspectOutreach {
     const idx = language === 'tr' ? 0 : 1, core: SignalKey[] = ['https', 'mobile', 'meta_description', 'google_tag', 'fresh'];
     const signals = (JSON.parse(insight.signals_json) as Signal[]).filter((item): item is Signal & { present: boolean } => item.present !== null);
     const wished = signals.filter(item => { const wish = settings.signals[item.key]; return wish && (wish === 'missing' ? !item.present : item.present); });
-    const missing = signals.filter(item => !item.present && (core.includes(item.key) || settings.signals[item.key]));
+    const missing = signals.filter(item => !item.present && (core.includes(item.key) || item.key === 'website' || settings.signals[item.key]));
     const ordered = [...wished, ...missing.filter(item => !wished.includes(item))];
     return { city: insight.city, category: insight.category, keys: wished.map(item => item.key), texts: ordered.map(item => SIGNALS[item.key][item.present ? 'yes' : 'no'][idx]) };
   }
@@ -385,7 +387,7 @@ export class ProspectOutreach {
     const followUps = (await this.settings()).followUpDays.length;
     if (!generator || raw.mode === 'template') {
       // The team's positioning line goes in only when the first email stays near the 75-word target with it.
-      const pick = (positioning: string) => { const texts = templateTexts(prospect.company, facts.texts, language, positioning); const last = texts.steps[texts.steps.length - 1]; return { ...texts, steps: [texts.steps[0], ...texts.steps.slice(1, -1).slice(0, followUps - 1), last].slice(0, 1 + followUps) }; };
+      const pick = (positioning: string) => { const texts = templateTexts(prospect.company, facts.texts, language, positioning, isNoSite(prospect.website)); const last = texts.steps[texts.steps.length - 1]; return { ...texts, steps: [texts.steps[0], ...texts.steps.slice(1, -1).slice(0, followUps - 1), last].slice(0, 1 + followUps) }; };
       let texts = pick(line(context.positioning, 220));
       if (words(texts.steps[0].body) > LIMITS.firstTarget) texts = pick('');
       return await store(texts, 'template');
@@ -393,7 +395,7 @@ export class ProspectOutreach {
     const prompt = `You write a short, honest first B2B email (and two follow-ups) from a small team to a company it has not contacted before. Language: ${language === 'tr' ? 'Turkish' : 'English'}.
 Use ONLY the facts below. Rules: never invent facts, numbers, results, prices, names or a previous relationship; do not flatter; no percentages, no "guarantee"; no links, email addresses or phone numbers. The first email must contain the exact token ${ANALYSIS_TOKEN} once, where the link to a short analysis of their website will go. Write like a person, plain and polite; say what was seen on their site and end with exactly one clear question (one call to action). First email at most ${LIMITS.firstTarget} words, each follow-up at most ${LIMITS.followTarget} words and adding something new (another finding, a short example, asking who the right person is), the last follow-up a polite last note; subject at most 60 characters. Also write a LinkedIn connection note (at most 280 characters) and a WhatsApp message (at most 400 characters), both without the token and without links.
 Product context (our side): ${JSON.stringify({ name: project.name, positioning: line(context.positioning, 400), idealCustomer: line(context.icp?.summary, 300), offer: line(context.offer, 300) })}
-Company (their side): ${JSON.stringify({ name: prospect.company, sector: prospect.sector || facts.category, city: facts.city, findingsFromTheirOwnSite: facts.texts.slice(0, 6) })}
+${isNoSite(prospect.website) ? 'This business has no website: it was found on Google Maps. Do not mention its website; say you saw it on Google Maps.\n' : ''}Company (their side): ${JSON.stringify({ name: prospect.company, sector: prospect.sector || facts.category, city: facts.city, findingsFromTheirOwnSite: facts.texts.slice(0, 6) })}
 Return JSON only: {"subject":"...","body":"...","followUps":[${Array.from({ length: followUps }, () => '"..."').join(',')}],"linkedin":"...","whatsapp":"..."}`;
     return await runCoachAi(this.db, this.scope, generator, prompt, output => {
       const value = coachObject(parseCoachJson(output)), fail = () => new MarketingStoreError('AI taslağı kurallara uymadı (uydurma bilgi, bağlantı, adres veya {{analiz}} ifadesi eksik). Hazır şablonla başlayıp kendiniz düzenleyebilirsiniz.', 422);
